@@ -1,0 +1,3 @@
+NetFlow (last 2h): host 10.0.4.22 (workstation FIN-042) contacted 185.220.x.x:443 every 90s,
+payload ~400 bytes, TLS SNI random-looking 12-char .xyz domain, no user browser at that time.
+Same host had normal Microsoft 365 traffic before and after.

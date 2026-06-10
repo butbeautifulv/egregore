@@ -1,0 +1,11 @@
+name: critic
+description: Validate and reconcile multi-agent findings
+role: critic
+output_schema: CriticResult
+tools: []
+hitl_tools: {}
+trust_level: privileged
+bus_recipients:
+  - report
+language: ru
+sample: samples/default.txt

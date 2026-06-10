@@ -1,0 +1,32 @@
+name: cys-agi
+version: "0.1.0"
+description: Secure multi-agent cybersecurity assessment platform
+
+layout:
+  personas: personas/       # agent definitions (agent.yaml + AGENT.md)
+  rules: rules/             # global constraints for all agents
+  plans: plans/             # assessment playbooks
+  skills: skills/           # on-demand domain knowledge modules
+
+personas:
+  specialists: [redteam, network, soc, compliance]
+  critic: critic
+  coordinator: coordinator
+
+default_plan: full-assessment
+
+plans:
+  - id: full-assessment
+    file: plans/full-assessment.yaml
+    description: Parallel specialists → critic → HITL → report
+  - id: incident-triage
+    file: plans/incident-triage.yaml
+    description: SOC + network focus for active incidents
+  - id: compliance-audit
+    file: plans/compliance-audit.yaml
+    description: Compliance + critic for control gap analysis
+
+skills:
+  - ci-cd-threats
+  - network-beaconing
+  - compliance-frameworks

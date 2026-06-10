@@ -1,0 +1,251 @@
+{
+  "version": 1,
+  "skills": {
+    "api-docs": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/noise/api_docs/SKILL.md",
+      "computedHash": "42cd1b806c49ff0fa97ffddb7d0d406b057c5d0b554ff8a3907bfecb6cb4dddc"
+    },
+    "arxiv-search": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "libs/cli/examples/skills/arxiv-search/SKILL.md",
+      "computedHash": "2ae722485d20caca09af2349df903dccb26121a181a905f246a5e1baf5202ff4"
+    },
+    "blog-post": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/content-builder-agent/skills/blog-post/SKILL.md",
+      "computedHash": "4a695b9be73d15798cf887a5c55732a8247e4926d2ce3d844c97ae57c44bb3f2"
+    },
+    "code-review": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/deploy-coding-agent/skills/code-review/SKILL.md",
+      "computedHash": "94617ce916d323f41849953713d2dfecdd6a97c0c8bf2eb6483ee556ef6c10f4"
+    },
+    "coding-prefs": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/deploy-coding-agent/skills/coding-prefs/SKILL.md",
+      "computedHash": "2069cde57ab1459e309ab2f25a25b4143576dbb86119f7d0d30637c3dadf0735"
+    },
+    "competitor-analysis": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/deploy-gtm-agent/skills/competitor-analysis/SKILL.md",
+      "computedHash": "4d4a32f17e790ea217f66fdb10184b2beba8c7ef2a98c9422124a5009c3f9dd3"
+    },
+    "cudf-analytics": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/nvidia_deep_agent/skills/cudf-analytics/SKILL.md",
+      "computedHash": "e7ed2a584dc7cbfb8815b67ab959118464744978d3e6f79ea5cee44038aba8a7"
+    },
+    "cuml-machine-learning": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/nvidia_deep_agent/skills/cuml-machine-learning/SKILL.md",
+      "computedHash": "4f737577882391baed64cd085c4e92b8bf799e8003a40a78bc5b32421798bb59"
+    },
+    "data-visualization": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/nvidia_deep_agent/skills/data-visualization/SKILL.md",
+      "computedHash": "2deb6dbf6802b268eb6482e3c2b8f400205c976aab404a43619fc458646b1b07"
+    },
+    "database-migrations": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/noise/database_migrations/SKILL.md",
+      "computedHash": "bba67da9bb56b399ebeedd01c417870a9f3c35c273f89e197b86b338a130f7a9"
+    },
+    "deep-agents-core": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/deep-agents-core/SKILL.md",
+      "computedHash": "8cbf6f61f42b2482472f53a99e23607f16017e1e16ca037409c6c8fcfcbcc395"
+    },
+    "deep-agents-memory": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/deep-agents-memory/SKILL.md",
+      "computedHash": "b7b0facdff17b6f3ad77019e30a697175389e06ec7260780f49d5b3a1d28ad2a"
+    },
+    "deep-agents-orchestration": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/deep-agents-orchestration/SKILL.md",
+      "computedHash": "1570f8d88e1233edc3306d28224604172b016aedba0ced2efa2dd8e38e28ae62"
+    },
+    "docker-patterns": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/noise/docker_patterns/SKILL.md",
+      "computedHash": "debd9fc2e37bdef7f7956dd92a76668ba8916eb7717f1df2bda94f9936daefcf"
+    },
+    "ecosystem-primer": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/benchmarks/ecosystem-primer/SKILL.md",
+      "computedHash": "792007c035568732166705ab3b2e01b29fff39f4630e974226e7e2ca5fea4352"
+    },
+    "framework-selection": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/benchmarks/framework-selection/SKILL.md",
+      "computedHash": "c69a7a688a3688918f914e6baedb5b98c0423b2a30de3f66335628689805ae57"
+    },
+    "gpu-document-processing": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/nvidia_deep_agent/skills/gpu-document-processing/SKILL.md",
+      "computedHash": "a1957a55ac227c88b4be0b74ef0aee85e17c69d6b2d3aec8e0cd5fb5cef9f062"
+    },
+    "langchain-dependencies": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langchain-dependencies/SKILL.md",
+      "computedHash": "bab5411cdfbdeaa42544c45791d9d3fc18d4cc193f4a3c5e2f6bd567422bffaf"
+    },
+    "langchain-fundamentals": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langchain-fundamentals/SKILL.md",
+      "computedHash": "69edf2c7463e1aa29373495ad3e9777098c712f0eb36f7612034a83738b3c287"
+    },
+    "langchain-middleware": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langchain-middleware/SKILL.md",
+      "computedHash": "7d1931c4439cc4ba0c4cc92e824aa08067b76748911196319b595c91041cdd61"
+    },
+    "langchain-oss-primer": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/benchmarks/langchain-oss-primer/SKILL.md",
+      "computedHash": "d1fdb46851478e62f727b62a0b1b37860f1f8cb29ff2cdb2bdb8ca4eeae3b0c8"
+    },
+    "langchain-rag": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langchain-rag/SKILL.md",
+      "computedHash": "545c661f6ed9b54cfe078a438052b2742d6122fc022f69db67d1a01aca4c726c"
+    },
+    "langgraph-cli": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/langgraph-cli/SKILL.md",
+      "computedHash": "dec48033a9a80c8d8826d0d4303dfc339a0a9145f3266035663104357b2d9c8f"
+    },
+    "langgraph-docs": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "libs/cli/examples/skills/langgraph-docs/SKILL.md",
+      "computedHash": "623b8c10cbb70f70ea875d1b0901f0fb0e174a837c2d6d10707627a46ae30631"
+    },
+    "langgraph-fundamentals": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langgraph-fundamentals/SKILL.md",
+      "computedHash": "d754005c69632037ca79c4daa8177b03e5a0f17f40cde3b0f532b33a8df88ded"
+    },
+    "langgraph-human-in-the-loop": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langgraph-human-in-the-loop/SKILL.md",
+      "computedHash": "0e81f1ef881b4c82bdcb5bece6309558f9e53681022f8347f869abc403b48637"
+    },
+    "langgraph-persistence": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langgraph-persistence/SKILL.md",
+      "computedHash": "fc617bfab9d06826cba1097def5c7775f4522a1dabdd1a0111472f9929b1b914"
+    },
+    "langsmith-dataset": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langsmith-dataset/SKILL.md",
+      "computedHash": "eaadf6201ce4172e44a35c6661d63916acc91c29ceb86370bb961f463d0f6500"
+    },
+    "langsmith-evaluator": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langsmith-evaluator/SKILL.md",
+      "computedHash": "fb5434fd6ae75e82c647d77560f37623640799cbd5c9e33e4db5061e874faf87"
+    },
+    "langsmith-trace": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/main/langsmith-trace/SKILL.md",
+      "computedHash": "4d6430bf60aec8df8d51eeecb4fb03360f123a8db914d1b9e43e9af9bbf3f5cd"
+    },
+    "managed-deep-agents": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/managed-deep-agents/SKILL.md",
+      "computedHash": "e731af48cd4293b2d3606a1b066a9ca0aaca1c421e8190f5668caf95a65f38e0"
+    },
+    "planning": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/deploy-coding-agent/skills/planning/SKILL.md",
+      "computedHash": "ca6dc1d3c2b4aea8ae14a58655f9fa31c97b6a5e20c23e89578d57cfa85034ed"
+    },
+    "query-writing": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/text-to-sql-agent/skills/query-writing/SKILL.md",
+      "computedHash": "4191553d476ea7920f41bef93806f448eec1fef259bcc4d7719e5f1093544191"
+    },
+    "react-components": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/noise/react_components/SKILL.md",
+      "computedHash": "650b6077d364f595990c81ad780355ed85bc5dfd5efe9ec0eab961677c840364"
+    },
+    "remember": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "libs/code/deepagents_code/built_in_skills/remember/SKILL.md",
+      "computedHash": "2da99f7a5b3394a289408150d6d7d665bf6322d1c85ffb674a4bf9223843d6e6"
+    },
+    "schema-exploration": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/text-to-sql-agent/skills/schema-exploration/SKILL.md",
+      "computedHash": "e845597c973632a8482b0b1e1c3692df86539f1665c67a7aedc3ea80ce292ec5"
+    },
+    "skill-creator": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "libs/cli/examples/skills/skill-creator/SKILL.md",
+      "computedHash": "904f0c3d88730299e00dce20f6b90b89d933719c7bb1e42aa502af18b6cf6355"
+    },
+    "social-media": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/content-builder-agent/skills/social-media/SKILL.md",
+      "computedHash": "ede71a9ae8de94bb9c4b633fb087a760b20ecb5fd4d0266f6ddd8934e03fbd84"
+    },
+    "swarm": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "examples/repl_swarm/skills/swarm/SKILL.md",
+      "computedHash": "bfe4b777126fc83735efc02d728ed903ceb56af05acf2cff4d5fcf34965b1683"
+    },
+    "testing-patterns": {
+      "source": "langchain-ai/skills-benchmarks",
+      "sourceType": "github",
+      "skillPath": "skills/noise/testing_patterns/SKILL.md",
+      "computedHash": "a1fccbff3980ef4027d6cbab0358b104523bc064d72a68c91ae4c4eafa061f93"
+    },
+    "web-research": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "skillPath": "libs/cli/examples/skills/web-research/SKILL.md",
+      "computedHash": "2b66d5db8c8d70474e70638f437f324fb3af3724b71bf8501e48c8004e70e677"
+    }
+  }
+}

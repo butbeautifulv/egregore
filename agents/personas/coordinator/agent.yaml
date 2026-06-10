@@ -1,0 +1,17 @@
+name: coordinator
+description: Long-running cybersecurity assessment orchestrator
+role: coordinator
+output_schema: null
+tools:
+  - run_assessment_pipeline
+  - run_active_scan
+hitl_tools:
+  run_active_scan: true
+trust_level: system
+bus_recipients: []
+language: ru
+sample: samples/default.txt
+interrupt_on:
+  write_file: true
+  run_active_scan: true
+  run_assessment_pipeline: false

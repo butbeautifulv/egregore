@@ -1,0 +1,4 @@
+Authorized assessment: internal Git monorepo + CI (GitHub Actions).
+Signals: workflow uses pull_request_target from forks; secret AWS_ACCESS_KEY_ID in env of job
+running on ubuntu-latest; API service binds 0.0.0.0:8080 in docker-compose with no auth middleware
+in repo README example. No evidence of exploitation yet.

@@ -1,0 +1,5 @@
+Dedup/correlate:
+T+0 EDR: "Suspicious PowerShell encoded command" on FIN-042.
+T+2m Proxy: rare User-Agent, DNS query to random .xyz.
+T+5m IAM: no new logins; VPN stable same user.
+T+10m Deduplicated repeat of EDR alert (same parent process tree).

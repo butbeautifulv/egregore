@@ -1,0 +1,14 @@
+name: compliance
+description: Compliance and control auditing
+role: specialist
+output_schema: ComplianceFinding
+tools:
+  - check_control
+  - map_framework
+  - audit_evidence
+hitl_tools: {}
+trust_level: internal
+bus_recipients:
+  - critic
+language: ru
+sample: samples/default.txt

@@ -1,0 +1,4 @@
+Agent A (network): "confirmed C2 to 185.220.x.x" confidence 0.95, evidence: periodic TLS only.
+Agent B (soc): "likely benign updater" same IP seen on 2 other hosts with vendor-signed binary.
+Agent C (redteam): "critical RCE in internal API" but only static code grep, no PoC.
+Task: reconcile and score these for a human analyst.

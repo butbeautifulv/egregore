@@ -1,0 +1,1 @@
+Оценить безопасность internal Git monorepo + CI pipeline. Сфокусироваться на supply-chain рисках и exposed services.

@@ -1,0 +1,14 @@
+name: soc
+description: SIEM correlation and incident triage
+role: specialist
+output_schema: SocFinding
+tools:
+  - dedup_alerts
+  - build_timeline
+  - correlate_findings
+hitl_tools: {}
+trust_level: internal
+bus_recipients:
+  - critic
+language: ru
+sample: samples/default.txt

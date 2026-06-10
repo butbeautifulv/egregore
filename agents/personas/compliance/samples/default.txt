@@ -1,0 +1,4 @@
+Procedure: developers may access production read-only via break-glass for P1 incidents.
+Observation: 4 developers used the same shared break-glass account 30 times in 30 days;
+ticket IDs present for only 60% of sessions; MFA enforced but no quarterly access review logged.
+Framework lens: SOC 2 CC6/CC7 style logical access and monitoring.

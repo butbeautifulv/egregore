@@ -1,0 +1,17 @@
+name: redteam
+description: Offensive security analysis of authorized repositories and CI/CD
+role: specialist
+output_schema: RedTeamFinding
+tools:
+  - read_repo_metadata
+  - parse_sast_report
+  - analyze_workflow
+  - run_active_scan
+hitl_tools:
+  run_active_scan: true
+trust_level: privileged
+bus_recipients:
+  - critic
+  - soc
+language: ru
+sample: samples/default.txt

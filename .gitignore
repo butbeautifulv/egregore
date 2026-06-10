@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# Environment and secrets
+.env
+.env.local
+
+# Test / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.cursor/
+.idea/
+.vscode/
+
+# Cursor build-time skills (LangChain, LangGraph, etc.) — not part of product
+.agents/
+
+# OS
+.DS_Store

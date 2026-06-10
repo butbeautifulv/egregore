@@ -1,0 +1,15 @@
+name: network
+description: Network anomaly and C2 detection
+role: specialist
+output_schema: NetworkFinding
+tools:
+  - parse_netflow
+  - enrich_ioc
+  - correlate_dns
+hitl_tools: {}
+trust_level: internal
+bus_recipients:
+  - critic
+  - soc
+language: ru
+sample: samples/default.txt
