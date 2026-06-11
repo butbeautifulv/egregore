@@ -8,6 +8,7 @@ Secure async multi-agent cybersecurity assessment platform with DDD boundaries, 
 
 - 6 config-driven агентов (redteam, network, soc, compliance, critic, coordinator)
 - DDD domain layer: agents, assessment, findings, security policies
+- Dependency inversion для storage: `PersistenceConnector` port + `auto|memory|postgres` connectors
 - Async-ready runtime: `AgentRuntime.arun()`, `run_assessment_async()`, `run_session_async()`
 - Provider-agnostic LLM через LiteLLM (Anthropic, OpenAI, Gemini, OpenRouter)
 - Security layer: sanitization, guardrails, rate limiting, agent bus, HITL
@@ -135,6 +136,7 @@ cys-agi/
 | `HITL_AUTO_APPROVE_THRESHOLD` | `low` | Авто-approve в dev при `>= medium` |
 | `TRUST_SCORE_THRESHOLD` | `0.5` | Порог critic для HITL |
 | `MAX_TOOL_CALLS_PER_MINUTE` | `30` | Rate limit |
+| `PERSISTENCE_CONNECTOR` | `auto` | Storage connector: `auto`, `memory`, `postgres` |
 
 Полный список: [`.env.example`](.env.example)
 

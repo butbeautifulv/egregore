@@ -10,6 +10,7 @@ from langgraph.store.base import BaseStore
 from langgraph.store.memory import InMemoryStore
 
 from config import settings
+from cys_core.application.ports import PersistenceConnector, PersistenceContext
 
 
 class PersistenceStack(AbstractContextManager["PersistenceStack"]):
@@ -130,3 +131,55 @@ async def get_async_persistence(force_memory: bool | None = None) -> AsyncPersis
             _async_persistence = stack
         return stack
     return _async_persistence
+
+
+class StackPersistenceConnector:
+    """Infrastructure connector for LangGraph persistence backends."""
+
+    name = "auto"
+
+    def _resolve_force_memory(self, force_memory: bool | None) -> bool | None:
+        return force_memory
+
+    def open(self, *, force_memory: bool | None = None) -> PersistenceContext:
+        stack = PersistenceStack(force_memory=self._resolve_force_memory(force_memory))
+        stack.__enter__()
+        return stack
+
+    async def open_async(self, *, force_memory: bool | None = None) -> PersistenceContext:
+        stack = AsyncPersistenceStack(force_memory=self._resolve_force_memory(force_memory))
+        await stack.__aenter__()
+        return stack
+
+
+class MemoryPersistenceConnector(StackPersistenceConnector):
+    """Always use in-memory persistence."""
+
+    name = "memory"
+
+    def _resolve_force_memory(self, force_memory: bool | None) -> bool | None:
+        return True if force_memory is None else force_memory
+
+
+class PostgresPersistenceConnector(StackPersistenceConnector):
+    """Prefer Postgres persistence, falling back according to stack policy."""
+
+    name = "postgres"
+
+    def _resolve_force_memory(self, force_memory: bool | None) -> bool | None:
+        return False if force_memory is None else force_memory
+
+
+_CONNECTORS: dict[str, PersistenceConnector] = {
+    "auto": StackPersistenceConnector(),
+    "memory": MemoryPersistenceConnector(),
+    "postgres": PostgresPersistenceConnector(),
+}
+
+
+def get_persistence_connector(name: str | None = None) -> PersistenceConnector:
+    """Resolve persistence connector by configured connector type."""
+    connector_name = (name or settings.persistence_connector).lower()
+    if connector_name not in _CONNECTORS:
+        raise ValueError(f"Unknown persistence connector: {connector_name}")
+    return _CONNECTORS[connector_name]

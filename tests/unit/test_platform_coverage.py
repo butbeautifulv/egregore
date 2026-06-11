@@ -36,6 +36,7 @@ def test_config_computed_fields(monkeypatch):
     assert settings.llm_api_key == "openai-key"
     assert settings.postgres_url == "postgresql://postgres:password@localhost:5432/cys_agi"
     assert settings.redis_url == "redis://localhost:6379/0"
+    assert settings.persistence_connector == "auto"
 
     get_settings.cache_clear()
     monkeypatch.setenv("OPENAI_API_KEY", "cached-key")
@@ -243,6 +244,16 @@ def test_persistence_memory_postgres_fallback_and_singleton(monkeypatch):
     assert forced is not cached
     assert persistence.get_persistence() is cached
 
+    assert persistence.get_persistence_connector("auto").name == "auto"
+    assert persistence.get_persistence_connector("auto").open(force_memory=True).checkpointer is not None
+    assert persistence.get_persistence_connector("memory").open().checkpointer is not None
+    assert persistence.get_persistence_connector("postgres").name == "postgres"
+    assert persistence.get_persistence_connector("postgres").open().checkpointer is not None
+    monkeypatch.setattr(persistence.settings, "persistence_connector", "memory")
+    assert persistence.get_persistence_connector().name == "memory"
+    with pytest.raises(ValueError, match="Unknown persistence connector"):
+        persistence.get_persistence_connector("missing")
+
 
 @pytest.mark.asyncio
 async def test_async_persistence_memory_postgres_fallback_and_singleton(monkeypatch):
@@ -307,6 +318,7 @@ async def test_async_persistence_memory_postgres_fallback_and_singleton(monkeypa
     cached = await persistence.get_async_persistence()
     assert forced is not cached
     assert await persistence.get_async_persistence() is cached
+    assert (await persistence.get_persistence_connector("memory").open_async()).store is not None
 
 
 def test_registry_helpers_and_temp_agent_loading(tmp_path, monkeypatch):
@@ -950,9 +962,16 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
         captured.update(kwargs)
         return SimpleNamespace(created=True)
 
+    class FakePersistenceConnector:
+        def open(self, *, force_memory=None):
+            return SimpleNamespace(checkpointer="cp", store="store")
+
+        async def open_async(self, *, force_memory=None):
+            return SimpleNamespace(checkpointer="async-cp", store="async-store")
+
     monkeypatch.setattr(runtime_agent, "create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_agent, "get_model", lambda: "model")
-    monkeypatch.setattr(runtime_agent, "get_persistence", lambda force_memory=True: SimpleNamespace(checkpointer="cp"))
+    monkeypatch.setattr(runtime_agent, "get_persistence_connector", lambda: FakePersistenceConnector())
     created = runtime.create(defn, session_id="sid", extra_tools=["extra-tool"])
     assert created.created is True
     assert captured["name"] == "alpha"
@@ -961,10 +980,6 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     assert captured["tools"][-1] == "extra-tool"
     assert len(captured["middleware"]) == 3
 
-    async def fake_get_async_persistence(force_memory=True):
-        return SimpleNamespace(checkpointer="async-cp")
-
-    monkeypatch.setattr(runtime_agent, "get_async_persistence", fake_get_async_persistence)
     async_created = await runtime.acreate(defn, session_id="async-sid", extra_tools=["async-extra"])
     assert async_created.created is True
     assert captured["checkpointer"] == "async-cp"
@@ -1030,7 +1045,6 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     import graph.workflow as workflow
 
     monkeypatch.setattr(workflow, "run_assessment", lambda *args, **kwargs: {"report": {"status": "ok"}})
-    monkeypatch.setattr(persistence, "get_persistence", lambda force_memory=True: SimpleNamespace(checkpointer="cp"))
     pipeline_tool = runtime_agent.make_assessment_pipeline_tool(runtime)
     assert json.loads(pipeline_tool.invoke({"input_text": "assess", "thread_id": "tid"})) == {"status": "ok"}
     async def fake_run_assessment_async(*args, **kwargs):
@@ -1181,11 +1195,15 @@ async def test_graph_workflow_build_cache_and_run(monkeypatch):
     monkeypatch.setattr(workflow, "_compiled_graph", None)
     monkeypatch.setattr(workflow, "_compiled_async_graph", None)
     monkeypatch.setattr(workflow, "StateGraph", FakeStateGraph)
-    monkeypatch.setattr(workflow, "get_persistence", lambda: SimpleNamespace(checkpointer="default-cp"))
-    async def fake_get_async_persistence():
-        return SimpleNamespace(checkpointer="async-default-cp")
 
-    monkeypatch.setattr(workflow, "get_async_persistence", fake_get_async_persistence)
+    class FakeWorkflowConnector:
+        def open(self):
+            return SimpleNamespace(checkpointer="default-cp")
+
+        async def open_async(self):
+            return SimpleNamespace(checkpointer="async-default-cp")
+
+    monkeypatch.setattr(workflow, "get_persistence_connector", lambda: FakeWorkflowConnector())
 
     explicit = workflow.build_assessment_graph(SimpleNamespace(checkpointer="explicit-cp"))
     assert isinstance(explicit, FakeCompiledGraph)
@@ -1251,7 +1269,14 @@ async def test_coordinator_creation_and_session(monkeypatch):
             ainvoke=fake_ainvoke,
         )
 
-    monkeypatch.setattr(deep_assessment, "get_persistence", lambda: SimpleNamespace(checkpointer="cp", store="store"))
+    class FakeCoordinatorConnector:
+        def open(self):
+            return SimpleNamespace(checkpointer="cp", store="store")
+
+        async def open_async(self):
+            return SimpleNamespace(checkpointer="async-cp", store="async-store")
+
+    monkeypatch.setattr(deep_assessment, "get_persistence_connector", lambda: FakeCoordinatorConnector())
     monkeypatch.setattr(deep_assessment, "get_agent_registry", lambda: registry)
     monkeypatch.setattr(deep_assessment, "get_runtime", lambda: runtime)
     monkeypatch.setattr(deep_assessment, "make_assessment_pipeline_tool", lambda runtime: "pipeline-tool")

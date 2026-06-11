@@ -14,7 +14,7 @@ from config import settings
 from cys_core.llm import get_langfuse_callbacks, get_model
 from cys_core.middleware.scope_middleware import ScopeMiddleware
 from cys_core.middleware.security_middleware import SecurityMiddleware
-from cys_core.persistence import get_async_persistence, get_persistence
+from cys_core.persistence import get_persistence_connector
 from cys_core.registry.agents import AgentDefinition, AgentRegistry, get_agent_registry
 from cys_core.registry.schemas import schema_registry
 from cys_core.registry.tools import tool_registry
@@ -60,7 +60,7 @@ class AgentRuntime:
 
         checkpointer = None
         if use_checkpointer:
-            checkpointer = get_persistence(force_memory=True).checkpointer
+            checkpointer = get_persistence_connector().open(force_memory=True).checkpointer
 
         schema = schema_registry.get(defn.schema_name)
         return create_agent(
@@ -100,7 +100,7 @@ class AgentRuntime:
 
         checkpointer = None
         if use_checkpointer:
-            checkpointer = (await get_async_persistence(force_memory=True)).checkpointer
+            checkpointer = (await get_persistence_connector().open_async(force_memory=True)).checkpointer
 
         schema = schema_registry.get(defn.schema_name)
         return create_agent(
@@ -232,7 +232,6 @@ def get_runtime() -> AgentRuntime:
 
 def make_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
     """Factory for coordinator tool that runs LangGraph assessment."""
-    from cys_core.persistence import get_persistence
     from graph.workflow import run_assessment
 
     @tool
@@ -241,7 +240,7 @@ def make_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
         result = run_assessment(
             input_text,
             thread_id=thread_id,
-            persistence=get_persistence(force_memory=True),
+            persistence=get_persistence_connector().open(force_memory=True),
         )
         return json.dumps(result.get("report") or result, ensure_ascii=False, indent=2)
 
@@ -250,7 +249,6 @@ def make_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
 
 def make_async_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
     """Factory for coordinator async tool that runs LangGraph assessment."""
-    from cys_core.persistence import get_async_persistence
     from graph.workflow import run_assessment_async
 
     @tool
@@ -259,7 +257,7 @@ def make_async_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
         result = await run_assessment_async(
             input_text,
             thread_id=thread_id,
-            persistence=await get_async_persistence(force_memory=True),
+            persistence=await get_persistence_connector().open_async(force_memory=True),
         )
         return json.dumps(result.get("report") or result, ensure_ascii=False, indent=2)
 

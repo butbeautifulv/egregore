@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     max_tool_calls_per_minute: int = Field(default=30, validation_alias="MAX_TOOL_CALLS_PER_MINUTE")
     trust_score_threshold: float = Field(default=0.5, validation_alias="TRUST_SCORE_THRESHOLD")
     use_memory_fallback: bool = Field(default=False, validation_alias="USE_MEMORY_FALLBACK")
+    persistence_connector: str = Field(default="auto", validation_alias="PERSISTENCE_CONNECTOR")
     agents_root: str = Field(default="agents", validation_alias="AGENTS_ROOT")
 
     @computed_field
