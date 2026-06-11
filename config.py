@@ -21,6 +21,11 @@ class Settings(BaseSettings):
 
     stage: str = Field(default="dev", validation_alias="STAGE")
 
+    use_kafka: bool = Field(default=False, validation_alias="USE_KAFKA")
+    kafka_bootstrap_servers: str = Field(
+        default="localhost:9092", validation_alias="KAFKA_BOOTSTRAP_SERVERS"
+    )
+
     redis_host: str = Field(default="localhost", validation_alias="REDIS_HOST")
     redis_port: int = Field(default=6379, validation_alias="REDIS_PORT")
     redis_password: str = Field(default="password", validation_alias="REDIS_PASSWORD")
