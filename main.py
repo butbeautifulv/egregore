@@ -111,6 +111,20 @@ def cmd_agent(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_daemon(args: argparse.Namespace) -> int:
+    from workers.daemon import run_daemon
+
+    count = asyncio.run(
+        run_daemon(
+            persona=args.persona or None,
+            max_jobs=args.max_jobs,
+            idle_timeout=args.idle_timeout,
+        )
+    )
+    print(json.dumps({"jobs_processed": count}))
+    return 0
+
+
 def cmd_adversarial_test(_args: argparse.Namespace) -> int:
     import pytest
 
@@ -133,6 +147,7 @@ def cmd_info(_args: argparse.Namespace) -> int:
                 "postgres_url": settings.postgres_url,
                 "redis_url": settings.redis_url,
                 "use_memory_fallback": settings.use_memory_fallback,
+                "use_kafka": settings.use_kafka,
                 "agents_root": settings.agents_root,
             },
             indent=2,
@@ -160,6 +175,12 @@ def build_parser() -> argparse.ArgumentParser:
     worker.add_argument("--once", action="store_true", help="Process single job")
     worker.add_argument("--max-jobs", type=int, default=1, help="Max jobs per invocation")
     worker.set_defaults(func=cmd_worker)
+
+    daemon = sub.add_parser("daemon", help="Run worker daemon (long-running, graceful SIGTERM)")
+    daemon.add_argument("--persona", choices=worker_names, default=None, help="Persona to process (default: all)")
+    daemon.add_argument("--max-jobs", type=int, default=0, help="Max jobs to process (0 = unlimited)")
+    daemon.add_argument("--idle-timeout", type=float, default=0.0, help="Stop after N seconds idle (0 = run forever)")
+    daemon.set_defaults(func=cmd_daemon)
 
     status = sub.add_parser("status", help="Show control plane status snapshot")
     status.set_defaults(func=cmd_status)
