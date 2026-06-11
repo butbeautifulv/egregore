@@ -80,4 +80,7 @@ class RedisJobQueue:
 
 @lru_cache
 def get_job_queue() -> RedisJobQueue:
+    if settings.use_kafka:
+        from cys_core.infrastructure.kafka_queue import KafkaJobQueue
+        return KafkaJobQueue()  # type: ignore[return-value]
     return RedisJobQueue()
