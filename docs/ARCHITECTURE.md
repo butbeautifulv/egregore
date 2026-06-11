@@ -12,7 +12,11 @@ cys-agi — гибридная платформа с DDD-границами и a
 
 ## Dependency inversion и connectors
 
-Application/interface слои не зависят от конкретного storage backend. Они используют порт `PersistenceConnector` (`cys_core/application/ports.py`), который возвращает storage-agnostic `PersistenceContext` с `checkpointer` и `store`.
+Application/interface слои не зависят от конкретного storage или model backend. Они используют ports из `cys_core/application/ports.py`:
+
+- `PersistenceConnector` возвращает storage-agnostic `PersistenceContext` с `checkpointer` и `store`
+- `ModelConnector` создаёт swappable chat model и callbacks
+- `AgentTransportConnector` описывает A2A transport с обязательным mTLS flag
 
 Конкретные реализации живут в infrastructure module `cys_core/persistence.py`:
 
@@ -25,6 +29,8 @@ Application/interface слои не зависят от конкретного s
 Выбор connector: `PERSISTENCE_CONNECTOR=auto|memory|postgres`. Верхние слои (`runtime`, `graph`, `coordinator`) получают connector через factory и работают только с портом.
 
 ## Data flow: LangGraph assess
+
+Assessment pipeline представлен как Directed Acyclic Graph (`graph/dag.py`) и валидируется перед компиляцией LangGraph.
 
 ```
 START
@@ -148,6 +154,8 @@ Legacy paths (`cys_core/security/*`, `cys_core/schemas/findings.py`, `cys_core/r
 | `rate_limit.py` | Redis/in-memory rate limiting |
 | `risk.py` | Severity thresholds |
 | `memory.py` | Memory poisoning protection |
+
+Inter-agent messaging uses A2A envelopes (`a2a/1.0`) with signed payloads and mTLS identity metadata. Default identities are SPIFFE-style subjects: `spiffe://cys-agi/agent/<agent_id>`.
 
 Middleware (`cys_core/middleware/`):
 

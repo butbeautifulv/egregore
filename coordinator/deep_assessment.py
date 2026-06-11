@@ -5,7 +5,7 @@ from typing import Any
 from deepagents import create_deep_agent
 
 from cys_core.application.ports import PersistenceContext
-from cys_core.llm import get_model
+from cys_core.llm import get_model_connector
 from cys_core.persistence import get_persistence_connector
 from cys_core.registry.agents import get_agent_registry
 from cys_core.registry.product_context import get_product_context
@@ -18,6 +18,7 @@ def create_assessment_coordinator(persistence: PersistenceContext | None = None,
     stack = persistence or get_persistence_connector().open()
     registry = get_agent_registry()
     runtime = get_runtime()
+    model_connector = get_model_connector()
     coordinator = registry.get("coordinator")
 
     subagent_defs = registry.by_role("specialist") + [registry.get("critic")]
@@ -33,7 +34,7 @@ def create_assessment_coordinator(persistence: PersistenceContext | None = None,
     }
 
     return create_deep_agent(
-        model=get_model(),
+        model=model_connector.create_model(),
         system_prompt=coordinator.system_prompt,
         tools=coordinator_tools,
         subagents=subagents,
@@ -50,6 +51,7 @@ async def create_assessment_coordinator_async(persistence: PersistenceContext | 
     stack = persistence or await get_persistence_connector().open_async()
     registry = get_agent_registry()
     runtime = get_runtime()
+    model_connector = get_model_connector()
     coordinator = registry.get("coordinator")
 
     subagent_defs = registry.by_role("specialist") + [registry.get("critic")]
@@ -63,7 +65,7 @@ async def create_assessment_coordinator_async(persistence: PersistenceContext | 
     }
 
     return create_deep_agent(
-        model=get_model(),
+        model=model_connector.create_model(),
         system_prompt=coordinator.system_prompt,
         tools=coordinator_tools,
         subagents=subagents,

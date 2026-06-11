@@ -9,6 +9,7 @@ Secure async multi-agent cybersecurity assessment platform with DDD boundaries, 
 - 6 config-driven агентов (redteam, network, soc, compliance, critic, coordinator)
 - DDD domain layer: agents, assessment, findings, security policies
 - Dependency inversion для storage: `PersistenceConnector` port + `auto|memory|postgres` connectors
+- Secure-by-design deployment profile: MILS boundaries, A2A envelopes, mTLS identity, non-root hardened containers
 - Async-ready runtime: `AgentRuntime.arun()`, `run_assessment_async()`, `run_session_async()`
 - Provider-agnostic LLM через LiteLLM (Anthropic, OpenAI, Gemini, OpenRouter)
 - Security layer: sanitization, guardrails, rate limiting, agent bus, HITL
@@ -167,6 +168,7 @@ uv run pytest tests/adversarial/ -q
 | [AGENTS.md](AGENTS.md) | Правила для AI-ассистентов |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура и data flow |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Разработка и отладка |
+| [docs/SECURE_DEPLOYMENT.md](docs/SECURE_DEPLOYMENT.md) | Secure deployment, MILS, A2A/mTLS, container hardening |
 | [agents/README.md](agents/README.md) | Продуктовый слой |
 | [docs/AI_Agent_Security_Cheat_Sheet.md](docs/AI_Agent_Security_Cheat_Sheet.md) | Security reference |
 

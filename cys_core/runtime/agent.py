@@ -11,7 +11,8 @@ from langchain_core.tools import tool
 from pydantic import BaseModel
 
 from config import settings
-from cys_core.llm import get_langfuse_callbacks, get_model
+from cys_core.application.ports import ModelConnector
+from cys_core.llm import get_model_connector
 from cys_core.middleware.scope_middleware import ScopeMiddleware
 from cys_core.middleware.security_middleware import SecurityMiddleware
 from cys_core.persistence import get_persistence_connector
@@ -30,8 +31,13 @@ _guardrails = OutputGuardrails()
 class AgentRuntime:
     """Single entry point for creating and running config-driven agents."""
 
-    def __init__(self, registry: AgentRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: AgentRegistry | None = None,
+        model_connector: ModelConnector | None = None,
+    ) -> None:
         self.registry = registry or get_agent_registry()
+        self.model_connector = model_connector or get_model_connector()
 
     def create(
         self,
@@ -64,7 +70,7 @@ class AgentRuntime:
 
         schema = schema_registry.get(defn.schema_name)
         return create_agent(
-            model=model or get_model(),
+            model=model or self.model_connector.create_model(),
             tools=tools,
             system_prompt=defn.system_prompt,
             middleware=middleware,
@@ -104,7 +110,7 @@ class AgentRuntime:
 
         schema = schema_registry.get(defn.schema_name)
         return create_agent(
-            model=model or get_model(),
+            model=model or self.model_connector.create_model(),
             tools=tools,
             system_prompt=defn.system_prompt,
             middleware=middleware,
@@ -150,7 +156,7 @@ class AgentRuntime:
         sanitized = _sanitizer.sanitize(user_input)
         config = {
             "configurable": {"thread_id": session_id},
-            "callbacks": get_langfuse_callbacks(),
+            "callbacks": self.model_connector.callbacks(),
             "recursion_limit": 25,
         }
         result = agent.invoke(
@@ -170,7 +176,7 @@ class AgentRuntime:
         sanitized = _sanitizer.sanitize(user_input)
         config = {
             "configurable": {"thread_id": session_id},
-            "callbacks": get_langfuse_callbacks(),
+            "callbacks": self.model_connector.callbacks(),
             "recursion_limit": 25,
         }
         result = await agent.ainvoke(

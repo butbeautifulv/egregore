@@ -8,6 +8,7 @@ from langgraph.types import Command
 
 from cys_core.application.ports import PersistenceContext
 from cys_core.persistence import get_persistence_connector
+from graph.dag import assessment_dag
 from graph.nodes import (
     critic_node,
     dispatch_node,
@@ -28,6 +29,7 @@ def build_assessment_graph(persistence: PersistenceContext | None = None):
     if _compiled_graph is not None and persistence is None:
         return _compiled_graph
 
+    assessment_dag().validate_acyclic()
     stack = persistence or get_persistence_connector().open()
     graph = StateGraph(AssessmentState)
     graph.add_node("ingest", ingest_node)
@@ -55,6 +57,7 @@ async def build_assessment_graph_async(persistence: PersistenceContext | None = 
     if _compiled_async_graph is not None and persistence is None:
         return _compiled_async_graph
 
+    assessment_dag().validate_acyclic()
     stack = persistence or await get_persistence_connector().open_async()
     graph = StateGraph(AssessmentState)
     graph.add_node("ingest", ingest_node)

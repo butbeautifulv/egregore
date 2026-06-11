@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
+from cys_core.domain.security.a2a import A2A_PROTOCOL_VERSION, A2AEnvelope, default_mtls_subject
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.sanitizer import InputSanitizer
 
@@ -70,11 +71,13 @@ class SecureAgentBus:
         agent_id: str,
         trust_level: AgentTrustLevel,
         allowed_recipients: list[str],
+        mtls_subject: str | None = None,
     ) -> None:
         self.agent_registry[agent_id] = {
             "trust_level": trust_level,
             "allowed_recipients": allowed_recipients,
             "allowed_message_types": TRUST_MESSAGE_TYPES[trust_level],
+            "mtls_subject": mtls_subject or default_mtls_subject(agent_id),
         }
         self.circuit_breakers[agent_id] = CircuitBreaker()
 
@@ -107,16 +110,25 @@ class SecureAgentBus:
         timestamp = datetime.now(timezone.utc).isoformat()
         signature = self._sign_message(sender_id, recipient_id, message_type, sanitized, timestamp)
         breaker.record_success()
-        return {
-            "sender": sender_id,
-            "recipient": recipient_id,
-            "type": message_type,
-            "payload": sanitized,
-            "timestamp": timestamp,
-            "signature": signature,
-        }
+        recipient = self.agent_registry.get(recipient_id, {})
+        envelope = A2AEnvelope(
+            sender=sender_id,
+            recipient=recipient_id,
+            type=message_type,
+            payload=sanitized,
+            timestamp=timestamp,
+            signature=signature,
+            mtls={
+                "required": True,
+                "sender_subject": sender["mtls_subject"],
+                "recipient_subject": recipient.get("mtls_subject", default_mtls_subject(recipient_id)),
+            },
+        )
+        return envelope.model_dump()
 
     def receive_message(self, recipient_id: str, message: dict[str, Any]) -> dict[str, Any]:
+        if message.get("protocol") != A2A_PROTOCOL_VERSION:
+            raise SecurityViolation("Unsupported A2A protocol")
         if not self._verify_signature(message):
             raise SecurityViolation("Invalid message signature")
         msg_time = datetime.fromisoformat(message["timestamp"])
@@ -124,6 +136,10 @@ class SecureAgentBus:
             raise SecurityViolation("Message expired (possible replay attack)")
         if message["recipient"] != recipient_id:
             raise SecurityViolation("Message recipient mismatch")
+        recipient = self.agent_registry.get(recipient_id, {})
+        expected_subject = recipient.get("mtls_subject", default_mtls_subject(recipient_id))
+        if message.get("mtls", {}).get("recipient_subject") != expected_subject:
+            raise SecurityViolation("mTLS recipient identity mismatch")
         return message["payload"]
 
     def record_agent_failure(self, agent_id: str) -> None:

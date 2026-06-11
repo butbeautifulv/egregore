@@ -76,9 +76,13 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
     monkeypatch.setattr(llm.settings, "llm_temperature", 0.2)
 
     assert llm.get_provider("dummy") is provider
+    monkeypatch.setitem(llm._MODEL_CONNECTORS, "dummy", llm.LLMConnector("dummy"))
+    assert llm.get_model_connector("dummy").name == "dummy"
     assert llm.get_model()["created"]["model"] == "model-a"
     with pytest.raises(ValueError, match="Unknown LLM provider"):
         llm.get_provider("missing")
+    with pytest.raises(ValueError, match="Unknown model connector"):
+        llm.get_model_connector("missing")
 
     monkeypatch.setattr(llm.settings, "langfuse_api_key", "")
     assert llm.get_langfuse_callbacks() == []
@@ -513,6 +517,19 @@ def test_all_tool_functions_and_registry_edges():
         tools.tool_registry.get("missing")
 
 
+def test_assessment_dag_validation():
+    from graph.dag import DirectedAcyclicGraph, assessment_dag
+
+    dag = assessment_dag()
+    assert dag.topological_order() == ["ingest", "run_agent", "critic", "hitl_gate", "report"]
+    dag.validate_acyclic()
+
+    with pytest.raises(ValueError, match="Unknown DAG node"):
+        DirectedAcyclicGraph(nodes=("a",), edges=(("a", "b"),)).topological_order()
+    with pytest.raises(ValueError, match="cycle"):
+        DirectedAcyclicGraph(nodes=("a", "b"), edges=(("a", "b"), ("b", "a"))).validate_acyclic()
+
+
 @pytest.mark.asyncio
 async def test_scope_middleware_denies_blocked_paths_and_allows_handler():
     from cys_core.middleware.scope_middleware import ScopeMiddleware
@@ -650,7 +667,14 @@ async def test_security_middleware_async_paths(monkeypatch):
 
 
 def test_agent_bus_security_edges(monkeypatch):
-    from cys_core.security.agent_bus import AgentTrustLevel, CircuitBreaker, SecureAgentBus, SecurityViolation
+    from cys_core.security.agent_bus import (
+        A2A_PROTOCOL_VERSION,
+        AgentTrustLevel,
+        CircuitBreaker,
+        SecureAgentBus,
+        SecurityViolation,
+        default_mtls_subject,
+    )
 
     breaker = CircuitBreaker(failure_threshold=1, recovery_timeout=1)
     assert breaker.is_open is False
@@ -683,7 +707,15 @@ def test_agent_bus_security_edges(monkeypatch):
     assert "_system_secret" not in msg["payload"]
     assert "[FILTERED_INJECTION]" in msg["payload"]["text"]
     assert msg["payload"]["count"] == 1
+    assert msg["protocol"] == A2A_PROTOCOL_VERSION
+    assert msg["mtls"]["required"] is True
+    assert msg["mtls"]["sender_subject"] == default_mtls_subject("untrusted")
+    assert msg["mtls"]["recipient_subject"] == default_mtls_subject("critic")
     assert bus.receive_message("critic", msg) == msg["payload"]
+
+    wrong_protocol = dict(msg, protocol="legacy")
+    with pytest.raises(SecurityViolation, match="Unsupported A2A protocol"):
+        bus.receive_message("critic", wrong_protocol)
 
     tampered = dict(msg, signature="bad")
     with pytest.raises(SecurityViolation, match="Invalid message signature"):
@@ -700,6 +732,11 @@ def test_agent_bus_security_edges(monkeypatch):
     mismatch = bus.send_message("untrusted", "critic", "finding", {})
     with pytest.raises(SecurityViolation, match="recipient mismatch"):
         bus.receive_message("other", mismatch)
+
+    mtls_mismatch = bus.send_message("untrusted", "critic", "finding", {})
+    mtls_mismatch["mtls"] = {**mtls_mismatch["mtls"], "recipient_subject": "spiffe://wrong"}
+    with pytest.raises(SecurityViolation, match="mTLS recipient identity mismatch"):
+        bus.receive_message("critic", mtls_mismatch)
 
     bus.circuit_breakers["untrusted"].failure_threshold = 1
     bus.record_agent_failure("untrusted")
@@ -1192,9 +1229,18 @@ async def test_graph_workflow_build_cache_and_run(monkeypatch):
             self.checkpointer = checkpointer
             return FakeCompiledGraph()
 
+    class FakeDag:
+        def __init__(self):
+            self.validated = False
+
+        def validate_acyclic(self):
+            self.validated = True
+
+    fake_dag = FakeDag()
     monkeypatch.setattr(workflow, "_compiled_graph", None)
     monkeypatch.setattr(workflow, "_compiled_async_graph", None)
     monkeypatch.setattr(workflow, "StateGraph", FakeStateGraph)
+    monkeypatch.setattr(workflow, "assessment_dag", lambda: fake_dag)
 
     class FakeWorkflowConnector:
         def open(self):
@@ -1207,6 +1253,7 @@ async def test_graph_workflow_build_cache_and_run(monkeypatch):
 
     explicit = workflow.build_assessment_graph(SimpleNamespace(checkpointer="explicit-cp"))
     assert isinstance(explicit, FakeCompiledGraph)
+    assert fake_dag.validated is True
     cached = workflow.build_assessment_graph()
     assert workflow.build_assessment_graph() is cached
 
