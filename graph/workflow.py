@@ -6,7 +6,8 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
-from cys_core.persistence import AsyncPersistenceStack, PersistenceStack, get_async_persistence, get_persistence
+from cys_core.application.ports import PersistenceContext
+from cys_core.persistence import get_persistence_connector
 from graph.nodes import (
     critic_node,
     dispatch_node,
@@ -21,13 +22,13 @@ _compiled_graph = None
 _compiled_async_graph = None
 
 
-def build_assessment_graph(persistence: PersistenceStack | None = None):
+def build_assessment_graph(persistence: PersistenceContext | None = None):
     """Compile LangGraph security assessment pipeline."""
     global _compiled_graph
     if _compiled_graph is not None and persistence is None:
         return _compiled_graph
 
-    stack = persistence or get_persistence()
+    stack = persistence or get_persistence_connector().open()
     graph = StateGraph(AssessmentState)
     graph.add_node("ingest", ingest_node)
     graph.add_node("run_agent", run_agent_node)
@@ -48,13 +49,13 @@ def build_assessment_graph(persistence: PersistenceStack | None = None):
     return compiled
 
 
-async def build_assessment_graph_async(persistence: AsyncPersistenceStack | PersistenceStack | None = None):
+async def build_assessment_graph_async(persistence: PersistenceContext | None = None):
     """Compile LangGraph security assessment pipeline for async callers."""
     global _compiled_async_graph
     if _compiled_async_graph is not None and persistence is None:
         return _compiled_async_graph
 
-    stack = persistence or await get_async_persistence()
+    stack = persistence or await get_persistence_connector().open_async()
     graph = StateGraph(AssessmentState)
     graph.add_node("ingest", ingest_node)
     graph.add_node("run_agent", run_agent_node)
@@ -80,7 +81,7 @@ def run_assessment(
     *,
     thread_id: str = "assessment-001",
     scope: dict[str, Any] | None = None,
-    persistence: PersistenceStack | None = None,
+    persistence: PersistenceContext | None = None,
     resume: bool | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run full assessment pipeline from synchronous callers."""
@@ -100,7 +101,7 @@ async def run_assessment_async(
     *,
     thread_id: str = "assessment-001",
     scope: dict[str, Any] | None = None,
-    persistence: PersistenceStack | None = None,
+    persistence: PersistenceContext | None = None,
     resume: bool | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run full assessment pipeline from async callers."""

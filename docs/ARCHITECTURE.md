@@ -10,6 +10,20 @@ cys-agi — гибридная платформа с DDD-границами и a
 
 Оба пути используют единый **AgentRuntime** и **AgentRegistry**. Для async-сценариев доступны `AgentRuntime.arun()`, `run_assessment_async()` и `run_session_async()`.
 
+## Dependency inversion и connectors
+
+Application/interface слои не зависят от конкретного storage backend. Они используют порт `PersistenceConnector` (`cys_core/application/ports.py`), который возвращает storage-agnostic `PersistenceContext` с `checkpointer` и `store`.
+
+Конкретные реализации живут в infrastructure module `cys_core/persistence.py`:
+
+| Connector | Назначение |
+|-----------|------------|
+| `auto` | Выбирает memory fallback для test/dev fallback, иначе пробует Postgres |
+| `memory` | Всегда in-memory `MemorySaver` / `InMemoryStore` |
+| `postgres` | Предпочитает Postgres saver/store |
+
+Выбор connector: `PERSISTENCE_CONNECTOR=auto|memory|postgres`. Верхние слои (`runtime`, `graph`, `coordinator`) получают connector через factory и работают только с портом.
+
 ## Data flow: LangGraph assess
 
 ```
