@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Awaitable
 
 from langchain.agents.middleware.human_in_the_loop import HumanInTheLoopMiddleware
 from langchain.agents.middleware.types import AgentMiddleware
@@ -54,6 +55,52 @@ class SecurityMiddleware(AgentMiddleware):
 
         try:
             result = handler(request)
+            self.monitor.log_tool_call(
+                self.session_id,
+                tool_name,
+                request.tool_call.get("args", {}),
+                {"status": "ok"},
+            )
+            return result
+        except Exception as exc:
+            self.monitor.log_security_event(
+                self.session_id,
+                "tool_failure",
+                "WARNING",
+                {"tool": tool_name, "error": str(exc)},
+            )
+            raise
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]] | ToolMessage | Command[Any]],
+    ) -> ToolMessage | Command[Any]:
+        tool_name = request.tool_call.get("name", "")
+        try:
+            await self.rate_limiter.acheck(f"{self.session_id}:{tool_name}")
+        except Exception as exc:
+            self.monitor.log_security_event(
+                self.session_id, "rate_limit_exceeded", "WARNING", {"tool": tool_name}
+            )
+            return ToolMessage(
+                content=str(exc),
+                tool_call_id=request.tool_call.get("id", ""),
+                status="error",
+            )
+
+        risk = classify_tool_risk(tool_name)
+        if risk > self.auto_approve_threshold and settings.stage != "dev":
+            return ToolMessage(
+                content=f"Tool '{tool_name}' (risk={risk.value}) requires human approval.",
+                tool_call_id=request.tool_call.get("id", ""),
+                status="error",
+            )
+
+        try:
+            result = handler(request)
+            if inspect.isawaitable(result):
+                result = await result
             self.monitor.log_tool_call(
                 self.session_id,
                 tool_name,

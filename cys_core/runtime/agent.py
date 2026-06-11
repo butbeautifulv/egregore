@@ -14,7 +14,7 @@ from config import settings
 from cys_core.llm import get_langfuse_callbacks, get_model
 from cys_core.middleware.scope_middleware import ScopeMiddleware
 from cys_core.middleware.security_middleware import SecurityMiddleware
-from cys_core.persistence import get_persistence
+from cys_core.persistence import get_async_persistence, get_persistence
 from cys_core.registry.agents import AgentDefinition, AgentRegistry, get_agent_registry
 from cys_core.registry.schemas import schema_registry
 from cys_core.registry.tools import tool_registry
@@ -73,6 +73,46 @@ class AgentRuntime:
             name=defn.name,
         )
 
+    async def acreate(
+        self,
+        defn: AgentDefinition,
+        *,
+        model: BaseChatModel | None = None,
+        session_id: str = "default",
+        use_checkpointer: bool = True,
+        extra_tools: list | None = None,
+    ):
+        tools = tool_registry.resolve(defn.tools)
+        if extra_tools:
+            tools = [*tools, *extra_tools]
+        middleware: list[Any] = [
+            ScopeMiddleware(allowed_tools=defn.allowed_tools),
+            SecurityMiddleware(agent_id=defn.name, session_id=session_id),
+        ]
+        if defn.hitl_tools:
+            interrupt_on = {
+                tool_name: {"allowed_decisions": ["approve", "edit", "reject"]}
+                for tool_name, enabled in defn.hitl_tools.items()
+                if enabled
+            }
+            if interrupt_on:
+                middleware.append(HumanInTheLoopMiddleware(interrupt_on=interrupt_on))
+
+        checkpointer = None
+        if use_checkpointer:
+            checkpointer = (await get_async_persistence(force_memory=True)).checkpointer
+
+        schema = schema_registry.get(defn.schema_name)
+        return create_agent(
+            model=model or get_model(),
+            tools=tools,
+            system_prompt=defn.system_prompt,
+            middleware=middleware,
+            response_format=schema,
+            checkpointer=checkpointer,
+            name=defn.name,
+        )
+
     def run(
         self,
         name: str,
@@ -95,7 +135,7 @@ class AgentRuntime:
     ) -> dict[str, Any]:
         defn = self.registry.get(name)
         sid = session_id or f"agent-{name}"
-        agent = self.create(defn, session_id=sid)
+        agent = await self.acreate(defn, session_id=sid)
         schema = schema_registry.get(defn.schema_name)
         return await self._ainvoke(agent, user_input, session_id=sid, schema=schema)
 
@@ -210,7 +250,7 @@ def make_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
 
 def make_async_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
     """Factory for coordinator async tool that runs LangGraph assessment."""
-    from cys_core.persistence import get_persistence
+    from cys_core.persistence import get_async_persistence
     from graph.workflow import run_assessment_async
 
     @tool
@@ -219,7 +259,7 @@ def make_async_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
         result = await run_assessment_async(
             input_text,
             thread_id=thread_id,
-            persistence=get_persistence(force_memory=True),
+            persistence=await get_async_persistence(force_memory=True),
         )
         return json.dumps(result.get("report") or result, ensure_ascii=False, indent=2)
 

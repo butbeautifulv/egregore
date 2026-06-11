@@ -6,7 +6,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
-from cys_core.persistence import PersistenceStack, get_persistence
+from cys_core.persistence import AsyncPersistenceStack, PersistenceStack, get_async_persistence, get_persistence
 from graph.nodes import (
     critic_node,
     dispatch_node,
@@ -18,6 +18,7 @@ from graph.nodes import (
 from graph.state import AssessmentState
 
 _compiled_graph = None
+_compiled_async_graph = None
 
 
 def build_assessment_graph(persistence: PersistenceStack | None = None):
@@ -44,6 +45,33 @@ def build_assessment_graph(persistence: PersistenceStack | None = None):
     compiled = graph.compile(checkpointer=stack.checkpointer)
     if persistence is None:
         _compiled_graph = compiled
+    return compiled
+
+
+async def build_assessment_graph_async(persistence: AsyncPersistenceStack | PersistenceStack | None = None):
+    """Compile LangGraph security assessment pipeline for async callers."""
+    global _compiled_async_graph
+    if _compiled_async_graph is not None and persistence is None:
+        return _compiled_async_graph
+
+    stack = persistence or await get_async_persistence()
+    graph = StateGraph(AssessmentState)
+    graph.add_node("ingest", ingest_node)
+    graph.add_node("run_agent", run_agent_node)
+    graph.add_node("critic", critic_node)
+    graph.add_node("hitl_gate", hitl_gate_node)
+    graph.add_node("report", report_node)
+
+    graph.add_edge(START, "ingest")
+    graph.add_conditional_edges("ingest", dispatch_node)
+    graph.add_edge("run_agent", "critic")
+    graph.add_edge("critic", "hitl_gate")
+    graph.add_edge("hitl_gate", "report")
+    graph.add_edge("report", END)
+
+    compiled = graph.compile(checkpointer=stack.checkpointer)
+    if persistence is None:
+        _compiled_async_graph = compiled
     return compiled
 
 
@@ -76,7 +104,7 @@ async def run_assessment_async(
     resume: bool | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run full assessment pipeline from async callers."""
-    graph = build_assessment_graph(persistence)
+    graph = await build_assessment_graph_async(persistence)
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 25}
 
     if resume is not None:

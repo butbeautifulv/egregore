@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Awaitable
 
 from langchain.agents.middleware.types import AgentMiddleware
 from langchain_core.messages import ToolMessage
@@ -33,6 +34,25 @@ class ScopeMiddleware(AgentMiddleware):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
     ) -> ToolMessage | Command[Any]:
+        violation = self._check_scope(request)
+        if violation is not None:
+            return violation
+        return handler(request)
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]] | ToolMessage | Command[Any]],
+    ) -> ToolMessage | Command[Any]:
+        violation = self._check_scope(request)
+        if violation is not None:
+            return violation
+        result = handler(request)
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
+    def _check_scope(self, request: ToolCallRequest) -> ToolMessage | None:
         tool_name = request.tool_call.get("name", "")
         if tool_name not in self.allowed_tools:
             return ToolMessage(
@@ -52,4 +72,4 @@ class ScopeMiddleware(AgentMiddleware):
                             tool_call_id=request.tool_call.get("id", ""),
                             status="error",
                         )
-        return handler(request)
+        return None

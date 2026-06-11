@@ -33,6 +33,13 @@ class InMemoryRateLimiter:
         if not self.allow(key):
             raise RateLimitExceeded(f"Rate limit exceeded for key: {key}")
 
+    async def aallow(self, key: str) -> bool:
+        return self.allow(key)
+
+    async def acheck(self, key: str) -> None:
+        if not await self.aallow(key):
+            raise RateLimitExceeded(f"Rate limit exceeded for key: {key}")
+
 
 class RedisRateLimiter:
     """Redis-backed sliding window rate limiter."""
@@ -47,10 +54,13 @@ class RedisRateLimiter:
         self.window_seconds = window_seconds
         self._fallback = InMemoryRateLimiter(self.max_calls, window_seconds)
         self._redis = None
+        self._async_redis = None
+        self._async_redis_unavailable = False
+        self._redis_url = redis_url or settings.redis_url
         try:
             import redis
 
-            self._redis = redis.from_url(redis_url or settings.redis_url, decode_responses=True)
+            self._redis = redis.from_url(self._redis_url, decode_responses=True)
             self._redis.ping()
         except Exception:
             self._redis = None
@@ -70,4 +80,38 @@ class RedisRateLimiter:
 
     def check(self, key: str) -> None:
         if not self.allow(key):
+            raise RateLimitExceeded(f"Rate limit exceeded for key: {key}")
+
+    async def _get_async_redis(self):
+        if self._async_redis_unavailable:
+            return None
+        if self._async_redis is not None:
+            return self._async_redis
+        try:
+            import redis.asyncio as aioredis
+
+            self._async_redis = aioredis.from_url(self._redis_url, decode_responses=True)
+            await self._async_redis.ping()
+            return self._async_redis
+        except Exception:
+            self._async_redis = None
+            self._async_redis_unavailable = True
+            return None
+
+    async def aallow(self, key: str) -> bool:
+        redis_client = await self._get_async_redis()
+        if redis_client is None:
+            return await self._fallback.aallow(key)
+        now = int(time.time())
+        pipe = redis_client.pipeline()
+        bucket_key = f"cys:rate:{key}"
+        pipe.zremrangebyscore(bucket_key, 0, now - self.window_seconds)
+        pipe.zadd(bucket_key, {str(now): now})
+        pipe.zcard(bucket_key)
+        pipe.expire(bucket_key, self.window_seconds + 1)
+        _, _, count, _ = await pipe.execute()
+        return count <= self.max_calls
+
+    async def acheck(self, key: str) -> None:
+        if not await self.aallow(key):
             raise RateLimitExceeded(f"Rate limit exceeded for key: {key}")
