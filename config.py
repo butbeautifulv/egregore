@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     redis_password: str = Field(default="password", validation_alias="REDIS_PASSWORD")
     redis_db: int = Field(default=0, validation_alias="REDIS_DB")
 
+    kafka_bootstrap_servers: str = Field(
+        default="localhost:19092", validation_alias="KAFKA_BOOTSTRAP_SERVERS"
+    )
+    use_kafka: bool = Field(default=False, validation_alias="USE_KAFKA")
+
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")
     postgres_user: str = Field(default="postgres", validation_alias="POSTGRES_USER")
