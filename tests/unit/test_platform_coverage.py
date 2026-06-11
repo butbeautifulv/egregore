@@ -802,6 +802,7 @@ async def test_rate_limiters_memory_and_redis(monkeypatch):
     assert limiter.allow("key") is True
     assert limiter.allow("key") is False
     assert limiter.allow("key") is True
+    monkeypatch.setattr(rate_limit.time, "time", lambda: 250.0)
     assert await rate_limit.InMemoryRateLimiter(max_calls=1).aallow("async-key") is True
     with pytest.raises(rate_limit.RateLimitExceeded, match="Rate limit exceeded"):
         await rate_limit.InMemoryRateLimiter(max_calls=0).acheck("async-blocked")
