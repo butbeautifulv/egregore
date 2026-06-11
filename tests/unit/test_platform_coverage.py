@@ -991,7 +991,8 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
         hitl_tools={"run_active_scan": True, "read_repo_metadata": False},
     )
     registry = SimpleNamespace(get=lambda name: defn, names=lambda: ["alpha"])
-    runtime = runtime_agent.AgentRuntime(registry)
+    model_connector = SimpleNamespace(create_model=lambda: "model", callbacks=lambda: [])
+    runtime = runtime_agent.AgentRuntime(registry, model_connector=model_connector)
 
     captured = {}
 
@@ -1007,7 +1008,6 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
             return SimpleNamespace(checkpointer="async-cp", store="async-store")
 
     monkeypatch.setattr(runtime_agent, "create_agent", fake_create_agent)
-    monkeypatch.setattr(runtime_agent, "get_model", lambda: "model")
     monkeypatch.setattr(runtime_agent, "get_persistence_connector", lambda: FakePersistenceConnector())
     created = runtime.create(defn, session_id="sid", extra_tools=["extra-tool"])
     assert created.created is True
@@ -1035,8 +1035,7 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
         "text": "input",
     }
 
-    monkeypatch.setattr(runtime_agent, "get_langfuse_callbacks", lambda: [])
-    invoker = runtime_agent.AgentRuntime(SimpleNamespace())
+    invoker = runtime_agent.AgentRuntime(SimpleNamespace(), model_connector=model_connector)
     structured_result = SimpleNamespace(invoke=lambda *_args, **_kwargs: {"structured_response": DemoSchema(value="ok")})
     assert invoker._invoke(structured_result, "text", session_id="sid", schema=DemoSchema) == {"value": "ok"}
 
@@ -1329,7 +1328,7 @@ async def test_coordinator_creation_and_session(monkeypatch):
     monkeypatch.setattr(deep_assessment, "make_assessment_pipeline_tool", lambda runtime: "pipeline-tool")
     monkeypatch.setattr(deep_assessment, "make_async_assessment_pipeline_tool", lambda runtime: "async-pipeline-tool")
     monkeypatch.setattr(deep_assessment, "tool_registry", tool_registry)
-    monkeypatch.setattr(deep_assessment, "get_model", lambda: "model")
+    monkeypatch.setattr(deep_assessment, "get_model_connector", lambda: SimpleNamespace(create_model=lambda: "model"))
     monkeypatch.setattr(deep_assessment, "get_product_context", lambda: product_context)
     monkeypatch.setattr(deep_assessment, "create_deep_agent", fake_create_deep_agent)
 
