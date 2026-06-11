@@ -136,6 +136,7 @@ USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ -q --cov=cys_core/domai
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Event-driven architecture |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Разработка и отладка |
 | [docs/SECURE_DEPLOYMENT.md](docs/SECURE_DEPLOYMENT.md) | Secure deployment |
+| [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATFORM.md) | Production roadmap (Kafka, MCP gateway, RAG, skills) |
 | [agents/README.md](agents/README.md) | Продуктовый слой |
 
 ## Требования

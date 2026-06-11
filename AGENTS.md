@@ -76,6 +76,15 @@ Ingress → EventRouter → JobQueue → WorkerOrchestrator → Bus
 
 Подробнее: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
+## Мастер-план (cloud / Cursor agents)
+
+Исполнение production roadmap — по [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATFORM.md).
+
+- **Master agent**: читает план, декомпозирует подфазы `P{x}.{y}.{z}` из §7
+- **Subagents**: max **3 parallel**; 1 subagent = 1 подфаза; ≤5 файлов на PR (§12)
+- **Старт**: batch 0 — `P1.1.1`, `P1.1.2`, `P1.1.3` (§12.9)
+- **Не редактировать** `.cursor/plans/` — канон в `docs/MASTER_PLAN_SECURE_PLATFORM.md`
+
 ## Тесты
 
 ```bash
