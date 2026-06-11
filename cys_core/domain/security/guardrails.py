@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from cys_core.domain.security.exceptions import SecurityViolation
-from cys_core.domain.security.redaction import PII_PATTERNS, RedactionService
+from cys_core.domain.security.redaction import RedactionService
 
 SENSITIVE_PARAM_PATTERNS = [
     r"api[_-]?key",
@@ -16,6 +16,10 @@ SENSITIVE_PARAM_PATTERNS = [
     r"token",
     r"credential",
     r"private[_-]?key",
+    r"парол\w*",
+    r"токен\w*",
+    r"секрет\w*",
+    r"ключ\w*",
 ]
 
 PROMPT_LEAKAGE_PATTERNS = [
@@ -24,6 +28,11 @@ PROMPT_LEAKAGE_PATTERNS = [
     r"SECURITY_RULES:",
     r"GLOBAL_RULES:",
     r"instructions?\s*:\s*\d+\.",
+    r"ПРАВИЛА_БЕЗОПАСНОСТИ",
+    r"СИСТЕМНЫЕ_ИНСТРУКЦИИ",
+    r"ГЛОБАЛЬНЫЕ_ПРАВИЛА",
+    r"SECURITY_RULES\s*:",
+    r"СИСТЕМН\w*\s*:\s*Ты\s+",
 ]
 
 
@@ -50,7 +59,7 @@ class OutputGuardrails:
         tool_name = output.get("tool_name", "")
         params = output.get("parameters", {})
         blob = str(output).lower()
-        if "http" in blob and any(p in blob for p in ("base64", "encode", "password")):
+        if "http" in blob and any(p in blob for p in ("base64", "encode", "password", "парол")):
             return True
         if tool_name in ("http_request", "webhook") and len(str(params)) > self.max_payload_size:
             return True

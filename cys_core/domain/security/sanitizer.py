@@ -9,16 +9,19 @@ from typing import Any
 from rapidfuzz.distance import Levenshtein
 
 from cys_core.domain.security.exceptions import SecurityViolation
-from cys_core.domain.security.injection_patterns import (
+from cys_core.domain.security.patterns import (
     BASE64_TOKEN,
     FUZZY_DISTANCE_THRESHOLD,
     FUZZY_KEYWORDS,
+    FUZZY_KEYWORDS_EN,
+    FUZZY_KEYWORDS_RU,
     HARD_INJECTION_PATTERNS,
     HEX_TOKEN,
     INJECTION_PATTERNS,
     MIN_FUZZY_WORD_LENGTH,
     SOFT_INJECTION_PATTERNS,
-    ZERO_WIDTH_CHARS,
+    TOKEN_PATTERN,
+    normalize_input,
 )
 from cys_core.domain.security.prompt_context import UntrustedSource, wrap_user_data
 
@@ -108,10 +111,7 @@ class InputSanitizer:
         return self.wrap_untrusted(body, source=source)
 
     def _normalize(self, content: str) -> str:
-        content = ZERO_WIDTH_CHARS.sub(" ", content)
-        content = re.sub(r"\s+", " ", content)
-        content = re.sub(r"(.)\1{3,}", r"\1", content)
-        return content.strip()
+        return normalize_input(content)
 
     def _matches_hard(self, content: str) -> bool:
         return any(p.search(content) for p in self._hard)
@@ -120,13 +120,19 @@ class InputSanitizer:
         return any(p.search(content) for p in self._soft)
 
     def _matches_fuzzy(self, content: str) -> bool:
-        words = re.findall(r"\b\w+\b", content.lower())
+        words = TOKEN_PATTERN.findall(content.lower())
         for word in words:
             if len(word) < MIN_FUZZY_WORD_LENGTH:
                 continue
-            for keyword in FUZZY_KEYWORDS:
-                if Levenshtein.distance(word, keyword) <= FUZZY_DISTANCE_THRESHOLD:
-                    return True
+            if self._fuzzy_match_keyword_set(word, FUZZY_KEYWORDS):
+                return True
+        return False
+
+    @staticmethod
+    def _fuzzy_match_keyword_set(word: str, keywords: frozenset[str]) -> bool:
+        for keyword in keywords:
+            if Levenshtein.distance(word, keyword) <= FUZZY_DISTANCE_THRESHOLD:
+                return True
         return False
 
     def _matches_encoded_hard(self, content: str) -> bool:
@@ -159,3 +165,15 @@ class InputSanitizer:
             except ValueError:
                 continue
         return candidates
+
+
+# Re-export for backward compatibility in tests.
+__all__ = [
+    "FILTERED_MARKER",
+    "FUZZY_KEYWORDS",
+    "FUZZY_KEYWORDS_EN",
+    "FUZZY_KEYWORDS_RU",
+    "InjectionVerdict",
+    "InputSanitizer",
+    "MAX_INPUT_LENGTH",
+]

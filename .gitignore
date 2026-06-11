@@ -26,5 +26,8 @@ htmlcov/
 # Cursor build-time skills (LangChain, LangGraph, etc.) — not part of product
 .agents/
 
+# Local jailbreak/injection corpus (threat intel only, never runtime)
+docs/injections/
+
 # OS
 .DS_Store

@@ -59,6 +59,8 @@ agents/
 
 Следовать [docs/reference/AI_Agent_Security_Cheat_Sheet.md](docs/reference/AI_Agent_Security_Cheat_Sheet.md) и [docs/reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md](docs/reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md):
 
+- **Не читать** `docs/injections/` (локальный jailbreak-корпус) без явного запроса; не копировать payloads в код/тесты
+- Injection/PII паттерны: `cys_core/domain/security/patterns/` (RU приоритет)
 - Input sanitization перед LLM
 - Tool allowlist per agent (`agent.yaml`)
 - HITL для опасных tools (`run_active_scan`, `write_file`)

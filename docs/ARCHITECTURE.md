@@ -149,7 +149,18 @@ Domain policies импортируются из `cys_core.domain.*`. Compatibili
 
 **Domain policies** (`cys_core/domain/security/`): `InputSanitizer`, `OutputGuardrails`, `ScopePolicy`, `RedactionService`, `SecureAgentBus`, `TrustedSystemContext`, `PromptContextMiddleware` (via `cys_core/middleware/`).
 
-Threat model reference: [reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md](reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md).
+**Multilingual filters** (`cys_core/domain/security/patterns/`):
+
+| Pack | Содержание |
+|------|------------|
+| `injection_{en,ru,es,de,fr,zh}.py` | HARD/SOFT regex по языкам (приоритет RU) |
+| `pii_{common,en,ru,es,zh}.py` | PII и секреты (SNILS, INN, passport, +7, …) |
+| `normalization.py` | NFKC, zero-width strip, mixed-script homoglyph fold |
+| `common.py` | Delimiters, markup, encoding tokens |
+
+Pipeline: `normalize_input()` → HARD block → SOFT filter → fuzzy keywords (EN+RU roots) → base64/hex decode re-check.
+
+Threat model reference: [reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md](reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md). Offline corpus triage: [reference/injections/README.md](reference/injections/README.md).
 
 **Infrastructure** (`cys_core/security/`):
 

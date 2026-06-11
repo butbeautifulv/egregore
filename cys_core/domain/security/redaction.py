@@ -3,16 +3,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-PII_PATTERNS: list[tuple[str, str]] = [
-    (r"\b\d{3}-\d{2}-\d{4}\b", "[SSN_REDACTED]"),
-    (r"\b\d{16}\b", "[CARD_REDACTED]"),
-    (r"password\s*[:=]\s*\S+", "password=[REDACTED]"),
-    (r"api[_-]?key\s*[:=]\s*\S+", "api_key=[REDACTED]"),
-    (r"secret\s*[:=]\s*\S+", "secret=[REDACTED]"),
-    (r"token\s*[:=]\s*\S+", "token=[REDACTED]"),
-]
+from cys_core.domain.security.patterns import PII_PATTERNS, SENSITIVE_KEYS
 
-SENSITIVE_KEYS = frozenset({"password", "api_key", "token", "secret", "credential"})
+# Patterns used by contains_sensitive_data (subset for fast checks).
+_SENSITIVE_DATA_PATTERNS = tuple(pattern for pattern, _ in PII_PATTERNS)
 
 
 class RedactionService:
@@ -34,10 +28,4 @@ class RedactionService:
         return data
 
     def contains_sensitive_data(self, text: str) -> bool:
-        patterns = (
-            r"\b\d{3}-\d{2}-\d{4}\b",
-            r"\b\d{16}\b",
-            r"password\s*[:=]\s*\S+",
-            r"api[_-]?key\s*[:=]\s*\S+",
-        )
-        return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in _SENSITIVE_DATA_PATTERNS)
