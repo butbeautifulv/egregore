@@ -86,6 +86,19 @@ class AgentRuntime:
         schema = schema_registry.get(defn.schema_name)
         return self._invoke(agent, user_input, session_id=sid, schema=schema)
 
+    async def arun(
+        self,
+        name: str,
+        user_input: str,
+        *,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        defn = self.registry.get(name)
+        sid = session_id or f"agent-{name}"
+        agent = self.create(defn, session_id=sid)
+        schema = schema_registry.get(defn.schema_name)
+        return await self._ainvoke(agent, user_input, session_id=sid, schema=schema)
+
     def _invoke(
         self,
         agent,
@@ -104,7 +117,34 @@ class AgentRuntime:
             {"messages": [{"role": "user", "content": sanitized}]},
             config=config,
         )
+        return self._coerce_result(result, schema=schema)
 
+    async def _ainvoke(
+        self,
+        agent,
+        user_input: str,
+        *,
+        session_id: str,
+        schema: type[BaseModel] | None,
+    ) -> dict[str, Any]:
+        sanitized = _sanitizer.sanitize(user_input)
+        config = {
+            "configurable": {"thread_id": session_id},
+            "callbacks": get_langfuse_callbacks(),
+            "recursion_limit": 25,
+        }
+        result = await agent.ainvoke(
+            {"messages": [{"role": "user", "content": sanitized}]},
+            config=config,
+        )
+        return self._coerce_result(result, schema=schema)
+
+    def _coerce_result(
+        self,
+        result: dict[str, Any],
+        *,
+        schema: type[BaseModel] | None,
+    ) -> dict[str, Any]:
         structured = result.get("structured_response")
         if structured is not None:
             data = structured.model_dump() if isinstance(structured, BaseModel) else dict(structured)
@@ -159,6 +199,24 @@ def make_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
     def run_assessment_pipeline(input_text: str, thread_id: str = "deep-session") -> str:
         """Run the full LangGraph security assessment pipeline on authorized input."""
         result = run_assessment(
+            input_text,
+            thread_id=thread_id,
+            persistence=get_persistence(force_memory=True),
+        )
+        return json.dumps(result.get("report") or result, ensure_ascii=False, indent=2)
+
+    return run_assessment_pipeline
+
+
+def make_async_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
+    """Factory for coordinator async tool that runs LangGraph assessment."""
+    from cys_core.persistence import get_persistence
+    from graph.workflow import run_assessment_async
+
+    @tool
+    async def run_assessment_pipeline(input_text: str, thread_id: str = "deep-session") -> str:
+        """Run the full LangGraph security assessment pipeline on authorized input."""
+        result = await run_assessment_async(
             input_text,
             thread_id=thread_id,
             persistence=get_persistence(force_memory=True),

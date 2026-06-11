@@ -9,10 +9,10 @@ from cys_core.persistence import get_persistence
 from cys_core.registry.agents import get_agent_registry
 from cys_core.registry.product_context import get_product_context
 from cys_core.registry.tools import tool_registry
-from cys_core.runtime.agent import get_runtime, make_assessment_pipeline_tool
+from cys_core.runtime.agent import get_runtime, make_assessment_pipeline_tool, make_async_assessment_pipeline_tool
 
 
-def create_assessment_coordinator(persistence=None):
+def create_assessment_coordinator(persistence=None, *, async_tools: bool = False):
     """Create Deep Agent coordinator with security subagents from registry."""
     stack = persistence or get_persistence()
     registry = get_agent_registry()
@@ -22,7 +22,7 @@ def create_assessment_coordinator(persistence=None):
     subagent_defs = registry.by_role("specialist") + [registry.get("critic")]
     subagents = [runtime.to_deep_agent_subagent(defn) for defn in subagent_defs]
 
-    pipeline_tool = make_assessment_pipeline_tool(runtime)
+    pipeline_tool = make_async_assessment_pipeline_tool(runtime) if async_tools else make_assessment_pipeline_tool(runtime)
     coordinator_tools = [pipeline_tool, tool_registry.get("run_active_scan")]
 
     interrupt_on = coordinator.interrupt_on or {
@@ -54,6 +54,22 @@ def run_session(
     agent = create_assessment_coordinator(persistence)
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
     result = agent.invoke(
+        {"messages": [{"role": "user", "content": goal}]},
+        config=config,
+    )
+    return dict(result)
+
+
+async def run_session_async(
+    goal: str,
+    *,
+    thread_id: str = "session-001",
+    persistence=None,
+) -> dict[str, Any]:
+    """Run a long-running Deep Agent assessment session from async callers."""
+    agent = create_assessment_coordinator(persistence, async_tools=True)
+    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+    result = await agent.ainvoke(
         {"messages": [{"role": "user", "content": goal}]},
         config=config,
     )

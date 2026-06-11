@@ -50,7 +50,9 @@ def test_package_init_exports():
     import graph
 
     assert "run_session" in coordinator.__all__
+    assert "run_session_async" in coordinator.__all__
     assert "run_assessment" in graph.__all__
+    assert "run_assessment_async" in graph.__all__
 
 
 def test_llm_provider_selection_and_langfuse(monkeypatch):
@@ -344,6 +346,60 @@ def test_schema_registry_edges():
     assert "CriticResult" in schema_registry.names()
     with pytest.raises(KeyError, match="Unknown schema"):
         schema_registry.get("MissingSchema")
+
+
+def test_domain_layer_exports_and_assessment_services():
+    from cys_core.domain.agents import AgentDefinition as DomainAgentDefinition
+    from cys_core.domain.assessment import AssessmentReportBuilder, HitlPolicy
+    from cys_core.domain.findings import CriticResult as DomainCriticResult
+    from cys_core.domain.security import OutputGuardrails as DomainGuardrails
+    from cys_core.domain.security import SecurityViolation as DomainSecurityViolation
+    from cys_core.registry.models import AgentDefinition
+    from cys_core.schemas.findings import CriticResult
+    from cys_core.security.guardrails import SecurityViolation
+
+    assert AgentDefinition is DomainAgentDefinition
+    assert CriticResult is DomainCriticResult
+    assert SecurityViolation is DomainSecurityViolation
+
+    policy = HitlPolicy(DomainGuardrails())
+    assert policy.decide(
+        critic_result={"trust_score": 1.0},
+        findings=[],
+        trust_score_threshold=0.5,
+        stage="test",
+        auto_approve_threshold="low",
+    ).approved is True
+    auto = policy.decide(
+        critic_result={"trust_score": 0.1},
+        findings=[],
+        trust_score_threshold=0.5,
+        stage="dev",
+        auto_approve_threshold="medium",
+    )
+    assert auto.pending_approval == {"auto_approved": True, "reason": "dev stage"}
+    pending = policy.decide(
+        critic_result={"trust_score": 0.1},
+        findings=[{"data": {"severity": "high"}}],
+        trust_score_threshold=0.5,
+        stage="test",
+        auto_approve_threshold="low",
+    )
+    assert pending.interrupt_preview["findings_count"] == 1
+    assert policy.decide(
+        critic_result={"trust_score": 0.1},
+        findings=[],
+        trust_score_threshold=0.5,
+        stage="test",
+        auto_approve_threshold="low",
+        manual_decision={"approved": True},
+    ).approved is True
+
+    builder = AssessmentReportBuilder()
+    assert builder.build({"approved": False, "pending_approval": {"reason": "manual"}})["status"] == "rejected"
+    assert builder.build({"approved": True, "session_id": "sid", "findings": [], "critic_result": {}, "errors": []})[
+        "status"
+    ] == "published"
 
 
 def test_all_tool_functions_and_registry_edges():
@@ -674,7 +730,8 @@ def test_risk_and_sanitizer_edges():
     assert payload["e"] == 2
 
 
-def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
+@pytest.mark.asyncio
+async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     import cys_core.persistence as persistence
     import cys_core.runtime.agent as runtime_agent
     from cys_core.registry.models import AgentDefinition
@@ -712,6 +769,14 @@ def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     monkeypatch.setattr(runtime, "_invoke", lambda agent, text, session_id, schema: {"sid": session_id, "text": text})
     assert runtime.run("alpha", "input", session_id="custom") == {"sid": "custom", "text": "input"}
     assert runtime.run("alpha", "input")["sid"] == "agent-alpha"
+    async def fake_runtime_ainvoke(agent, text, session_id, schema):
+        return {"sid": session_id, "text": text}
+
+    monkeypatch.setattr(runtime, "_ainvoke", fake_runtime_ainvoke)
+    assert await runtime.arun("alpha", "input", session_id="async-custom") == {
+        "sid": "async-custom",
+        "text": "input",
+    }
 
     monkeypatch.setattr(runtime_agent, "get_langfuse_callbacks", lambda: [])
     invoker = runtime_agent.AgentRuntime(SimpleNamespace())
@@ -741,6 +806,12 @@ def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     valid_json = SimpleNamespace(invoke=lambda *_args, **_kwargs: {"messages": [SimpleNamespace(content='{"ok": true}')]})
     assert invoker._invoke(valid_json, "text", session_id="sid", schema=None)["response"] == '{"ok": true}'
 
+    async def fake_agent_ainvoke(*_args, **_kwargs):
+        return {"structured_response": DemoSchema(value="async")}
+
+    async_agent = SimpleNamespace(ainvoke=fake_agent_ainvoke)
+    assert await invoker._ainvoke(async_agent, "text", session_id="sid", schema=DemoSchema) == {"value": "async"}
+
     subagent = invoker.to_deep_agent_subagent(defn)
     assert subagent["name"] == "alpha"
     assert subagent["tools"][0].name == "enrich_ioc"
@@ -757,9 +828,18 @@ def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     monkeypatch.setattr(persistence, "get_persistence", lambda force_memory=True: SimpleNamespace(checkpointer="cp"))
     pipeline_tool = runtime_agent.make_assessment_pipeline_tool(runtime)
     assert json.loads(pipeline_tool.invoke({"input_text": "assess", "thread_id": "tid"})) == {"status": "ok"}
+    async def fake_run_assessment_async(*args, **kwargs):
+        return {"report": {"status": "async-ok"}}
+
+    monkeypatch.setattr(workflow, "run_assessment_async", fake_run_assessment_async)
+    async_pipeline_tool = runtime_agent.make_async_assessment_pipeline_tool(runtime)
+    assert json.loads(await async_pipeline_tool.ainvoke({"input_text": "assess", "thread_id": "tid"})) == {
+        "status": "async-ok"
+    }
 
 
-def test_graph_nodes_success_error_and_hitl_paths(monkeypatch):
+@pytest.mark.asyncio
+async def test_graph_nodes_success_error_and_hitl_paths(monkeypatch):
     import graph.nodes as nodes
 
     monkeypatch.setattr(nodes, "_rate_limiter", SimpleNamespace(check=MagicMock()))
@@ -774,41 +854,59 @@ def test_graph_nodes_success_error_and_hitl_paths(monkeypatch):
     sends = nodes.dispatch_node({"sanitized_input": "safe", "session_id": "sid"})
     assert [send.arg["agent_name"] for send in sends] == ["redteam", "network"]
 
-    runtime = SimpleNamespace(run=MagicMock(return_value={"severity": "low"}))
+    class FakeRuntime:
+        def __init__(self):
+            self.result = {"severity": "low"}
+            self.error: Exception | None = None
+
+        async def arun(self, *_args, **_kwargs):
+            if self.error:
+                raise self.error
+            return self.result
+
+    runtime = FakeRuntime()
     bus = SimpleNamespace(send_message=MagicMock(return_value={"signed": True}), receive_message=MagicMock(), record_agent_failure=MagicMock())
     monkeypatch.setattr(nodes, "_runtime", runtime)
     monkeypatch.setattr(nodes, "_bus", bus)
-    success = nodes.run_agent_node({"agent_name": "redteam", "sanitized_input": "safe", "session_id": "sid"})
+    success = await nodes.run_agent_node({"agent_name": "redteam", "sanitized_input": "safe", "session_id": "sid"})
     assert success["findings"][0]["data"] == {"severity": "low"}
     bus.receive_message.assert_called_once()
 
-    runtime.run.side_effect = RuntimeError("agent failed")
-    failure = nodes.run_agent_node({"agent_name": "redteam", "sanitized_input": "safe", "session_id": "sid"})
+    runtime.error = RuntimeError("agent failed")
+    failure = await nodes.run_agent_node({"agent_name": "redteam", "sanitized_input": "safe", "session_id": "sid"})
     assert failure["errors"] == ["redteam: agent failed"]
     bus.record_agent_failure.assert_called_with("redteam")
 
-    runtime.run.side_effect = None
-    runtime.run.return_value = {"trust_score": 0.8}
+    runtime.error = None
+    runtime.result = {"trust_score": 0.8}
     monkeypatch.setattr(nodes.schema_registry, "get", lambda name: DemoSchema if name == "CriticResult" else None)
     monkeypatch.setattr(nodes, "_guardrails", SimpleNamespace(validate_schema=lambda data, schema: DemoSchema(value="critic")))
-    critic = nodes.critic_node({"findings": [{"a": 1}], "session_id": "sid"})
+    critic = await nodes.critic_node({"findings": [{"a": 1}], "session_id": "sid"})
     assert critic["critic_result"] == {"value": "critic"}
 
     monkeypatch.setattr(nodes.schema_registry, "get", lambda name: None)
-    assert nodes.critic_node({"findings": [], "session_id": "sid"})["critic_result"] == {"trust_score": 0.8}
+    assert (await nodes.critic_node({"findings": [], "session_id": "sid"}))["critic_result"] == {"trust_score": 0.8}
 
-    runtime.run.side_effect = RuntimeError("critic failed")
-    error = nodes.critic_node({"findings": [], "session_id": "sid"})
+    runtime.error = RuntimeError("critic failed")
+    error = await nodes.critic_node({"findings": [], "session_id": "sid"})
     assert error["critic_result"]["trust_score"] == 0.0
     assert error["errors"] == ["critic: critic failed"]
 
-    monkeypatch.setattr(nodes, "_guardrails", SimpleNamespace(requires_hitl=lambda findings, score, threshold: False))
+    monkeypatch.setattr(
+        nodes,
+        "_hitl_policy",
+        nodes.HitlPolicy(SimpleNamespace(requires_hitl=lambda findings, score, threshold: False)),
+    )
     assert nodes.hitl_gate_node({"critic_result": {"trust_score": 1}, "findings": []}) == {
         "approved": True,
         "pending_approval": None,
     }
 
-    monkeypatch.setattr(nodes, "_guardrails", SimpleNamespace(requires_hitl=lambda findings, score, threshold: True))
+    monkeypatch.setattr(
+        nodes,
+        "_hitl_policy",
+        nodes.HitlPolicy(SimpleNamespace(requires_hitl=lambda findings, score, threshold: True)),
+    )
     monkeypatch.setattr(nodes.settings, "stage", "dev")
     monkeypatch.setattr(nodes.settings, "hitl_auto_approve_threshold", "medium")
     auto = nodes.hitl_gate_node({"critic_result": {"trust_score": 0.1}, "findings": []})
@@ -836,7 +934,8 @@ def test_graph_nodes_success_error_and_hitl_paths(monkeypatch):
     assert published["report"]["status"] == "published"
 
 
-def test_graph_workflow_build_cache_and_run(monkeypatch):
+@pytest.mark.asyncio
+async def test_graph_workflow_build_cache_and_run(monkeypatch):
     import graph.workflow as workflow
 
     class FakeCompiledGraph:
@@ -844,6 +943,10 @@ def test_graph_workflow_build_cache_and_run(monkeypatch):
             self.invocations = []
 
         def invoke(self, payload, config):
+            self.invocations.append((payload, config))
+            return {"payload": payload, "config": config}
+
+        async def ainvoke(self, payload, config):
             self.invocations.append((payload, config))
             return {"payload": payload, "config": config}
 
@@ -876,16 +979,29 @@ def test_graph_workflow_build_cache_and_run(monkeypatch):
     assert workflow.build_assessment_graph() is cached
 
     monkeypatch.setattr(workflow, "build_assessment_graph", lambda persistence=None: explicit)
-    fresh = workflow.run_assessment("raw", thread_id="tid", scope={"authorized": False}, persistence=SimpleNamespace())
+    fresh = await workflow.run_assessment_async(
+        "raw",
+        thread_id="tid",
+        scope={"authorized": False},
+        persistence=SimpleNamespace(),
+    )
     assert fresh["payload"]["raw_input"] == "raw"
     assert fresh["payload"]["scope"] == {"authorized": False}
     assert fresh["config"]["configurable"]["thread_id"] == "tid"
 
-    resumed = workflow.run_assessment("", thread_id="tid", resume={"approved": True})
+    resumed = await workflow.run_assessment_async("", thread_id="tid", resume={"approved": True})
     assert resumed["payload"].resume == {"approved": True}
 
+    def fake_asyncio_run(coro):
+        coro.close()
+        return {"sync": True}
 
-def test_coordinator_creation_and_session(monkeypatch):
+    monkeypatch.setattr(workflow.asyncio, "run", fake_asyncio_run)
+    assert workflow.run_assessment("raw") == {"sync": True}
+
+
+@pytest.mark.asyncio
+async def test_coordinator_creation_and_session(monkeypatch):
     import coordinator.deep_assessment as deep_assessment
 
     coordinator_def = SimpleNamespace(
@@ -905,12 +1021,19 @@ def test_coordinator_creation_and_session(monkeypatch):
 
     def fake_create_deep_agent(**kwargs):
         captured.update(kwargs)
-        return SimpleNamespace(invoke=lambda payload, config: {"messages": [SimpleNamespace(content="done")], "config": config})
+        async def fake_ainvoke(payload, config):
+            return {"messages": [SimpleNamespace(content="async-done")], "config": config}
+
+        return SimpleNamespace(
+            invoke=lambda payload, config: {"messages": [SimpleNamespace(content="done")], "config": config},
+            ainvoke=fake_ainvoke,
+        )
 
     monkeypatch.setattr(deep_assessment, "get_persistence", lambda: SimpleNamespace(checkpointer="cp", store="store"))
     monkeypatch.setattr(deep_assessment, "get_agent_registry", lambda: registry)
     monkeypatch.setattr(deep_assessment, "get_runtime", lambda: runtime)
     monkeypatch.setattr(deep_assessment, "make_assessment_pipeline_tool", lambda runtime: "pipeline-tool")
+    monkeypatch.setattr(deep_assessment, "make_async_assessment_pipeline_tool", lambda runtime: "async-pipeline-tool")
     monkeypatch.setattr(deep_assessment, "tool_registry", tool_registry)
     monkeypatch.setattr(deep_assessment, "get_model", lambda: "model")
     monkeypatch.setattr(deep_assessment, "get_product_context", lambda: product_context)
@@ -925,6 +1048,14 @@ def test_coordinator_creation_and_session(monkeypatch):
 
     result = deep_assessment.run_session("goal", thread_id="thread-a", persistence=SimpleNamespace(checkpointer="cp", store="s"))
     assert result["config"]["configurable"]["thread_id"] == "thread-a"
+    async_result = await deep_assessment.run_session_async(
+        "goal",
+        thread_id="thread-b",
+        persistence=SimpleNamespace(checkpointer="cp", store="s"),
+    )
+    assert async_result["messages"][0].content == "async-done"
+    assert async_result["config"]["configurable"]["thread_id"] == "thread-b"
+    assert captured["tools"][0] == "async-pipeline-tool"
 
 
 def test_main_cli_commands_and_entrypoint(monkeypatch, capsys):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -54,12 +55,32 @@ def run_assessment(
     persistence: PersistenceStack | None = None,
     resume: bool | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run full assessment pipeline."""
+    """Run full assessment pipeline from synchronous callers."""
+    return asyncio.run(
+        run_assessment_async(
+            user_input,
+            thread_id=thread_id,
+            scope=scope,
+            persistence=persistence,
+            resume=resume,
+        )
+    )
+
+
+async def run_assessment_async(
+    user_input: str,
+    *,
+    thread_id: str = "assessment-001",
+    scope: dict[str, Any] | None = None,
+    persistence: PersistenceStack | None = None,
+    resume: bool | dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run full assessment pipeline from async callers."""
     graph = build_assessment_graph(persistence)
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 25}
 
     if resume is not None:
-        result = graph.invoke(Command(resume=resume), config=config)
+        result = await graph.ainvoke(Command(resume=resume), config=config)
         return dict(result)
 
     initial: AssessmentState = {
@@ -74,5 +95,5 @@ def run_assessment(
         "errors": [],
         "approved": False,
     }
-    result = graph.invoke(initial, config=config)
+    result = await graph.ainvoke(initial, config=config)
     return dict(result)

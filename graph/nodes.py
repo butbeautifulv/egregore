@@ -6,18 +6,20 @@ from typing import Any
 from langgraph.types import Send, interrupt
 
 from config import settings
+from cys_core.domain.assessment.services import AssessmentReportBuilder, HitlPolicy
 from cys_core.registry.agents import get_agent_registry
 from cys_core.registry.schemas import schema_registry
 from cys_core.runtime.agent import get_runtime
 from cys_core.security.agent_bus import AgentTrustLevel, SecureAgentBus
 from cys_core.security.guardrails import OutputGuardrails
 from cys_core.security.rate_limit import RedisRateLimiter
-from cys_core.security.risk import parse_threshold
 from cys_core.security.sanitizer import InputSanitizer
 from graph.state import AssessmentState
 
 _sanitizer = InputSanitizer()
 _guardrails = OutputGuardrails()
+_hitl_policy = HitlPolicy(_guardrails)
+_report_builder = AssessmentReportBuilder()
 _rate_limiter = RedisRateLimiter()
 _bus = SecureAgentBus(signing_key=b"cys-agi-bus-key")
 _runtime = get_runtime()
@@ -63,11 +65,11 @@ def dispatch_node(state: AssessmentState) -> list[Send]:
     ]
 
 
-def run_agent_node(state: dict[str, Any]) -> dict[str, Any]:
+async def run_agent_node(state: dict[str, Any]) -> dict[str, Any]:
     agent_name = state["agent_name"]
     session_id = f"{state.get('session_id', 'assessment')}:{agent_name}"
     try:
-        result = _runtime.run(agent_name, state["sanitized_input"], session_id=session_id)
+        result = await _runtime.arun(agent_name, state["sanitized_input"], session_id=session_id)
         message = _bus.send_message(agent_name, "critic", "finding", {"agent": agent_name, "data": result})
         _bus.receive_message("critic", message)
         return {"findings": [{"agent": agent_name, "data": result}]}
@@ -79,12 +81,12 @@ def run_agent_node(state: dict[str, Any]) -> dict[str, Any]:
         }
 
 
-def critic_node(state: AssessmentState) -> dict[str, Any]:
+async def critic_node(state: AssessmentState) -> dict[str, Any]:
     session_id = state.get("session_id", "assessment")
     findings_blob = json.dumps(state.get("findings", []), ensure_ascii=False)
     critic_schema = schema_registry.get("CriticResult")
     try:
-        result = _runtime.run("critic", findings_blob, session_id=f"{session_id}:critic")
+        result = await _runtime.arun("critic", findings_blob, session_id=f"{session_id}:critic")
         if critic_schema:
             validated = _guardrails.validate_schema(result, critic_schema)
             return {"critic_result": validated.model_dump()}
@@ -95,46 +97,29 @@ def critic_node(state: AssessmentState) -> dict[str, Any]:
 
 def hitl_gate_node(state: AssessmentState) -> dict[str, Any]:
     critic = state.get("critic_result") or {}
-    trust_score = float(critic.get("trust_score", 0.0))
     findings = state.get("findings", [])
-    needs_approval = _guardrails.requires_hitl(
-        findings, trust_score, settings.trust_score_threshold
+    decision = _hitl_policy.decide(
+        critic_result=critic,
+        findings=findings,
+        trust_score_threshold=settings.trust_score_threshold,
+        stage=settings.stage,
+        auto_approve_threshold=settings.hitl_auto_approve_threshold,
     )
 
-    if not needs_approval:
-        return {"approved": True, "pending_approval": None}
+    if decision.interrupt_preview is None:
+        return {"approved": decision.approved, "pending_approval": decision.pending_approval}
 
-    if settings.stage == "dev" and parse_threshold(settings.hitl_auto_approve_threshold) >= parse_threshold("medium"):
-        return {"approved": True, "pending_approval": {"auto_approved": True, "reason": "dev stage"}}
-
-    preview = {
-        "trust_score": trust_score,
-        "findings_count": len(findings),
-        "high_severity": [
-            f for f in findings
-            if str(f.get("data", {}).get("severity", "")).lower() in ("high", "critical")
-        ],
-        "message": "Human approval required before publishing assessment report.",
-    }
-    decision = interrupt(preview)
-    approved = bool(decision) if isinstance(decision, bool) else decision.get("approved", False)
-    return {"approved": approved, "pending_approval": preview}
+    manual_decision = interrupt(decision.interrupt_preview)
+    resolved = _hitl_policy.decide(
+        critic_result=critic,
+        findings=findings,
+        trust_score_threshold=settings.trust_score_threshold,
+        stage=settings.stage,
+        auto_approve_threshold=settings.hitl_auto_approve_threshold,
+        manual_decision=manual_decision,
+    )
+    return {"approved": resolved.approved, "pending_approval": resolved.pending_approval}
 
 
 def report_node(state: AssessmentState) -> dict[str, Any]:
-    if not state.get("approved"):
-        return {
-            "report": {
-                "status": "rejected",
-                "reason": "Assessment not approved",
-                "pending_approval": state.get("pending_approval"),
-            }
-        }
-    report = {
-        "status": "published",
-        "session_id": state.get("session_id"),
-        "findings": state.get("findings", []),
-        "critic_result": state.get("critic_result"),
-        "errors": state.get("errors", []),
-    }
-    return {"report": report}
+    return {"report": _report_builder.build(state)}
