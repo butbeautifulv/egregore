@@ -4,11 +4,24 @@
 
 cys-agi — **event-driven** multi-agent SOC platform с тремя плоскостями:
 
-1. **Ingress** (`ingress/`) — приём structured events (CLI, FastAPI, webhooks, SIEM poll)
-2. **Control plane** (`control/`, `cys_core/domain/events/`) — router, critic, coordinator, L2 HITL, escalation
-3. **Worker plane** (`workers/`, ephemeral sandbox) — автономные domain agents per event
+1. **Ingress** (`interfaces/ingress/`, `interfaces/api/`) — приём structured events (CLI, FastAPI, webhooks, SIEM poll)
+2. **Control plane** (`interfaces/control_plane/`, `cys_core/domain/events/`) — router, critic, coordinator, L2 HITL, escalation
+3. **Worker plane** (`interfaces/worker/`, ephemeral sandbox) — автономные domain agents per event
 
-Единый **AgentRuntime** + **AgentRegistry** для LLM worker runs. Batch LangGraph pipeline (`graph/workflow.py`) **deprecated** — заменён event ingress.
+Единый **AgentRuntime** + **AgentRegistry** для LLM worker runs. Все сценарии идут через **EventIngress** (batch LangGraph pipeline удалён).
+
+### Слои (после DDD-рефактора)
+
+| Слой | Путь | Ответственность |
+|------|------|-----------------|
+| Domain | `cys_core/domain/` | модели, security, routing rules |
+| Application | `cys_core/application/` | ports, use-cases |
+| Infrastructure | `cys_core/infrastructure/` | Kafka, queue, sandbox |
+| Product load | `bootstrap/product_loader.py` | YAML personas → `AgentDefinition` |
+| Registry | `cys_core/registry/` | `AgentRegistry`, tools, schemas |
+| Runtime | `cys_core/runtime/` | `AgentRuntime` — только `AgentDefinition`, без имён persona |
+| Delivery | `interfaces/` + root shims | FastAPI, workers, control, gateways |
+| DI | `bootstrap/container.py` | wiring портов |
 
 ## Data flow: event-driven
 
@@ -44,9 +57,9 @@ SIEM / NetFlow / Doc / Manual
 
 | Daemon | Topic in | Output |
 |--------|----------|--------|
-| `python main.py router` | `security.events.raw` | worker job enqueue |
-| `python main.py critic` | `bus.findings` (channel=critic) | awaiting_approval, escalation |
-| `python main.py coordinator` | `bus.findings` (channel=coordinator) | narratives |
+| `uv run cys-agi router` | `security.events.raw` | worker job enqueue |
+| `uv run cys-agi critic` | `bus.findings` (channel=critic) | awaiting_approval, escalation |
+| `uv run cys-agi coordinator` | `bus.findings` (channel=coordinator) | narratives |
 
 **L2 HITL:** critic `requires_hitl()` → `security.events.awaiting_approval`  
 **Escalation:** critic-approved → `security.events.escalation` → `redteam-engagement` plan  
@@ -75,9 +88,9 @@ SIEM / NetFlow / Doc / Manual
 | Layer | Component |
 |-------|-----------|
 | Ingress | InputSanitizer (`source=external`) |
-| Tool PEP | `tool_gateway/` — sanitize, audit, DoW chain depth |
-| Skills | `skill_gateway/` — hash verify, delimiters, allowlist |
-| RAG | `rag/` — ingest scan, ACL pre-filter, fail-closed `rag_query` |
+| Tool PEP | `interfaces/gateways/tool/` — sanitize, audit, DoW chain depth |
+| Skills | `interfaces/gateways/skill/` — hash verify, delimiters, allowlist |
+| RAG | `interfaces/rag/` — ingest scan, ACL pre-filter, fail-closed `rag_query` |
 | Worker | ScopeMiddleware, SecurityMiddleware (L1 HITL interrupt), job budgets |
 | Bus | SecureAgentBus — HMAC, trust levels, escalation-only paths |
 | Output | OutputGuardrails — schema, PII, exfiltration |
@@ -99,7 +112,7 @@ SIEM / NetFlow / Doc / Manual
 - **Grafana:** `deploy/grafana/dashboards/cys-agi.json`
 - **CI gates:** `.github/workflows/adversarial-gate.yml`, `agent-policy-gate.yml`
 
-## API (`ingress/api.py`)
+## API (`interfaces/api/app.py`)
 
 | Endpoint | Описание |
 |----------|----------|
@@ -121,11 +134,6 @@ SIEM / NetFlow / Doc / Manual
 | `compliance-audit` | Compliance worker |
 | `redteam-engagement` | Redteam on escalation |
 | `full-assessment` | Manual investigation — all workers |
-
-## Deprecated
-
-- `graph/workflow.py` `run_assessment` → redirects to `EventIngress`
-- `graph/nodes.py` batch pipeline nodes — legacy
 
 ## Зависимости
 

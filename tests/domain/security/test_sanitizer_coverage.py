@@ -25,7 +25,7 @@ def test_wrap_untrusted_idempotent_when_already_wrapped():
 
 @pytest.mark.unit
 def test_sanitize_returns_already_wrapped_user_data_block():
-    block = "USER_DATA_TO_PROCESS [source=user]:\n<untrusted_data source=\"user\">\nok\n</untrusted_data>"
+    block = 'USER_DATA_TO_PROCESS [source=user]:\n<untrusted_data source="user">\nok\n</untrusted_data>'
     assert InputSanitizer().sanitize(block, source="user") == block
 
 
@@ -39,7 +39,7 @@ def test_filter_patterns_truncates_to_max_length():
 @pytest.mark.unit
 def test_filter_untrusted_idempotent_and_truncates():
     sanitizer = InputSanitizer(max_length=15)
-    block = "USER_DATA_TO_PROCESS [source=tool]:\n<untrusted_data source=\"tool\">\nx\n</untrusted_data>"
+    block = 'USER_DATA_TO_PROCESS [source=tool]:\n<untrusted_data source="tool">\nx\n</untrusted_data>'
     assert sanitizer.filter_untrusted(block, source="tool") == block
     wrapped = sanitizer.filter_untrusted("safe telemetry payload here", source="agent_bus")
     assert wrapped.startswith("USER_DATA_TO_PROCESS")

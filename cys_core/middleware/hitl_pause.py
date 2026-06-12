@@ -1,13 +1,27 @@
 from __future__ import annotations
 
-import uuid
+from collections.abc import Callable
 from typing import Any
 
-from control.job_store import get_job_store
-from cys_core.observability.metrics import metrics
+from cys_core.application.ports.hitl import HitlPauseRegistry
+from cys_core.domain.workers.hitl import create_approval_id, params_hash
 from cys_core.domain.workers.models import PendingHitlAction
-from cys_core.infrastructure.kafka_paused import publish_paused_job_sync
-from tool_gateway.approval import create_approval_id, params_hash
+
+_pause_registry: HitlPauseRegistry | None = None
+_publish_paused: Callable[[dict[str, Any]], None] | None = None
+_on_pause_count: Callable[[int], None] | None = None
+
+
+def configure(
+    *,
+    registry: HitlPauseRegistry,
+    publish_paused: Callable[[dict[str, Any]], None],
+    on_pause_count: Callable[[int], None] | None = None,
+) -> None:
+    global _pause_registry, _publish_paused, _on_pause_count
+    _pause_registry = registry
+    _publish_paused = publish_paused
+    _on_pause_count = on_pause_count
 
 
 def job_id_from_session(session_id: str) -> str | None:
@@ -41,6 +55,9 @@ def build_hitl_preview(
 
 
 def register_hitl_pause(preview: dict[str, Any]) -> PendingHitlAction:
+    if _pause_registry is None or _publish_paused is None:
+        raise RuntimeError("HITL pause registry not configured; call bootstrap.container.wire_hitl_pause()")
+
     pending = PendingHitlAction(
         job_id=preview["job_id"],
         session_id=preview["session_id"],
@@ -50,9 +67,10 @@ def register_hitl_pause(preview: dict[str, Any]) -> PendingHitlAction:
         risk_level=preview.get("risk", ""),
         approval_id=preview["approval_id"],
     )
-    get_job_store().pause_for_hitl(pending, preview)
-    metrics.refresh_hitl_pending(len(get_job_store().list_pending_approvals()))
-    publish_paused_job_sync(
+    _pause_registry.pause_for_hitl(pending, preview)
+    if _on_pause_count is not None:
+        _on_pause_count(len(_pause_registry.list_pending_approvals()))
+    _publish_paused(
         {
             "job_id": pending.job_id,
             "persona": pending.persona,

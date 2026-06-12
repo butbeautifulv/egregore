@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.infrastructure.bus_transport import InMemoryBusTransport
 from cys_core.infrastructure.kafka_bus import KafkaBusTransport
 
 

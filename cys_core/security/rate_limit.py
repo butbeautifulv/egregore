@@ -4,7 +4,7 @@ import time
 from collections import defaultdict, deque
 from typing import Deque
 
-from config import settings
+from bootstrap.settings import settings
 
 
 class RateLimitExceeded(Exception):

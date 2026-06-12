@@ -38,4 +38,4 @@
 ## Workers vs control
 
 - **Workers** запускаются эфемерно через `WorkerOrchestrator` на каждый event
-- **Control** агенты — постоянные bus subscribers в `control/`, не sandbox workers
+- **Control** агенты — постоянные bus subscribers в `interfaces/control_plane/`, не sandbox workers

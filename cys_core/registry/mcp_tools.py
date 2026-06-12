@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 
-from config import settings
+from bootstrap.settings import settings
 from cys_core.registry.tools import tool_registry
 
 
@@ -101,8 +101,8 @@ class McpToolRegistry:
         return self._local_invoke(tool_name, sandbox_id, args)
 
     def _local_invoke(self, tool_name: str, sandbox_id: str, args: dict[str, Any]) -> dict[str, Any]:
-        from tool_gateway.handler import invoke_tool
-        from tool_gateway.models import ToolInvokeRequest
+        from interfaces.gateways.tool.handler import invoke_tool
+        from interfaces.gateways.tool.models import ToolInvokeRequest
 
         response = invoke_tool(
             ToolInvokeRequest(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from config import settings
+from bootstrap.settings import Settings, get_settings
 from cys_core.domain.workers.models import SandboxCredentials
 
 
@@ -39,18 +39,24 @@ class LocalSandboxConnector:
 _sandbox_connector: LocalSandboxConnector | None = None
 
 
-def get_sandbox_connector() -> LocalSandboxConnector:
+def get_sandbox_connector(
+    *,
+    settings: Settings | None = None,
+) -> LocalSandboxConnector:
     """Return sandbox connector; K8s when SANDBOX_CONNECTOR=k8s."""
     global _sandbox_connector
-    if _sandbox_connector is not None:
+    cfg = settings or get_settings()
+    if _sandbox_connector is not None and settings is None:
         return _sandbox_connector
-    if settings.sandbox_connector == "k8s":
+    if cfg.sandbox_connector == "k8s":
         from cys_core.infrastructure.k8s_sandbox import K8sSandboxConnector
 
-        _sandbox_connector = K8sSandboxConnector()
+        connector: LocalSandboxConnector = K8sSandboxConnector(settings=cfg)
     else:
-        _sandbox_connector = LocalSandboxConnector()
-    return _sandbox_connector
+        connector = LocalSandboxConnector()
+    if settings is None:
+        _sandbox_connector = connector
+    return connector
 
 
 def reset_sandbox_connector_cache() -> None:

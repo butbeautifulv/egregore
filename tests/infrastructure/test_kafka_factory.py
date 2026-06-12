@@ -10,7 +10,7 @@ from cys_core.infrastructure.queue import RedisJobQueue, reset_job_queue_cache
 
 @pytest.mark.unit
 def test_get_job_queue_redis_by_default(monkeypatch):
-    from config import get_settings
+    from bootstrap.settings import get_settings
 
     get_settings.cache_clear()
     reset_job_queue_cache()
@@ -27,13 +27,13 @@ def test_get_job_queue_redis_by_default(monkeypatch):
 
 @pytest.mark.unit
 def test_get_job_queue_kafka_when_enabled(monkeypatch):
-    from config import get_settings
+    from bootstrap.settings import get_settings
 
     get_settings.cache_clear()
     reset_job_queue_cache()
     monkeypatch.setenv("USE_KAFKA", "true")
     try:
-        from config import settings
+        from bootstrap.settings import settings
 
         settings.use_kafka = True
         from cys_core.infrastructure.queue import get_job_queue
@@ -42,7 +42,7 @@ def test_get_job_queue_kafka_when_enabled(monkeypatch):
         assert isinstance(queue, KafkaJobQueue)
         assert queue._persona == "soc"
     finally:
-        from config import settings
+        from bootstrap.settings import settings
 
         settings.use_kafka = False
         get_settings.cache_clear()
@@ -51,13 +51,13 @@ def test_get_job_queue_kafka_when_enabled(monkeypatch):
 
 @pytest.mark.unit
 def test_get_bus_transport_kafka_when_enabled(monkeypatch):
-    from config import get_settings
+    from bootstrap.settings import get_settings
 
     get_settings.cache_clear()
     reset_bus_transport_cache()
     monkeypatch.setenv("USE_KAFKA", "true")
     try:
-        from config import settings
+        from bootstrap.settings import settings
 
         settings.use_kafka = True
         from cys_core.infrastructure.bus_transport import get_bus_transport
@@ -65,7 +65,7 @@ def test_get_bus_transport_kafka_when_enabled(monkeypatch):
         bus = get_bus_transport()
         assert isinstance(bus, KafkaBusTransport)
     finally:
-        from config import settings
+        from bootstrap.settings import settings
 
         settings.use_kafka = False
         get_settings.cache_clear()
@@ -74,7 +74,7 @@ def test_get_bus_transport_kafka_when_enabled(monkeypatch):
 
 @pytest.mark.unit
 def test_get_bus_transport_redis_by_default(monkeypatch):
-    from config import get_settings, settings
+    from bootstrap.settings import get_settings, settings
 
     get_settings.cache_clear()
     reset_bus_transport_cache()

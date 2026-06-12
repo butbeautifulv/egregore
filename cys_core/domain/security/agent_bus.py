@@ -114,9 +114,7 @@ class SecureAgentBus:
                     "blocked_privileged_escalation_path",
                     {"sender": sender_id, "recipient": recipient_id, "message_type": message_type},
                 )
-                raise SecurityViolation(
-                    f"Direct path {sender_id}→{recipient_id} requires critic-approved escalation"
-                )
+                raise SecurityViolation(f"Direct path {sender_id}→{recipient_id} requires critic-approved escalation")
 
         if message_type not in sender["allowed_message_types"]:
             raise SecurityViolation(f"Message type '{message_type}' not allowed")
@@ -181,7 +179,13 @@ class SecureAgentBus:
         timestamp: str,
     ) -> str:
         body = json.dumps(
-            {"sender": sender, "recipient": recipient, "type": message_type, "payload": payload, "timestamp": timestamp},
+            {
+                "sender": sender,
+                "recipient": recipient,
+                "type": message_type,
+                "payload": payload,
+                "timestamp": timestamp,
+            },
             sort_keys=True,
         )
         return hmac.new(self.signing_key, body.encode(), hashlib.sha256).hexdigest()
@@ -198,4 +202,3 @@ class SecureAgentBus:
 
     def _log_security_event(self, event_type: str, details: dict[str, Any]) -> None:
         self.security_events.append({"type": event_type, "details": details, "ts": time.time()})
-

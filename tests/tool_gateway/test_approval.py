@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from tool_gateway.approval import (
+from interfaces.gateways.tool.approval import (
     clear_approval_records,
     get_approval_records,
     params_hash,
     record_hitl_approval,
-    validate_resume_approval,
 )
 
 
@@ -31,11 +30,3 @@ def test_record_hitl_approval():
     assert record.approval_id.startswith("appr-")
     assert len(get_approval_records()) == 1
     clear_approval_records()
-
-
-@pytest.mark.unit
-def test_validate_resume_approval_blocks_wrong_id():
-    args = {"target": "x"}
-    digest = params_hash(args)
-    assert validate_resume_approval("appr-1", "appr-2", args, digest) is False
-    assert validate_resume_approval("appr-1", "appr-1", args, digest) is True

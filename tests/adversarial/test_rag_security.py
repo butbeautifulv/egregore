@@ -6,9 +6,9 @@ import pytest
 
 from cys_core.domain.rag.models import ChunkACL, DocumentProvenance, RagChunk
 from cys_core.domain.security.classification import DataClassification
-from rag.ingest.consumer import consume_staging_message
-from rag.retrieve import rag_query
-from rag.store import MemoryVectorStore
+from interfaces.rag.ingest.consumer import consume_staging_message
+from interfaces.rag.retrieve import rag_query
+from interfaces.rag.store import MemoryVectorStore
 
 
 @pytest.mark.adversarial

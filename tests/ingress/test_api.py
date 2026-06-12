@@ -8,7 +8,7 @@ import pytest
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_api_post_event_and_status(monkeypatch):
-    from ingress.api import create_app
+    from interfaces.api.app import create_app
 
     async def fake_aingest(event_type, payload, **kwargs):
         return (
@@ -22,8 +22,11 @@ async def test_api_post_event_and_status(monkeypatch):
 
     from httpx import ASGITransport, AsyncClient
 
-    monkeypatch.setattr("control.critic_service.get_critic_service", lambda: SimpleNamespace(register=lambda: None))
-    monkeypatch.setattr("control.coordinator_service.get_coordinator_service", lambda: SimpleNamespace(register=lambda: None))
+    def noop_service():
+        return SimpleNamespace(register=lambda: None)
+
+    monkeypatch.setattr("interfaces.control_plane.critic_service.get_critic_service", noop_service)
+    monkeypatch.setattr("interfaces.control_plane.coordinator_service.get_coordinator_service", noop_service)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

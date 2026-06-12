@@ -5,7 +5,7 @@ import pytest
 
 @pytest.mark.unit
 def test_kafka_config_defaults():
-    from config import Settings
+    from bootstrap.settings import Settings
 
     settings = Settings()
     assert settings.kafka_bootstrap_servers == "localhost:19092"
@@ -14,7 +14,7 @@ def test_kafka_config_defaults():
 
 @pytest.mark.unit
 def test_kafka_config_from_env(monkeypatch):
-    from config import Settings, get_settings
+    from bootstrap.settings import Settings, get_settings
 
     get_settings.cache_clear()
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "redpanda:9092")

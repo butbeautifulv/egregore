@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from cys_core.domain.security.exceptions import SecurityViolation
-from tool_gateway.sanitize import sanitize_tool_output, wrap_retrieved_tool_data
+from interfaces.gateways.tool.sanitize import sanitize_tool_output, wrap_retrieved_tool_data
 
 
 @pytest.mark.unit

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Measure sanitizer detection rate on docs/injections/ — metadata only, no content output."""
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from cys_core.domain.security.sanitizer import InjectionVerdict, InputSanitizer
+from cys_core.domain.security.sanitizer import InputSanitizer  # noqa: E402
 
 CORPUS_ROOT = _ROOT / "docs" / "injections"
 # Structural lines likely to contain technique markers (not full-file classification).

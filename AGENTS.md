@@ -27,7 +27,7 @@ agents/
 | Role | Примеры | Где используется |
 |------|---------|------------------|
 | `worker` | redteam, network, soc, compliance | Ephemeral sandbox runs via `WorkerOrchestrator` |
-| `control` | critic, coordinator | Async bus subscribers в `control/` |
+| `control` | critic, coordinator | Async bus subscribers в `interfaces/control_plane/` |
 
 Legacy alias: `by_role("specialist")` → `by_workers()`.
 
@@ -44,11 +44,14 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ### Единые точки входа
 
-- **Events:** `ingress/router.py` → `EventIngress`
-- **Workers:** `workers/orchestrator.py` → `WorkerOrchestrator`
+- **Events:** `interfaces/ingress/router.py` → `EventIngress`
+- **Workers:** `interfaces/worker/orchestrator.py` → `WorkerOrchestrator`
+- **CLI:** `uv run cys-agi`
 - **LLM:** `cys_core/llm` — LiteLLM only
-- **Агенты:** `AgentRegistry` + `AgentRuntime`
-- **Конфиг:** `config.settings`
+- **Продукт → runtime:** `bootstrap/product_loader.py` → `AgentDefinition`
+- **Агенты:** `AgentRegistry` + `AgentRuntime` (runtime не знает имён persona)
+- **Конфиг:** `bootstrap/settings.py`
+- **DI:** `bootstrap/container.py`
 
 ### Не делать
 
@@ -88,8 +91,9 @@ Ingress → EventRouter → JobQueue → WorkerOrchestrator → Bus
 ## Тесты
 
 ```bash
-USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ -q
-USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ --cov=cys_core/domain --cov-report=term-missing
+./scripts/pytest_batches.sh
+./scripts/pytest_batches.sh --cov --domain-gate
+USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=cys_core/domain --cov-fail-under=100
 ```
 
 Структура:
@@ -104,15 +108,15 @@ Coverage gate: **100%** на `cys_core/domain`.
 
 ## Cursor Cloud specific instructions
 
-**cys-agi** — CLI + optional FastAPI (`python main.py serve`).
+**cys-agi** — CLI + optional FastAPI (`uv run cys-agi serve`).
 
 ### Команды
 
 | Действие | Команда |
 |----------|---------|
-| Тесты | `USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ -q` |
-| Smoke | `USE_MEMORY_FALLBACK=true STAGE=test uv run python main.py info` |
-| Event flow | `uv run python main.py ingest -t siem.alert -p '{"alert":"test"}'` then `worker --once` |
+| Тесты | `./scripts/pytest_batches.sh` |
+| Smoke | `USE_MEMORY_FALLBACK=true STAGE=test uv run cys-agi info` |
+| Event flow | `uv run cys-agi ingest -t siem.alert -p '{"alert":"test"}'` then `uv run cys-agi worker --once` |
 
 Без API-ключа: `info`, `ingest` (enqueue), `status`, `pytest`.
 

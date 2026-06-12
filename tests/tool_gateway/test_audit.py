@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from tool_gateway.audit import build_audit_record, clear_audit_records, get_audit_records
-from tool_gateway.models import ToolInvokeRequest, ToolInvokeResponse
-from tool_gateway.server import create_app
+from interfaces.gateways.tool.audit import build_audit_record, clear_audit_records, get_audit_records
+from interfaces.gateways.tool.models import ToolInvokeRequest, ToolInvokeResponse
+from interfaces.gateways.tool.server import create_app
 
 
 @pytest.mark.unit

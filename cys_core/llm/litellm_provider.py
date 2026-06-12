@@ -8,8 +8,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import Field
 
-from cys_core.llm.protocol import ChatModelProvider
-
 
 def _to_litellm_message(message: BaseMessage) -> dict[str, Any]:
     if isinstance(message, SystemMessage):

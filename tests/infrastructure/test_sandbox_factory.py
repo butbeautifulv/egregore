@@ -8,7 +8,7 @@ from cys_core.infrastructure.sandbox import LocalSandboxConnector, reset_sandbox
 
 @pytest.mark.unit
 def test_get_sandbox_connector_local_default(monkeypatch):
-    from config import get_settings, settings
+    from bootstrap.settings import get_settings, settings
 
     get_settings.cache_clear()
     reset_sandbox_connector_cache()
@@ -25,7 +25,7 @@ def test_get_sandbox_connector_local_default(monkeypatch):
 
 @pytest.mark.unit
 def test_get_sandbox_connector_k8s(monkeypatch):
-    from config import get_settings, settings
+    from bootstrap.settings import get_settings, settings
 
     get_settings.cache_clear()
     reset_sandbox_connector_cache()

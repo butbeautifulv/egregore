@@ -4,8 +4,8 @@ import pytest
 
 from cys_core.domain.rag.models import DocumentProvenance
 from cys_core.domain.security.classification import DataClassification
-from rag.ingest.chunker import chunk_document
-from rag.ingest.scanner import compute_content_hash, scan_document
+from interfaces.rag.ingest.chunker import chunk_document
+from interfaces.rag.ingest.scanner import compute_content_hash, scan_document
 
 
 @pytest.mark.unit

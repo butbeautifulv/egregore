@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import asyncio
-import json
 from typing import Any
 
 import httpx
 
+from connectors.siem_poll.models import SiemRawAlert, normalize_siem_alert
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.factory import get_input_sanitizer
 from cys_core.domain.security.sanitizer import InputSanitizer
-from connectors.siem_poll.models import SiemRawAlert, normalize_siem_alert
 
 
 class SiemPollClient:
@@ -116,12 +114,6 @@ class SiemPollClient:
                 continue
             results.append(await self.post_event(safe_event))
         return results
-
-    async def poll_loop(self, interval: float = 60.0) -> None:
-        """Run poll_once on a fixed interval until cancelled."""
-        while True:
-            await self.poll_once()
-            await asyncio.sleep(interval)
 
 
 def _extract_alert_records(data: Any) -> list[dict[str, Any]]:

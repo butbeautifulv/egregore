@@ -4,7 +4,6 @@ import pytest
 
 from cys_core.infrastructure.kafka_queue import KafkaJobQueue
 from cys_core.infrastructure.kafka_topics import DLQ_TOPIC, worker_job_topic
-from cys_core.infrastructure.queue import InMemoryJobQueue
 
 
 @pytest.mark.unit

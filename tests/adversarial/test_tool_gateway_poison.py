@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from tool_gateway.server import create_app
+from interfaces.gateways.tool.server import create_app
 
 
 @pytest.mark.adversarial

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from cys_core.infrastructure.bus_transport import InMemoryBusTransport
 from cys_core.infrastructure.queue import InMemoryJobQueue
 from cys_core.infrastructure.sandbox import LocalSandboxConnector
-from cys_core.infrastructure.bus_transport import InMemoryBusTransport
 
 
 @pytest.mark.unit

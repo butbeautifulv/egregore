@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.domain.events.plans import load_plan_routing
 from cys_core.domain.events.router import EventRouter
-from ingress.router_consumer import RouterConsumer
-from workers.orchestrator import WorkerOrchestrator
+from interfaces.ingress.router_consumer import RouterConsumer
+from interfaces.worker.orchestrator import WorkerOrchestrator
 
 
 @pytest.mark.unit

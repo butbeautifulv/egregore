@@ -64,4 +64,3 @@ def parse_threshold(value: str) -> RiskLevel:
         return RiskLevel(value.lower())
     except ValueError:
         return RiskLevel.LOW
-

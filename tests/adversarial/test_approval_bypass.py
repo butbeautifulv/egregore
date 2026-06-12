@@ -1,7 +1,5 @@
 """Abuse case: approval bypass — high-impact findings require HITL."""
 
-from cys_core.domain.security.guardrails import OutputGuardrails
-
 
 def test_high_severity_triggers_hitl(guardrails):
     findings = [{"agent": "redteam", "data": {"severity": "critical", "finding": "RCE"}}]

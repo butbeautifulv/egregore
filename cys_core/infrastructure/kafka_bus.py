@@ -6,8 +6,7 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from config import settings
-
+from bootstrap.settings import Settings, get_settings
 from cys_core.infrastructure.bus_transport import InMemoryBusTransport
 from cys_core.infrastructure.kafka_topics import BUS_FINDINGS_TOPIC
 
@@ -20,8 +19,14 @@ class KafkaBusTransport:
     name = "kafka"
     requires_mtls = True
 
-    def __init__(self, bootstrap_servers: str | None = None) -> None:
-        self._bootstrap = bootstrap_servers or settings.kafka_bootstrap_servers
+    def __init__(
+        self,
+        bootstrap_servers: str | None = None,
+        *,
+        settings: Settings | None = None,
+    ) -> None:
+        cfg = settings or get_settings()
+        self._bootstrap = bootstrap_servers or cfg.kafka_bootstrap_servers
         self._fallback = InMemoryBusTransport()
         self._handlers: dict[str, list[BusHandler]] = defaultdict(list)
         self._producer: Any = None

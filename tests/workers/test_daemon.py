@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from workers.daemon import WorkerDaemon
+from interfaces.worker.daemon import WorkerDaemon
 
 
 @pytest.mark.unit
@@ -17,7 +17,7 @@ async def test_worker_daemon_processes_jobs_then_idles_out():
         None,
     ]
 
-    with patch("workers.daemon.WorkerOrchestrator") as orch_cls:
+    with patch("interfaces.worker.daemon.WorkerOrchestrator") as orch_cls:
         orch = orch_cls.return_value
         orch.process_next = AsyncMock(side_effect=results)
         daemon = WorkerDaemon("soc", max_jobs=1, idle_timeout=0.1)

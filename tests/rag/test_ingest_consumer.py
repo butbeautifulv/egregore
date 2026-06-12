@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from rag.ingest.consumer import consume_staging_message
-from rag.store import MemoryVectorStore, reset_vector_store
-from rag.store import get_vector_store
+from interfaces.rag.ingest.consumer import consume_staging_message
+from interfaces.rag.store import MemoryVectorStore, reset_vector_store
 
 
 @pytest.fixture(autouse=True)
 def _reset_store(monkeypatch):
     reset_vector_store()
-    monkeypatch.setattr("rag.ingest.consumer.get_vector_store", lambda: MemoryVectorStore())
+    monkeypatch.setattr("interfaces.rag.ingest.consumer.get_vector_store", lambda: MemoryVectorStore())
     yield
     reset_vector_store()
 

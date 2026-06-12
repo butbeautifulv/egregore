@@ -9,7 +9,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.base import BaseStore
 from langgraph.store.memory import InMemoryStore
 
-from config import settings
+from bootstrap.settings import settings
 from cys_core.application.ports import PersistenceConnector, PersistenceContext
 
 

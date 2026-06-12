@@ -5,7 +5,7 @@ import pytest
 
 @pytest.mark.unit
 def test_config_computed_fields(monkeypatch):
-    from config import Settings, get_settings
+    from bootstrap.settings import Settings, get_settings
 
     settings = Settings(OPENAI_API_KEY="openai-key", REDIS_PASSWORD="")
 

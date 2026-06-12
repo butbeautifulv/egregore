@@ -4,11 +4,15 @@ import pytest
 
 from cys_core.domain.rag.models import ChunkACL, DocumentProvenance, RagChunk
 from cys_core.domain.security.classification import DataClassification
-from rag.retrieve import rag_query, wrap_retrieved_chunks
-from rag.store import MemoryVectorStore, QdrantVectorStore, get_vector_store, reset_vector_store
+from interfaces.rag.retrieve import rag_query, wrap_retrieved_chunks
+from interfaces.rag.store import MemoryVectorStore, QdrantVectorStore, get_vector_store, reset_vector_store
 
 
-def _chunk(text: str, tenant: str = "default", classification: DataClassification = DataClassification.INTERNAL) -> RagChunk:
+def _chunk(
+    text: str,
+    tenant: str = "default",
+    classification: DataClassification = DataClassification.INTERNAL,
+) -> RagChunk:
     return RagChunk(
         chunk_id=f"id-{hash(text)}",
         text=text,
@@ -60,7 +64,11 @@ def test_rag_query_empty_query_fail_closed():
 
 @pytest.mark.unit
 def test_qdrant_store_falls_back_without_broker(monkeypatch):
-    monkeypatch.setattr("rag.store.QdrantVectorStore.__init__", lambda self, *a, **k: setattr(self, "_client", None) or setattr(self, "_fallback", MemoryVectorStore()))
+    def _init_without_client(self, *a, **k):
+        self._client = None
+        self._fallback = MemoryVectorStore()
+
+    monkeypatch.setattr("interfaces.rag.store.QdrantVectorStore.__init__", _init_without_client)
     store = QdrantVectorStore(url="http://invalid:6333")
     store.upsert([_chunk("fallback chunk")])
     assert store.search("fallback")

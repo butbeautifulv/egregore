@@ -1,0 +1,21 @@
+{
+  "domain_violations": [],
+  "application_violations": [
+    {
+      "module": "cys_core.application.use_cases.invoke_tool",
+      "imports": "interfaces.gateways.tool.models"
+    },
+    {
+      "module": "cys_core.application.use_cases.invoke_tool",
+      "imports": "interfaces.gateways.tool.policy"
+    },
+    {
+      "module": "cys_core.application.use_cases.run_worker_job",
+      "imports": "cys_core.registry.schemas"
+    },
+    {
+      "module": "cys_core.application.use_cases.route_and_enqueue",
+      "imports": "cys_core.observability.tracing"
+    }
+  ]
+}

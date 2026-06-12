@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from control.critic_service import CriticService
-from control.status_store import MemoryStatusStore
+from interfaces.control_plane.critic_service import CriticService
+from interfaces.control_plane.status_store import MemoryStatusStore
 
 
 @pytest.mark.unit
@@ -18,7 +18,7 @@ async def test_critic_requires_hitl_on_low_trust(monkeypatch):
         published.append(payload)
         return True
 
-    monkeypatch.setattr("control.critic_service.publish_awaiting_approval", capture_awaiting)
+    monkeypatch.setattr("interfaces.control_plane.critic_service.publish_awaiting_approval", capture_awaiting)
 
     feedback = await critic.handle_message(
         {
@@ -43,7 +43,7 @@ async def test_critic_hitl_blocks_auto_escalation_for_high_severity(monkeypatch)
         escalations.append(kwargs)
         return True
 
-    monkeypatch.setattr("control.critic_service.publish_escalation_event", capture_escalation)
+    monkeypatch.setattr("interfaces.control_plane.critic_service.publish_escalation_event", capture_escalation)
 
     feedback = await critic.handle_message(
         {
@@ -67,7 +67,7 @@ async def test_l2_approval_publishes_escalation(monkeypatch):
         escalations.append(kwargs)
         return True
 
-    monkeypatch.setattr("control.critic_service.publish_escalation_event", capture_escalation)
+    monkeypatch.setattr("interfaces.control_plane.critic_service.publish_escalation_event", capture_escalation)
 
     approval = {
         "sender": "soc",

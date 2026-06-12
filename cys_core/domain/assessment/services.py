@@ -26,8 +26,7 @@ class HitlPolicy:
             trust_score=trust_score,
             findings_count=len(findings),
             high_severity=[
-                f for f in findings
-                if str(f.get("data", {}).get("severity", "")).lower() in ("high", "critical")
+                f for f in findings if str(f.get("data", {}).get("severity", "")).lower() in ("high", "critical")
             ],
             message="Human approval required before publishing assessment report.",
         )
@@ -61,7 +60,10 @@ class HitlPolicy:
         preview = self.preview(trust_score, findings)
         if manual_decision is None:
             return HitlDecision(approved=False, pending_approval=preview, interrupt_preview=preview)
-        approved = bool(manual_decision) if isinstance(manual_decision, bool) else manual_decision.get("approved", False)
+        if isinstance(manual_decision, bool):
+            approved = bool(manual_decision)
+        else:
+            approved = manual_decision.get("approved", False)
         return HitlDecision(approved=approved, pending_approval=preview)
 
 
@@ -83,4 +85,3 @@ class AssessmentReportBuilder:
             critic_result=state.get("critic_result"),
             errors=state.get("errors", []),
         ).model_dump(exclude_none=True)
-

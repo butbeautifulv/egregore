@@ -4,8 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from config import settings
-
+from bootstrap.settings import settings
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.infrastructure.kafka_topics import RAW_EVENTS_TOPIC
 

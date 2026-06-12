@@ -5,19 +5,19 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from control.job_store import JobStore, get_job_store
 from cys_core.domain.workers.models import PendingHitlAction, WorkerJobStatus
+from interfaces.control_plane.job_store import JobStore
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_hitl_api_job_status_and_resume(monkeypatch):
-    from ingress.api import create_app
+    from interfaces.api.app import create_app
 
     store = JobStore()
-    monkeypatch.setattr("ingress.api.get_job_store", lambda: store)
-    monkeypatch.setattr("control.job_store.get_job_store", lambda: store)
-    monkeypatch.setattr("workers.hitl_resume.get_job_store", lambda: store)
+    monkeypatch.setattr("interfaces.api.app.get_job_store", lambda: store)
+    monkeypatch.setattr("interfaces.control_plane.job_store.get_job_store", lambda: store)
+    monkeypatch.setattr("interfaces.worker.hitl_resume.get_job_store", lambda: store)
 
     pending = PendingHitlAction(
         job_id="job-hitl",
@@ -30,11 +30,11 @@ async def test_hitl_api_job_status_and_resume(monkeypatch):
     store.pause_for_hitl(pending, {"params_hash": "deadbeef", "tool": "run_active_scan"})
 
     monkeypatch.setattr(
-        "workers.hitl_resume.get_runtime",
+        "interfaces.worker.hitl_resume.get_runtime",
         lambda: SimpleNamespace(aresume=AsyncMock(return_value={"ok": True})),
     )
     monkeypatch.setattr(
-        "workers.hitl_resume.params_hash",
+        "interfaces.worker.hitl_resume.params_hash",
         lambda _args: "deadbeef",
     )
 
@@ -60,11 +60,11 @@ async def test_hitl_api_job_status_and_resume(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_hitl_resume_rejects_bad_approval_id(monkeypatch):
-    from ingress.api import create_app
+    from interfaces.api.app import create_app
 
     store = JobStore()
-    monkeypatch.setattr("ingress.api.get_job_store", lambda: store)
-    monkeypatch.setattr("workers.hitl_resume.get_job_store", lambda: store)
+    monkeypatch.setattr("interfaces.api.app.get_job_store", lambda: store)
+    monkeypatch.setattr("interfaces.worker.hitl_resume.get_job_store", lambda: store)
 
     pending = PendingHitlAction(
         job_id="job-bad",

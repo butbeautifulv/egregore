@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tool_gateway.models import ToolInvokeRequest, ToolInvokeResponse
+from interfaces.gateways.tool.models import ToolInvokeRequest, ToolInvokeResponse
 
 
 @pytest.mark.unit

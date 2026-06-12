@@ -18,7 +18,7 @@ cys-agi deployment follows zero-trust, MILS, and least-privilege principles:
 | Domain | `cys_core/domain/` | Pure business/security policy, no I/O |
 | Application ports | `cys_core/application/ports.py` | Dependency inversion boundary |
 | Infrastructure connectors | `cys_core/persistence.py`, `cys_core/llm/` | Swappable storage/model backends |
-| Interface adapters | `graph/`, `coordinator/`, `main.py` | CLI/graph/coordinator composition |
+| Interface adapters | `interfaces/` | API, ingress, workers, control plane, gateways, CLI |
 | Product content | `agents/` | Personas/rules/plans/skills loaded as data |
 | Deployment shell | `Dockerfile`, `docker-compose.secure.yml`, `deploy/` | Container and network isolation |
 
@@ -99,10 +99,10 @@ For stronger runtime sandboxing, run the container with the secure compose profi
 
 ## FastAPI event API
 
-`ingress/api.py` exposes:
+`interfaces/api/app.py` exposes:
 
 - `POST /events` — ingest structured security events
 - `GET /status` — control plane snapshot
 - `POST /workers/process-one` — process next worker job
 
-Start with `python main.py serve`. Use async entrypoints (`WorkerOrchestrator.process_next`, `EventIngress.aingest`) from ASGI handlers — not sync wrappers.
+Start with `uv run cys-agi serve`. Use async entrypoints (`WorkerOrchestrator.process_next`, `EventIngress.aingest`) from ASGI handlers — not sync wrappers.

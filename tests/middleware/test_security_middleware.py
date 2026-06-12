@@ -18,7 +18,7 @@ def test_security_middleware_paths_and_hitl_builder(monkeypatch):
     middleware = security_middleware.SecurityMiddleware("agent-a", "session-a")
     middleware.rate_limiter = SimpleNamespace(check=MagicMock())
     middleware.monitor = SimpleNamespace(log_security_event=MagicMock(), log_tool_call=MagicMock())
-    monkeypatch.setattr(security_middleware.settings, "stage", "dev")
+    middleware.stage = "dev"
 
     class HighRisk:
         value = "high"
@@ -35,7 +35,11 @@ def test_security_middleware_paths_and_hitl_builder(monkeypatch):
     assert "requires human approval" in gated.content
 
     middleware.rate_limiter.check.side_effect = RuntimeError("too many")
-    limited = middleware.wrap_tool_call(request("parse_netflow"), lambda req: ToolMessage(content="ok", tool_call_id="x"))
+
+    def ok_handler(req):
+        return ToolMessage(content="ok", tool_call_id="x")
+
+    limited = middleware.wrap_tool_call(request("parse_netflow"), ok_handler)
     assert limited.status == "error"
     middleware.monitor.log_security_event.assert_called()
 
@@ -51,7 +55,10 @@ def test_security_middleware_paths_and_hitl_builder(monkeypatch):
     middleware.monitor.log_tool_call.assert_called()
 
     with pytest.raises(ValueError, match="handler failed"):
-        middleware.wrap_tool_call(request("parse_netflow"), lambda _req: (_ for _ in ()).throw(ValueError("handler failed")))
+        middleware.wrap_tool_call(
+            request("parse_netflow"),
+            lambda _req: (_ for _ in ()).throw(ValueError("handler failed")),
+        )
 
     from cys_core.domain.agents.policies import build_interrupt_on
 
@@ -68,7 +75,7 @@ def test_security_middleware_interrupts_in_prod(monkeypatch):
     )
     middleware.rate_limiter = SimpleNamespace(check=MagicMock())
     middleware.monitor = SimpleNamespace(log_security_event=MagicMock(), log_tool_call=MagicMock())
-    monkeypatch.setattr(security_middleware.settings, "stage", "prod")
+    middleware.stage = "prod"
     monkeypatch.setattr(security_middleware, "register_hitl_pause", lambda preview: None)
     monkeypatch.setattr(security_middleware, "interrupt", lambda preview: {"decision": "approve"})
 
@@ -107,7 +114,7 @@ async def test_security_middleware_async_paths(monkeypatch):
     rate_limiter = FakeRateLimiter()
     middleware.rate_limiter = rate_limiter
     middleware.monitor = SimpleNamespace(log_security_event=MagicMock(), log_tool_call=MagicMock())
-    monkeypatch.setattr(security_middleware.settings, "stage", "prod")
+    middleware.stage = "prod"
     monkeypatch.setattr(security_middleware, "register_hitl_pause", lambda preview: None)
     monkeypatch.setattr(security_middleware, "interrupt", lambda preview: {"decision": "reject"})
 
@@ -126,7 +133,11 @@ async def test_security_middleware_async_paths(monkeypatch):
     assert "rejected" in gated.content
 
     rate_limiter.error = RuntimeError("too many")
-    limited = await middleware.awrap_tool_call(request("parse_netflow"), lambda req: ToolMessage(content="ok", tool_call_id="x"))
+
+    def async_ok(req):
+        return ToolMessage(content="ok", tool_call_id="x")
+
+    limited = await middleware.awrap_tool_call(request("parse_netflow"), async_ok)
     assert limited.status == "error"
     middleware.monitor.log_security_event.assert_called()
 

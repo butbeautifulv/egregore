@@ -4,16 +4,7 @@ import re
 import unicodedata
 
 # Zero-width, bidi overrides, variation selectors.
-ZERO_WIDTH_CHARS = re.compile(
-    "["
-    "\u200b-\u200f"
-    "\u202a-\u202e"
-    "\u2060-\u2064"
-    "\ufeff"
-    "\u2066-\u2069"
-    "\ufe00-\ufe0f"
-    "]"
-)
+ZERO_WIDTH_CHARS = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\u2066-\u2069\ufe00-\ufe0f]")
 
 # Cyrillic letters that look like Latin (fold to Latin for cross-script matching).
 _CYRILLIC_TO_LATIN = str.maketrans(
@@ -97,7 +88,7 @@ def fold_confusables(text: str) -> str:
     result = text
     for token in tokens:
         has_ascii = any("A" <= ch <= "Z" or "a" <= ch <= "z" for ch in token)
-        has_cyrillic = any("\u0400" <= ch <= "\u04FF" for ch in token)
+        has_cyrillic = any("\u0400" <= ch <= "\u04ff" for ch in token)
         if has_ascii and has_cyrillic:
             folded = token.translate(_CYRILLIC_TO_LATIN)
             if folded != token:

@@ -1,3 +1,5 @@
+> **Note:** Historical production roadmap. Post-DDD layout and canonical paths: [ARCHITECTURE.md](ARCHITECTURE.md), [REFACTOR_COMPLETE.md](REFACTOR_COMPLETE.md). Legacy `graph/` and `coordinator/deep_assessment.py` removed.
+
 ---
 name: Secure Multi-Agent Platform
 overview: "Мастер-план production self-hosted платформы: Ingress API + Redpanda/Kafka → worker daemons в sandbox → MCP Tool Gateway с zero-trust санитизацией → Secure RAG → observability (Langfuse/Prometheus/Grafana). Строится поверх существующего domain security layer и event-driven scaffold."
@@ -991,7 +993,7 @@ P1.2.2 и P1.2.3 — **sequential** после P1.2.1 (оба трогают fac
 
 ## 8. Что НЕ трогаем / deprecated
 
-- [`graph/workflow.py`](graph/workflow.py) — остаётся deprecated
+- `graph/` и `coordinator/deep_assessment.py` — **удалены** (см. REFACTOR_COMPLETE.md)
 - Domain security tests — **100% coverage gate** на `cys_core/domain` сохраняем
 - [`agents/plans/*.yaml`](agents/plans/) — routing rules, не batch pipeline
 - Redis — только rate limit, не primary queue в prod

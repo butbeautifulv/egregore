@@ -12,4 +12,3 @@ sample: samples/default.txt
 interrupt_on:
   write_file: true
   run_active_scan: true
-  run_assessment_pipeline: false

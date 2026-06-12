@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from config import settings
+from bootstrap.settings import Settings, get_settings
 from cys_core.domain.workers.models import SandboxCredentials
 from cys_core.infrastructure.sandbox import LocalSandboxConnector
 
@@ -19,8 +19,10 @@ class K8sSandboxConnector:
         namespace: str | None = None,
         batch_api: Any = None,
         fallback: LocalSandboxConnector | None = None,
+        settings: Settings | None = None,
     ) -> None:
-        self.namespace = namespace or settings.k8s_namespace
+        self._settings = settings or get_settings()
+        self.namespace = namespace or self._settings.k8s_namespace
         self._batch_api = batch_api
         self._fallback = fallback or LocalSandboxConnector()
         self._job_names: dict[str, str] = {}
@@ -50,8 +52,16 @@ class K8sSandboxConnector:
                         "containers": [
                             {
                                 "name": "worker",
-                                "image": settings.k8s_worker_image,
-                                "args": ["python", "-m", "workers.daemon", "--persona", persona, "--max-jobs", "1"],
+                                "image": self._settings.k8s_worker_image,
+                                "args": [
+                                    "python",
+                                    "-m",
+                                    "interfaces.worker.daemon",
+                                    "--persona",
+                                    persona,
+                                    "--max-jobs",
+                                    "1",
+                                ],
                                 "env": [{"name": "RUN_ID", "value": run_id}],
                             }
                         ],

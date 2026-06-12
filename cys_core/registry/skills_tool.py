@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from langchain_core.tools import StructuredTool
 
-from skill_gateway.load import SkillLoadError, load_skill
+from interfaces.gateways.skill.load import SkillLoadError, load_skill
 
 
 def make_load_skill_tool(

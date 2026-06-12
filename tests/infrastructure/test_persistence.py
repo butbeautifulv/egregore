@@ -58,7 +58,10 @@ def test_persistence_memory_postgres_fallback_and_singleton(monkeypatch):
     assert checkpoint_cm.exited is True
     assert store_cm.exited is True
 
-    checkpoint_module.PostgresSaver = SimpleNamespace(from_conn_string=lambda _url: (_ for _ in ()).throw(RuntimeError("db")))
+    def _raise_db_error(_url: str) -> None:
+        raise RuntimeError("db")
+
+    checkpoint_module.PostgresSaver = SimpleNamespace(from_conn_string=_raise_db_error)
     fallback_stack = persistence.PersistenceStack(force_memory=False).__enter__()
     assert fallback_stack.checkpointer is not None
     assert fallback_stack.store is not None

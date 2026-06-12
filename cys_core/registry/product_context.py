@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
-from config import settings
+from bootstrap.settings import settings
 from cys_core.domain.security.prompt_context import TrustedSystemContext, build_trusted_system_context
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

@@ -20,4 +20,3 @@ class AssessmentReport(BaseModel):
     errors: list[str] = Field(default_factory=list)
     reason: str | None = None
     pending_approval: dict[str, Any] | None = None
-

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from cys_core.domain.events.router import EventRouter
 from cys_core.domain.events.plans import load_plan_routing
-from ingress.router import EventIngress
+from cys_core.domain.events.router import EventRouter
+from interfaces.ingress.router import EventIngress
 
 
 @pytest.mark.unit

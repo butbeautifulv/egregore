@@ -3,9 +3,7 @@ from __future__ import annotations
 FUZZY_DISTANCE_THRESHOLD = 2
 MIN_FUZZY_WORD_LENGTH = 4
 
-FUZZY_KEYWORDS_EN = frozenset(
-    {"ignore", "bypass", "override", "reveal", "delete", "system", "disregard"}
-)
+FUZZY_KEYWORDS_EN = frozenset({"ignore", "bypass", "override", "reveal", "delete", "system", "disregard"})
 
 FUZZY_KEYWORDS_RU = frozenset(
     {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -126,15 +126,9 @@ class AgentMonitor:
         )
 
     def _check_anomalies(self, session_id: str, event: AgentSecurityEvent) -> None:
-        metrics = self.session_metrics.setdefault(
-            session_id, {"tool_calls": [], "failed_calls": 0}
-        )
+        metrics = self.session_metrics.setdefault(session_id, {"tool_calls": [], "failed_calls": 0})
         metrics["tool_calls"].append(datetime.now(timezone.utc))
-        recent = [
-            t
-            for t in metrics["tool_calls"]
-            if (datetime.now(timezone.utc) - t).total_seconds() < 60
-        ]
+        recent = [t for t in metrics["tool_calls"] if (datetime.now(timezone.utc) - t).total_seconds() < 60]
         if len(recent) > self.ANOMALY_THRESHOLDS["tool_calls_per_minute"]:
             self.log_security_event(
                 session_id,

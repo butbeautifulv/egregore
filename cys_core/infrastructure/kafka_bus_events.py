@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from config import settings
+from bootstrap.settings import settings
 from cys_core.infrastructure.kafka_topics import BUS_FINDINGS_TOPIC
 
 

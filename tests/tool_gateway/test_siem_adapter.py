@@ -3,10 +3,10 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from tool_gateway.adapters.siem import query_siem_readonly_search
-from tool_gateway.handler import invoke_tool
-from tool_gateway.models import ToolInvokeRequest
-from tool_gateway.server import create_app
+from interfaces.gateways.tool.adapters.siem import query_siem_readonly_search
+from interfaces.gateways.tool.handler import invoke_tool
+from interfaces.gateways.tool.models import ToolInvokeRequest
+from interfaces.gateways.tool.server import create_app
 
 
 @pytest.mark.unit
@@ -40,7 +40,7 @@ def test_gateway_invoke_query_siem_readonly():
 @pytest.mark.unit
 def test_handler_uses_adapter_not_registry_stub(monkeypatch):
     monkeypatch.setattr(
-        "tool_gateway.handler.invoke_adapter",
+        "interfaces.gateways.tool.handler.invoke_adapter",
         lambda name, args: {"adapter": True, "query": args.get("query", "")},
     )
 

@@ -5,7 +5,7 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from config import settings
+from bootstrap.settings import Settings, get_settings
 
 BusHandler = Callable[[dict[str, Any]], Awaitable[None] | None]
 
@@ -48,11 +48,12 @@ class RedisBusTransport:
     requires_mtls = True
     CHANNEL_PREFIX = "cys:bus:"
 
-    def __init__(self, redis_url: str | None = None) -> None:
+    def __init__(self, redis_url: str | None = None, *, settings: Settings | None = None) -> None:
         self._fallback = InMemoryBusTransport()
         self._handlers: dict[str, list[BusHandler]] = defaultdict(list)
         self._redis = None
-        self._redis_url = redis_url or settings.redis_url
+        cfg = settings or get_settings()
+        self._redis_url = redis_url or cfg.redis_url
         try:
             import redis
 
@@ -88,18 +89,24 @@ class RedisBusTransport:
 _bus_transport: RedisBusTransport | InMemoryBusTransport | None = None
 
 
-def get_bus_transport() -> RedisBusTransport | InMemoryBusTransport:
+def get_bus_transport(
+    *,
+    settings: Settings | None = None,
+) -> RedisBusTransport | InMemoryBusTransport:
     """Return bus transport connector; Kafka when USE_KAFKA=true."""
     global _bus_transport
-    if _bus_transport is not None:
+    cfg = settings or get_settings()
+    if _bus_transport is not None and settings is None:
         return _bus_transport
-    if settings.use_kafka:
+    if cfg.use_kafka:
         from cys_core.infrastructure.kafka_bus import KafkaBusTransport
 
-        _bus_transport = KafkaBusTransport()
+        transport: RedisBusTransport | InMemoryBusTransport = KafkaBusTransport(settings=cfg)
     else:
-        _bus_transport = RedisBusTransport()
-    return _bus_transport
+        transport = RedisBusTransport(settings=cfg)
+    if settings is None:
+        _bus_transport = transport
+    return transport
 
 
 def reset_bus_transport_cache() -> None:

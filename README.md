@@ -29,25 +29,25 @@ docker compose up -d   # Postgres + Redis + Redpanda + Qdrant
 
 cp .env.example .env   # LLM API key
 
-python main.py info
+uv run cys-agi info
 
 # Ingest SIEM event → enqueue SOC worker
-python main.py ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
+uv run cys-agi ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
 
 # Process queued worker job
-python main.py worker --once
+uv run cys-agi worker --once
 
 # Control plane status
-python main.py status
+uv run cys-agi status
 
 # Manual investigation (all workers)
-python main.py session -g "Assess CI/CD pipeline risks"
+uv run cys-agi session -g "Assess CI/CD pipeline risks"
 
 # HTTP API
-python main.py serve --port 8080
+uv run cys-agi serve --port 8080
 
-# Tests
-USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ -q
+# Tests (low memory — one pytest process per tests/<dir>/)
+./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## CLI
@@ -94,26 +94,20 @@ USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ -q
 ```
 cys-agi/
 ├── agents/                 # Продукт: personas, rules, plans, skills
-├── ingress/                # EventIngress, FastAPI
-├── workers/                # WorkerOrchestrator
-├── control/                # Critic + Coordinator, daemons, StatusStore
-├── tool_gateway/           # MCP PEP (invoke, audit, HITL approval)
-├── skill_gateway/          # Secure skill load
-├── rag/                    # Ingest, store, retrieve
-├── connectors/             # SIEM poll → ingress
+├── bootstrap/              # settings, DI container, product_loader
+├── connectors/             # SIEM poll → ingress API
+├── interfaces/             # Delivery: api, ingress, worker, control_plane, gateways, rag, cli
 ├── deploy/k8s/             # Worker Job + NetworkPolicy
 ├── deploy/grafana/         # SOC dashboards
 ├── cys_core/
 │   ├── domain/             # events, workers, findings, security, rag, skills
+│   ├── application/        # ports, use-cases
 │   ├── infrastructure/     # sandbox, queue, bus, kafka
 │   ├── observability/      # Prometheus, tracing, Langfuse tags
 │   ├── registry/           # AgentRegistry, tools, mcp_tools, skills
 │   └── runtime/            # AgentRuntime
-├── graph/                  # Deprecated batch workflow (compat shim)
-├── coordinator/            # Deep Agents (optional sessions)
 ├── docs/
-├── tests/
-└── main.py
+└── tests/
 ```
 
 ## Роли агентов
@@ -131,7 +125,7 @@ cys-agi/
 | `STAGE` | `dev` | `dev` / `test` / `prod` |
 | `USE_MEMORY_FALLBACK` | `false` | In-memory queue/sandbox fallback |
 | `USE_KAFKA` | `false` | Kafka job queue + bus transport |
-| `USE_TOOL_GATEWAY` | `false` | MCP tools via `tool_gateway` PEP |
+| `USE_TOOL_GATEWAY` | `false` | MCP tools via `interfaces.gateways.tool` PEP |
 | `USE_QDRANT` | `false` | Qdrant RAG store (else in-memory) |
 | `SANDBOX_CONNECTOR` | `local` | `local` \| `k8s` worker sandbox |
 | `STATUS_STORE_CONNECTOR` | `auto` | Control plane status (`postgres` in prod) |
@@ -144,13 +138,14 @@ cys-agi/
 ## Тестирование
 
 ```bash
-USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ -q --cov=cys_core/domain
+./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## Документация
 
 | Файл | Содержание |
 |------|------------|
+| [docs/REFACTOR_COMPLETE.md](docs/REFACTOR_COMPLETE.md) | DDD refactor checklist |
 | [AGENTS.md](AGENTS.md) | Правила для AI-ассистентов |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Event-driven architecture |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Разработка и отладка |

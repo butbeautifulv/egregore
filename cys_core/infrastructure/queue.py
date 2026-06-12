@@ -4,7 +4,7 @@ import json
 from collections import deque
 from typing import Any
 
-from config import settings
+from bootstrap.settings import Settings, get_settings
 
 
 class InMemoryJobQueue:
@@ -38,11 +38,12 @@ class RedisJobQueue:
     name = "redis"
     STREAM_KEY = "cys:worker:jobs"
 
-    def __init__(self, redis_url: str | None = None) -> None:
+    def __init__(self, redis_url: str | None = None, *, settings: Settings | None = None) -> None:
         self._fallback = InMemoryJobQueue()
         self._redis = None
         self._async_redis = None
-        self._redis_url = redis_url or settings.redis_url
+        cfg = settings or get_settings()
+        self._redis_url = redis_url or cfg.redis_url
         try:
             import redis
 
@@ -80,16 +81,21 @@ class RedisJobQueue:
 _queues: dict[str | None, RedisJobQueue | InMemoryJobQueue] = {}
 
 
-def get_job_queue(persona: str | None = None) -> RedisJobQueue | InMemoryJobQueue:
+def get_job_queue(
+    persona: str | None = None,
+    *,
+    settings: Settings | None = None,
+) -> RedisJobQueue | InMemoryJobQueue:
     """Return job queue connector; Kafka when USE_KAFKA=true."""
+    cfg = settings or get_settings()
     if persona in _queues:
         return _queues[persona]
-    if settings.use_kafka:
+    if cfg.use_kafka:
         from cys_core.infrastructure.kafka_queue import KafkaJobQueue
 
-        queue: RedisJobQueue | InMemoryJobQueue = KafkaJobQueue(persona=persona)
+        queue: RedisJobQueue | InMemoryJobQueue = KafkaJobQueue(persona=persona, settings=cfg)
     else:
-        queue = RedisJobQueue()
+        queue = RedisJobQueue(settings=cfg)
     _queues[persona] = queue
     return queue
 

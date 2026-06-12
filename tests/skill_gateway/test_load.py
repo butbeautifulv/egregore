@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from skill_gateway.audit import clear_skill_audit_records, get_skill_audit_records
-from skill_gateway.load import SkillLoadError, load_skill
+from interfaces.gateways.skill.audit import clear_skill_audit_records, get_skill_audit_records
+from interfaces.gateways.skill.load import SkillLoadError, load_skill
 
 
 @pytest.mark.unit

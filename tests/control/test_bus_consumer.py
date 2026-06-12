@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from control.bus_consumer import BusFindingsConsumer
+from interfaces.control_plane.bus_consumer import BusFindingsConsumer
 
 
 @pytest.mark.unit

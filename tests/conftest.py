@@ -6,6 +6,12 @@ os.environ.setdefault("USE_MEMORY_FALLBACK", "true")
 os.environ.setdefault("STAGE", "test")
 
 
+def pytest_configure(config):
+    from bootstrap.container import get_container
+
+    get_container()
+
+
 @pytest.fixture
 def sanitizer():
     from cys_core.domain.security.sanitizer import InputSanitizer

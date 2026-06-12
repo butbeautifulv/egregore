@@ -1,7 +1,6 @@
 import pytest
 
 from cys_core.domain.events.models import RoutingRule, SecurityEvent
-from cys_core.domain.events.plans import PlanRoutingConfig
 from cys_core.domain.events.plans import PlanRoutingConfig, load_plan_routing, rule_matches, severity_at_least
 from cys_core.domain.events.router import EventRouter
 
@@ -75,34 +74,38 @@ routing:
 
 @pytest.mark.unit
 def test_event_router_skips_non_matching_rules():
-    router = EventRouter([
-        PlanRoutingConfig(
-            id="p1",
-            rules=[
-                RoutingRule(event_types=["netflow.beacon"], personas=["network"]),
-                RoutingRule(event_types=["siem.alert"], personas=["soc"]),
-            ],
-        ),
-    ])
+    router = EventRouter(
+        [
+            PlanRoutingConfig(
+                id="p1",
+                rules=[
+                    RoutingRule(event_types=["netflow.beacon"], personas=["network"]),
+                    RoutingRule(event_types=["siem.alert"], personas=["soc"]),
+                ],
+            ),
+        ]
+    )
     decision = router.route(SecurityEvent(id="e5", type="siem.alert", severity="low"))
     assert decision.personas == ["soc"]
 
 
 @pytest.mark.unit
 def test_event_router_deduplicates_personas():
-    router = EventRouter([
-        PlanRoutingConfig(
-            id="p1",
-            rules=[
-                RoutingRule(event_types=["siem.alert"], personas=["soc"]),
-            ],
-        ),
-        PlanRoutingConfig(
-            id="p2",
-            rules=[
-                RoutingRule(event_types=["siem.alert"], personas=["soc", "network"]),
-            ],
-        ),
-    ])
+    router = EventRouter(
+        [
+            PlanRoutingConfig(
+                id="p1",
+                rules=[
+                    RoutingRule(event_types=["siem.alert"], personas=["soc"]),
+                ],
+            ),
+            PlanRoutingConfig(
+                id="p2",
+                rules=[
+                    RoutingRule(event_types=["siem.alert"], personas=["soc", "network"]),
+                ],
+            ),
+        ]
+    )
     decision = router.route(SecurityEvent(id="e4", type="siem.alert", severity="medium"))
     assert decision.personas == ["soc", "network"]

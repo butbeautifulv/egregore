@@ -4,8 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from config import settings
-
+from bootstrap.settings import settings
 from cys_core.infrastructure.kafka_topics import PAUSED_JOBS_TOPIC
 
 _paused_records: list[dict[str, Any]] = []

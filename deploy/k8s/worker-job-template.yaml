@@ -19,7 +19,7 @@ spec:
       containers:
         - name: worker
           image: cys-agi-worker:latest
-          command: ["python", "-m", "workers.daemon"]
+          command: ["python", "-m", "interfaces.worker.daemon"]
           args: ["--persona", "{{ persona }}", "--max-jobs", "1"]
           env:
             - name: RUN_ID

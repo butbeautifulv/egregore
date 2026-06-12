@@ -62,9 +62,7 @@ class InputSanitizer:
             return InjectionVerdict.HARD
         if self._has_unicode_tag_smuggling(content) or is_mixed_script_smuggling(content):
             return InjectionVerdict.SOFT
-        if self._matches_any_soft(candidates) or any(
-            self._matches_fuzzy(candidate) for candidate in candidates
-        ):
+        if self._matches_any_soft(candidates) or any(self._matches_fuzzy(candidate) for candidate in candidates):
             return InjectionVerdict.SOFT
         if self._matches_encoded_soft(content) or any(
             self._matches_encoded_soft(candidate) for candidate in candidates
@@ -99,9 +97,7 @@ class InputSanitizer:
             elif isinstance(value, dict):
                 result[key] = self.sanitize_payload(value, source=source)
             elif isinstance(value, list):
-                result[key] = [
-                    self.sanitize(v, source=source) if isinstance(v, str) else v for v in value
-                ]
+                result[key] = [self.sanitize(v, source=source) if isinstance(v, str) else v for v in value]
             else:
                 result[key] = value
         return result

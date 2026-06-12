@@ -4,6 +4,15 @@ import json
 
 from langchain_core.tools import BaseTool, tool
 
+from cys_core.application.ports.tool_backend import ToolBackend
+
+_tool_backend: ToolBackend | None = None
+
+
+def configure_tool_backend(backend: ToolBackend) -> None:
+    global _tool_backend
+    _tool_backend = backend
+
 
 @tool
 def read_repo_metadata(repo_path: str) -> str:
@@ -78,10 +87,10 @@ def correlate_dns(dns_events: str) -> str:
 @tool
 def query_siem_readonly(query: str, time_range: str = "24h") -> str:
     """Execute read-only SIEM search. Worker runs route via MCP Tool Gateway."""
-    from tool_gateway.adapters.siem import query_siem_readonly_search
-
+    if _tool_backend is None:
+        return json.dumps({"error": "tool backend not configured"}, ensure_ascii=False)
     return json.dumps(
-        query_siem_readonly_search(query=query, time_range=time_range),
+        _tool_backend.query_siem(query=query, time_range=time_range),
         ensure_ascii=False,
     )
 
@@ -89,10 +98,10 @@ def query_siem_readonly(query: str, time_range: str = "24h") -> str:
 @tool
 def rag_query(query: str, persona: str = "soc", tenant: str = "default") -> str:
     """Retrieve ACL-filtered knowledge base chunks via MCP Tool Gateway."""
-    from tool_gateway.adapters.rag import rag_query_tool
-
+    if _tool_backend is None:
+        return json.dumps({"error": "tool backend not configured"}, ensure_ascii=False)
     return json.dumps(
-        rag_query_tool(query=query, persona=persona, tenant=tenant),
+        _tool_backend.rag_query(query=query, persona=persona, tenant=tenant),
         ensure_ascii=False,
     )
 

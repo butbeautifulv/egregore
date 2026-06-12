@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from config import settings
+from bootstrap.settings import settings
 from cys_core.application.ports import ModelConnector
 from cys_core.llm.litellm_provider import LiteLLMProvider
 from cys_core.llm.protocol import ChatModelProvider

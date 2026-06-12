@@ -30,4 +30,3 @@ class A2AEnvelope(BaseModel):
 
 def default_mtls_subject(agent_id: str) -> str:
     return f"spiffe://cys-agi/agent/{agent_id}"
-

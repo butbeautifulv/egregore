@@ -4,8 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from config import settings
-
+from bootstrap.settings import Settings, get_settings
 from cys_core.infrastructure.kafka_topics import DLQ_TOPIC, worker_job_topic
 from cys_core.infrastructure.queue import InMemoryJobQueue
 
@@ -19,8 +18,11 @@ class KafkaJobQueue:
         self,
         bootstrap_servers: str | None = None,
         persona: str | None = None,
+        *,
+        settings: Settings | None = None,
     ) -> None:
-        self._bootstrap = bootstrap_servers or settings.kafka_bootstrap_servers
+        cfg = settings or get_settings()
+        self._bootstrap = bootstrap_servers or cfg.kafka_bootstrap_servers
         self._persona = persona
         self._fallback = InMemoryJobQueue()
         self._producer: Any = None

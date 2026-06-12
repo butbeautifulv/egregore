@@ -3,16 +3,16 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from cys_core.security.job_budget import JobBudgetExceeded, JobBudgetTracker
-from tool_gateway.policy import clear_all_chain_states
-from tool_gateway.server import create_app
+from cys_core.domain.workers.job_budget import JobBudgetTracker
+from interfaces.gateways.tool.policy import clear_all_chain_states
+from interfaces.gateways.tool.server import create_app
 
 
 @pytest.mark.adversarial
 def test_gateway_blocks_high_risk_tool_chain(monkeypatch):
     clear_all_chain_states()
     JobBudgetTracker.clear_all()
-    monkeypatch.setattr("tool_gateway.policy.settings.max_high_risk_tool_chain_depth", 1)
+    monkeypatch.setattr("interfaces.gateways.tool.policy.settings.max_high_risk_tool_chain_depth", 1)
 
     client = TestClient(create_app())
     body = {

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -77,7 +76,9 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     }
 
     invoker = runtime_agent.AgentRuntime(SimpleNamespace(), model_connector=model_connector)
-    structured_result = SimpleNamespace(invoke=lambda *_args, **_kwargs: {"structured_response": DemoSchema(value="ok")})
+    structured_result = SimpleNamespace(
+        invoke=lambda *_args, **_kwargs: {"structured_response": DemoSchema(value="ok")}
+    )
     assert invoker._invoke(structured_result, "text", session_id="sid", schema=DemoSchema) == {"value": "ok"}
 
     dict_result = SimpleNamespace(invoke=lambda *_args, **_kwargs: {"structured_response": {"value": "dict"}})
@@ -93,14 +94,18 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     raw_result = SimpleNamespace(invoke=lambda *_args, **_kwargs: {"messages": [SimpleNamespace(content="not-json")]})
     assert invoker._invoke(raw_result, "text", session_id="sid", schema=None) == {"raw_response": "not-json"}
 
-    invalid_schema = SimpleNamespace(invoke=lambda *_args, **_kwargs: {"messages": [SimpleNamespace(content='{"bad": "data"}')]})
+    invalid_schema = SimpleNamespace(
+        invoke=lambda *_args, **_kwargs: {"messages": [SimpleNamespace(content='{"bad": "data"}')]}
+    )
     monkeypatch.setattr(runtime_agent.settings, "stage", "dev")
     assert invoker._invoke(invalid_schema, "text", session_id="sid", schema=StrictSchema) == {"bad": "data"}
     monkeypatch.setattr(runtime_agent.settings, "stage", "test")
     with pytest.raises(runtime_agent.SecurityViolation):
         invoker._invoke(invalid_schema, "text", session_id="sid", schema=StrictSchema)
 
-    valid_json = SimpleNamespace(invoke=lambda *_args, **_kwargs: {"messages": [SimpleNamespace(content='{"ok": true}')]})
+    valid_json = SimpleNamespace(
+        invoke=lambda *_args, **_kwargs: {"messages": [SimpleNamespace(content='{"ok": true}')]}
+    )
     assert invoker._invoke(valid_json, "text", session_id="sid", schema=None)["response"] == '{"ok": true}'
 
     async def fake_agent_ainvoke(*_args, **_kwargs):
@@ -118,18 +123,3 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
         assert isinstance(runtime_agent.get_runtime(), runtime_agent.AgentRuntime)
     finally:
         runtime_agent.get_runtime.cache_clear()
-
-    import graph.workflow as workflow
-
-    monkeypatch.setattr(workflow, "run_assessment", lambda *args, **kwargs: {"report": {"status": "ok"}})
-    pipeline_tool = runtime_agent.make_assessment_pipeline_tool(runtime)
-    assert json.loads(pipeline_tool.invoke({"input_text": "assess", "thread_id": "tid"})) == {"status": "ok"}
-
-    async def fake_run_assessment_async(*args, **kwargs):
-        return {"report": {"status": "async-ok"}}
-
-    monkeypatch.setattr(workflow, "run_assessment_async", fake_run_assessment_async)
-    async_pipeline_tool = runtime_agent.make_async_assessment_pipeline_tool(runtime)
-    assert json.loads(await async_pipeline_tool.ainvoke({"input_text": "assess", "thread_id": "tid"})) == {
-        "status": "async-ok"
-    }

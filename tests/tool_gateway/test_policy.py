@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from tool_gateway.models import ToolInvokeRequest
-from tool_gateway.policy import (
+from interfaces.gateways.tool.models import ToolInvokeRequest
+from interfaces.gateways.tool.policy import (
     ToolChainDepthExceeded,
     check_tool_chain,
     clear_all_chain_states,
@@ -14,7 +14,7 @@ from tool_gateway.policy import (
 @pytest.mark.unit
 def test_high_risk_chain_depth_limit(monkeypatch):
     clear_all_chain_states()
-    monkeypatch.setattr("tool_gateway.policy.settings.max_high_risk_tool_chain_depth", 2)
+    monkeypatch.setattr("interfaces.gateways.tool.policy.settings.max_high_risk_tool_chain_depth", 2)
     req = ToolInvokeRequest(
         tool_name="run_active_scan",
         args={"target": "lab"},
@@ -33,7 +33,7 @@ def test_high_risk_chain_depth_limit(monkeypatch):
 @pytest.mark.unit
 def test_low_risk_tool_resets_chain(monkeypatch):
     clear_all_chain_states()
-    monkeypatch.setattr("tool_gateway.policy.settings.max_high_risk_tool_chain_depth", 2)
+    monkeypatch.setattr("interfaces.gateways.tool.policy.settings.max_high_risk_tool_chain_depth", 2)
     high = ToolInvokeRequest(
         tool_name="run_active_scan",
         args={},

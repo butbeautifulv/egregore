@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from control.job_store import JobStore
 from cys_core.domain.workers.models import PendingHitlAction, WorkerJobStatus
+from interfaces.control_plane.job_store import JobStore
 
 
 @pytest.mark.unit

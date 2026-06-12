@@ -36,9 +36,7 @@ def test_redact_and_log_rules():
 @pytest.mark.unit
 def test_apply_protection_redacts_payload():
     builder = SecureContextBuilder(persona="critic")
-    protected = builder.apply_protection(
-        {"text": "restricted memo", "classification": DataClassification.CONFIDENTIAL}
-    )
+    protected = builder.apply_protection({"text": "restricted memo", "classification": DataClassification.CONFIDENTIAL})
     assert protected["redacted"] is True
     assert protected["text"] == "[REDACTED_CLASSIFICATION]"
 
@@ -48,7 +46,5 @@ def test_classify_text_internal_markers_and_passthrough():
     builder = SecureContextBuilder(persona="soc")
     assert builder.classify_text("internal only playbook") == DataClassification.CONFIDENTIAL
     assert builder.redact_for_output("visible", DataClassification.INTERNAL) == "visible"
-    unchanged = builder.apply_protection(
-        {"text": "routine note", "classification": DataClassification.INTERNAL}
-    )
+    unchanged = builder.apply_protection({"text": "routine note", "classification": DataClassification.INTERNAL})
     assert unchanged == {"text": "routine note", "classification": DataClassification.INTERNAL}

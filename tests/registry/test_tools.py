@@ -11,7 +11,8 @@ def test_all_tool_functions_and_registry_edges():
 
     assert json.loads(tools.read_repo_metadata.invoke({"repo_path": "/repo"}))["default_branch"] == "main"
     assert json.loads(tools.parse_sast_report.invoke({"report_json": '{"a": 1}'}))["parsed_findings"] == {"a": 1}
-    assert json.loads(tools.parse_sast_report.invoke({"report_json": "plain text"}))["parsed_findings"]["raw"] == "plain text"
+    plain = json.loads(tools.parse_sast_report.invoke({"report_json": "plain text"}))
+    assert plain["parsed_findings"]["raw"] == "plain text"
     assert "raw" in json.loads(tools.parse_sast_report.invoke({"report_json": "{not-json"}))["parsed_findings"]
 
     risky = json.loads(
@@ -33,9 +34,12 @@ def test_all_tool_functions_and_registry_edges():
     assert json.loads(tools.build_timeline.invoke({"events_text": "events"}))["timeline"]
     assert json.loads(tools.correlate_findings.invoke({"findings_json": "[]"}))["correlated"] is True
     assert json.loads(tools.check_control.invoke({"framework": "SOC2", "control_id": "CC6", "evidence": "60%"}))["gaps"]
-    assert json.loads(tools.check_control.invoke({"framework": "SOC2", "control_id": "CC6", "evidence": "complete"}))[
-        "gaps"
-    ] == []
+    assert (
+        json.loads(tools.check_control.invoke({"framework": "SOC2", "control_id": "CC6", "evidence": "complete"}))[
+            "gaps"
+        ]
+        == []
+    )
     assert json.loads(tools.map_framework.invoke({"observation": "mfa"}))["framework"] == "SOC2"
     assert json.loads(tools.audit_evidence.invoke({"evidence_text": "tickets"}))["ticket_coverage"] == "60%"
     assert json.loads(tools.execute_command.invoke({"command": "id"}))["status"] == "denied_by_policy"

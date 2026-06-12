@@ -9,14 +9,14 @@ from langchain_core.messages import ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command, interrupt
 
-from config import settings
+from bootstrap.settings import Settings, get_settings
 from cys_core.domain.security.risk import classify_tool_risk, parse_threshold
+from cys_core.domain.workers.job_budget import JobBudgetExceeded, JobBudgetTracker
 from cys_core.middleware.hitl_pause import (
     build_hitl_preview,
     register_hitl_pause,
     resume_decision_approved,
 )
-from cys_core.security.job_budget import JobBudgetExceeded, JobBudgetTracker
 from cys_core.security.monitor import AgentMonitor
 from cys_core.security.rate_limit import RedisRateLimiter
 
@@ -24,20 +24,28 @@ from cys_core.security.rate_limit import RedisRateLimiter
 class SecurityMiddleware(AgentMiddleware):
     """Rate limiting, monitoring, and risk-based tool gating."""
 
-    def __init__(self, agent_id: str, session_id: str = "default") -> None:
+    def __init__(
+        self,
+        agent_id: str,
+        session_id: str = "default",
+        *,
+        settings: Settings | None = None,
+    ) -> None:
         super().__init__()
+        cfg = settings or get_settings()
         self.agent_id = agent_id
         self.session_id = session_id
+        self.stage = cfg.stage
         self.monitor = AgentMonitor(agent_id)
         self.rate_limiter = RedisRateLimiter()
-        self.auto_approve_threshold = parse_threshold(settings.hitl_auto_approve_threshold)
+        self.auto_approve_threshold = parse_threshold(cfg.hitl_auto_approve_threshold)
 
     def _await_hitl_if_needed(self, request: ToolCallRequest) -> ToolMessage | None:
         tool_name = request.tool_call.get("name", "")
         risk = classify_tool_risk(tool_name)
         if risk <= self.auto_approve_threshold:
             return None
-        if settings.stage == "dev":
+        if self.stage == "dev":
             return ToolMessage(
                 content=f"Tool '{tool_name}' (risk={risk.value}) requires human approval.",
                 tool_call_id=request.tool_call.get("id", ""),
@@ -78,9 +86,7 @@ class SecurityMiddleware(AgentMiddleware):
         try:
             self.rate_limiter.check(f"{self.session_id}:{tool_name}")
         except Exception as exc:
-            self.monitor.log_security_event(
-                self.session_id, "rate_limit_exceeded", "WARNING", {"tool": tool_name}
-            )
+            self.monitor.log_security_event(self.session_id, "rate_limit_exceeded", "WARNING", {"tool": tool_name})
             return ToolMessage(
                 content=str(exc),
                 tool_call_id=request.tool_call.get("id", ""),
@@ -133,9 +139,7 @@ class SecurityMiddleware(AgentMiddleware):
         try:
             await self.rate_limiter.acheck(f"{self.session_id}:{tool_name}")
         except Exception as exc:
-            self.monitor.log_security_event(
-                self.session_id, "rate_limit_exceeded", "WARNING", {"tool": tool_name}
-            )
+            self.monitor.log_security_event(self.session_id, "rate_limit_exceeded", "WARNING", {"tool": tool_name})
             return ToolMessage(
                 content=str(exc),
                 tool_call_id=request.tool_call.get("id", ""),

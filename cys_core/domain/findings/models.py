@@ -64,4 +64,3 @@ class FindingEnvelope(BaseModel):
     agent: Literal["redteam", "network", "soc", "compliance", "critic"]
     data: dict[str, Any]
     error: str | None = None
-

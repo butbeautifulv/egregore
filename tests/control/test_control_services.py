@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from control.coordinator_service import CoordinatorService
-from control.critic_service import CriticService
-from control.status_store import MemoryStatusStore
+from interfaces.control_plane.coordinator_service import CoordinatorService
+from interfaces.control_plane.critic_service import CriticService
+from interfaces.control_plane.status_store import MemoryStatusStore
 
 
 @pytest.mark.unit

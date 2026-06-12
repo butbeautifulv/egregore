@@ -50,8 +50,8 @@ docker compose exec redpanda rpk topic create security.events.raw worker.jobs.so
 Локально без Docker:
 
 ```bash
-USE_MEMORY_FALLBACK=true STAGE=dev python main.py ingest -t siem.alert -p '{"alert":"test"}'
-USE_MEMORY_FALLBACK=true STAGE=dev python main.py worker --once
+USE_MEMORY_FALLBACK=true STAGE=dev uv run cys-agi ingest -t siem.alert -p '{"alert":"test"}'
+USE_MEMORY_FALLBACK=true STAGE=dev uv run cys-agi worker --once
 ```
 
 ## MCP Tool Gateway
@@ -63,7 +63,7 @@ PEP для sandbox tool calls: `POST /invoke` → execute → sanitize → `RETR
 USE_TOOL_GATEWAY=true
 TOOL_GATEWAY_URL=http://localhost:8090
 
-uv run uvicorn tool_gateway.server:create_app --factory --port 8090
+uv run uvicorn interfaces.gateways.tool.server:create_app --factory --port 8090
 ```
 
 Worker с `USE_TOOL_GATEWAY=true` резолвит tools через gateway (`sandbox_tools`), не напрямую из registry.
@@ -90,7 +90,7 @@ Per-job budgets на `WorkerJob` (defaults по persona в `cys_core/domain/work
 | redteam | $5 | 80k |
 
 - `SecurityMiddleware` + `AgentRuntime` — tool-call / token / cost caps
-- `tool_gateway/policy.py` — max 3 sequential high-risk tools (config: `MAX_HIGH_RISK_TOOL_CHAIN_DEPTH`)
+- `interfaces/gateways/tool/policy.py` — max 3 sequential high-risk tools (config: `MAX_HIGH_RISK_TOOL_CHAIN_DEPTH`)
 
 ## Sandbox (K8s)
 
@@ -106,7 +106,7 @@ Manifests: `deploy/k8s/worker-job-template.yaml`, `deploy/k8s/networkpolicy.yaml
 ## Secure Skills
 
 - Metadata в `agents/manifest.yaml` + `agents/skills/*/SKILL.md`
-- Body только через `load_skill` → `skill_gateway/load.py` (hash + sanitize + delimiters)
+- Body только через `load_skill` → `interfaces/gateways/skill/load.py` (hash + sanitize + delimiters)
 - Allowlist per persona: `skills:` в `agent.yaml`
 - Vetting внешних packs: [docs/SKILLS_VETTING.md](SKILLS_VETTING.md)
 
@@ -144,31 +144,31 @@ Payload санитизируется (`source=external`) **до** `POST /events`
 ## CLI для отладки
 
 ```bash
-python main.py info
+uv run cys-agi info
 
 # Event-driven flow
-python main.py ingest -t siem.alert -p '{"alert":"powershell"}' -s high
-python main.py worker --once
-python main.py status
+uv run cys-agi ingest -t siem.alert -p '{"alert":"powershell"}' -s high
+uv run cys-agi worker --once
+uv run cys-agi status
 
 # API
-python main.py serve --port 8080
+uv run cys-agi serve --port 8080
 curl -X POST http://localhost:8080/events \
   -H 'Content-Type: application/json' \
   -d '{"event_type":"siem.alert","payload":{"alert":"test"}}'
 
 # Manual investigation (all workers)
-python main.py session -g "Analyze workflow risks"
+uv run cys-agi session -g "Analyze workflow risks"
 
 # Single worker debug
-python main.py agent soc
-python main.py agent redteam -i "sample input"
+uv run cys-agi agent soc
+uv run cys-agi agent redteam -i "sample input"
 
 # Kafka production daemons (USE_KAFKA=true)
-python main.py router
-python main.py worker --daemon --persona soc
-python main.py critic
-python main.py coordinator
+uv run cys-agi router
+uv run cys-agi worker --daemon --persona soc
+uv run cys-agi critic
+uv run cys-agi coordinator
 ```
 
 ### Secure RAG
@@ -184,7 +184,7 @@ USE_QDRANT=true   # optional; in-memory fuzzy store when false
 ```bash
 # Metrics on ingress + gateway
 curl localhost:8080/metrics
-uv run uvicorn tool_gateway.server:create_app --factory --port 8090
+uv run uvicorn interfaces.gateways.tool.server:create_app --factory --port 8090
 
 # Grafana dashboard: deploy/grafana/dashboards/cys-agi.json
 ```
@@ -199,7 +199,7 @@ USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ -q --cov=cys_core/domai
 uv run pytest tests/domain/events/ -v
 uv run pytest tests/workers/ -v
 uv run pytest tests/ingress/ -v
-uv run pytest tests/control/ -v
+uv run pytest tests/interfaces/control_plane/ -v
 uv run pytest tests/adversarial/ -v
 ```
 
@@ -248,9 +248,9 @@ routing:
 ## Структура event-driven кода
 
 ```
-ingress/router.py       # EventIngress
-workers/orchestrator.py # WorkerOrchestrator
-control/                # CriticService, CoordinatorService, StatusStore
+interfaces/ingress/router.py       # EventIngress
+interfaces/worker/orchestrator.py # WorkerOrchestrator
+interfaces/control_plane/                # CriticService, CoordinatorService, StatusStore
 cys_core/domain/events/ # SecurityEvent, EventRouter
 cys_core/infrastructure/# sandbox, queue, bus_transport
 ```

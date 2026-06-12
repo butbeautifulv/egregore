@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from cys_core.domain.workers.models import WorkerJob, WorkerJobStatus
-from workers.orchestrator import WorkerOrchestrator, build_agent_bus
+from interfaces.worker.orchestrator import WorkerOrchestrator, build_agent_bus
 
 
 @pytest.mark.unit

@@ -4,10 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cys_core.domain.rag.models import ChunkACL, DocumentProvenance, RagChunk
-from cys_core.domain.security.classification import DataClassification
-from rag.store import MemoryVectorStore
-from tool_gateway.adapters.rag import rag_query_tool
-from tool_gateway.server import create_app
+from interfaces.gateways.tool.adapters.rag import rag_query_tool
+from interfaces.gateways.tool.server import create_app
+from interfaces.rag.store import MemoryVectorStore
 
 
 def _seed(store: MemoryVectorStore) -> None:
@@ -27,7 +26,7 @@ def _seed(store: MemoryVectorStore) -> None:
 def test_rag_query_tool_success(monkeypatch):
     store = MemoryVectorStore()
     _seed(store)
-    monkeypatch.setattr("rag.retrieve.get_vector_store", lambda: store)
+    monkeypatch.setattr("interfaces.rag.retrieve.get_vector_store", lambda: store)
     data = rag_query_tool(query="powershell triage", persona="soc", tenant="default")
     assert data["success"] is True
     assert "BEGIN_RETRIEVED_CONTENT" in data["content"]
@@ -37,7 +36,7 @@ def test_rag_query_tool_success(monkeypatch):
 def test_gateway_invoke_rag_query(monkeypatch):
     store = MemoryVectorStore()
     _seed(store)
-    monkeypatch.setattr("rag.retrieve.get_vector_store", lambda: store)
+    monkeypatch.setattr("interfaces.rag.retrieve.get_vector_store", lambda: store)
 
     client = TestClient(create_app())
     response = client.post(

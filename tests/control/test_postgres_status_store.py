@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from control.postgres_status_store import PostgresStatusStore
+from interfaces.control_plane.postgres_status_store import PostgresStatusStore
 
 
 @pytest.mark.unit
@@ -35,7 +35,7 @@ def test_postgres_status_store_records_and_snapshots():
         def cursor(self):
             return FakeCursor()
 
-    with patch("control.postgres_status_store.psycopg.connect") as connect:
+    with patch("interfaces.control_plane.postgres_status_store.psycopg.connect") as connect:
         connect.return_value = FakeConn()
         store = PostgresStatusStore("postgresql://localhost/test")
         store._fetch_recent = MagicMock(  # type: ignore[method-assign]

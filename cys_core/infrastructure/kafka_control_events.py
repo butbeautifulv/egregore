@@ -5,7 +5,7 @@ import json
 import uuid
 from typing import Any
 
-from config import settings
+from bootstrap.settings import settings
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.infrastructure.kafka_events import publish_raw_event
 from cys_core.infrastructure.kafka_topics import AWAITING_APPROVAL_TOPIC, ESCALATION_EVENTS_TOPIC

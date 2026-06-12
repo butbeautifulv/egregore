@@ -2,26 +2,27 @@ from __future__ import annotations
 
 import pytest
 
+from bootstrap import product_loader
+from cys_core.registry import agents
+
 
 @pytest.mark.unit
 def test_registry_helpers_and_temp_agent_loading(tmp_path, monkeypatch):
-    from cys_core.registry import agents
-
-    assert list(agents._iter_persona_dirs(tmp_path)) == []
+    assert list(product_loader._iter_persona_dirs(tmp_path)) == []
 
     empty_agent_dir = tmp_path / "empty"
     empty_agent_dir.mkdir()
-    assert agents._resolve_prompt_path(empty_agent_dir) is None
+    assert product_loader._resolve_prompt_path(empty_agent_dir) is None
 
     prompt = tmp_path / "prompt.md"
     prompt.write_text("---\ntitle: Test\n---\nBody text\n", encoding="utf-8")
-    frontmatter, body = agents._parse_prompt_md(prompt)
+    frontmatter, body = product_loader._parse_prompt_md(prompt)
     assert frontmatter == {"title": "Test"}
     assert body == "Body text"
 
     plain = tmp_path / "plain.md"
     plain.write_text("Plain body\n", encoding="utf-8")
-    assert agents._parse_prompt_md(plain) == ({}, "Plain body")
+    assert product_loader._parse_prompt_md(plain) == ({}, "Plain body")
 
     root = tmp_path / "agents-root"
     valid_dir = root / "personas" / "alpha"
@@ -57,7 +58,7 @@ def test_registry_helpers_and_temp_agent_loading(tmp_path, monkeypatch):
         registry.get("missing")
 
     agents.get_agent_registry.cache_clear()
-    monkeypatch.setattr(agents, "default_agents_root", lambda: root)
+    monkeypatch.setattr(product_loader, "default_agents_root", lambda: root)
     try:
         assert agents.get_agent_registry().names() == ["alpha"]
     finally:

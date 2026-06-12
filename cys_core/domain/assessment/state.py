@@ -14,4 +14,3 @@ class AssessmentState(TypedDict):
     report: dict[str, Any] | None
     errors: list[str]
     approved: bool
-

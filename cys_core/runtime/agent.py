@@ -5,26 +5,25 @@ from functools import lru_cache
 from typing import Any, TypeVar
 
 from langchain.agents import create_agent
-from langgraph.types import Command
 from langchain.agents.middleware.human_in_the_loop import HumanInTheLoopMiddleware
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.tools import tool
+from langgraph.types import Command
 from pydantic import BaseModel
 
-from config import settings
-from cys_core.security.job_budget import JobBudgetExceeded, JobBudgetTracker
+from bootstrap.settings import settings
 from cys_core.application.ports import ModelConnector
 from cys_core.domain.agents.policies import build_interrupt_on
 from cys_core.domain.messaging import extract_message_content
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.factory import get_input_sanitizer, get_output_guardrails
 from cys_core.domain.security.prompt_context import REFUSAL_MESSAGE
+from cys_core.domain.workers.job_budget import JobBudgetExceeded, JobBudgetTracker
 from cys_core.llm import get_model_connector
-from cys_core.observability.langfuse_tags import merge_langchain_config
-from cys_core.observability.metrics import metrics
 from cys_core.middleware.prompt_context_middleware import PromptContextMiddleware
 from cys_core.middleware.scope_middleware import ScopeMiddleware
 from cys_core.middleware.security_middleware import SecurityMiddleware
+from cys_core.observability.langfuse_tags import merge_langchain_config
+from cys_core.observability.metrics import metrics
 from cys_core.persistence import get_persistence_connector
 from cys_core.registry.agents import AgentDefinition, AgentRegistry, get_agent_registry
 from cys_core.registry.schemas import schema_registry
@@ -159,7 +158,7 @@ class AgentRuntime:
             session_id=sid,
             schema=schema,
             recursion_limit=recursion_limit,
-            persona=name,
+            agent_id=defn.name,
             job_id=job_id,
             event_id=event_id,
             correlation_id=correlation_id,
@@ -209,7 +208,7 @@ class AgentRuntime:
         session_id: str,
         schema: type[BaseModel] | None,
         recursion_limit: int | None = None,
-        persona: str = "",
+        agent_id: str = "",
         job_id: str = "",
         event_id: str = "",
         correlation_id: str = "",
@@ -227,7 +226,7 @@ class AgentRuntime:
                 "callbacks": self.model_connector.callbacks(),
                 "recursion_limit": recursion_limit or settings.default_job_recursion_limit,
             },
-            persona=persona or session_id,
+            persona=agent_id or session_id,
             job_id=job_id,
             event_id=event_id,
             correlation_id=correlation_id,
@@ -296,36 +295,3 @@ class AgentRuntime:
 def get_runtime() -> AgentRuntime:
     return AgentRuntime()
 
-
-def make_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
-    """Factory for coordinator tool that runs LangGraph assessment."""
-    from graph.workflow import run_assessment
-
-    @tool
-    def run_assessment_pipeline(input_text: str, thread_id: str = "deep-session") -> str:
-        """Run the full LangGraph security assessment pipeline on authorized input."""
-        result = run_assessment(
-            input_text,
-            thread_id=thread_id,
-            persistence=get_persistence_connector().open(force_memory=True),
-        )
-        return json.dumps(result.get("report") or result, ensure_ascii=False, indent=2)
-
-    return run_assessment_pipeline
-
-
-def make_async_assessment_pipeline_tool(runtime: AgentRuntime | None = None):
-    """Factory for coordinator async tool that runs LangGraph assessment."""
-    from graph.workflow import run_assessment_async
-
-    @tool
-    async def run_assessment_pipeline(input_text: str, thread_id: str = "deep-session") -> str:
-        """Run the full LangGraph security assessment pipeline on authorized input."""
-        result = await run_assessment_async(
-            input_text,
-            thread_id=thread_id,
-            persistence=await get_persistence_connector().open_async(force_memory=True),
-        )
-        return json.dumps(result.get("report") or result, ensure_ascii=False, indent=2)
-
-    return run_assessment_pipeline

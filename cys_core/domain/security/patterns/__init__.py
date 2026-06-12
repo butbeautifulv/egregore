@@ -101,9 +101,7 @@ PII_PATTERNS: list[tuple[str, str]] = (
     + SENSITIVE_KEY_PATTERNS_RU
 )
 
-SENSITIVE_KEYS = frozenset(
-    {"password", "api_key", "token", "secret", "credential"} | SENSITIVE_KEYS_RU
-)
+SENSITIVE_KEYS = frozenset({"password", "api_key", "token", "secret", "credential"} | SENSITIVE_KEYS_RU)
 
 __all__ = [
     "BASE64_TOKEN",

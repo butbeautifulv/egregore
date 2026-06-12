@@ -29,7 +29,11 @@ dependencies = [
     "qdrant-client>=1.12.0",
     "prometheus-client>=0.21.0",
     "opentelemetry-api>=1.29.0",
+    "ruff>=0.15.17",
 ]
+
+[project.scripts]
+cys-agi = "interfaces.cli.main:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -52,4 +56,55 @@ fail_under = 100
 [dependency-groups]
 dev = [
     "pytest-cov>=7.1.0",
+    "import-linter>=2.0",
 ]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "bootstrap",
+    "connectors",
+    "cys_core",
+    "interfaces",
+]
+
+[tool.importlinter]
+root_package = "cys_core"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain_independent"
+type = "forbidden"
+source_modules = ["cys_core.domain"]
+forbidden_modules = [
+    "cys_core.infrastructure",
+    "cys_core.registry",
+    "cys_core.runtime",
+    "cys_core.middleware",
+    "cys_core.security",
+    "cys_core.observability",
+    "cys_core.llm",
+    "cys_core.persistence",
+    "bootstrap",
+    "interfaces",
+]
+
+[[tool.importlinter.contracts]]
+name = "application_only_domain"
+type = "layers"
+layers = [
+    "cys_core.application",
+    "cys_core.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "no_config_in_domain_application"
+type = "forbidden"
+source_modules = ["cys_core.domain", "cys_core.application"]
+forbidden_modules = ["config", "bootstrap"]
