@@ -1,0 +1,37 @@
+---
+description: Agent chain — keep docs, plans, and descriptions in sync after each phase merge
+alwaysApply: true
+---
+
+# cys-agi agent — documentation actualization
+
+## Where agents read truth
+
+| Artifact | When to update |
+|----------|----------------|
+| **[docs/MASTER_PLAN_SECURE_PLATFORM.md](../../docs/MASTER_PLAN_SECURE_PLATFORM.md)** | Phase `done`, merge SHA |
+| **[docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)** | Ingress, bus, worker, or security flow changes |
+| **[AGENTS.md](../../AGENTS.md)** | Workflow, verify checklist, agent layer rules |
+| **[agents/manifest.yaml](../../agents/manifest.yaml)** | New personas, plans, or skills |
+| **[README.md](../../README.md)** | CLI commands, quick start |
+
+## Agent chain
+
+1. **Plan** — scope, DoD, dependencies (MASTER_PLAN §7).
+2. **Implement** — one phase per branch.
+3. **Verify** — `./scripts/pytest_batches.sh`; adversarial if security.
+4. **Critic** — [cys-agi-agent-critic.mdc](cys-agi-agent-critic.mdc).
+5. **Merge** — to `main`.
+6. **Document** — MASTER_PLAN, AGENTS, ARCHITECTURE as applicable.
+
+## Phase scope template
+
+```markdown
+## Scope
+## Out of scope
+## Files (≤5)
+## Acceptance (commands)
+## Docs to touch on merge
+```
+
+Do not edit `.cursor/plans/` — canonical plan is `docs/MASTER_PLAN_SECURE_PLATFORM.md`.

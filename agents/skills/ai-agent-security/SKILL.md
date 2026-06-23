@@ -105,4 +105,6 @@ Run in CI/CD after prompt, tool, memory, retrieval, or provider changes.
 
 ## Deep reference
 
-Full patterns and code examples: `docs/reference/AI_Agent_Security_Cheat_Sheet.md`
+- [reference.md](reference.md) — OWASP upstream pointer
+- [docs/reference/owasp/AI_Agent_Security_Cheat_Sheet.md](../../../docs/reference/owasp/AI_Agent_Security_Cheat_Sheet.md)
+- Adapted summary: [docs/reference/AI_Agent_Security_Cheat_Sheet.md](../../../docs/reference/AI_Agent_Security_Cheat_Sheet.md)

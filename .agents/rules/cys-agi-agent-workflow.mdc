@@ -1,0 +1,39 @@
+---
+description: cys-agi agent end-of-task workflow — tests, commit, push
+alwaysApply: true
+---
+
+# cys-agi agent workflow
+
+Follow [AGENTS.md](../../AGENTS.md), [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md), [cys-agi-karpathy-guidelines.mdc](cys-agi-karpathy-guidelines.mdc), and [cys-agi-agent-kaizen.mdc](cys-agi-agent-kaizen.mdc) as source of truth.
+
+## Architecture (do not break)
+
+- Event-driven primary path: `interfaces/ingress` → `EventRouter` → `WorkerOrchestrator` → `SecureAgentBus`.
+- Product agents in `agents/personas/` only — no Python modules named after personas under `agents/`.
+- LLM via `cys_core/llm` (LiteLLM); config via `bootstrap/settings.py`.
+- Do not restore batch `assess` pipeline as primary path.
+- Domain coverage gate: **100%** on `cys_core/domain`.
+
+## Multi-phase work (master plan → branch → phase commit → critic)
+
+1. **Master plan** — [docs/MASTER_PLAN_SECURE_PLATFORM.md](../../docs/MASTER_PLAN_SECURE_PLATFORM.md); phase list, deps, status table.
+2. **Phase plan** — scope for current sub-phase `P{x}.{y}.{z}` only.
+3. **Branch** — `cys-agi/phase-<NN>-<slug>` from latest `main` ([cys-agi-agent-parallel-branches.mdc](cys-agi-agent-parallel-branches.mdc)).
+4. **Implement** — one phase per branch; ≤5 files per PR; push; open PR.
+5. **Critic** — review against plan + [cys-agi-agent-critic.mdc](cys-agi-agent-critic.mdc); APPROVE → merge `main`.
+6. **Master plan** — mark `done` with merge SHA.
+7. **Documentation** — AGENTS.md, ARCHITECTURE.md, MASTER_PLAN per [cys-agi-agent-documentation.mdc](cys-agi-agent-documentation.mdc).
+
+## Required before finishing a task
+
+1. Run `./scripts/pytest_batches.sh` for touched code; domain changes need `tests/domain/` at 100% coverage.
+2. Security changes: run `tests/adversarial/` when touching ingress, patterns, or tool policy.
+3. **Commit** with clear message (per phase when phased).
+4. **`git push origin HEAD`** unless the user forbade push.
+5. **Docs** — update MASTER_PLAN / AGENTS if behavior, security, or agent contracts changed.
+
+## Git hygiene
+
+- Never commit `.env`, API keys, `.agents/` build cache, or injection corpus payloads.
+- Do not edit `.cursor/plans/` unless user explicitly requests.

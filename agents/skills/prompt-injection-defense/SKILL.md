@@ -101,4 +101,6 @@ Rate limiting, content filters, and circuit breakers slow but do not stop persis
 
 ## Deep reference
 
-`docs/reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md`
+- [reference.md](reference.md) — OWASP upstream pointer
+- [docs/reference/owasp/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md](../../../docs/reference/owasp/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md)
+- Adapted summary: [docs/reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md](../../../docs/reference/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md)

@@ -1,0 +1,36 @@
+---
+description: Metacognition on errors — 5 Whys, Gemba Kaizen, 1% continuous improvement
+alwaysApply: true
+---
+
+# cys-agi agent — metacognition & Kaizen
+
+When any error appears — test failure, pytest gate, unexpected runtime — **stop guessing**.
+
+## Trigger
+
+- `./scripts/pytest_batches.sh` exits non-zero.
+- Domain coverage below 100% on `cys_core/domain`.
+- Same failure twice after a fix.
+- Cannot explain why in one sentence.
+
+## Method: 5 Whys
+
+Stop at a controllable root cause (code, config, missing env, plan gap).
+
+## Gemba in cys-agi
+
+- Reproduce: `USE_MEMORY_FALLBACK=true STAGE=test uv run cys-agi info`
+- Event flow: `uv run cys-agi ingest -t siem.alert -p '{"alert":"test"}'` then `uv run cys-agi worker --once`
+- Targeted: `uv run pytest tests/<area>/ -q`
+- Smallest fix at the true failure point; re-run failing check then full batch.
+
+## Kaizen note (PR / phase plan)
+
+Symptom → root cause → fix → regression guard (test or adversarial case).
+
+## Critic gate on bugfix PRs
+
+- [ ] Root cause documented
+- [ ] Failing command re-run green
+- [ ] Kaizen note for non-trivial bugs

@@ -1,6 +1,14 @@
 # Product skills
 
-Domain knowledge modules для on-demand загрузки (Deep Agents coordinator). Это **не** Cursor build-skills из `.agents/skills/`.
+Domain knowledge modules для on-demand загрузки (Deep Agents coordinator).
+
+## Три слоя (см. [AGENTS.md](../../AGENTS.md))
+
+| Слой | Путь | Runtime? |
+|------|------|----------|
+| **Canonical** | `agents/skills/` (this dir) | **Да** |
+| **Cursor stub** | `.agents/skills/<name>/` | Нет |
+| **cxado-skills** | `shared/skills/` in meta-repo | Нет |
 
 Каждая папка — `SKILL.md` с YAML frontmatter по [Agent Skills](https://github.com/anthropics/skills) формату.
 

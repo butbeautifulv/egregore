@@ -23,8 +23,13 @@ htmlcov/
 .idea/
 .vscode/
 
-# Cursor build-time skills (LangChain, LangGraph, etc.) — not part of product
-.agents/
+# .agents/rules and .agents/skills are committed (Cursor workflow + stubs).
+# Ignore any other future .agents/ content:
+.agents/*
+!.agents/rules/
+!.agents/rules/**
+!.agents/skills/
+!.agents/skills/**
 
 # Local jailbreak/injection corpus (threat intel only, never runtime)
 docs/injections/

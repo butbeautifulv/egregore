@@ -1,0 +1,13 @@
+# OWASP CheatSheetSeries → cys-agi product skills (batch 1: agent/LLM security)
+version: "1.0"
+mappings:
+  - skill: prompt-injection-defense
+    sheet: LLM_Prompt_Injection_Prevention_Cheat_Sheet.md
+  - skill: ai-agent-security
+    sheet: AI_Agent_Security_Cheat_Sheet.md
+  - skill: rag-security
+    sheet: RAG_Security_Cheat_Sheet.md
+  - skill: skill-supply-chain
+    sheet: Software_Supply_Chain_Security_Cheat_Sheet.md
+  - skill: secure-deployment
+    sheet: Zero_Trust_Architecture_Cheat_Sheet.md

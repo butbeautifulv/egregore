@@ -10,3 +10,4 @@
 | [Zero_Trust_Architecture_Cheat_Sheet.md](Zero_Trust_Architecture_Cheat_Sheet.md) | Zero Trust принципы для agent systems |
 | [CISCO_AI_DEFENCE.md](CISCO_AI_DEFENCE.md) | Cisco AI Defence — обзор и рекомендации |
 | [injections/README.md](injections/README.md) | Локальный injection-корпус (read-only triage, не в git) |
+| [owasp/](owasp/) | Upstream OWASP CheatSheetSeries (agent/LLM batch) |

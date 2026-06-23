@@ -84,6 +84,7 @@ Framework: [Integrated AI Security and Safety Framework](https://arxiv.org/abs/2
 
 ## Deep reference
 
+- [reference.md](reference.md) — OWASP supply chain + agent skill vetting
+- [docs/reference/owasp/Software_Supply_Chain_Security_Cheat_Sheet.md](../../../docs/reference/owasp/Software_Supply_Chain_Security_Cheat_Sheet.md)
 - `docs/SKILLS_VETTING.md`
-- `docs/reference/CISCO_AI_DEFENCE.md`
-- `docs/reference/AI_Agent_Security_Cheat_Sheet.md` (§ Tool Security)
+- [docs/reference/CISCO_AI_DEFENCE.md](../../../docs/reference/CISCO_AI_DEFENCE.md)

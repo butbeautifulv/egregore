@@ -1,0 +1,45 @@
+---
+description: Parallel phase work — one git branch per stream, merge via PR after critic
+alwaysApply: true
+---
+
+# cys-agi agent — parallel branches
+
+Use **separate git branches** so multiple agents can execute different phase plans concurrently.
+
+## Branch naming
+
+| Pattern | Example |
+|---------|---------|
+| `cys-agi/phase-<NN>-<slug>` | `cys-agi/phase-01-ingress-sanitize` |
+
+- `<NN>` = phase number from MASTER_PLAN (zero-padded optional).
+- `<slug>` = short kebab-case from phase title.
+
+## Starting a phase
+
+1. Read master plan and phase scope for this stream only.
+2. From up-to-date `main`: `git checkout -b cys-agi/phase-01-ingress-sanitize`.
+3. Record branch in master plan status table.
+4. Implement → test → commit on branch (≤5 files).
+5. Push and open PR; do not merge unless critic APPROVE.
+
+## Subagent concurrency
+
+**Never spawn more than 3 Cursor Task subagents in a single orchestrator turn** (per MASTER_PLAN §12).
+
+## Merge discipline
+
+- **`main` is integration branch.** Merge after critic APPROVE.
+- New work starts from `git pull origin main`.
+- One branch = one phase.
+
+After merge:
+
+```bash
+./scripts/pytest_batches.sh
+```
+
+## Git add
+
+Never commit `.env`, keys, or verbatim injection payloads from `docs/injections/`.

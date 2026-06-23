@@ -1,0 +1,32 @@
+---
+description: Subagent spawning for worker/control personas — orchestrator guidance
+alwaysApply: false
+---
+
+# cys-agi agent — subagents
+
+Orchestrator may spawn implementers for MASTER_PLAN sub-phases. Critic session reviews before merge.
+
+## Concurrency
+
+- **Max 3 parallel** Cursor Task subagents per orchestrator turn (MASTER_PLAN §12).
+- One subagent = one sub-phase; ≤5 files changed.
+
+## Persona model
+
+| Role | Examples | Runtime |
+|------|----------|---------|
+| `worker` | redteam, network, soc, compliance | `WorkerOrchestrator` sandbox |
+| `control` | critic, coordinator | Bus subscribers |
+
+Product definitions: [agents/personas/](../../agents/personas/), [agents/manifest.yaml](../../agents/manifest.yaml).
+
+## Workflow
+
+1. Pick sub-phase from MASTER_PLAN §7.
+2. Branch `cys-agi/phase-NN-slug` per [cys-agi-agent-parallel-branches.mdc](cys-agi-agent-parallel-branches.mdc).
+3. Launch Task with phase scope prompt; `readonly: false` for implementers.
+4. Implementer: commit, push, PR — **no merge**.
+5. Critic reviews per [cys-agi-agent-critic.mdc](cys-agi-agent-critic.mdc).
+
+Keep orchestrator chat for planning and critic gates.

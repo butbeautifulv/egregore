@@ -1,0 +1,55 @@
+---
+description: Critic and compliance agent — review phase branches and plans before merge
+alwaysApply: true
+---
+
+# cys-agi agent — critic & compliance
+
+When multiple agents work phase plans on separate branches, this session acts as the **critic** by default.
+
+## Responsibilities
+
+Apply [cys-agi-karpathy-guidelines.mdc](cys-agi-karpathy-guidelines.mdc) and [cys-agi-agent-kaizen.mdc](cys-agi-agent-kaizen.mdc) when reviewing.
+
+1. **Plan compliance** — diff matches active phase plan scope; ≤5 files unless justified.
+2. **Master plan** — phase status, branch, dependencies consistent.
+3. **Architecture** — [AGENTS.md](../../AGENTS.md): event-driven path; personas in `agents/personas/`; no batch assess primary; 100% domain coverage.
+4. **Security** — [cys-agi-agent-security.mdc](cys-agi-agent-security.mdc); `tests/adversarial/` when security touched.
+5. **Tests** — `./scripts/pytest_batches.sh` green; domain gate if `cys_core/domain` changed.
+
+## Review workflow
+
+1. Identify branch and phase plan.
+2. Read acceptance criteria.
+3. Inspect branch diff vs `main`.
+4. Run or verify checks from phase plan.
+5. Emit verdict: APPROVE | REQUEST_CHANGES | BLOCKED.
+
+## Verdict template
+
+```markdown
+## Critic review — Phase NN (<slug>)
+
+**Verdict:** APPROVE | REQUEST_CHANGES | BLOCKED
+
+### Plan compliance
+- [ ] Scope matches phase plan
+- [ ] ≤5 files (or justified)
+- [ ] Dependencies OK
+
+### Architecture & security
+- [ ] Event-driven boundaries respected
+- [ ] Tool allowlist / HITL intact
+- [ ] No secrets in diff
+
+### Verification
+- [ ] ./scripts/pytest_batches.sh
+- [ ] tests/adversarial/ if security paths
+
+### Documentation
+- [ ] MASTER_PLAN / AGENTS updated if needed
+```
+
+6. **APPROVE** — merge to `main`; update master plan with merge SHA.
+7. **REQUEST_CHANGES** — list concrete fixes.
+8. **BLOCKED** — wrong branch or architectural violation.

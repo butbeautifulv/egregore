@@ -2,14 +2,32 @@
 
 Правила для AI-ассистентов в репозитории **cys-agi**.
 
-## Два разных «agents»
+## Три слоя rules / skills (не смешивать)
+
+| Слой | Путь | Runtime? | Назначение |
+|------|------|----------|------------|
+| **Product** | `agents/skills/` | **Да** | Skill Gateway — on-demand playbooks для workers |
+| **Cursor stub** | `.agents/skills/` | Нет | Discovery stubs → `agents/skills/` |
+| **cxado-skills** | `shared/skills/` (meta-repo) | Нет | Только devsecops + veil — **не** cys-agi product |
+
+| **Agent rules** | `.agents/rules/cys-agi-*.mdc` | Нет | Cursor workflow: critic, karpathy, branches (паттерн Fish) |
+
+`devsecops-ai-security` в cxado-skills — **CI/CD** skill scanning, не `ai-agent-security` runtime.
+
+## Agent workflow (Cursor)
+
+Follow `.agents/rules/cys-agi-*.mdc` — workflow, karpathy guidelines, critic, parallel branches, documentation, security, kaizen.
+
+Master plan: [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATFORM.md)
+
+## Два разных «agents» (историческая заметка)
 
 | Слой | Путь | В git | Назначение |
 |------|------|-------|------------|
 | **Продукт** | `agents/` | да | Runtime: personas, rules, plans, skills |
-| **Разработка** | `.agents/skills/` | нет | Cursor build skills (LangChain, LangGraph) |
+| **Cursor dev** | `.agents/skills/` + `.agents/rules/` | да | Stubs и workflow rules для разработки в IDE |
 
-**Не смешивать.** Продуктовые агенты — только в `agents/personas/`. Build skills — только в `.agents/skills/`.
+**Не смешивать.** Продуктовые агенты — только в `agents/personas/`. Cursor stubs — только перенаправление на canonical `agents/skills/`.
 
 ## Продуктовый слой `agents/`
 

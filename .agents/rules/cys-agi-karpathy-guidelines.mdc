@@ -1,0 +1,29 @@
+---
+description: Karpathy behavioral guidelines adapted for cys-agi — phased plans, surgical diffs, verifiable DoD, critic gate
+alwaysApply: true
+---
+
+# cys-agi + Karpathy guidelines
+
+Merged with [AGENTS.md](../../AGENTS.md). Full skill stub: [.agents/skills/cys-agi-karpathy-guidelines/SKILL.md](../skills/cys-agi-karpathy-guidelines/SKILL.md). On errors: [cys-agi-agent-kaizen.mdc](cys-agi-agent-kaizen.mdc).
+
+**Tradeoff:** Caution over speed on non-trivial work.
+
+## Four principles (cys-agi mapping)
+
+| # | Principle | In this repo |
+|---|-----------|--------------|
+| 1 | **Think before coding** | Read MASTER_PLAN + phase scope; identify layer (`ingress`, `workers`, `agents`, `cys_core/domain`) |
+| 2 | **Simplicity first** | KISS; no speculative features beyond the phase |
+| 3 | **Surgical changes** | Diff ⊆ phase plan; ≤5 files; critic rejects scope creep |
+| 4 | **Goal-driven execution** | Phase DoD → `./scripts/pytest_batches.sh`; loop until green |
+
+## Planning rhythm
+
+1. Master plan → 2. Phase plan → 3. Branch `cys-agi/phase-NN-slug` → 4. Implement → 5. PR → 6. **Critic** → 7. Merge → update master plan.
+
+## Critic quick checks
+
+- Every hunk traces to phase plan or explicit user ask.
+- No secrets in commits; tool allowlists and HITL unchanged without approval.
+- Adversarial tests cited when security paths touched.

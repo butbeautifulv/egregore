@@ -114,4 +114,6 @@ description: Secure Retrieval-Augmented Generation pipelines — document poison
 
 ## Deep reference
 
-`docs/reference/RAG_Security_Cheat_Sheet.md`
+- [reference.md](reference.md) — OWASP upstream pointer
+- [docs/reference/owasp/RAG_Security_Cheat_Sheet.md](../../../docs/reference/owasp/RAG_Security_Cheat_Sheet.md)
+- Adapted summary: [docs/reference/RAG_Security_Cheat_Sheet.md](../../../docs/reference/RAG_Security_Cheat_Sheet.md)
