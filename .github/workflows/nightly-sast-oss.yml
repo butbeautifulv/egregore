@@ -19,7 +19,7 @@ jobs:
           IMAGE="${OSS_SEMGREP_IMAGE:-returntocorp/semgrep:1.117.0}"
           docker run --rm -v "$PWD:/src" "$IMAGE" \
             semgrep scan --config auto --json -o /src/gl-sast-report.json /src || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nightly-sast
           path: gl-sast-report.json
