@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: preprod
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: ZAP full scan (OSS IAST)
         env:
           PREPROD_URL: ${{ inputs.preprod_url }}
