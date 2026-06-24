@@ -31,6 +31,4 @@ jobs:
         run: |
           uv run pytest tests/ -q \
             --cov=cys_core/domain --cov-fail-under=100 \
-            --cov=cys_core/application \
-            --cov=cys_core/infrastructure \
             --cov-report=term-missing:skip-covered

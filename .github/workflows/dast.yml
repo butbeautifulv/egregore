@@ -1,13 +1,14 @@
 name: DAST
 
 on:
+  workflow_call:
   workflow_dispatch:
   pull_request:
     types: [labeled]
 
 jobs:
   zap:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-dast'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.label.name == 'run-dast'
     runs-on: ubuntu-latest
     steps:
       - name: ZAP baseline

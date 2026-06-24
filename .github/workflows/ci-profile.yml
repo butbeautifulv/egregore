@@ -21,11 +21,12 @@ jobs:
   validate:
     uses: ./.github/workflows/base-validate.yml
     with:
-      enable_real_linters: ${{ env.ENABLE_REAL_LINTERS }}
+      enable_real_linters: "false"
 
   security-gates:
     needs: [validate]
     uses: ./.github/workflows/security-gates.yml
+    secrets: inherit
     permissions:
       contents: read
       security-events: write

@@ -45,6 +45,7 @@ jobs:
   security-gates:
     needs: [lint, unit-test]
     uses: ./.github/workflows/security-gates.yml
+    secrets: inherit
     permissions:
       contents: read
       security-events: write
@@ -72,35 +73,42 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: build
     uses: ./.github/workflows/jobs/sbom.yml
+    secrets: inherit
 
   container-scan:
     if: github.ref == 'refs/heads/main'
     needs: build
     uses: ./.github/workflows/jobs/container-scan.yml
+    secrets: inherit
     with:
-      image: ${{ env.REGISTRY }}:${{ github.sha }}
+      image: ghcr.io/${{ github.repository }}:${{ github.sha }}
 
   sign:
     if: github.ref == 'refs/heads/main'
     needs: [container-scan]
     uses: ./.github/workflows/jobs/sign.yml
+    secrets: inherit
 
   deploy-preprod:
     if: github.ref == 'refs/heads/main'
     needs: [sign]
     uses: ./.github/workflows/deploy-preprod.yml
+    secrets: inherit
 
   dast:
     if: github.ref == 'refs/heads/main'
     needs: [deploy-preprod]
     uses: ./.github/workflows/dast.yml
+    secrets: inherit
 
   sec-func-tests:
     if: github.ref == 'refs/heads/main'
     needs: [deploy-preprod]
     uses: ./.github/workflows/jobs/sec-func-tests.yml
+    secrets: inherit
 
   iast-preprod:
     if: github.ref == 'refs/heads/main'
     needs: [deploy-preprod]
     uses: ./.github/workflows/jobs/iast-preprod.yml
+    secrets: inherit
