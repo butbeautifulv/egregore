@@ -21,7 +21,7 @@ permissions:
 
 env:
   SECURITY_POLICY: ${{ inputs.security_policy }}
-  ENABLE_REAL_LINTERS: ${{ inputs.enable_real_linters }}
+  ENABLE_REAL_LINTERS: ${{ inputs.enable_real_linters && 'true' || 'false' }}
 
 jobs:
   secrets:
