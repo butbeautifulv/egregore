@@ -3,8 +3,6 @@ name: Deploy Preprod
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
   deploy:

@@ -13,7 +13,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io/${{ github.repository }}
-  ENABLE_REAL_LINTERS: ${{ vars.ENABLE_REAL_LINTERS || 'false' }}
+  ENABLE_REAL_LINTERS: ${{ vars.ENABLE_REAL_LINTERS != '' && vars.ENABLE_REAL_LINTERS || 'false' }}
   SECURITY_POLICY: config/security-gate-policy-adopt.yaml
 
 jobs:
@@ -95,7 +95,7 @@ jobs:
   container-scan:
     if: github.ref == 'refs/heads/main'
     needs: build
-    uses: ./.github/workflows/job-container-scan.yml
+    uses: ./.github/workflows/job-sca-image.yml
     secrets: inherit
     with:
       image: ghcr.io/${{ github.repository }}:${{ github.sha }}
