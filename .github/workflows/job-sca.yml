@@ -6,4 +6,4 @@ on:
 
 jobs:
   osa:
-    uses: ./.github/workflows/jobs/osa.yml
+    uses: ./.github/workflows/job-osa.yml

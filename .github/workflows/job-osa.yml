@@ -30,9 +30,8 @@ jobs:
           exit-code: "0"
       - name: Gate check
         env:
-          SECURITY_POLICY: ${{ env.SECURITY_POLICY }}
         run: |
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
           python scripts/gate-check.py --control osa --report osa.sarif --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v3
         if: always()

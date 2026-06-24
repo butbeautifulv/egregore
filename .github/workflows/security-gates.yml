@@ -25,17 +25,17 @@ env:
 
 jobs:
   secrets:
-    uses: ./.github/workflows/jobs/secret-scan.yml
+    uses: ./.github/workflows/job-secret-scan.yml
   sast:
-    uses: ./.github/workflows/jobs/sast.yml
+    uses: ./.github/workflows/job-sast.yml
   osa:
-    uses: ./.github/workflows/jobs/osa.yml
+    uses: ./.github/workflows/job-osa.yml
   iac:
-    uses: ./.github/workflows/jobs/iac-scan.yml
+    uses: ./.github/workflows/job-iac-scan.yml
   dockerfile:
-    uses: ./.github/workflows/jobs/dockerfile-lint.yml
+    uses: ./.github/workflows/job-dockerfile-lint.yml
   linters:
-    uses: ./.github/workflows/jobs/linter-security.yml
+    uses: ./.github/workflows/job-linter-security.yml
   sec-func-tests:
     if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/jobs/sec-func-tests.yml
+    uses: ./.github/workflows/job-sec-func-tests.yml

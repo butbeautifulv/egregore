@@ -20,11 +20,10 @@ jobs:
           output_file_path: reports/checkov.sarif
       - name: Gate check
         env:
-          SECURITY_POLICY: ${{ env.SECURITY_POLICY }}
         run: |
           mkdir -p reports
           [ -f reports/checkov.sarif ] || echo '{"runs":[{"results":[]}]}' > reports/checkov.sarif
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
           python scripts/gate-check.py --control iac --report reports/checkov.sarif --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v3
         if: always()

@@ -9,6 +9,6 @@ on:
 
 jobs:
   sca-image:
-    uses: ./.github/workflows/jobs/sca-image.yml
+    uses: ./.github/workflows/job-sca-image.yml
     with:
       image: ${{ inputs.image }}

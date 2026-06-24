@@ -14,7 +14,7 @@ on:
 
 jobs:
   iast:
-    uses: ./.github/workflows/jobs/oss/iast-preprod.yml
+    uses: ./.github/workflows/job-oss-iast-preprod.yml
     with:
       preprod_url: ${{ inputs.preprod_url }}
       max_minutes: ${{ inputs.max_minutes }}

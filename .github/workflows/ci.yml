@@ -45,27 +45,27 @@ jobs:
 
   secrets:
     needs: [lint, unit-test]
-    uses: ./.github/workflows/jobs/secret-scan.yml
+    uses: ./.github/workflows/job-secret-scan.yml
     secrets: inherit
   sast:
     needs: [lint, unit-test]
-    uses: ./.github/workflows/jobs/sast.yml
+    uses: ./.github/workflows/job-sast.yml
     secrets: inherit
   osa:
     needs: [lint, unit-test]
-    uses: ./.github/workflows/jobs/osa.yml
+    uses: ./.github/workflows/job-osa.yml
     secrets: inherit
   iac:
     needs: [lint, unit-test]
-    uses: ./.github/workflows/jobs/iac-scan.yml
+    uses: ./.github/workflows/job-iac-scan.yml
     secrets: inherit
   dockerfile:
     needs: [lint, unit-test]
-    uses: ./.github/workflows/jobs/dockerfile-lint.yml
+    uses: ./.github/workflows/job-dockerfile-lint.yml
     secrets: inherit
   linters:
     needs: [lint, unit-test]
-    uses: ./.github/workflows/jobs/linter-security.yml
+    uses: ./.github/workflows/job-linter-security.yml
     secrets: inherit
 
   build:
@@ -89,13 +89,13 @@ jobs:
   sbom:
     if: github.ref == 'refs/heads/main'
     needs: build
-    uses: ./.github/workflows/jobs/sbom.yml
+    uses: ./.github/workflows/job-sbom.yml
     secrets: inherit
 
   container-scan:
     if: github.ref == 'refs/heads/main'
     needs: build
-    uses: ./.github/workflows/jobs/container-scan.yml
+    uses: ./.github/workflows/job-container-scan.yml
     secrets: inherit
     with:
       image: ghcr.io/${{ github.repository }}:${{ github.sha }}
@@ -103,7 +103,7 @@ jobs:
   sign:
     if: github.ref == 'refs/heads/main'
     needs: [container-scan]
-    uses: ./.github/workflows/jobs/sign.yml
+    uses: ./.github/workflows/job-sign.yml
     secrets: inherit
 
   deploy-preprod:
@@ -121,11 +121,11 @@ jobs:
   sec-func-tests:
     if: github.ref == 'refs/heads/main'
     needs: [deploy-preprod]
-    uses: ./.github/workflows/jobs/sec-func-tests.yml
+    uses: ./.github/workflows/job-sec-func-tests.yml
     secrets: inherit
 
   iast-preprod:
     if: github.ref == 'refs/heads/main'
     needs: [deploy-preprod]
-    uses: ./.github/workflows/jobs/iast-preprod.yml
+    uses: ./.github/workflows/job-iast-preprod.yml
     secrets: inherit

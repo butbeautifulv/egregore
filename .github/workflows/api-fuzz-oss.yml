@@ -25,7 +25,7 @@ env:
 
 jobs:
   schemathesis:
-    uses: ./.github/workflows/jobs/oss/api-fuzz-schemathesis.yml
+    uses: ./.github/workflows/job-oss-api-fuzz-schemathesis.yml
     with:
       openapi_spec: ${{ inputs.openapi_spec }}
       api_base_url: ${{ inputs.api_base_url }}

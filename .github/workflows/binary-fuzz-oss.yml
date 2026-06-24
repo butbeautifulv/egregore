@@ -24,7 +24,7 @@ env:
 
 jobs:
   binary-fuzz:
-    uses: ./.github/workflows/jobs/oss/binary-fuzz.yml
+    uses: ./.github/workflows/job-oss-binary-fuzz.yml
     with:
       fuzz_time: ${{ inputs.fuzz_time }}
       fuzz_targets: ${{ inputs.fuzz_targets }}

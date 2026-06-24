@@ -26,27 +26,27 @@ jobs:
 
   secrets:
     needs: [validate]
-    uses: ./.github/workflows/jobs/secret-scan.yml
+    uses: ./.github/workflows/job-secret-scan.yml
     secrets: inherit
   sast:
     needs: [validate]
-    uses: ./.github/workflows/jobs/sast.yml
+    uses: ./.github/workflows/job-sast.yml
     secrets: inherit
   osa:
     needs: [validate]
-    uses: ./.github/workflows/jobs/osa.yml
+    uses: ./.github/workflows/job-osa.yml
     secrets: inherit
   iac:
     needs: [validate]
-    uses: ./.github/workflows/jobs/iac-scan.yml
+    uses: ./.github/workflows/job-iac-scan.yml
     secrets: inherit
   dockerfile:
     needs: [validate]
-    uses: ./.github/workflows/jobs/dockerfile-lint.yml
+    uses: ./.github/workflows/job-dockerfile-lint.yml
     secrets: inherit
   linters:
     needs: [validate]
-    uses: ./.github/workflows/jobs/linter-security.yml
+    uses: ./.github/workflows/job-linter-security.yml
     secrets: inherit
 
   build:

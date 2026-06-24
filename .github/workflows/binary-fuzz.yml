@@ -27,7 +27,7 @@ env:
 jobs:
   binary-fuzz:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-binary-fuzz'
-    uses: ./.github/workflows/jobs/oss/binary-fuzz.yml
+    uses: ./.github/workflows/job-oss-binary-fuzz.yml
     with:
       fuzz_time: ${{ inputs.fuzz_time || '30' }}
       fuzz_targets: ${{ inputs.fuzz_targets || 'auto' }}
