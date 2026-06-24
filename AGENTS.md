@@ -85,6 +85,17 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 - HITL на dangerous tools (`run_active_scan`)
 - Sandbox-scoped MCP tools (`mcp_tools.py`)
 - SecureAgentBus с trust levels
+- **Keycloak OIDC** (optional): JWT Bearer на Ingress API (`interfaces/api/`) и MCP Tool Gateway (`interfaces/gateways/tool/`). Env: `AUTH_ENABLED`, `KEYCLOAK_ISSUER`, RBAC roles — см. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#keycloak-oidc-ingress--tool-gateway).
+
+### MCP-first exploration (Cursor)
+
+При исследовании кода предпочитать MCP перед blind grep:
+
+1. **codebase-memory** — `search_code`, `trace_path`, `get_architecture`
+2. **serena** — `find_symbol`, `find_referencing_symbols` (scope: `projects/egregore`)
+3. Grep/read — только если MCP не дал ответа
+
+После крупных структурных изменений — `index_repository` для egregore в codebase-memory.
 
 ## Архитектура (кратко)
 

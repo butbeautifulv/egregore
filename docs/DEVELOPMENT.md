@@ -39,6 +39,53 @@ docker compose exec redpanda rpk topic create security.events.raw worker.jobs.so
 
 Без `USE_KAFKA=true` очередь и bus остаются на Redis / in-memory fallback (совместимость с существующим flow).
 
+## Keycloak OIDC (Ingress + Tool Gateway)
+
+Опциональная JWT-аутентификация по образцу Veil ([`projects/veil/docs/deploy/auth-keycloak.md`](../../veil/docs/deploy/auth-keycloak.md)). **По умолчанию выключена** (`AUTH_ENABLED=0`).
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `AUTH_ENABLED` | `0` | Включить JWT на Ingress API и Tool Gateway |
+| `RBAC_ENABLED` | `0` | Проверять realm/client roles в токене |
+| `KEYCLOAK_ISSUER` | — | Realm issuer, напр. `https://keycloak.example/realms/cxado` |
+| `KEYCLOAK_AUDIENCE` | — | Client ID (`egregore-api`); fallback на `KEYCLOAK_CLIENT_ID` |
+| `KEYCLOAK_CLIENT_ID` | `egregore-api` | Для `resource_access.<client>.roles` |
+| `RBAC_ROLE_INGRESS` | `egregore-ingress` | `POST /events`, SIEM connector |
+| `RBAC_ROLE_OPERATOR` | `egregore-operator` | HITL: resume, approvals, `process-one` |
+| `RBAC_ROLE_GATEWAY` | `egregore-gateway` | `POST /invoke` на tool gateway |
+| `RBAC_ROLE_READER` | `egregore-reader` | `GET /status`, `GET /jobs/{id}` |
+| `GATEWAY_ACCESS_TOKEN` | — | Static Bearer worker → gateway при `AUTH_ENABLED=1` |
+
+Realm roles (Keycloak): `egregore-ingress`, `egregore-operator`, `egregore-gateway`, `egregore-reader`. Client: `egregore-api`.
+
+Публичные эндпоинты без JWT: `GET /metrics` (Ingress), `GET /health` (gateway).
+
+```bash
+# .env
+AUTH_ENABLED=1
+RBAC_ENABLED=1
+KEYCLOAK_ISSUER=https://keycloak.example/realms/cxado
+KEYCLOAK_AUDIENCE=egregore-api
+
+# Dev token (password grant — не для production)
+TOKEN=$(curl -sS -X POST "$KEYCLOAK_ISSUER/protocol/openid-connect/token" \
+  -d "client_id=egregore-api" \
+  -d "client_secret=YOUR_SECRET" \
+  -d "grant_type=password" \
+  -d "username=user" \
+  -d "password=pass" | jq -r .access_token)
+
+curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -X POST http://localhost:8080/events \
+  -d '{"event_type":"siem.alert","payload":{"alert":"test"}}'
+
+curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -X POST http://localhost:8090/invoke \
+  -d '{"tool_name":"dedup_alerts","args":{"alerts_text":"a"},"persona":"soc","sandbox_id":"sandbox-1"}'
+```
+
+Ответы: **401** — нет/невалидный токен; **403** — нет нужной роли при `RBAC_ENABLED=1`.
+
 ## Режимы работы
 
 | STAGE | Persistence | Job store | Queue/Bus |
@@ -161,6 +208,7 @@ async def main():
     async with SiemPollClient(
         siem_base_url='http://localhost:9090',
         ingress_url='http://localhost:8080',
+        ingress_token='YOUR_JWT',  # при AUTH_ENABLED=1; иначе api_key для dev
     ) as client:
         print(await client.poll_once())
 

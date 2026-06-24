@@ -14,6 +14,19 @@ def test_extract_alert_records_variants():
 
 
 @pytest.mark.unit
+def test_ingress_headers_prefers_bearer_over_api_key():
+    client = SiemPollClient(
+        siem_base_url="http://siem.local",
+        ingress_url="http://ingress.local",
+        api_key="dev-key",
+        ingress_token="jwt-token",
+    )
+    headers = client._ingress_headers()
+    assert headers["Authorization"] == "Bearer jwt-token"
+    assert "X-API-Key" not in headers
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_poll_once_forwards_sanitized_alerts():
     calls: list[str] = []
