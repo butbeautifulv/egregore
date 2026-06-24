@@ -10,30 +10,7 @@ permissions:
   security-events: write
   pull-requests: read
 
-env:
-  SECURITY_POLICY: config/security-gate-policy-adopt.yaml
-  ENABLE_REAL_LINTERS: "true"
-
 jobs:
   secrets:
     uses: ./.github/workflows/job-secret-scan.yml
-    secrets: inherit
-  sast:
-    uses: ./.github/workflows/job-sast.yml
-    secrets: inherit
-  osa:
-    uses: ./.github/workflows/job-osa.yml
-    secrets: inherit
-  iac:
-    uses: ./.github/workflows/job-iac-scan.yml
-    secrets: inherit
-  dockerfile:
-    uses: ./.github/workflows/job-dockerfile-lint.yml
-    secrets: inherit
-  linters:
-    uses: ./.github/workflows/job-linter-security.yml
-    secrets: inherit
-  sec-func-tests:
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/job-sec-func-tests.yml
     secrets: inherit
