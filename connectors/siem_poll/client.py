@@ -20,6 +20,7 @@ class SiemPollClient:
         siem_base_url: str,
         ingress_url: str,
         api_key: str = "",
+        ingress_token: str = "",
         siem_token: str = "",
         source: str = "siem_poll",
         sanitizer: InputSanitizer | None = None,
@@ -28,6 +29,7 @@ class SiemPollClient:
         self.siem_base_url = siem_base_url.rstrip("/")
         self.ingress_url = ingress_url.rstrip("/")
         self.api_key = api_key
+        self.ingress_token = ingress_token
         self.siem_token = siem_token
         self.source = source
         self.sanitizer = sanitizer or get_input_sanitizer()
@@ -52,7 +54,9 @@ class SiemPollClient:
 
     def _ingress_headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
-        if self.api_key:
+        if self.ingress_token:
+            headers["Authorization"] = f"Bearer {self.ingress_token}"
+        elif self.api_key:
             headers["X-API-Key"] = self.api_key
         return headers
 

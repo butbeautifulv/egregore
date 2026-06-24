@@ -1,6 +1,7 @@
 from functools import lru_cache
+from typing import Self
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -84,6 +85,23 @@ class Settings(BaseSettings):
 
     status_store_connector: str = Field(default="auto", validation_alias="STATUS_STORE_CONNECTOR")
     control_mode: str = Field(default="inprocess", validation_alias="CONTROL_MODE")
+
+    auth_enabled: bool = Field(default=False, validation_alias="AUTH_ENABLED")
+    rbac_enabled: bool = Field(default=False, validation_alias="RBAC_ENABLED")
+    keycloak_issuer: str = Field(default="", validation_alias="KEYCLOAK_ISSUER")
+    keycloak_audience: str = Field(default="", validation_alias="KEYCLOAK_AUDIENCE")
+    keycloak_client_id: str = Field(default="egregore-api", validation_alias="KEYCLOAK_CLIENT_ID")
+    rbac_role_ingress: str = Field(default="egregore-ingress", validation_alias="RBAC_ROLE_INGRESS")
+    rbac_role_operator: str = Field(default="egregore-operator", validation_alias="RBAC_ROLE_OPERATOR")
+    rbac_role_gateway: str = Field(default="egregore-gateway", validation_alias="RBAC_ROLE_GATEWAY")
+    rbac_role_reader: str = Field(default="egregore-reader", validation_alias="RBAC_ROLE_READER")
+    gateway_access_token: str = Field(default="", validation_alias="GATEWAY_ACCESS_TOKEN")
+
+    @model_validator(mode="after")
+    def validate_auth_config(self) -> Self:
+        if self.auth_enabled and not self.keycloak_issuer.strip():
+            raise ValueError("KEYCLOAK_ISSUER is required when AUTH_ENABLED=1")
+        return self
 
     @computed_field
     @property

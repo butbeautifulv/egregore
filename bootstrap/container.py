@@ -60,6 +60,11 @@ class Container:
 
         return get_investigation_state_store(settings=self.settings)
 
+    def get_token_verifier(self):
+        from cys_core.infrastructure.auth.factory import build_token_verifier
+
+        return build_token_verifier(self.settings)
+
     def wire_hitl_pause(self) -> None:
         from cys_core.infrastructure.kafka_paused import publish_paused_job_sync
         from cys_core.middleware import hitl_pause

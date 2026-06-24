@@ -132,12 +132,15 @@ class McpToolRegistry:
             "job_id": job_id,
             "correlation_id": correlation_id,
         }
+        headers: dict[str, str] = {}
+        if settings.gateway_access_token:
+            headers["Authorization"] = f"Bearer {settings.gateway_access_token}"
         if self._client is not None:
-            response = self._client.post(f"{self.gateway_url}/invoke", json=body)
+            response = self._client.post(f"{self.gateway_url}/invoke", json=body, headers=headers)
             response.raise_for_status()
             return response.json()
         with httpx.Client(timeout=30.0) as client:
-            response = client.post(f"{self.gateway_url}/invoke", json=body)
+            response = client.post(f"{self.gateway_url}/invoke", json=body, headers=headers)
             response.raise_for_status()
             return response.json()
 
