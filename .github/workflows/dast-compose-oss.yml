@@ -35,7 +35,7 @@ jobs:
     name: ZAP baseline (Compose)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Start infrastructure
         if: env.DAST_COMPOSE_SERVICES != ''

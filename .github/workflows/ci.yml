@@ -20,7 +20,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Lint
         run: |
           if [ "$ENABLE_REAL_LINTERS" = "true" ]; then
@@ -33,7 +33,7 @@ jobs:
   unit-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Unit tests
         run: |
           if [ -f requirements.txt ] && [ -d tests ]; then
@@ -75,7 +75,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: meta
         run: echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
       - name: Build image
