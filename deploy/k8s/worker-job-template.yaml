@@ -2,9 +2,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: worker-{{ persona }}-{{ run_id }}
-  namespace: cys-agi
+  namespace: egregore
   labels:
-    app: cys-agi-worker
+    app: egregore-worker
     persona: "{{ persona }}"
 spec:
   ttlSecondsAfterFinished: 300
@@ -12,13 +12,13 @@ spec:
   template:
     metadata:
       labels:
-        app: cys-agi-worker
+        app: egregore-worker
         persona: "{{ persona }}"
     spec:
       restartPolicy: Never
       containers:
         - name: worker
-          image: cys-agi-worker:latest
+          image: egregore-worker:latest
           command: ["python", "-m", "interfaces.worker.daemon"]
           args: ["--persona", "{{ persona }}", "--max-jobs", "1"]
           env:

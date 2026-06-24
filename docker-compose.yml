@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: cys_agi
+      POSTGRES_DB: egregore
     ports:
       - "5432:5432"
     volumes:

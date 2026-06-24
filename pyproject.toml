@@ -1,5 +1,5 @@
 [project]
-name = "cys-agi"
+name = "egregore"
 version = "0.1.0"
 description = "Event-driven multi-agent cybersecurity platform with ephemeral sandbox workers"
 readme = "README.md"
@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cys-agi = "interfaces.cli.main:main"
+egregore = "interfaces.cli.main:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

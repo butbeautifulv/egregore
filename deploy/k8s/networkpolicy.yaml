@@ -1,12 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: cys-agi-worker-egress
-  namespace: cys-agi
+  name: egregore-worker-egress
+  namespace: egregore
 spec:
   podSelector:
     matchLabels:
-      app: cys-agi-worker
+      app: egregore-worker
   policyTypes:
     - Egress
   egress:

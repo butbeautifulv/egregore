@@ -1,4 +1,4 @@
-# cys-agi
+# egregore
 
 Secure event-driven multi-agent cybersecurity platform with ephemeral sandbox workers, DDD domain policies, and LiteLLM provider abstraction.
 
@@ -32,23 +32,23 @@ docker compose up -d   # Postgres + Redis + Redpanda + Qdrant
 
 cp .env.example .env   # LLM API key
 
-uv run cys-agi info
-uv run cys-agi migrate   # apply migrations/*.sql
+uv run egregore info
+uv run egregore migrate   # apply migrations/*.sql
 
 # Ingest SIEM event → enqueue SOC worker
-uv run cys-agi ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
+uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
 
 # Process queued worker job
-uv run cys-agi worker --once
+uv run egregore worker --once
 
 # Control plane status
-uv run cys-agi status
+uv run egregore status
 
 # Manual investigation (all workers)
-uv run cys-agi session -g "Assess CI/CD pipeline risks"
+uv run egregore session -g "Assess CI/CD pipeline risks"
 
 # HTTP API
-uv run cys-agi serve --port 8080
+uv run egregore serve --port 8080
 
 # Tests (low memory — one pytest process per tests/<dir>/)
 ./scripts/pytest_batches.sh --cov --domain-gate
@@ -97,7 +97,7 @@ uv run cys-agi serve --port 8080
 ## Структура репозитория
 
 ```
-cys-agi/
+egregore/
 ├── agents/                 # Продукт: personas, rules, plans, skills
 ├── bootstrap/              # settings, DI container, product_loader
 ├── connectors/             # SIEM poll → ingress API

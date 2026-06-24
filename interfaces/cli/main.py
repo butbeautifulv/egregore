@@ -124,7 +124,7 @@ def cmd_session(args: argparse.Namespace) -> int:
                 "event": event.model_dump(),
                 "routing": decision.model_dump(),
                 "job_ids": job_ids,
-                "message": "Investigation jobs enqueued. Run: uv run cys-agi worker --max-jobs N",
+                "message": "Investigation jobs enqueued. Run: uv run egregore worker --max-jobs N",
             },
             indent=2,
             ensure_ascii=False,
@@ -165,7 +165,7 @@ def cmd_info(_args: argparse.Namespace) -> int:
     print(
         json.dumps(
             {
-                "project": "cys-agi",
+                "project": "egregore",
                 "stage": settings.stage,
                 "mode": "event-driven",
                 "llm_provider": settings.llm_provider,
@@ -191,7 +191,7 @@ def cmd_info(_args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="CYS-AGI event-driven multi-agent platform")
+    parser = argparse.ArgumentParser(description="Egregore event-driven multi-agent platform")
     sub = parser.add_subparsers(dest="command", required=True)
 
     registry = get_agent_registry()

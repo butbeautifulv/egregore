@@ -21,7 +21,7 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
-      POSTGRES_DB: cys_agi
+      POSTGRES_DB: egregore
       REDIS_HOST: redis
       REDIS_PORT: 6379
     networks:
@@ -67,7 +67,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: cys_agi
+      POSTGRES_DB: egregore
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets:

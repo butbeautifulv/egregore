@@ -1,22 +1,21 @@
 # AGENTS.md
 
-Правила для AI-ассистентов в репозитории **cys-agi**.
+Правила для AI-ассистентов в репозитории **egregore**.
 
-## Три слоя rules / skills (не смешивать)
+## Три слоя rules / skills (DRY hub)
 
 | Слой | Путь | Runtime? | Назначение |
 |------|------|----------|------------|
-| **Product** | `agents/skills/` | **Да** | Skill Gateway — on-demand playbooks для workers |
-| **Cursor stub** | `.agents/skills/` | Нет | Discovery stubs → `agents/skills/` |
-| **cxado-skills** | `shared/skills/` (meta-repo) | Нет | Только devsecops + veil — **не** cys-agi product |
-
-| **Agent rules** | `.agents/rules/cys-agi-*.mdc` | Нет | Cursor workflow: critic, karpathy, branches (паттерн Fish) |
+| **Core rules** | `shared/agent-rules/core/` → `.agents/rules/core-*.mdc` | Нет | `make rules-link` — karpathy, critic, branches, kaizen, docs |
+| **Project overlay** | `.agents/rules/project-*.mdc` | Нет | egregore arch, pytest, security only |
+| **Generic agent skills** | `shared/skills/agent/*` | Нет | `make skills-install` → `~/.cursor/skills/` |
+| **Product skills** | `agents/skills/` | **Да** | Skill Gateway — thin overlay на hub |
 
 `devsecops-ai-security` в cxado-skills — **CI/CD** skill scanning, не `ai-agent-security` runtime.
 
 ## Agent workflow (Cursor)
 
-Follow `.agents/rules/cys-agi-*.mdc` — workflow, karpathy guidelines, critic, parallel branches, documentation, security, kaizen.
+Follow `.agents/rules/core-*.mdc` (hub) + `project-workflow.mdc` + `project-security.mdc`.
 
 Master plan: [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATFORM.md)
 
@@ -25,9 +24,9 @@ Master plan: [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATF
 | Слой | Путь | В git | Назначение |
 |------|------|-------|------------|
 | **Продукт** | `agents/` | да | Runtime: personas, rules, plans, skills |
-| **Cursor dev** | `.agents/skills/` + `.agents/rules/` | да | Stubs и workflow rules для разработки в IDE |
+| **Cursor dev** | `.agents/rules/` (core symlinks + overlay) | да | Workflow rules; skills via `make skills-install` |
 
-**Не смешивать.** Продуктовые агенты — только в `agents/personas/`. Cursor stubs — только перенаправление на canonical `agents/skills/`.
+**Не смешивать.** Продуктовые агенты — только в `agents/personas/`. Core rules — symlink из hub, не копировать.
 
 ## Продуктовый слой `agents/`
 
@@ -64,7 +63,7 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 - **Events:** `interfaces/ingress/router.py` → `EventIngress`
 - **Workers:** `interfaces/worker/orchestrator.py` → `WorkerOrchestrator`
-- **CLI:** `uv run cys-agi`
+- **CLI:** `uv run egregore`
 - **LLM:** `cys_core/llm` — LiteLLM only
 - **Продукт → runtime:** `bootstrap/product_loader.py` → `AgentDefinition`
 - **Агенты:** `AgentRegistry` + `AgentRuntime` (runtime не знает имён persona)
@@ -126,15 +125,15 @@ Coverage gate: **100%** на `cys_core/domain`.
 
 ## Cursor Cloud specific instructions
 
-**cys-agi** — CLI + optional FastAPI (`uv run cys-agi serve`).
+**egregore** — CLI + optional FastAPI (`uv run egregore serve`).
 
 ### Команды
 
 | Действие | Команда |
 |----------|---------|
 | Тесты | `./scripts/pytest_batches.sh` |
-| Smoke | `USE_MEMORY_FALLBACK=true STAGE=test uv run cys-agi info` |
-| Event flow | `uv run cys-agi ingest -t siem.alert -p '{"alert":"test"}'` then `uv run cys-agi worker --once` |
+| Smoke | `USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
+| Event flow | `uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `uv run egregore worker --once` |
 
 Без API-ключа: `info`, `ingest` (enqueue), `status`, `pytest`.
 
