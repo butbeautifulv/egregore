@@ -128,7 +128,14 @@ class RunWorkerJob:
             creds = await self.sandbox.acreate(run_id, job.persona)
             job.sandbox_id = creds.sandbox_id
             job.status = WorkerJobStatus.RUNNING
-            self.job_store.upsert_running(job.job_id, session_id, job.persona)
+            self.job_store.upsert_running(
+                job.job_id,
+                session_id,
+                job.persona,
+                correlation_id=job.correlation_id,
+                tenant_id=job.tenant_id,
+                event_id=job.event_id,
+            )
 
             raw_input = self._job_input(job)
             sanitized = self.sanitizer.sanitize(raw_input, source="external")

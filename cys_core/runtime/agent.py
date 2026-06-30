@@ -213,7 +213,15 @@ class AgentRuntime:
             investigation_id=investigation_id,
         )
         schema = schema_registry.get(defn.schema_name)
-        return self._invoke(agent, user_input, session_id=sid, schema=schema)
+        return self._invoke(
+            agent,
+            user_input,
+            session_id=sid,
+            schema=schema,
+            agent_id=name,
+            tenant_id=tenant_id,
+            investigation_id=investigation_id,
+        )
 
     async def arun(
         self,
@@ -266,11 +274,16 @@ class AgentRuntime:
         defn = self.registry.get(name)
         agent = await self.acreate(defn, session_id=session_id)
         schema = schema_registry.get(defn.schema_name)
-        config = {
-            "configurable": {"thread_id": session_id},
-            "callbacks": self.model_connector.callbacks(),
-            "recursion_limit": 25,
-        }
+        config = merge_langchain_config(
+            {
+                "configurable": {"thread_id": session_id},
+                "callbacks": self.model_connector.callbacks(),
+                "recursion_limit": 25,
+            },
+            persona=name,
+            session_id=session_id,
+            trace_name=f"egregore-{name}-resume",
+        )
         result = await agent.ainvoke(Command(resume=resume), config=config)
         return self._coerce_result(result, schema=schema)
 
@@ -281,16 +294,27 @@ class AgentRuntime:
         *,
         session_id: str,
         schema: type[BaseModel] | None,
+        agent_id: str = "",
+        tenant_id: str = "default",
+        investigation_id: str = "",
+        correlation_id: str = "",
     ) -> dict[str, Any]:
         try:
             sanitized = self.sanitizer.sanitize(user_input, source="user")
         except SecurityViolation:
             return {"error": REFUSAL_MESSAGE}
-        config = {
-            "configurable": {"thread_id": session_id},
-            "callbacks": self.model_connector.callbacks(),
-            "recursion_limit": 25,
-        }
+        config = merge_langchain_config(
+            {
+                "configurable": {"thread_id": session_id},
+                "callbacks": self.model_connector.callbacks(),
+                "recursion_limit": 25,
+            },
+            persona=agent_id or "agent",
+            session_id=session_id,
+            tenant_id=tenant_id,
+            investigation_id=investigation_id,
+            correlation_id=correlation_id,
+        )
         result = agent.invoke(
             {"messages": [{"role": "user", "content": sanitized}]},
             config=config,
@@ -331,6 +355,7 @@ class AgentRuntime:
             event_id=event_id,
             correlation_id=correlation_id,
             investigation_id=investigation_id,
+            session_id=session_id,
             tenant_id=tenant_id,
             sandbox_id=sandbox_id,
             memory_entries_loaded=memory_entries_loaded,

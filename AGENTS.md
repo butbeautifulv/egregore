@@ -64,6 +64,7 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 - **Events:** `interfaces/ingress/router.py` → `EventIngress`
 - **Workers:** `interfaces/worker/orchestrator.py` → `WorkerOrchestrator`
 - **CLI:** `uv run egregore`
+- **Operator UI:** `ui/` — Next.js 16, HTTP client to FastAPI (`lib/api-client.ts`)
 - **LLM:** `cys_core/llm` — LiteLLM only
 - **Продукт → runtime:** `bootstrap/product_loader.py` → `AgentDefinition`
 - **Агенты:** `AgentRegistry` + `AgentRuntime` (runtime не знает имён persona)
@@ -74,8 +75,16 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 - Не восстанавливать batch `assess` pipeline как primary path
 - Не создавать `agents/*.py` Python-модули для personas
-- Не коммитить `.env`, ключи, `.agents/`
+- Не коммитить `.env`, ключи, `.agents/`, `ui/node_modules/`, `ui/.next/`
 - Не редактировать `.cursor/plans/` без явного запроса
+- Не подключать `shared/gui` как npm `file:` dependency в `ui/` — только vendor-copy ([`ui/docs/GUI_VENDOR.md`](ui/docs/GUI_VENDOR.md))
+
+### Operator UI (`ui/`)
+
+- Next.js App Router; shared primitives vendored in `ui/vendor/gui/`
+- Sync from meta-repo: `cd ui && ./scripts/vendor-gui.sh && node scripts/rewrite-vendor-imports.mjs`
+- UI changes: ≤5 files per PR (same rule as backend sub-phases)
+- Dev: `make dev-ui` from repo root; see [ui/README.md](ui/README.md)
 
 ### Security
 
@@ -96,6 +105,22 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 3. Grep/read — только если MCP не дал ответа
 
 После крупных структурных изменений — `index_repository` для egregore в codebase-memory.
+
+### Langfuse observability (Cursor)
+
+- Skill: `.cursor/skills/langfuse/` ([langfuse/skills](https://github.com/langfuse/skills)) — tracing setup, CLI, docs lookup
+- Code: `cys_core/observability/langfuse_client.py`, `langfuse_tags.py`; LangChain `CallbackHandler` on all agent paths
+- Dev stack: `make langfuse-dev-setup`, `make dev-langfuse-fresh`; runbook [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
+
+### LangChain / LangGraph skills (project)
+
+Установлены в `.agents/skills/` (dev/build, не product runtime):
+
+```bash
+npx skills add langchain-ai/langchain-skills --skill '*' --yes
+```
+
+14 skills: `ecosystem-primer`, `langchain-fundamentals`, `langgraph-fundamentals`, `langgraph-persistence`, `langgraph-human-in-the-loop`, `deep-agents-*`, и др. Старт: **ecosystem-primer**.
 
 ## Архитектура (кратко)
 

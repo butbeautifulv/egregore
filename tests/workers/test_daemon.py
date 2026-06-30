@@ -17,7 +17,9 @@ async def test_worker_daemon_processes_jobs_then_idles_out():
         None,
     ]
 
-    with patch("interfaces.worker.daemon.WorkerOrchestrator") as orch_cls:
+    with patch("interfaces.worker.daemon.WorkerOrchestrator") as orch_cls, patch(
+        "interfaces.worker.daemon.flush_langfuse"
+    ) as flush_mock:
         orch = orch_cls.return_value
         orch.process_next = AsyncMock(side_effect=results)
         daemon = WorkerDaemon("soc", max_jobs=1, idle_timeout=0.1)
@@ -25,6 +27,7 @@ async def test_worker_daemon_processes_jobs_then_idles_out():
             loop_mock.return_value.add_signal_handler = lambda *a, **k: None
             processed = await daemon.run()
     assert processed == 1
+    flush_mock.assert_called_once()
     orch_cls.assert_called_once_with(persona="soc")
 
 

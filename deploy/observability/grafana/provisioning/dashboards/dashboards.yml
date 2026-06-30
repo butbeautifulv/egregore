@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: egregore
+    orgId: 1
+    folder: Egregore
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

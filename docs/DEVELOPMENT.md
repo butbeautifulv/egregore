@@ -1,377 +1,135 @@
-# Разработка cys-agi
+# Development guide
 
-## Окружение
+Local workflows for egregore API, worker, Operator UI, and observability stacks.
+
+## Prerequisites
 
 ```bash
-uv sync --group dev
-docker compose up -d
+uv sync
 cp .env.example .env
+docker compose up -d   # Postgres, Redis, Redpanda, Qdrant
+uv run egregore migrate
 ```
 
-| Service | Port | Credentials |
-|---------|------|-------------|
-| Postgres 16 | 5432 | `postgres` / `password`, DB `cys_agi` |
-| Redis 7 | 6379 | password `password` |
-| Redpanda (Kafka) | 19092 | no auth (dev single-node) |
+See [README.md](../README.md) for full quick start and [OBSERVABILITY.md](OBSERVABILITY.md) for Langfuse, Prometheus, Grafana, and Tempo.
 
-### Kafka / Redpanda (event bus)
+## Dev stack
 
-Redpanda поднимается вместе с `docker compose up -d`. Для локальной разработки с Kafka:
+One command (infra + supervised API + 2 workers + UI):
 
 ```bash
-# .env
-USE_KAFKA=true
-KAFKA_BOOTSTRAP_SERVERS=localhost:19092
-
-# Проверка брокера
-docker compose exec redpanda rpk topic list
-docker compose exec redpanda rpk topic create security.events.raw worker.jobs.soc bus.findings
+make dev
 ```
 
-Топики (production naming):
-
-| Topic | Назначение |
-|-------|------------|
-| `security.events.raw` | Ingress → router consumer |
-| `worker.jobs.{persona}` | Router → worker daemon |
-| `bus.findings` | Worker findings → critic/coordinator |
-| `worker.jobs.dlq` | Poison jobs |
-
-Без `USE_KAFKA=true` очередь и bus остаются на Redis / in-memory fallback (совместимость с существующим flow).
-
-## Keycloak OIDC (Ingress + Tool Gateway)
-
-Опциональная JWT-аутентификация по образцу Veil ([`projects/veil/docs/deploy/auth-keycloak.md`](../../veil/docs/deploy/auth-keycloak.md)). **По умолчанию выключена** (`AUTH_ENABLED=0`).
-
-| Variable | Default | Role |
-|----------|---------|------|
-| `AUTH_ENABLED` | `0` | Включить JWT на Ingress API и Tool Gateway |
-| `RBAC_ENABLED` | `0` | Проверять realm/client roles в токене |
-| `KEYCLOAK_ISSUER` | — | Realm issuer, напр. `https://keycloak.example/realms/cxado` |
-| `KEYCLOAK_AUDIENCE` | — | Client ID (`egregore-api`); fallback на `KEYCLOAK_CLIENT_ID` |
-| `KEYCLOAK_CLIENT_ID` | `egregore-api` | Для `resource_access.<client>.roles` |
-| `RBAC_ROLE_INGRESS` | `egregore-ingress` | `POST /events`, SIEM connector |
-| `RBAC_ROLE_OPERATOR` | `egregore-operator` | HITL: resume, approvals, `process-one` |
-| `RBAC_ROLE_GATEWAY` | `egregore-gateway` | `POST /invoke` на tool gateway |
-| `RBAC_ROLE_READER` | `egregore-reader` | `GET /status`, `GET /jobs/{id}` |
-| `GATEWAY_ACCESS_TOKEN` | — | Static Bearer worker → gateway при `AUTH_ENABLED=1` |
-
-Realm roles (Keycloak): `egregore-ingress`, `egregore-operator`, `egregore-gateway`, `egregore-reader`. Client: `egregore-api`.
-
-Публичные эндпоинты без JWT: `GET /metrics` (Ingress), `GET /health` (gateway).
+Or step by step:
 
 ```bash
-# .env
-AUTH_ENABLED=1
-RBAC_ENABLED=1
-KEYCLOAK_ISSUER=https://keycloak.example/realms/cxado
-KEYCLOAK_AUDIENCE=egregore-api
-
-# Dev token (password grant — не для production)
-TOKEN=$(curl -sS -X POST "$KEYCLOAK_ISSUER/protocol/openid-connect/token" \
-  -d "client_id=egregore-api" \
-  -d "client_secret=YOUR_SECRET" \
-  -d "grant_type=password" \
-  -d "username=user" \
-  -d "password=pass" | jq -r .access_token)
-
-curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -X POST http://localhost:8080/events \
-  -d '{"event_type":"siem.alert","payload":{"alert":"test"}}'
-
-curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -X POST http://localhost:8090/invoke \
-  -d '{"tool_name":"dedup_alerts","args":{"alerts_text":"a"},"persona":"soc","sandbox_id":"sandbox-1"}'
+make dev-infra       # core infra
+make dev-langfuse    # Langfuse UI http://localhost:3001
+make dev-obs         # Prometheus :9091, Grafana :3002, Tempo OTLP :4317
+make dev-api         # API http://localhost:8080
+make dev-workers     # 2 worker daemons (WORKER_REPLICAS, never idle-exit)
+make dev-ui          # Operator UI http://localhost:3000
 ```
 
-Ответы: **401** — нет/невалидный токен; **403** — нет нужной роли при `RBAC_ENABLED=1`.
+`make dev` and `scripts/dev.sh` start API + `WORKER_REPLICAS` workers (default 2) with auto-restart on crash. Workers use `WORKER_IDLE_TIMEOUT=0` (run until stopped). Docker: `make dev-docker` scales workers the same way.
 
-## Режимы работы
+## Local LLM (Ollama / OpenAI-compatible)
 
-| STAGE | Persistence | Job store | Queue/Bus |
-|-------|-------------|-----------|-----------|
-| `test` | memory | in-memory | in-memory fallback |
-| `dev` | Postgres (fallback memory) | Postgres or in-memory | Redis or memory; Kafka if `USE_KAFKA=true` |
-| `prod` | Postgres (fail-closed) | Postgres (fail-closed) | Kafka (Redpanda) |
+egregore routes all model calls through LiteLLM. For local inference without cloud API keys, point at Ollama or any OpenAI-compatible endpoint.
 
-### Connectors и secrets
-
-| Переменная | Значения | Назначение |
-|------------|----------|------------|
-| `PERSISTENCE_CONNECTOR` | `auto` \| `memory` \| `postgres` | LangGraph checkpointer + store |
-| `JOB_STORE_CONNECTOR` | `auto` \| `memory` \| `postgres` | HITL pause/resume + job status |
-| `USE_MEMORY_FALLBACK` | `true` \| `false` | Явный override silent fallback (dev/test) |
-| `BUS_SIGNING_KEY` | string | HMAC для SecureAgentBus (обязателен в prod) |
-| `SIEM_ADAPTER` | `mock` \| `http` | Tool `query_siem_readonly` |
-| `SIEM_BASE_URL` | URL | HTTP SIEM при `SIEM_ADAPTER=http` |
-| `USE_REAL_EMBEDDINGS` | `true` \| `false` | Litellm embeddings для Qdrant (opt-in) |
-
-В `STAGE=prod` при недоступном Postgres без `USE_MEMORY_FALLBACK=true` старт падает с `PersistenceUnavailableError` (не silent fallback). Метрика: `cys_persistence_fallback_total`.
-
-### Миграции БД
+### Ollama
 
 ```bash
-# Применить migrations/*.sql (schema_migrations tracking)
-uv run cys-agi migrate
-
-# Или вручную
-psql $POSTGRES_URL -f migrations/001_memory_tables.sql
-psql $POSTGRES_URL -f migrations/002_worker_jobs.sql
+# Terminal 1 — start Ollama and pull a model
+ollama serve
+ollama pull llama3.2
 ```
 
-Локально без Docker:
+In `projects/egregore/.env`:
 
 ```bash
-USE_MEMORY_FALLBACK=true STAGE=dev uv run cys-agi ingest -t siem.alert -p '{"alert":"test"}'
-USE_MEMORY_FALLBACK=true STAGE=dev uv run cys-agi worker --once
+LLM_PROVIDER=litellm
+LLM_MODEL=ollama/llama3.2
+LLM_BASE_URL=http://localhost:11434
+LLM_TEMPERATURE=0.1
+USE_MEMORY_FALLBACK=true
+STAGE=dev
 ```
 
-## MCP Tool Gateway
+Cloud API keys (`ANTHROPIC_API_KEY`, etc.) can stay empty for Ollama.
 
-PEP для sandbox tool calls: `POST /invoke` → execute → sanitize → `RETRIEVED_TOOL_DATA` wrapper.
+### vLLM / other OpenAI-compat servers
+
+Use the provider prefix LiteLLM expects (e.g. `openai/Qwen3.6-27B-NVFP4`) and set `LLM_BASE_URL` to the server `/v1` base URL. Model id must match `GET /v1/models`.
 
 ```bash
-# .env
-USE_TOOL_GATEWAY=true
-TOOL_GATEWAY_URL=http://localhost:8090
-
-uv run uvicorn interfaces.gateways.tool.server:create_app --factory --port 8090
+LLM_PROVIDER=litellm
+LLM_MODEL=openai/Qwen3.6-27B-NVFP4
+LLM_BASE_URL=http://10.8.185.186:11612/v1
+LLM_TEMPERATURE=0.1
 ```
 
-Worker с `USE_TOOL_GATEWAY=true` резолвит tools через gateway (`sandbox_tools`), не напрямую из registry.
+Cloud API keys can stay empty — when `LLM_BASE_URL` is set, egregore passes a dummy key for local OpenAI-compatible servers.
 
-### HITL L1 (high-risk tools)
+## Verify prompts reach the LLM
 
-`SecurityMiddleware` в prod/test вызывает `interrupt()` вместо error → job `awaiting_approval`.
+Use this checklist when jobs appear to hang or traces are empty.
+
+### 1. Direct agent smoke (no queue)
 
 ```bash
-GET  /jobs/{id}              # status: running | awaiting_approval | ...
-GET  /approvals/pending      # очередь pending tool calls
-POST /jobs/{id}/resume       # {"decision":"approve|reject|edit","approval_id":"appr-..."}
+USE_MEMORY_FALLBACK=true STAGE=test uv run egregore agent soc -i "test prompt"
 ```
 
-Paused jobs → `worker.jobs.paused` (Kafka). Approvals → `audit.hitl.approvals`.
+Success: JSON stdout without `"error"`. With Ollama running, `ollama serve` logs an HTTP completion request.
 
-### DoW (Denial of Wallet)
-
-Per-job budgets на `WorkerJob` (defaults по persona в `cys_core/domain/workers/budgets.py`):
-
-| Persona | max_cost_usd | max_tokens |
-|---------|--------------|------------|
-| soc | $2 | 50k |
-| redteam | $5 | 80k |
-
-- `SecurityMiddleware` + `AgentRuntime` — tool-call / token / cost caps
-- `interfaces/gateways/tool/policy.py` — max 3 sequential high-risk tools (config: `MAX_HIGH_RISK_TOOL_CHAIN_DEPTH`)
-
-## Sandbox (K8s)
+### 2. Full worker path
 
 ```bash
-# .env
-SANDBOX_CONNECTOR=k8s
-K8S_NAMESPACE=cys-agi
-K8S_WORKER_IMAGE=cys-agi-worker:latest
+USE_MEMORY_FALLBACK=true STAGE=test uv run egregore ingest -t siem.alert -p '{"alert":"obs-test"}'
+USE_MEMORY_FALLBACK=true STAGE=test uv run egregore worker --once
 ```
 
-При `SANDBOX_CONNECTOR=k8s` connector пытается `load_incluster_config()` / `load_kube_config()` и создать `BatchV1Api`.  
-Manifests: `deploy/k8s/worker-job-template.yaml`, `deploy/k8s/networkpolicy.yaml`.  
-Без K8s API — fallback на local sandbox с префиксом `k8s-fallback-`.
-
-## Secure Skills
-
-- Metadata в `agents/manifest.yaml` + `agents/skills/*/SKILL.md`
-- Body только через `load_skill` → `interfaces/gateways/skill/load.py` (hash + sanitize + delimiters)
-- Allowlist per persona: `skills:` в `agent.yaml`
-- Vetting внешних packs: [docs/SKILLS_VETTING.md](SKILLS_VETTING.md)
-
-Первый gateway-backed tool: `query_siem_readonly` (SOC persona).  
-`SIEM_ADAPTER=mock` — canned JSON (dev). `SIEM_ADAPTER=http` + `SIEM_BASE_URL` — `GET {base}/search?q=...`.  
-Каждый invoke пишет audit record → `audit.tool.invocations` (Kafka) или in-memory (dev).
+### 3. LiteLLM debug logging
 
 ```bash
-curl -X POST http://localhost:8090/invoke \
-  -H 'Content-Type: application/json' \
-  -d '{"tool_name":"query_siem_readonly","args":{"query":"powershell"},"persona":"soc","sandbox_id":"sandbox-1"}'
+LITELLM_LOG=DEBUG USE_MEMORY_FALLBACK=true uv run egregore agent soc -i "test"
 ```
 
-## SIEM poll connector
+### 4. Langfuse traces
 
-Лёгкий сервис без LLM: опрашивает SIEM HTTP API и шлёт нормализованные события в Ingress.
+1. `make dev-langfuse` and create API keys in http://localhost:3001
+2. Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST=http://localhost:3001` in `.env`
+3. Run ingest + `worker --once` (or `worker --daemon`)
+4. Open Langfuse → Traces; filter by tag `persona:soc`
+
+Worker daemon flushes Langfuse after each processed job so traces appear without waiting for process exit.
+
+### 5. Prometheus metrics
 
 ```bash
-# SIEM mock/stub должен отдавать GET {siem_base_url}/alerts → {"results": [...]}
-python -c "
-import asyncio
-from connectors.siem_poll import SiemPollClient
-
-async def main():
-    async with SiemPollClient(
-        siem_base_url='http://localhost:9090',
-        ingress_url='http://localhost:8080',
-        ingress_token='YOUR_JWT',  # при AUTH_ENABLED=1; иначе api_key для dev
-    ) as client:
-        print(await client.poll_once())
-
-asyncio.run(main())
-"
+make dev-obs
+make dev-api
+curl -s localhost:8080/metrics | grep cys_events_ingested
 ```
 
-Payload санитизируется (`source=external`) **до** `POST /events`; hard injection → alert отбрасывается.
+After `ingest`, `cys_events_ingested_total` should increase. Grafana: http://localhost:3002 (admin / admin).
 
-## CLI для отладки
+## OpenTelemetry (optional)
 
 ```bash
-uv run cys-agi info
-
-# Event-driven flow
-uv run cys-agi ingest -t siem.alert -p '{"alert":"powershell"}' -s high
-uv run cys-agi worker --once
-uv run cys-agi status
-
-# API
-uv run cys-agi serve --port 8080
-curl -X POST http://localhost:8080/events \
-  -H 'Content-Type: application/json' \
-  -d '{"event_type":"siem.alert","payload":{"alert":"test"}}'
-
-# Manual investigation (LLM planner → sequential worker jobs)
-uv run cys-agi session -g "Analyze workflow risks"
-
-# DB migrations
-uv run cys-agi migrate
-
-# Single worker debug
-uv run cys-agi agent soc
-uv run cys-agi agent redteam -i "sample input"
-
-# Kafka production daemons (USE_KAFKA=true)
-uv run cys-agi router
-uv run cys-agi worker --daemon --persona soc
-uv run cys-agi critic
-uv run cys-agi coordinator
+make dev-obs
+OTEL_ENABLED=true uv run egregore serve --port 8080
 ```
 
-### Secure RAG
+HTTP spans export to Tempo on `localhost:4317`. Explore in Grafana → Tempo. LLM detail stays in Langfuse.
 
-```bash
-USE_QDRANT=true          # optional; in-memory fuzzy store when false
-USE_REAL_EMBEDDINGS=true # litellm embeddings (default: 8-dim hash stub)
-# Ingest via rag.ingest.staging consumer or MemoryVectorStore in tests
-# SOC tool: rag_query via tool gateway
-```
+## Common issues
 
-### Observability
-
-```bash
-# Metrics on ingress + gateway
-curl localhost:8080/metrics
-uv run uvicorn interfaces.gateways.tool.server:create_app --factory --port 8090
-
-# Grafana dashboard: deploy/grafana/dashboards/cys-agi.json
-```
-
-## CI
-
-CI workflows (parallel on PR / push to `main`):
-
-| Workflow | Scope |
-|----------|--------|
-| `arch-gate.yml` | import-linter, arch audit, pytest + domain 100% coverage |
-| `adversarial-gate.yml` | `tests/adversarial/` abuse-case matrix |
-| `agent-policy-gate.yml` | `agent.yaml` policy drift vs adversarial tests (PR only) |
-| `security-shift-left.yml` | Fabrica B1–B6: Gitleaks, CodeQL+Semgrep, Trivy OSA, Checkov IaC, Hadolint, Ruff |
-
-**Security shift-left** (from [fabrica](https://github.com/butbeautifulv/fabrica) `shift-left` profile):
-
-- Policy day-1: `config/security-gate-policy-adopt.yaml` (warn on noisy scanners)
-- After triage: switch `SECURITY_POLICY` in `security-shift-left.yml` to `config/security-gate-policy.yaml`
-- Gates: `scripts/gate-check.py` + SARIF reports per control
-
-```bash
-# Local policy smoke
-python3 scripts/validate-policy.py
-python3 scripts/gate-check.py --help
-```
-
-Opt-in live Postgres: `.github/workflows/integration-postgres.yml` (`workflow_dispatch`).
-
-## Тестирование
-
-```bash
-USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/ -q --cov=cys_core/domain
-
-uv run pytest tests/domain/events/ -v
-uv run pytest tests/workers/ -v
-uv run pytest tests/ingress/ -v
-uv run pytest tests/interfaces/control_plane/ -v
-uv run pytest tests/adversarial/ -v
-```
-
-## Добавление persona
-
-### agent.yaml
-
-```yaml
-name: myagent
-description: Short description
-role: worker              # worker | control
-output_schema: MyFinding
-tools:
-  - dedup_alerts
-hitl_tools: {}
-trust_level: internal
-bus_recipients:
-  - critic
-  - coordinator
-language: ru
-sample: samples/default.txt
-```
-
-### Routing rule
-
-Добавить в `agents/plans/<plan>.yaml`:
-
-```yaml
-routing:
-  rules:
-    - event_types: [my.event.type]
-      personas: [myagent]
-      notify_control: true
-```
-
-### manifest.yaml
-
-Добавить в `personas.workers` или `personas.control`.
-
-## Добавление event type
-
-1. Добавить literal в `cys_core/domain/events/models.py` → `EventType`
-2. Routing rule в plan YAML
-3. Тест в `tests/domain/events/`
-
-## Структура event-driven кода
-
-```
-interfaces/ingress/router.py              # EventIngress (sync)
-interfaces/ingress/router_consumer.py     # Kafka router (shared DispatchEvent)
-cys_core/application/use_cases/dispatch_event.py  # routing + planner fork
-interfaces/worker/orchestrator.py         # WorkerOrchestrator (sequential enqueue, dependency gate)
-interfaces/control_plane/                 # CriticService, CoordinatorService, JobStore
-cys_core/domain/events/                   # SecurityEvent, EventRouter
-cys_core/domain/memory/                   # episodic memory, investigation state
-cys_core/infrastructure/job_store/        # Postgres/InMemory HITL durable state
-cys_core/infrastructure/memory/         # episodic + investigation stores
-cys_core/infrastructure/migrations/     # SQL migration runner
-```
-
-### Multi-pod bus (Redis)
-
-Без `USE_KAFKA=true` worker публикует findings в Redis pub/sub. Critic daemon вызывает `RedisBusTransport.start_subscriber_loop(["critic"])`.  
-Для production multi-pod рекомендуется `USE_KAFKA=true` (critic/coordinator читают `bus.findings`).
-
-## Langfuse (опционально)
-
-```bash
-LANGFUSE_API_KEY=...
-LANGFUSE_HOST=https://cloud.langfuse.com
-```
+| Symptom | Fix |
+|---------|-----|
+| `{"error": ...}` from agent | Set `LLM_MODEL` + `LLM_BASE_URL` for local model, or add cloud API key |
+| No Langfuse traces | Both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` required |
+| Port 3000 in use | Operator UI uses **3000**; Langfuse uses **3001** |
+| UI dev `ENOSPC` | `cd ui && npx next dev --webpack` or `npm run build && npm run start` |

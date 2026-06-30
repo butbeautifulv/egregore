@@ -62,22 +62,22 @@
       "computedHash": "bba67da9bb56b399ebeedd01c417870a9f3c35c273f89e197b86b338a130f7a9"
     },
     "deep-agents-core": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/deep-agents-core/SKILL.md",
-      "computedHash": "8cbf6f61f42b2482472f53a99e23607f16017e1e16ca037409c6c8fcfcbcc395"
+      "skillPath": "config/skills/deep-agents-core/SKILL.md",
+      "computedHash": "78899a8217572be9156b0c03f280fea7c250ce29e89a87fc18499766ec67159c"
     },
     "deep-agents-memory": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/deep-agents-memory/SKILL.md",
-      "computedHash": "b7b0facdff17b6f3ad77019e30a697175389e06ec7260780f49d5b3a1d28ad2a"
+      "skillPath": "config/skills/deep-agents-memory/SKILL.md",
+      "computedHash": "54e4fd1e876f5e13bee1b52812a84befe00e8336c19d32766557fcb84c5ecf49"
     },
     "deep-agents-orchestration": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/deep-agents-orchestration/SKILL.md",
-      "computedHash": "1570f8d88e1233edc3306d28224604172b016aedba0ced2efa2dd8e38e28ae62"
+      "skillPath": "config/skills/deep-agents-orchestration/SKILL.md",
+      "computedHash": "5b039d2c10ef3bd6f6044c70c123060860dc1e1a49c0dc5cc12dde7cd67a3b75"
     },
     "docker-patterns": {
       "source": "langchain-ai/skills-benchmarks",
@@ -86,9 +86,9 @@
       "computedHash": "debd9fc2e37bdef7f7956dd92a76668ba8916eb7717f1df2bda94f9936daefcf"
     },
     "ecosystem-primer": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/benchmarks/ecosystem-primer/SKILL.md",
+      "skillPath": "config/skills/ecosystem-primer/SKILL.md",
       "computedHash": "792007c035568732166705ab3b2e01b29fff39f4630e974226e7e2ca5fea4352"
     },
     "framework-selection": {
@@ -104,22 +104,22 @@
       "computedHash": "a1957a55ac227c88b4be0b74ef0aee85e17c69d6b2d3aec8e0cd5fb5cef9f062"
     },
     "langchain-dependencies": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/langchain-dependencies/SKILL.md",
-      "computedHash": "bab5411cdfbdeaa42544c45791d9d3fc18d4cc193f4a3c5e2f6bd567422bffaf"
+      "skillPath": "config/skills/langchain-dependencies/SKILL.md",
+      "computedHash": "d11337493fa4828c12d2d1793fbdf3bb0d5ae67763a03e98b0f1aa3d0ff6825b"
     },
     "langchain-fundamentals": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/langchain-fundamentals/SKILL.md",
-      "computedHash": "69edf2c7463e1aa29373495ad3e9777098c712f0eb36f7612034a83738b3c287"
+      "skillPath": "config/skills/langchain-fundamentals/SKILL.md",
+      "computedHash": "5a1ded1b185ed95aab2b795f6134ce1ea9c19dddc5d5c8f291b31c0db4f0e379"
     },
     "langchain-middleware": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/langchain-middleware/SKILL.md",
-      "computedHash": "7d1931c4439cc4ba0c4cc92e824aa08067b76748911196319b595c91041cdd61"
+      "skillPath": "config/skills/langchain-middleware/SKILL.md",
+      "computedHash": "f8b6897ba1f027d56ff9fffa72d4d27d8e048232fe1e1c13e219df98969d55b0"
     },
     "langchain-oss-primer": {
       "source": "langchain-ai/skills-benchmarks",
@@ -128,10 +128,10 @@
       "computedHash": "d1fdb46851478e62f727b62a0b1b37860f1f8cb29ff2cdb2bdb8ca4eeae3b0c8"
     },
     "langchain-rag": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/langchain-rag/SKILL.md",
-      "computedHash": "545c661f6ed9b54cfe078a438052b2742d6122fc022f69db67d1a01aca4c726c"
+      "skillPath": "config/skills/langchain-rag/SKILL.md",
+      "computedHash": "53fa807b2094c4ee9136ff23a9330321c1a22959870e4a1f7bd53b753b623f94"
     },
     "langgraph-cli": {
       "source": "langchain-ai/langchain-skills",
@@ -146,22 +146,22 @@
       "computedHash": "623b8c10cbb70f70ea875d1b0901f0fb0e174a837c2d6d10707627a46ae30631"
     },
     "langgraph-fundamentals": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/langgraph-fundamentals/SKILL.md",
-      "computedHash": "d754005c69632037ca79c4daa8177b03e5a0f17f40cde3b0f532b33a8df88ded"
+      "skillPath": "config/skills/langgraph-fundamentals/SKILL.md",
+      "computedHash": "790dd42d79190a6db6a7a82ac9b03fa371402a47d91ff88c1e2731b1ceff1d29"
     },
     "langgraph-human-in-the-loop": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/langgraph-human-in-the-loop/SKILL.md",
-      "computedHash": "0e81f1ef881b4c82bdcb5bece6309558f9e53681022f8347f869abc403b48637"
+      "skillPath": "config/skills/langgraph-human-in-the-loop/SKILL.md",
+      "computedHash": "283821ddcbdefb404d5e9c95149364c0962857a6f1e90db33ee5a0062500a88a"
     },
     "langgraph-persistence": {
-      "source": "langchain-ai/skills-benchmarks",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "skills/main/langgraph-persistence/SKILL.md",
-      "computedHash": "fc617bfab9d06826cba1097def5c7775f4522a1dabdd1a0111472f9929b1b914"
+      "skillPath": "config/skills/langgraph-persistence/SKILL.md",
+      "computedHash": "0e14611b0310a7a30e9977ba99b00a11b7ea63ebdd7b0c490d03040349ead0ed"
     },
     "langsmith-dataset": {
       "source": "langchain-ai/skills-benchmarks",
@@ -230,10 +230,10 @@
       "computedHash": "ede71a9ae8de94bb9c4b633fb087a760b20ecb5fd4d0266f6ddd8934e03fbd84"
     },
     "swarm": {
-      "source": "langchain-ai/deepagents",
+      "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
-      "skillPath": "examples/repl_swarm/skills/swarm/SKILL.md",
-      "computedHash": "bfe4b777126fc83735efc02d728ed903ceb56af05acf2cff4d5fcf34965b1683"
+      "skillPath": "config/skills/swarm/SKILL.md",
+      "computedHash": "4091bd7cf88d408a0724d4cc2be2c0c0fdf6fbe4bd3e700c4cabed58900823bb"
     },
     "testing-patterns": {
       "source": "langchain-ai/skills-benchmarks",

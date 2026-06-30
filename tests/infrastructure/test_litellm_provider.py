@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import builtins
-import sys
-import types
 from types import SimpleNamespace
 
 import pytest
@@ -38,32 +35,31 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
     with pytest.raises(ValueError, match="Unknown model connector"):
         llm.get_model_connector("missing")
 
+    monkeypatch.setattr(llm.settings, "langfuse_public_key", "")
+    monkeypatch.setattr(llm.settings, "langfuse_secret_key", "")
     monkeypatch.setattr(llm.settings, "langfuse_api_key", "")
     assert llm.get_langfuse_callbacks() == []
 
-    module = types.ModuleType("langfuse.langchain")
+    from cys_core.observability import langfuse_client
+
+    langfuse_client.reset_langfuse_client_cache()
 
     class DummyCallbackHandler:
-        def __init__(self, public_key, host):
-            self.public_key = public_key
-            self.host = host
+        pass
 
-    module.CallbackHandler = DummyCallbackHandler
-    monkeypatch.setitem(sys.modules, "langfuse", types.ModuleType("langfuse"))
-    monkeypatch.setitem(sys.modules, "langfuse.langchain", module)
-    monkeypatch.setattr(llm.settings, "langfuse_api_key", "public")
-    monkeypatch.setattr(llm.settings, "langfuse_host", "https://trace.example")
+    def fake_get_handler():
+        if not llm.settings.langfuse_enabled:
+            return None
+        return DummyCallbackHandler()
+
+    monkeypatch.setattr(langfuse_client, "get_langfuse_callback_handler", fake_get_handler)
+    monkeypatch.setattr(llm.settings, "langfuse_public_key", "public")
+    monkeypatch.setattr(llm.settings, "langfuse_secret_key", "secret")
     callbacks = llm.get_langfuse_callbacks()
-    assert callbacks[0].public_key == "public"
+    assert len(callbacks) == 1
+    assert isinstance(callbacks[0], DummyCallbackHandler)
 
-    original_import = builtins.__import__
-
-    def raising_import(name, *args, **kwargs):
-        if name == "langfuse.langchain":
-            raise RuntimeError("boom")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", raising_import)
+    monkeypatch.setattr(langfuse_client, "get_langfuse_callback_handler", lambda: None)
     assert llm.get_langfuse_callbacks() == []
 
 

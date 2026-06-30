@@ -2,16 +2,172 @@
   "annotations": { "list": [] },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
   "panels": [
     {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Scrape targets",
+      "type": "row"
+    },
+    {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "DOWN" } }, "type": "value" },
+            { "options": { "1": { "color": "green", "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 101,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "API",
+      "type": "stat",
+      "targets": [{ "expr": "up{job=\"egregore-api\"}", "legendFormat": "egregore-api" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "DOWN" } }, "type": "value" },
+            { "options": { "1": { "color": "green", "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 102,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Tool gateway",
+      "type": "stat",
+      "targets": [{ "expr": "up{job=\"egregore-tool-gateway\"}", "legendFormat": "tool-gateway" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "DOWN" } }, "type": "value" },
+            { "options": { "1": { "color": "green", "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 103,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Prometheus",
+      "type": "stat",
+      "targets": [{ "expr": "up{job=\"prometheus\"}", "legendFormat": "prometheus" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "DOWN" } }, "type": "value" },
+            { "options": { "1": { "color": "green", "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "id": 104,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Tempo",
+      "type": "stat",
+      "targets": [{ "expr": "up{job=\"tempo\"}", "legendFormat": "tempo" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "DOWN" } }, "type": "value" },
+            { "options": { "1": { "color": "green", "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "id": 105,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Grafana",
+      "type": "stat",
+      "targets": [{ "expr": "up{job=\"grafana\"}", "legendFormat": "grafana" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 110,
+      "title": "Platform overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "decimals": 2 }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 6 },
+      "id": 111,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Events / sec",
+      "type": "stat",
+      "targets": [{ "expr": "sum(rate(cys_events_ingested_total[5m]))", "legendFormat": "events/s" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 6 },
+      "id": 112,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "HITL pending",
+      "type": "stat",
+      "targets": [{ "expr": "cys_hitl_pending_total" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 6 },
+      "id": 113,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Active investigations",
+      "type": "stat",
+      "targets": [{ "expr": "cys_investigations_active" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 6 },
+      "id": 114,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "title": "Persistence fallbacks",
+      "type": "stat",
+      "targets": [{ "expr": "sum(cys_persistence_fallback_total)" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
+      "id": 120,
+      "title": "Ingress & workers",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "id": 1,
-      "title": "Events ingested",
+      "title": "Events ingested by type",
       "type": "timeseries",
       "targets": [
         { "expr": "sum(rate(cys_events_ingested_total[5m])) by (event_type)", "legendFormat": "{{event_type}}" }
@@ -19,8 +175,8 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "id": 2,
       "title": "Worker job duration p95",
       "type": "timeseries",
@@ -33,7 +189,29 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "fillOpacity": 80 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "id": 121,
+      "title": "Worker jobs by persona & status",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(cys_worker_job_duration_seconds_count[5m])) by (persona, status)",
+          "legendFormat": "{{persona}} {{status}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+      "id": 130,
+      "title": "Tools & security",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
       "id": 3,
       "title": "Tool invocations",
       "type": "timeseries",
@@ -43,7 +221,8 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 29 },
       "id": 4,
       "title": "Sanitizer blocks",
       "type": "timeseries",
@@ -56,39 +235,145 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
-      "id": 5,
-      "title": "HITL pending",
-      "type": "stat",
-      "targets": [{ "expr": "cys_hitl_pending_total" }]
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 37 },
       "id": 6,
-      "title": "Approval bypass attempts",
+      "title": "Approval bypass (total)",
       "type": "stat",
       "targets": [{ "expr": "sum(cys_approval_bypass_attempts_total)" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 37 },
+      "id": 131,
+      "title": "Approval bypass by reason",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(cys_approval_bypass_attempts_total[5m])) by (reason)",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "id": 140,
+      "title": "RAG & memory",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
       "id": 7,
-      "title": "RAG denials",
+      "title": "RAG retrievals (denied)",
       "type": "timeseries",
       "targets": [
         {
           "expr": "sum(rate(cys_rag_retrievals_total{denied=\"true\"}[5m])) by (tenant)",
-          "legendFormat": "{{tenant}}"
+          "legendFormat": "denied {{tenant}}"
+        },
+        {
+          "expr": "sum(rate(cys_rag_retrievals_total{denied=\"false\"}[5m])) by (tenant)",
+          "legendFormat": "allowed {{tenant}}"
         }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 44 },
+      "id": 141,
+      "title": "Episodic memory I/O",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(cys_memory_reads_total[5m])) by (tenant)", "legendFormat": "reads {{tenant}}" },
+        { "expr": "sum(rate(cys_memory_writes_total[5m])) by (tenant, memory_type)", "legendFormat": "writes {{tenant}} {{memory_type}}" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 52 },
+      "id": 150,
+      "title": "Denial of wallet (tokens & cost)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 53 },
+      "id": 151,
+      "title": "Job tokens / sec by persona",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(cys_job_tokens_total[5m])) by (persona)", "legendFormat": "{{persona}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 53 },
+      "id": 152,
+      "title": "Job cost USD / sec by persona",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(cys_job_cost_usd[5m])) by (persona)", "legendFormat": "{{persona}}" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 61 },
+      "id": 160,
+      "title": "Agent trust scores",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "max": 1,
+          "min": 0,
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "green", "value": 0.75 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 62 },
+      "id": 161,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "title": "Trust score by persona",
+      "type": "bargauge",
+      "targets": [
+        { "expr": "cys_agent_trust_score", "legendFormat": "{{persona}}" }
       ]
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["cys-agi", "soc", "security"],
+  "tags": ["cys-agi", "soc", "security", "egregore"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(cys_worker_job_duration_seconds_count, persona)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Persona",
+        "multi": true,
+        "name": "persona",
+        "query": { "query": "label_values(cys_worker_job_duration_seconds_count, persona)", "refId": "Prometheus-persona" },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
   "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
   "title": "cys-agi SOC Platform",
   "uid": "cys-agi-main",
-  "version": 1
+  "version": 2
 }

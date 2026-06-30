@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Self
+from typing import Any, Self
 
 from pydantic import Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,8 +32,25 @@ class Settings(BaseSettings):
     postgres_password: str = Field(default="password", validation_alias="POSTGRES_PASSWORD")
     postgres_db: str = Field(default="cys_agi", validation_alias="POSTGRES_DB")
 
-    langfuse_api_key: str = Field(default="", validation_alias="LANGFUSE_API_KEY")
-    langfuse_host: str = Field(default="http://localhost:3000", validation_alias="LANGFUSE_HOST")
+    langfuse_public_key: str = Field(default="", validation_alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str = Field(default="", validation_alias="LANGFUSE_SECRET_KEY")
+    langfuse_api_key: str = Field(
+        default="",
+        validation_alias="LANGFUSE_API_KEY",
+        description="Deprecated: use LANGFUSE_PUBLIC_KEY; kept for one-release backward compatibility",
+    )
+    langfuse_host: str = Field(default="http://localhost:3001", validation_alias="LANGFUSE_HOST")
+    langfuse_base_url: str = Field(
+        default="",
+        validation_alias="LANGFUSE_BASE_URL",
+        description="Alias for LANGFUSE_HOST (Langfuse SDK / skills convention)",
+    )
+
+    otel_enabled: bool = Field(default=False, validation_alias="OTEL_ENABLED")
+    otel_exporter_endpoint: str = Field(
+        default="http://localhost:4317",
+        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
+    )
 
     hitl_auto_approve_threshold: str = Field(default="low", validation_alias="HITL_AUTO_APPROVE_THRESHOLD")
     max_tool_calls_per_minute: int = Field(default=30, validation_alias="MAX_TOOL_CALLS_PER_MINUTE")
@@ -85,6 +102,16 @@ class Settings(BaseSettings):
 
     status_store_connector: str = Field(default="auto", validation_alias="STATUS_STORE_CONNECTOR")
     control_mode: str = Field(default="inprocess", validation_alias="CONTROL_MODE")
+    worker_idle_timeout: float = Field(
+        default=0.0,
+        validation_alias="WORKER_IDLE_TIMEOUT",
+        description="Worker daemon idle exit (seconds). 0 = run until stopped.",
+    )
+    worker_replicas: int = Field(
+        default=2,
+        validation_alias="WORKER_REPLICAS",
+        description="Number of worker daemon processes in dev supervisor / docker scale.",
+    )
 
     auth_enabled: bool = Field(default=False, validation_alias="AUTH_ENABLED")
     rbac_enabled: bool = Field(default=False, validation_alias="RBAC_ENABLED")
@@ -102,6 +129,26 @@ class Settings(BaseSettings):
     auth_broker_service_id: str = Field(default="egregore", validation_alias="BROKER_SERVICE_ID")
     auth_broker_audience: str = Field(default="veil-api", validation_alias="BROKER_VEIL_AUDIENCE")
     use_auth_broker: bool = Field(default=False, validation_alias="USE_AUTH_BROKER")
+
+    ui_cors_origins_raw: str = Field(
+        default="http://localhost:3000,http://localhost:5173",
+        validation_alias="UI_CORS_ORIGINS",
+    )
+
+    @computed_field
+    @property
+    def ui_cors_origins(self) -> list[str]:
+        return [part.strip() for part in self.ui_cors_origins_raw.split(",") if part.strip()]
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_ui_cors_origins(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("UI_CORS_ORIGINS") or data.get("ui_cors_origins_raw")
+        if isinstance(raw, list):
+            data = {**data, "UI_CORS_ORIGINS": ",".join(str(item) for item in raw)}
+        return data
 
     @model_validator(mode="after")
     def validate_auth_config(self) -> Self:
@@ -121,6 +168,9 @@ class Settings(BaseSettings):
         ):
             if key:
                 return key
+        # LiteLLM openai/* routes require a non-empty api_key even for local vLLM.
+        if self.llm_base_url:
+            return "EMPTY"
         return ""
 
     @computed_field
@@ -135,6 +185,21 @@ class Settings(BaseSettings):
     @property
     def bus_signing_key_bytes(self) -> bytes:
         return self.bus_signing_key.encode("utf-8")
+
+    @computed_field
+    @property
+    def resolved_langfuse_public_key(self) -> str:
+        return self.langfuse_public_key or self.langfuse_api_key
+
+    @computed_field
+    @property
+    def langfuse_enabled(self) -> bool:
+        return bool(self.resolved_langfuse_public_key and self.langfuse_secret_key)
+
+    @computed_field
+    @property
+    def resolved_langfuse_host(self) -> str:
+        return self.langfuse_base_url or self.langfuse_host
 
     @computed_field
     @property

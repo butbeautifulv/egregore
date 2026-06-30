@@ -97,3 +97,16 @@ class PostgresStatusStore:
             "awaiting_approval": awaiting,
             "escalations": escalations,
         }
+
+    def fetch_since(self, last_id: int, *, limit: int = 50) -> list[tuple[int, str, dict[str, Any]]]:
+        with psycopg.connect(self.dsn) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, kind, payload FROM control_status_records
+                WHERE id > %s
+                ORDER BY id ASC
+                LIMIT %s
+                """,
+                (last_id, limit),
+            ).fetchall()
+        return [(int(row[0]), str(row[1]), row[2]) for row in rows]

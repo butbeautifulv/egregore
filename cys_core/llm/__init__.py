@@ -61,17 +61,8 @@ def get_model_connector(name: str | None = None) -> ModelConnector:
 
 
 def _build_langfuse_callbacks() -> list[Any]:
-    """Optional Langfuse tracing callbacks."""
-    if not settings.langfuse_api_key:
-        return []
-    try:
-        from langfuse.langchain import CallbackHandler
+    """Optional Langfuse tracing callbacks (Langfuse SDK v3 CallbackHandler)."""
+    from cys_core.observability.langfuse_client import get_langfuse_callback_handler
 
-        return [
-            CallbackHandler(
-                public_key=settings.langfuse_api_key,
-                host=settings.langfuse_host,
-            )
-        ]
-    except Exception:
-        return []
+    handler = get_langfuse_callback_handler()
+    return [handler] if handler is not None else []

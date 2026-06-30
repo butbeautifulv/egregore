@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cys_core.application.ports.job_store import JobRecord
+from cys_core.application.ports.job_store import JobRecord, JobRecordSummary
 from cys_core.domain.workers.models import PendingHitlAction, WorkerJobStatus
 
 
@@ -12,12 +12,31 @@ class InMemoryJobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, JobRecord] = {}
 
-    def upsert_running(self, job_id: str, session_id: str, persona: str) -> JobRecord:
-        record = JobRecord(job_id=job_id, session_id=session_id, persona=persona, status=WorkerJobStatus.RUNNING)
+    def upsert_running(
+        self,
+        job_id: str,
+        session_id: str,
+        persona: str,
+        *,
+        correlation_id: str = "",
+        tenant_id: str = "default",
+        event_id: str = "",
+    ) -> JobRecord:
+        existing = self._jobs.get(job_id)
+        record = JobRecord(
+            job_id=job_id,
+            session_id=session_id,
+            persona=persona,
+            status=WorkerJobStatus.RUNNING,
+            correlation_id=correlation_id or (existing.correlation_id if existing else ""),
+            tenant_id=tenant_id or (existing.tenant_id if existing else "default"),
+            event_id=event_id or (existing.event_id if existing else ""),
+        )
         self._jobs[job_id] = record
         return record
 
     def pause_for_hitl(self, pending: PendingHitlAction, preview: dict[str, Any]) -> JobRecord:
+        existing = self._jobs.get(pending.job_id)
         record = JobRecord(
             job_id=pending.job_id,
             session_id=pending.session_id,
@@ -25,6 +44,9 @@ class InMemoryJobStore:
             status=WorkerJobStatus.AWAITING_APPROVAL,
             hitl_preview=preview,
             pending_hitl=pending,
+            correlation_id=existing.correlation_id if existing else "",
+            tenant_id=existing.tenant_id if existing else "default",
+            event_id=existing.event_id if existing else "",
         )
         self._jobs[pending.job_id] = record
         return record
@@ -56,3 +78,19 @@ class InMemoryJobStore:
             for record in self._jobs.values()
             if record.status == WorkerJobStatus.AWAITING_APPROVAL and record.pending_hitl is not None
         ]
+
+    def list_by_investigation(self, tenant_id: str, investigation_id: str) -> list[JobRecordSummary]:
+        matches = [
+            JobRecordSummary(
+                job_id=record.job_id,
+                session_id=record.session_id,
+                persona=record.persona,
+                status=record.status,
+                correlation_id=record.correlation_id,
+                tenant_id=record.tenant_id,
+                event_id=record.event_id,
+            )
+            for record in self._jobs.values()
+            if record.tenant_id == tenant_id and record.correlation_id == investigation_id
+        ]
+        return sorted(matches, key=lambda item: item.job_id)

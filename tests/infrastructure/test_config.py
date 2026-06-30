@@ -20,3 +20,15 @@ def test_config_computed_fields(monkeypatch):
         assert get_settings().llm_api_key == "cached-key"
     finally:
         get_settings.cache_clear()
+
+    local = Settings(
+        LLM_BASE_URL="http://10.8.185.186:11612/v1",
+        OPENAI_API_KEY="",
+        OPENROUTER_API_KEY="",
+        ANTHROPIC_API_KEY="",
+        GEMINI_API_KEY="",
+        AI_APIKEY="",
+    )
+    assert local.llm_api_key == "EMPTY"
+    assert Settings().worker_idle_timeout == 0.0
+    assert Settings().worker_replicas == 2

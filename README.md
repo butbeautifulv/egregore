@@ -19,7 +19,8 @@ Secure event-driven multi-agent cybersecurity platform with ephemeral sandbox wo
 - MCP Tool Gateway (PEP), HITL L1/L2, DoW job budgets
 - Secure RAG (`rag_query`), Skill Gateway (`load_skill`), K8s sandbox connector
 - Prometheus metrics, Grafana dashboard, CI adversarial gates
-- FastAPI: `POST /events`, `GET /status`, HITL resume API, `GET /metrics`
+- FastAPI: `POST /events`, `GET /status`, investigations API, SSE stream, HITL resume API, `GET /metrics`
+- Operator UI (`ui/`): investigations list, persona stepper, approvals, live timeline
 - Продуктовый слой `agents/` — personas, rules, routing plans, skills
 - 100% unit test coverage gate on `cys_core/domain`
 
@@ -34,7 +35,28 @@ cp .env.example .env   # LLM API key
 
 uv run egregore info
 uv run egregore migrate   # apply migrations/*.sql
+```
 
+### Operator UI (full stack)
+
+```bash
+make dev-infra                    # or: docker compose up -d
+uv run egregore serve --port 8080 # or: make dev-api
+uv run egregore worker --daemon # optional: make dev-worker
+
+cd ui && cp .env.local.example .env.local && npm install && npm run dev
+# or from repo root: make dev-ui
+```
+
+Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8080/status](http://localhost:8080/status).
+
+One-command dev (infra + api + worker + ui): `./scripts/dev.sh`
+
+Docker app profile (no host Node/Python): `make dev-docker` (requires `.env`).
+
+### CLI smoke test
+
+```bash
 # Ingest SIEM event → enqueue SOC worker
 uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
 
@@ -102,6 +124,7 @@ egregore/
 ├── bootstrap/              # settings, DI container, product_loader
 ├── connectors/             # SIEM poll → ingress API
 ├── interfaces/             # Delivery: api, ingress, worker, control_plane, gateways, rag, cli
+├── ui/                     # Operator console (Next.js) — investigations, approvals, SSE
 ├── deploy/k8s/             # Worker Job + NetworkPolicy
 ├── deploy/grafana/         # SOC dashboards
 ├── cys_core/
@@ -112,6 +135,7 @@ egregore/
 │   ├── registry/           # AgentRegistry, tools, mcp_tools, skills
 │   └── runtime/            # AgentRuntime
 ├── docs/
+├── Makefile                # make dev-infra, dev-api, dev-ui, dev-worker
 └── tests/
 ```
 
@@ -137,6 +161,7 @@ egregore/
 | `HITL_AUTO_APPROVE_THRESHOLD` | `low` | Risk gate для dangerous tools |
 | `TRUST_SCORE_THRESHOLD` | `0.5` | Critic trust threshold |
 | `PERSISTENCE_CONNECTOR` | `auto` | `auto`, `memory`, `postgres` |
+| `UI_CORS_ORIGINS` | `http://localhost:3000,...` | Allowed origins for Operator UI (`ui/`) |
 
 Полный список: [`.env.example`](.env.example)
 
@@ -162,6 +187,7 @@ egregore/
 
 - Python ≥ 3.13
 - Docker (Postgres 16, Redis 7) — опционально с `USE_MEMORY_FALLBACK=true`
+- Node.js 20+ — для Operator UI (`ui/`)
 - API-ключ LLM-провайдера — для live worker runs
 
 ## Лицензия

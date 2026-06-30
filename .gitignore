@@ -33,3 +33,9 @@ docs/injections/
 
 # OS
 .DS_Store
+
+# Operator UI (ui/)
+ui/node_modules/
+ui/.next/
+ui/.env.local
+ui/tsconfig.tsbuildinfo

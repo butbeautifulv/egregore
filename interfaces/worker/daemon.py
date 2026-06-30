@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from cys_core.infrastructure.daemon_runner import run_poll_daemon
+from cys_core.observability.langfuse_client import flush_langfuse
 from interfaces.worker.orchestrator import WorkerOrchestrator
 
 
@@ -14,7 +15,7 @@ class WorkerDaemon:
         persona: str,
         *,
         max_jobs: int | None = None,
-        idle_timeout: float = 30.0,
+        idle_timeout: float = 0.0,
     ) -> None:
         self.persona = persona
         self.max_jobs = max_jobs
@@ -37,6 +38,7 @@ class WorkerDaemon:
             if result is None:
                 return False
             processed += 1
+            flush_langfuse()
             return True
 
         await run_poll_daemon(
@@ -52,7 +54,7 @@ def run_worker_daemon(
     persona: str,
     *,
     max_jobs: int | None = None,
-    idle_timeout: float = 30.0,
+    idle_timeout: float = 0.0,
 ) -> int:
     return asyncio.run(WorkerDaemon(persona, max_jobs=max_jobs, idle_timeout=idle_timeout).run())
 
@@ -63,7 +65,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Worker job consumer daemon")
     parser.add_argument("--persona", required=True)
     parser.add_argument("--max-jobs", type=int, default=0)
-    parser.add_argument("--idle-timeout", type=float, default=30.0)
+    parser.add_argument("--idle-timeout", type=float, default=0.0)
     args = parser.parse_args()
     processed = run_worker_daemon(
         args.persona,

@@ -6,6 +6,7 @@ import json
 import sys
 
 from bootstrap.settings import settings
+from cys_core.observability.langfuse_client import flush_langfuse
 from cys_core.registry.agents import get_agent_registry
 from cys_core.runtime.agent import get_runtime
 
@@ -37,14 +38,16 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 
 def cmd_worker(args: argparse.Namespace) -> int:
+    idle_timeout = settings.worker_idle_timeout if args.idle_timeout is None else args.idle_timeout
     if args.daemon:
         from interfaces.worker.daemon import run_worker_daemon
 
         processed = run_worker_daemon(
             args.persona,
             max_jobs=args.max_jobs if args.max_jobs > 0 else None,
-            idle_timeout=args.idle_timeout,
+            idle_timeout=idle_timeout,
         )
+        flush_langfuse()
         print(json.dumps({"persona": args.persona, "processed": processed}, indent=2))
         return 0
 
@@ -64,6 +67,7 @@ def cmd_worker(args: argparse.Namespace) -> int:
         return {"processed": len(results), "results": results}
 
     out = asyncio.run(_run())
+    flush_langfuse()
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0
 
@@ -142,6 +146,7 @@ def cmd_agent(args: argparse.Namespace) -> int:
     defn = registry.get(args.name)
     user_input = args.input or defn.sample_input or ""
     result = runtime.run(args.name, user_input, session_id=f"agent-{args.name}")
+    flush_langfuse()
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
@@ -210,7 +215,12 @@ def build_parser() -> argparse.ArgumentParser:
     worker.add_argument("--max-jobs", type=int, default=1, help="Max jobs per invocation")
     worker.add_argument("--persona", default="", help="Worker persona (required for daemon/Kafka)")
     worker.add_argument("--daemon", action="store_true", help="Run as long-lived daemon")
-    worker.add_argument("--idle-timeout", type=float, default=30.0, help="Exit after N seconds idle (daemon)")
+    worker.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=None,
+        help="Exit after N seconds idle (daemon). Default: WORKER_IDLE_TIMEOUT (0=forever)",
+    )
     worker.set_defaults(func=cmd_worker)
 
     router = sub.add_parser("router", help="Run Kafka router consumer daemon")

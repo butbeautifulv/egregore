@@ -14,10 +14,33 @@ class JobRecord:
     status: WorkerJobStatus = WorkerJobStatus.RUNNING
     hitl_preview: dict[str, Any] = field(default_factory=dict)
     pending_hitl: PendingHitlAction | None = None
+    correlation_id: str = ""
+    tenant_id: str = "default"
+    event_id: str = ""
+
+
+@dataclass
+class JobRecordSummary:
+    job_id: str
+    session_id: str
+    persona: str
+    status: WorkerJobStatus
+    correlation_id: str = ""
+    tenant_id: str = "default"
+    event_id: str = ""
 
 
 class JobStorePort(Protocol):
-    def upsert_running(self, job_id: str, session_id: str, persona: str) -> JobRecord: ...
+    def upsert_running(
+        self,
+        job_id: str,
+        session_id: str,
+        persona: str,
+        *,
+        correlation_id: str = "",
+        tenant_id: str = "default",
+        event_id: str = "",
+    ) -> JobRecord: ...
 
     def pause_for_hitl(self, pending: PendingHitlAction, preview: dict[str, Any]) -> JobRecord: ...
 
@@ -30,3 +53,5 @@ class JobStorePort(Protocol):
     def mark_failed(self, job_id: str) -> None: ...
 
     def list_pending_approvals(self) -> list[PendingHitlAction]: ...
+
+    def list_by_investigation(self, tenant_id: str, investigation_id: str) -> list[JobRecordSummary]: ...

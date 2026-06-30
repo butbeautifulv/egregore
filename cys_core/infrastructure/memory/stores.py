@@ -74,6 +74,11 @@ class InMemoryInvestigationStateStore:
                 state.completed_personas.append(persona)
             self._states[key] = state
 
+    def list_recent(self, tenant_id: str, *, limit: int = 20) -> list[InvestigationState]:
+        with self._lock:
+            states = [state for state in self._states.values() if state.tenant_id == tenant_id]
+        return states[:limit]
+
 
 _MEMORY_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS agent_memory_entries (
@@ -243,3 +248,16 @@ class PostgresInvestigationStateStore:
         if persona not in state.completed_personas:
             state.completed_personas.append(persona)
         self.upsert(state)
+
+    def list_recent(self, tenant_id: str, *, limit: int = 20) -> list[InvestigationState]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT state_json FROM investigation_states
+                WHERE tenant_id = %s
+                ORDER BY updated_at DESC
+                LIMIT %s
+                """,
+                (tenant_id, limit),
+            ).fetchall()
+        return [InvestigationState.model_validate(row[0]) for row in rows]
