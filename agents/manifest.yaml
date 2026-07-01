@@ -9,7 +9,7 @@ layout:
   skills: skills/           # on-demand domain knowledge modules
 
 personas:
-  workers: [redteam, network, soc, compliance]
+  workers: [redteam, network, soc, compliance, consultant]
   control: [critic, coordinator]
 
 default_plan: incident-triage
@@ -27,6 +27,9 @@ plans:
   - id: full-assessment
     file: plans/full-assessment.yaml
     description: Manual investigation — all workers
+  - id: consultation
+    file: plans/consultation.yaml
+    description: Advisory consultation — consultant worker
 
 skills:
   - ai-agent-security

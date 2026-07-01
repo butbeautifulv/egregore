@@ -3,9 +3,12 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
+from bootstrap.settings import settings
 from cys_core.application.use_cases.plan_investigation import InvestigationPlan, PlanInvestigation
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
 from cys_core.domain.events.router import EventRouter
+
+ASYNC_PLANNER_PENDING = "async_planner_pending"
 
 
 class JobEnqueuer(Protocol):
@@ -36,7 +39,7 @@ class JobEnqueuer(Protocol):
 
 def fallback_plan(event: SecurityEvent) -> InvestigationPlan:
     goal = str(event.payload.get("goal", event.payload.get("message", "Investigate security incident")))
-    personas = list(PlanInvestigation.DEFAULT_PERSONAS)
+    personas = PlanInvestigation.fallback_personas()
     return InvestigationPlan(
         personas=personas,
         sub_goals={persona: goal for persona in personas},
@@ -100,6 +103,17 @@ class DispatchEvent:
 
     async def dispatch_async(self, event: SecurityEvent, payload: dict[str, Any]) -> tuple[RoutingDecision, list[str]]:
         if event.type == "manual.investigation" and self.plan_investigation is not None:
+            if settings.manual_investigation_async:
+                self.plan_investigation.begin_planning(event)
+                decision = RoutingDecision(
+                    event_id=event.id,
+                    personas=[],
+                    playbook_id="manual-investigation",
+                    notify_control=True,
+                    reason=ASYNC_PLANNER_PENDING,
+                )
+                return decision, []
+
             if self._async_plan_executor is not None:
                 plan = await self._async_plan_executor(event)
             elif self.plan_investigation is not None:

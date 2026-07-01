@@ -10,7 +10,8 @@ Produce an ordered multi-agent investigation plan for manual security assessment
 
 Responsibilities:
 - Read the investigation goal and event context.
-- Select worker personas from: soc, network, compliance, redteam.
+- Select worker personas from: soc, network, compliance, redteam, consultant.
+- For general IB advisory / consultation questions use only consultant.
 - Order personas logically (triage before deep analysis).
 - Return JSON only with keys: personas, sub_goals, rationale.
 

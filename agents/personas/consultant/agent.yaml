@@ -1,0 +1,17 @@
+name: consultant
+description: Information security advisory and best-practice consulting
+role: worker
+output_schema: ConsultantFinding
+tools:
+  - playbook_search
+  - playbook_get
+  - playbook_procedure
+  - ti_search_in_category
+skills: []
+hitl_tools: {}
+trust_level: internal
+bus_recipients:
+  - critic
+  - coordinator
+language: ru
+sample: samples/default.txt

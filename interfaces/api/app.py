@@ -1,23 +1,29 @@
 from __future__ import annotations
 
+import cys_core.observability.prometheus_setup  # noqa: F401 — multiprocess atexit
 import asyncio
+import contextlib
 import json
+import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from bootstrap.container import get_container
 from bootstrap.settings import get_settings
+from cys_core.application.use_cases.async_manual_investigation import complete_manual_investigation_planning
+from cys_core.application.use_cases.dispatch_event import ASYNC_PLANNER_PENDING
 from cys_core.domain.security.auth_models import AuthClaims
 from cys_core.domain.workers.models import JobResumeRequest
 from cys_core.observability.http import mount_metrics
 from cys_core.observability.langfuse_client import flush_langfuse, shutdown_langfuse
 from cys_core.observability.metrics import metrics, seed_agent_trust_gauges
+from cys_core.observability.platform_gauges import refresh_platform_gauges
 from cys_core.observability.otel import instrument_fastapi, setup_otel
 from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
 from interfaces.api.schemas import (
@@ -32,6 +38,8 @@ from interfaces.control_plane.postgres_status_store import PostgresStatusStore
 from interfaces.control_plane.status_store import MemoryStatusStore, get_status_store
 from interfaces.ingress.router import EventIngress, get_event_ingress
 from interfaces.worker.hitl_resume import HitlResumeError, resume_worker_job
+
+logger = logging.getLogger(__name__)
 
 
 class EventIn(BaseModel):
@@ -49,9 +57,24 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         setup_otel(service_name="egregore-api")
-        yield
-        flush_langfuse()
-        shutdown_langfuse()
+        refresh_task: asyncio.Task[None] | None = None
+
+        async def _refresh_gauges_loop() -> None:
+            while True:
+                refresh_platform_gauges()
+                await asyncio.sleep(30)
+
+        refresh_platform_gauges()
+        refresh_task = asyncio.create_task(_refresh_gauges_loop())
+        try:
+            yield
+        finally:
+            if refresh_task is not None:
+                refresh_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await refresh_task
+            flush_langfuse()
+            shutdown_langfuse()
 
     app = FastAPI(title="cys-agi event platform", version="0.2.0", lifespan=lifespan)
     settings = get_settings()
@@ -88,6 +111,33 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
             correlation_id=event_in.correlation_id,
         )
         store.record_event(event.model_dump())
+
+        if decision.reason == ASYNC_PLANNER_PENDING:
+            planner = event_ingress.plan_investigation
+            orchestrator = event_ingress.orchestrator
+
+            async def _run_planner() -> None:
+                try:
+                    await complete_manual_investigation_planning(
+                        event,
+                        event_in.payload,
+                        plan_investigation=planner,
+                        enqueuer=orchestrator,
+                        status_notifier=store if hasattr(store, "record_investigation_update") else None,
+                    )
+                except Exception:
+                    logger.exception("Async planner failed for event %s", event.id)
+
+            asyncio.create_task(_run_planner())
+            body = {
+                "event": event.model_dump(),
+                "routing": decision.model_dump(),
+                "job_ids": job_ids,
+                "accepted": True,
+                "planner_status": "planning",
+            }
+            return JSONResponse(status_code=202, content=body)
+
         return {
             "event": event.model_dump(),
             "routing": decision.model_dump(),
@@ -188,6 +238,9 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
             status=state.status,
             completed_personas=state.completed_personas,
             planner_plan=state.planner_plan,
+            planner_status=state.planner_status,
+            planner_rationale=state.planner_rationale,
+            planner_error=state.planner_error,
             findings_summary=state.findings_summary,
         )
 

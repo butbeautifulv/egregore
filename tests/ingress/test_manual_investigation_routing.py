@@ -12,7 +12,11 @@ from cys_core.domain.events.router import EventRouter
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_manual_investigation_uses_planner_not_yaml_router():
+async def test_manual_investigation_uses_planner_not_yaml_router(monkeypatch):
+    monkeypatch.setattr(
+        "cys_core.application.use_cases.dispatch_event.settings.manual_investigation_async",
+        False,
+    )
     enqueued: list[tuple[str, list[str]]] = []
 
     class Enqueuer:
@@ -51,6 +55,52 @@ async def test_manual_investigation_uses_planner_not_yaml_router():
     assert decision.personas == ["soc", "network"]
     assert job_ids == ["job-soc", "job-network"]
     assert event.type == "manual.investigation"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_manual_investigation_async_defers_planner(monkeypatch):
+    monkeypatch.setattr(
+        "cys_core.application.use_cases.dispatch_event.settings.manual_investigation_async",
+        True,
+    )
+    begun: list[str] = []
+
+    class Enqueuer:
+        async def enqueue_from_routing(self, event_id, personas, **kwargs):
+            return [f"job-{persona}" for persona in personas]
+
+        def enqueue_from_routing_sync(self, event_id, personas, **kwargs):
+            return [f"job-{persona}" for persona in personas]
+
+    class Store:
+        def get(self, *_a, **_k):
+            return None
+
+        def upsert(self, state):
+            begun.append(state.investigation_id)
+
+    planner = PlanInvestigation(
+        runtime=SimpleNamespace(arun=AsyncMock()),
+        investigation_store=Store(),
+    )
+    use_case = RouteAndEnqueueEvent(
+        router=EventRouter(),
+        enqueuer=Enqueuer(),
+        plan_investigation=planner,
+    )
+
+    event, decision, job_ids = await use_case.aexecute(
+        "manual.investigation",
+        {"goal": "Investigate beaconing"},
+        correlation_id="inv-async",
+    )
+    from cys_core.application.use_cases.dispatch_event import ASYNC_PLANNER_PENDING
+
+    assert decision.reason == ASYNC_PLANNER_PENDING
+    assert decision.personas == []
+    assert job_ids == []
+    assert begun == ["inv-async"]
 
 
 @pytest.mark.unit

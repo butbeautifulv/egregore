@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react"
 
 import { getInvestigation, getInvestigationJobs } from "@/lib/api-client"
 import type { InvestigationDetail, JobSummary } from "@/lib/types"
+import { InvestigationFindings } from "@/components/investigation-findings"
 import { InvestigationTimeline } from "@/components/investigation-timeline"
 import { JobCard } from "@/components/job-card"
 import { PersonaStepper } from "@/components/persona-stepper"
 import { useStatusStream } from "@/hooks/use-status-stream"
 import { Card, CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import { PageHeader } from "@/vendor/gui/layout/page-header"
 
 type InvestigationDetailViewProps = {
   investigationId: string
@@ -49,19 +51,40 @@ export function InvestigationDetailView({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{detail.investigation_id}</h1>
-        <p className="text-muted-foreground text-sm">{detail.goal || "No goal recorded"}</p>
-        <p className="text-muted-foreground text-xs">
-          Status: {detail.status} · SSE {connected ? "connected" : "reconnecting"}
-        </p>
-      </div>
+      <PageHeader
+        title={detail.investigation_id}
+        description={
+          <>
+            {detail.goal || "No goal recorded"}
+            <span className="mt-1 block text-xs">
+              Status: {detail.status} · SSE {connected ? "connected" : "reconnecting"}
+            </span>
+          </>
+        }
+      />
 
-      {error ? <p className="text-destructive text-sm">{error}</p> : null}
+      {error ? <p className="text-destructive text-xs">{error}</p> : null}
+
+      {detail.planner_status ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Planner</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-xs">
+            <p>
+              Status: <span className="font-medium">{detail.planner_status}</span>
+              {detail.planner_rationale ? ` · ${detail.planner_rationale}` : null}
+            </p>
+            {detail.planner_error ? (
+              <p className="text-destructive">Error: {detail.planner_error}</p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Persona pipeline</CardTitle>
+          <CardTitle>Persona pipeline</CardTitle>
         </CardHeader>
         <CardContent>
           <PersonaStepper
@@ -71,6 +94,11 @@ export function InvestigationDetailView({
           />
         </CardContent>
       </Card>
+
+      <InvestigationFindings
+        findings={detail.findings_summary ?? []}
+        completedPersonas={detail.completed_personas ?? []}
+      />
 
       <div className="grid gap-4 md:grid-cols-2">
         {jobs.map((job) => (

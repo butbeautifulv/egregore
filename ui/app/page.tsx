@@ -3,6 +3,7 @@ import { getStatus, listInvestigations } from "@/lib/api-client"
 import { ChatPanel } from "@/components/chat-panel"
 import { InvestigationsTable } from "@/components/investigations-table"
 import { StatusCards } from "@/components/status-cards"
+import { PageHeader } from "@/vendor/gui/layout/page-header"
 
 export default async function HomePage() {
   let investigations: Awaited<ReturnType<typeof listInvestigations>>["investigations"] = []
@@ -22,12 +23,12 @@ export default async function HomePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Investigations</h1>
-        <p className="text-muted-foreground text-sm">SOC investigations and platform health.</p>
-      </div>
+      <PageHeader
+        title="Investigations"
+        description="SOC investigations and platform health."
+      />
 
-      {error ? <p className="text-destructive text-sm">{error}</p> : null}
+      {error ? <p className="text-destructive text-xs">{error}</p> : null}
 
       <ChatPanel />
       <InvestigationsTable investigations={investigations} />

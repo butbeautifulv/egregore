@@ -30,5 +30,8 @@ def test_config_computed_fields(monkeypatch):
         AI_APIKEY="",
     )
     assert local.llm_api_key == "EMPTY"
-    assert Settings().worker_idle_timeout == 0.0
-    assert Settings().worker_replicas == 2
+    defaults = Settings(WORKER_REPLICAS=2)
+    assert defaults.worker_idle_timeout == 0.0
+    assert defaults.worker_replicas == 2
+    assert defaults.llm_request_timeout == 120.0
+    assert defaults.manual_investigation_async is True

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 
 import litellm
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import Runnable
+from langchain_core.tools import BaseTool
 from pydantic import Field
 
 
@@ -38,10 +40,21 @@ class LiteLLMChatModel(BaseChatModel):
     api_key: str | None = None
     api_base: str | None = None
     temperature: float = Field(default=0.1)
+    request_timeout: float | None = None
 
     @property
     def _llm_type(self) -> str:
         return "litellm"
+
+    def bind_tools(
+        self,
+        tools: Sequence[dict[str, Any] | type | BaseTool],
+        *,
+        tool_choice: str | None = None,
+        **kwargs: Any,
+    ) -> Runnable[Any, BaseMessage]:
+        """LangChain agents require bind_tools; local vLLM uses prompt-based tool/schema flow."""
+        return self
 
     def _generate(
         self,
@@ -62,6 +75,8 @@ class LiteLLMChatModel(BaseChatModel):
             call_kwargs["api_base"] = self.api_base
         if stop:
             call_kwargs["stop"] = stop
+        if self.request_timeout is not None:
+            call_kwargs["timeout"] = self.request_timeout
         call_kwargs.update(kwargs)
 
         response = litellm.completion(**call_kwargs)
@@ -89,6 +104,8 @@ class LiteLLMChatModel(BaseChatModel):
             call_kwargs["api_base"] = self.api_base
         if stop:
             call_kwargs["stop"] = stop
+        if self.request_timeout is not None:
+            call_kwargs["timeout"] = self.request_timeout
         call_kwargs.update(kwargs)
 
         response = await litellm.acompletion(**call_kwargs)
@@ -107,10 +124,12 @@ class LiteLLMProvider:
         api_key: str,
         base_url: str | None,
         temperature: float,
+        request_timeout: float | None = None,
     ) -> BaseChatModel:
         return LiteLLMChatModel(
             model=model,
             api_key=api_key or None,
             api_base=base_url or None,
             temperature=temperature,
+            request_timeout=request_timeout,
         )

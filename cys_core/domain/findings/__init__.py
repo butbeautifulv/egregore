@@ -1,5 +1,6 @@
 from cys_core.domain.findings.models import (
     ComplianceFinding,
+    ConsultantFinding,
     CriticResult,
     FindingEnvelope,
     NetworkFinding,
@@ -9,6 +10,7 @@ from cys_core.domain.findings.models import (
 
 __all__ = [
     "ComplianceFinding",
+    "ConsultantFinding",
     "CriticResult",
     "FindingEnvelope",
     "NetworkFinding",

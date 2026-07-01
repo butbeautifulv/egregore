@@ -7,21 +7,21 @@ export function StatusCards({ status }: { status: StatusSnapshot }) {
     <div className="grid gap-4 md:grid-cols-3">
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Events</CardTitle>
+          <CardTitle>Events</CardTitle>
         </CardHeader>
         <CardContent className="text-2xl font-semibold">{status.events_count}</CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Findings</CardTitle>
+          <CardTitle>Findings</CardTitle>
         </CardHeader>
         <CardContent className="text-2xl font-semibold">{status.findings_count}</CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Latest narrative</CardTitle>
+          <CardTitle>Latest narrative</CardTitle>
         </CardHeader>
-        <CardContent className="text-muted-foreground text-sm">
+        <CardContent className="text-muted-foreground text-xs">
           {status.latest_narrative || "—"}
         </CardContent>
       </Card>

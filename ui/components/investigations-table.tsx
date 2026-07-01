@@ -13,7 +13,7 @@ import {
 
 export function InvestigationsTable({ investigations }: { investigations: InvestigationSummary[] }) {
   if (investigations.length === 0) {
-    return <p className="text-muted-foreground text-sm">No investigations yet. Start one below.</p>
+    return <p className="text-muted-foreground text-xs">No investigations yet. Start one below.</p>
   }
 
   return (
@@ -40,10 +40,10 @@ export function InvestigationsTable({ investigations }: { investigations: Invest
             <TableCell>
               <Badge variant="outline">{item.status}</Badge>
             </TableCell>
-            <TableCell className="text-muted-foreground text-sm">
+            <TableCell className="text-muted-foreground">
               {item.completed_personas.length > 0 ? item.completed_personas.join(", ") : "—"}
             </TableCell>
-            <TableCell className="max-w-md truncate text-sm">{item.goal || "—"}</TableCell>
+            <TableCell className="max-w-md truncate">{item.goal || "—"}</TableCell>
           </TableRow>
         ))}
       </TableBody>

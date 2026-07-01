@@ -8,6 +8,10 @@ tools:
   - correlate_findings
   - query_siem_readonly
   - rag_query
+  - playbook_search
+  - playbook_get
+  - playbook_for_technique
+  - ti_search_in_category
 skills:
   - network-beaconing
 hitl_tools: {}

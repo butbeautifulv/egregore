@@ -6,9 +6,9 @@ from cys_core.registry.tools import tool_registry
 def test_agent_registry_loads_all_agents():
     registry = AgentRegistry.load()
     names = set(registry.names())
-    assert names == {"redteam", "network", "soc", "compliance", "critic", "coordinator", "planner"}
-    assert len(registry.by_workers()) == 4
-    assert len(registry.by_role("specialist")) == 4
+    assert names == {"redteam", "network", "soc", "compliance", "consultant", "critic", "coordinator", "planner"}
+    assert len(registry.by_workers()) == 5
+    assert len(registry.by_role("specialist")) == 5
     assert registry.get("critic").role == "control"
     assert registry.get("coordinator").role == "control"
     assert registry.get("soc").role == "worker"
@@ -40,4 +40,5 @@ def test_tool_registry_resolves_names():
 
 def test_schema_registry_resolves_names():
     assert schema_registry.get("RedTeamFinding").__name__ == "RedTeamFinding"
+    assert schema_registry.get("ConsultantFinding").__name__ == "ConsultantFinding"
     assert schema_registry.get("CriticResult").__name__ == "CriticResult"

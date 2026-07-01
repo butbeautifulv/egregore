@@ -1,0 +1,13 @@
+id: consultation
+name: Security consultation
+description: Advisory IB questions routed to consultant worker
+
+routing:
+  rules:
+    - event_types: [manual.consultation]
+      personas: [consultant]
+      notify_control: true
+
+hitl:
+  auto_approve_dev: true
+  trust_threshold: 0.5

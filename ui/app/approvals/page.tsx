@@ -1,6 +1,7 @@
 import { listPendingApprovals } from "@/lib/api-client"
 
 import { ApprovalActions } from "@/components/approval-actions"
+import { PageHeader } from "@/vendor/gui/layout/page-header"
 
 export default async function ApprovalsPage() {
   let error: string | null = null
@@ -15,15 +16,15 @@ export default async function ApprovalsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Approvals</h1>
-        <p className="text-muted-foreground text-sm">Human-in-the-loop tool actions awaiting operator decision.</p>
-      </div>
+      <PageHeader
+        title="Approvals"
+        description="Human-in-the-loop tool actions awaiting operator decision."
+      />
 
-      {error ? <p className="text-destructive text-sm">{error}</p> : null}
+      {error ? <p className="text-destructive text-xs">{error}</p> : null}
 
       {approvals.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No pending approvals.</p>
+        <p className="text-muted-foreground text-xs">No pending approvals.</p>
       ) : (
         <div className="grid gap-4">
           {approvals.map((approval) => (

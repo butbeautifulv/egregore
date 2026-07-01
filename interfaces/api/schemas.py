@@ -13,6 +13,9 @@ class InvestigationSummaryOut(BaseModel):
 
 class InvestigationDetailOut(InvestigationSummaryOut):
     planner_plan: list[str] | None = None
+    planner_status: str | None = None
+    planner_rationale: str = ""
+    planner_error: str = ""
     findings_summary: list[dict] = Field(default_factory=list)
 
 

@@ -79,6 +79,9 @@ class PostgresStatusStore:
     def record_escalation(self, record: dict[str, Any]) -> None:
         self._insert("escalation", record)
 
+    def record_investigation_update(self, payload: dict[str, Any]) -> None:
+        self._insert("investigation", payload)
+
     def snapshot(self) -> dict[str, Any]:
         events = self._fetch_recent("event", 20)
         findings = self._fetch_recent("finding", 20)

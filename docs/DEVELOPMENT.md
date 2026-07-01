@@ -34,6 +34,41 @@ make dev-ui          # Operator UI http://localhost:3000
 
 `make dev` and `scripts/dev.sh` start API + `WORKER_REPLICAS` workers (default 2) with auto-restart on crash. Workers use `WORKER_IDLE_TIMEOUT=0` (run until stopped). Docker: `make dev-docker` scales workers the same way.
 
+## Veil knowledge MCP (playbooks + graph)
+
+When [Veil knowledge](https://github.com/butbeautifulv/veil) is running locally (Graph API `:8090`, MCP HTTP `:8091`), egregore workers can call read-only playbook and threat-intel tools.
+
+Prerequisites:
+
+```bash
+# Veil stack (from projects/veil) — GRAPH_PACK_SKIP=1 on restart if graph already in Neo4j
+curl http://localhost:8090/health
+curl http://localhost:8091/health
+```
+
+In `projects/egregore/.env`:
+
+```bash
+VEIL_MCP_URL=http://localhost:8091/mcp
+VEIL_MCP_ENABLED=true
+USE_TOOL_GATEWAY=true
+TOOL_GATEWAY_URL=http://localhost:8092   # not :8090 (Veil Graph API)
+```
+
+Start the egregore tool gateway (optional separate terminal):
+
+```bash
+make dev-tool-gateway
+```
+
+Personas with Veil tools: `consultant`, `soc`, `network`, `compliance` — see `agents/personas/*/agent.yaml` (`playbook_search`, `ti_search_in_category`, …).
+
+Smoke:
+
+```bash
+USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/tool_gateway/test_veil_mcp_adapter.py -q
+```
+
 ## Local LLM (Ollama / OpenAI-compatible)
 
 egregore routes all model calls through LiteLLM. For local inference without cloud API keys, point at Ollama or any OpenAI-compatible endpoint.
@@ -130,6 +165,27 @@ HTTP spans export to Tempo on `localhost:4317`. Explore in Grafana → Tempo. LL
 | Symptom | Fix |
 |---------|-----|
 | `{"error": ...}` from agent | Set `LLM_MODEL` + `LLM_BASE_URL` for local model, or add cloud API key |
+| UI «Starting…» forever / API hangs minutes | `manual.investigation` planner used to block HTTP until LLM returned; now API returns **202** when `MANUAL_INVESTIGATION_ASYNC=true`. Check `GET /investigations/{id}` → `planner_status` |
+| Langfuse `Connection error` on planner traces | vLLM unreachable or slow; set `LLM_REQUEST_TIMEOUT=120` (default). ERROR ~400s = old litellm default; after fix, fallback in ~2 min |
+| Langfuse DEFAULT generation 170–240s | Model is up but slow (local Qwen); workers enqueue after planner completes in background |
 | No Langfuse traces | Both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` required |
+| Jobs never run | Workers must be running (`make dev`); postgres + redis healthy (`docker compose ps`) |
 | Port 3000 in use | Operator UI uses **3000**; Langfuse uses **3001** |
 | UI dev `ENOSPC` | `cd ui && npx next dev --webpack` or `npm run build && npm run start` |
+
+### Langfuse trace diagnosis
+
+Filter traces by tag `persona:planner`:
+
+| Observation | Meaning |
+|-------------|---------|
+| `GENERATION` level ERROR, `Connection error`, latency ~400s | vLLM was down; litellm retried until connect failed (before `LLM_REQUEST_TIMEOUT`) |
+| `GENERATION` level DEFAULT, latency 170–240s, JSON in output | Planner succeeded; jobs enqueue in background (async API) or after HTTP response (sync CLI) |
+| `rationale: planner_unavailable_fallback` in worker payload | Planner failed; default personas `soc,network,compliance` used |
+
+Preflight before investigations:
+
+```bash
+curl -m 5 -H "Authorization: Bearer EMPTY" "${LLM_BASE_URL%/}/models"
+docker compose ps postgres redis
+```

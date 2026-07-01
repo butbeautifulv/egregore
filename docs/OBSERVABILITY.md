@@ -81,6 +81,25 @@ If Langfuse UI shows no traces but ingestion returns 500, check `docker logs lan
 
 Open Langfuse UI → Traces; confirm tags `persona:*` and `job:*`.
 
+### LLM-as-a-Judge (evaluators)
+
+Langfuse can score live worker generations with an LLM judge (Helpfulness, Hallucination, etc.). One-time setup from repo root:
+
+```bash
+make langfuse-setup-judge
+```
+
+This script (see `scripts/langfuse-setup-llm-judge.sh`):
+
+1. Whitelists `LLM_BASE_URL` host in `deploy/langfuse/.env` (self-hosted SSRF bypass for private vLLM).
+2. Creates an **LLM Connection** (`egregore-vllm`) pointing at the same endpoint as egregore (`LLM_BASE_URL`, `LLM_MODEL`).
+3. Sets the **default evaluation model** in Langfuse (requires vLLM up and tool-calling support).
+4. Deploys managed evaluators **Helpfulness** and **Hallucination** on `GENERATION` observations for worker personas (`metadata.persona`).
+
+Re-run after vLLM restarts if the default model step failed. Tune sampling via `LANGFUSE_JUDGE_SAMPLING=0.25` in `.env`.
+
+Verify: Langfuse → **Evaluators** → default model; **Scores** on new traces after workers run.
+
 ## Local dev stack
 
 From repo root:
@@ -101,7 +120,7 @@ make dev-api        # scrape target http://localhost:8080/metrics
 
 Grafana auto-loads `deploy/grafana/dashboards/cys-agi.json` via provisioning.
 
-**Note:** Worker daemon metrics appear in Prometheus only when jobs run in a process that exposes `/metrics` (API or `worker --once`). Daemon-only workers flush Langfuse per job but do not expose a scrape endpoint yet.
+**Note:** Worker daemon metrics are aggregated into the API `/metrics` scrape when `PROMETHEUS_MULTIPROC_DIR` is set (done automatically by `make dev` / `scripts/dev.sh`). Restart API and workers together after changing that directory.
 
 ## Prometheus metrics
 
@@ -110,7 +129,7 @@ Grafana auto-loads `deploy/grafana/dashboards/cys-agi.json` via provisioning.
 | Service | Endpoint |
 |---------|----------|
 | Ingress API | `GET http://localhost:8080/metrics` |
-| Tool gateway | `GET http://localhost:8090/metrics` |
+| Tool gateway | `GET http://localhost:8092/metrics` |
 
 ```bash
 uv run egregore serve --port 8080

@@ -50,6 +50,15 @@ class ComplianceFinding(BaseModel):
     ttl: str = ""
 
 
+class ConsultantFinding(BaseModel):
+    topic: str = ""
+    summary: str = ""
+    risk_level: str = ""
+    recommendations: list[str] = Field(default_factory=list)
+    references: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
 class CriticResult(BaseModel):
     trust_score: float = Field(default=0.0, ge=0.0, le=1.0)
     finding_quality: str = ""
@@ -61,6 +70,6 @@ class CriticResult(BaseModel):
 
 
 class FindingEnvelope(BaseModel):
-    agent: Literal["redteam", "network", "soc", "compliance", "critic"]
+    agent: Literal["redteam", "network", "soc", "compliance", "consultant", "critic"]
     data: dict[str, Any]
     error: str | None = None

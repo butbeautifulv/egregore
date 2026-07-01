@@ -15,6 +15,7 @@ EventType = Literal[
     "finding.reference",
     "escalation",
     "manual.investigation",
+    "manual.consultation",
 ]
 
 Severity = Literal["info", "low", "medium", "high", "critical"]

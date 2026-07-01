@@ -191,7 +191,7 @@ function ChartTooltipContent({
   return (
     <div
       className={cn(
-        "grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
+        "grid min-w-32 items-start gap-1.5 rounded-none border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
         className
       )}
     >
@@ -278,11 +278,9 @@ function ChartLegendContent({
   payload,
   verticalAlign = "bottom",
   nameKey,
-  onLegendItemClick,
 }: React.ComponentProps<"div"> & {
   hideIcon?: boolean
   nameKey?: string
-  onLegendItemClick?: (key: string) => void
 } & RechartsPrimitive.DefaultLegendContentProps) {
   const { config } = useChart()
 
@@ -293,7 +291,7 @@ function ChartLegendContent({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-center gap-x-4 gap-y-2",
+        "flex items-center justify-center gap-4",
         verticalAlign === "top" ? "pb-3" : "pt-3",
         className
       )}
@@ -303,29 +301,13 @@ function ChartLegendContent({
         .map((item, index) => {
           const key = `${nameKey ?? item.dataKey ?? "value"}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
-          const labelKey =
-            typeof itemConfig?.label === "string"
-              ? itemConfig.label
-              : typeof item.value === "string"
-                ? item.value
-                : key
 
           return (
             <div
               key={index}
-              role={onLegendItemClick ? "button" : undefined}
-              tabIndex={onLegendItemClick ? 0 : undefined}
               className={cn(
-                "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground",
-                onLegendItemClick && "cursor-pointer"
+                "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground"
               )}
-              onClick={() => onLegendItemClick?.(labelKey)}
-              onKeyDown={(e) => {
-                if (onLegendItemClick && (e.key === "Enter" || e.key === " ")) {
-                  e.preventDefault()
-                  onLegendItemClick(labelKey)
-                }
-              }}
             >
               {itemConfig?.icon && !hideIcon ? (
                 <itemConfig.icon />
@@ -337,7 +319,7 @@ function ChartLegendContent({
                   }}
                 />
               )}
-              <span className="whitespace-nowrap">{itemConfig?.label}</span>
+              {itemConfig?.label}
             </div>
           )
         })}

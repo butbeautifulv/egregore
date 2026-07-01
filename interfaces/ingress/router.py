@@ -25,7 +25,6 @@ class EventIngress:
     ) -> None:
         self.router = router or EventRouter.from_plans_dir(default_agents_root() / "plans")
         self.orchestrator = orchestrator or WorkerOrchestrator()
-        container = get_container()
         self._route_and_enqueue = RouteAndEnqueueEvent(
             router=self.router,
             enqueuer=self.orchestrator,
@@ -33,10 +32,15 @@ class EventIngress:
             publish_raw_event_sync=publish_raw_event_sync,
             publish_raw_event=publish_raw_event,
             record_event_ingested=metrics.record_event_ingested,
-            plan_investigation=PlanInvestigation(
-                runtime=self.orchestrator.runtime,
-                investigation_store=container.get_investigation_state_store(),
-            ),
+            plan_investigation=self.plan_investigation,
+        )
+
+    @property
+    def plan_investigation(self) -> PlanInvestigation:
+        container = get_container()
+        return PlanInvestigation(
+            runtime=self.orchestrator.runtime,
+            investigation_store=container.get_investigation_state_store(),
         )
 
     def ingest(

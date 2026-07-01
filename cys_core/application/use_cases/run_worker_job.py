@@ -4,6 +4,8 @@ import json
 from collections.abc import Callable
 from typing import Any, Protocol
 
+from bootstrap.settings import settings
+
 from cys_core.application.ports.agent_runner import AgentRunner
 from cys_core.application.ports.bus import AgentTransportConnector
 from cys_core.application.ports.job_queue import JobQueueConnector
@@ -14,6 +16,7 @@ from cys_core.domain.security.agent_bus import SecureAgentBus
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.guardrails import OutputGuardrails
 from cys_core.domain.security.sanitizer import InputSanitizer
+from cys_core.runtime.agent import _parse_json_text
 from cys_core.domain.workers.exceptions import JobBudgetExceeded
 from cys_core.domain.workers.models import RunResult, WorkerJob, WorkerJobStatus
 
@@ -75,6 +78,13 @@ class RunWorkerJob:
         self.investigation_store = investigation_store
         self.record_sanitizer_block = record_sanitizer_block or (lambda _where, _mode: None)
         self.record_memory_write = record_memory_write or (lambda _tenant, _memory_type: None)
+
+    def _mark_persona_terminal(self, job: WorkerJob) -> None:
+        """Unblock sequential downstream jobs after success or failure."""
+        if self.investigation_store is None:
+            return
+        investigation_id = job.correlation_id or job.event_id
+        self.investigation_store.mark_persona_done(job.tenant_id, investigation_id, job.persona)
 
     def _investigation_context(self, job: WorkerJob) -> dict[str, Any]:
         investigation_id = job.correlation_id or job.event_id
@@ -169,10 +179,21 @@ class RunWorkerJob:
                 sandbox_id=creds.sandbox_id,
             )
 
+            if isinstance(result, dict) and "raw_response" in result and "error" not in result:
+                parsed = _parse_json_text(str(result["raw_response"]))
+                if parsed:
+                    result = parsed
+
             schema = self._schema_registry_get(defn.schema_name or "")
             if schema and "error" not in result:
-                validated = self.guardrails.validate_schema(result, schema)
-                result = validated.model_dump()
+                try:
+                    validated = self.guardrails.validate_schema(result, schema)
+                    result = validated.model_dump()
+                except SecurityViolation:
+                    if settings.stage == "dev":
+                        pass
+                    else:
+                        raise
 
             finding_payload = {
                 "agent": job.persona,
@@ -200,8 +221,18 @@ class RunWorkerJob:
                 if entry is not None:
                     self.record_memory_write(job.tenant_id, entry.memory_type)
 
-            if self.investigation_store is not None:
-                self.investigation_store.mark_persona_done(job.tenant_id, investigation_id, job.persona)
+            if self.investigation_store is not None and isinstance(result, dict) and "error" not in result:
+                self.investigation_store.append_finding(
+                    job.tenant_id,
+                    investigation_id,
+                    {
+                        "persona": job.persona,
+                        "job_id": job.job_id,
+                        "finding": result,
+                    },
+                )
+
+            self._mark_persona_terminal(job)
 
             job.status = WorkerJobStatus.COMPLETED
             self.job_store.mark_completed(job.job_id)
@@ -216,18 +247,21 @@ class RunWorkerJob:
             job_state["status"] = "error"
             job.status = WorkerJobStatus.FAILED
             self.job_store.mark_failed(job.job_id)
+            self._mark_persona_terminal(job)
             return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
         except SecurityViolation as exc:
             job_state["status"] = "error"
             self.record_sanitizer_block("worker", "hard")
             job.status = WorkerJobStatus.FAILED
             self.job_store.mark_failed(job.job_id)
+            self._mark_persona_terminal(job)
             return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
         except Exception as exc:
             job_state["status"] = "error"
             self.bus.record_agent_failure(job.persona)
             job.status = WorkerJobStatus.FAILED
             self.job_store.mark_failed(job.job_id)
+            self._mark_persona_terminal(job)
             send_dlq = getattr(self.queue, "send_to_dlq", None)
             if send_dlq is not None:
                 await send_dlq(job.model_dump(), str(exc))

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 MemoryType = Literal["finding", "pending_finding", "ioc", "lesson", "preference", "conversation"]
 InvestigationStatus = Literal["open", "in_progress", "closed"]
+PlannerStatus = Literal["planning", "ok", "fallback", "error"]
 
 
 class MemoryScope(BaseModel):
@@ -36,3 +37,6 @@ class InvestigationState(BaseModel):
     completed_personas: list[str] = Field(default_factory=list)
     findings_summary: list[dict[str, Any]] = Field(default_factory=list)
     planner_plan: list[str] | None = None
+    planner_status: PlannerStatus | None = None
+    planner_rationale: str = ""
+    planner_error: str = ""

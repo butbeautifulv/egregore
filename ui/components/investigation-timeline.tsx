@@ -24,18 +24,18 @@ export function InvestigationTimeline({ investigationId, events }: Investigation
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Live timeline</CardTitle>
+        <CardTitle>Live timeline</CardTitle>
       </CardHeader>
       <CardContent>
         {filtered.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Waiting for stream events…</p>
+          <p className="text-muted-foreground text-xs">Waiting for stream events…</p>
         ) : (
           <ul className="space-y-2">
             {filtered
               .slice()
               .reverse()
               .map((event, index) => (
-                <li key={`${event.ts}-${index}`} className="rounded-md border p-2 text-sm">
+                <li key={`${event.ts}-${index}`} className="rounded-none border p-2 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium">{event.kind}</span>
                     <span className="text-muted-foreground text-xs">{event.ts}</span>

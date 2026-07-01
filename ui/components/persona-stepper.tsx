@@ -38,7 +38,7 @@ const stateStyles: Record<PersonaStepState, string> = {
 export function PersonaStepper({ plannerPlan, completedPersonas, jobs }: PersonaStepperProps) {
   const personas = plannerPlan?.length ? plannerPlan : [...new Set(jobs.map((job) => job.persona))]
   if (personas.length === 0) {
-    return <p className="text-muted-foreground text-sm">No persona plan yet.</p>
+    return <p className="text-muted-foreground text-xs">No persona plan yet.</p>
   }
 
   return (

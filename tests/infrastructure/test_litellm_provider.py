@@ -96,8 +96,10 @@ def test_litellm_message_conversion_and_sync_generation(monkeypatch):
         api_key="key",
         api_base="https://base.example",
         temperature=0.4,
+        request_timeout=90.0,
     )
     assert model._llm_type == "litellm"
+    assert model.bind_tools([]) is model
     result = model._generate([HumanMessage(content="hi")], stop=["END"], extra="value")
 
     assert result.generations[0].message.content == "answer"
@@ -105,8 +107,11 @@ def test_litellm_message_conversion_and_sync_generation(monkeypatch):
     assert calls[0]["api_base"] == "https://base.example"
     assert calls[0]["stop"] == ["END"]
     assert calls[0]["extra"] == "value"
+    assert calls[0]["timeout"] == 90.0
 
-    created = provider.LiteLLMProvider().create(model="m", api_key="", base_url=None, temperature=0.1)
+    created = provider.LiteLLMProvider().create(
+        model="m", api_key="", base_url=None, temperature=0.1, request_timeout=45.0
+    )
     assert isinstance(created, provider.LiteLLMChatModel)
     assert created.api_key is None
 
@@ -128,6 +133,7 @@ async def test_litellm_async_generation(monkeypatch):
         api_key="async-key",
         api_base="https://async.example",
         temperature=0.3,
+        request_timeout=60.0,
     )
     result = await model._agenerate([HumanMessage(content="hi")], stop=["STOP"], flag=True)
 
@@ -137,3 +143,4 @@ async def test_litellm_async_generation(monkeypatch):
     assert calls[0]["api_base"] == "https://async.example"
     assert calls[0]["stop"] == ["STOP"]
     assert calls[0]["flag"] is True
+    assert calls[0]["timeout"] == 60.0

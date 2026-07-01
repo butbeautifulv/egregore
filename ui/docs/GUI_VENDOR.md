@@ -14,8 +14,18 @@ From `projects/egregore/ui` (meta-repo checkout required for `shared/gui`):
 
 ```bash
 ./scripts/vendor-gui.sh
-node scripts/rewrite-vendor-imports.mjs
 ```
+
+This runs, in order: rsync from `shared/gui` → `rewrite-vendor-imports.mjs` → `apply-vendor-lyra-adaptation.mjs`.
+
+Manual steps (if not using `vendor-gui.sh`):
+
+```bash
+node scripts/rewrite-vendor-imports.mjs
+node scripts/apply-vendor-lyra-adaptation.mjs
+```
+
+See [VENDOR_GUI_LYRA_LOG.md](VENDOR_GUI_LYRA_LOG.md) for nova→lyra rules and re-sync policy.
 
 Override source path when needed:
 
@@ -30,11 +40,19 @@ GUI_SRC=/path/to/shared/gui/src ./scripts/vendor-gui.sh
 
 Then `rewrite-vendor-imports.mjs` rewrites `@cxado/gui/` → `@/vendor/gui/`.
 
+`apply-vendor-lyra-adaptation.mjs` copies **radix-lyra** classes from `components/ui/` into `vendor/gui/ui/` (egregore uses `radix-lyra`; shared/gui uses `radix-nova`).
+
 ## Theme / colors
 
 **Do not** `@import` `shared/gui/tailwind.preset.css` as the canonical color source. That preset only defines `@theme inline` tokens without full `:root` values.
 
-Canonical theme lives in `app/globals.css` (oklch green primary). When syncing structural CSS from shared/gui, preserve egregore-ui color tokens.
+Canonical theme is preset **`b3Rq8QejA`** (Lyra + neutral baseColor + lime theme). Apply with:
+
+```bash
+npx shadcn@latest apply b3Rq8QejA --yes
+```
+
+`app/globals.css` and `components.json` are updated by the CLI. After theme changes, re-run `node scripts/apply-vendor-lyra-adaptation.mjs`.
 
 ## What to cherry-pick
 

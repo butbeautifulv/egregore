@@ -66,6 +66,9 @@ class MemoryStatusStore:
         self.escalations.append(record)
         self._notify("escalation", record)
 
+    def record_investigation_update(self, payload: dict[str, Any]) -> None:
+        self._notify("investigation", payload)
+
     def snapshot(self) -> dict[str, Any]:
         return {
             "events_count": len(self.events),

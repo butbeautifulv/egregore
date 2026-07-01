@@ -41,6 +41,7 @@ class CysMetrics:
             "cys_agent_trust_score",
             "Configured trust score per persona",
             ["persona"],
+            multiprocess_mode="mostrecent",
         )
         self.job_tokens = Counter(
             "cys_job_tokens_total",
@@ -55,6 +56,7 @@ class CysMetrics:
         self.hitl_pending = Gauge(
             "cys_hitl_pending_total",
             "Jobs awaiting human approval",
+            multiprocess_mode="mostrecent",
         )
         self.approval_bypass_attempts = Counter(
             "cys_approval_bypass_attempts_total",
@@ -74,6 +76,7 @@ class CysMetrics:
         self.investigations_active = Gauge(
             "cys_investigations_active",
             "Open or in-progress investigations",
+            multiprocess_mode="mostrecent",
         )
         self.persistence_fallback = Counter(
             "cys_persistence_fallback_total",

@@ -73,7 +73,7 @@ export function ShellSidebar({
               <SidebarMenuButton
                 asChild
                 tooltip={primaryAction.label}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground justify-center text-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
+                className="bg-primary text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground justify-center text-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
               >
                 <Link
                   href={primaryAction.href}

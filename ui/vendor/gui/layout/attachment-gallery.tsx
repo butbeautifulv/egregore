@@ -40,7 +40,7 @@ export function AttachmentGallery({
         {attachments.map((attachment) => (
           <div
             key={attachment.id}
-            className="group relative aspect-square overflow-hidden rounded-md border bg-muted"
+            className="group relative aspect-square overflow-hidden rounded-none border bg-muted"
           >
             <button
               type="button"
@@ -79,7 +79,7 @@ export function AttachmentGallery({
           <DialogTitle className="sr-only">{preview?.originalName}</DialogTitle>
           {preview && (
             <div className="flex flex-col gap-3">
-              <div className="relative max-h-[80vh] w-full overflow-hidden rounded-md">
+              <div className="relative max-h-[80vh] w-full overflow-hidden rounded-none">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={preview.viewUrl}

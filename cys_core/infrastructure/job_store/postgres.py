@@ -118,6 +118,25 @@ class PostgresJobStore:
             event_id=resolved_event,
         )
 
+    def upsert_pending(
+        self,
+        job_id: str,
+        persona: str,
+        *,
+        correlation_id: str = "",
+        tenant_id: str = "default",
+        event_id: str = "",
+    ) -> JobRecord:
+        return self._upsert(
+            job_id=job_id,
+            session_id="",
+            persona=persona,
+            status=WorkerJobStatus.PENDING,
+            correlation_id=correlation_id,
+            tenant_id=tenant_id,
+            event_id=event_id,
+        )
+
     def upsert_running(
         self,
         job_id: str,

@@ -12,6 +12,27 @@ class InMemoryJobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, JobRecord] = {}
 
+    def upsert_pending(
+        self,
+        job_id: str,
+        persona: str,
+        *,
+        correlation_id: str = "",
+        tenant_id: str = "default",
+        event_id: str = "",
+    ) -> JobRecord:
+        record = JobRecord(
+            job_id=job_id,
+            session_id="",
+            persona=persona,
+            status=WorkerJobStatus.PENDING,
+            correlation_id=correlation_id,
+            tenant_id=tenant_id,
+            event_id=event_id,
+        )
+        self._jobs[job_id] = record
+        return record
+
     def upsert_running(
         self,
         job_id: str,

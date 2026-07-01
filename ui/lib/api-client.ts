@@ -55,8 +55,10 @@ export function getStatus() {
 
 export type PostEventResponse = {
   event: { id: string; correlation_id?: string; type: string }
-  routing: { personas: string[] }
+  routing: { personas: string[]; reason?: string }
   job_ids: string[]
+  accepted?: boolean
+  planner_status?: string
 }
 
 export function postEvent(body: {
@@ -83,6 +85,9 @@ export type InvestigationSummary = {
 
 export type InvestigationDetail = InvestigationSummary & {
   planner_plan: string[] | null
+  planner_status?: string | null
+  planner_rationale?: string
+  planner_error?: string
   findings_summary: Record<string, unknown>[]
 }
 

@@ -24,3 +24,6 @@ for file in "${FILES[@]}"; do
 done
 
 echo "Vendored gui from $GUI_SRC -> $VENDOR"
+echo "Rewriting imports and applying radix-lyra adaptation…"
+node "$ROOT/scripts/rewrite-vendor-imports.mjs"
+node "$ROOT/scripts/apply-vendor-lyra-adaptation.mjs"

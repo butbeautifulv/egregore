@@ -33,6 +33,40 @@ from cys_core.registry.tools import tool_registry
 T = TypeVar("T", bound=BaseModel)
 
 
+def _structured_has_content(data: dict[str, Any]) -> bool:
+    for value in data.values():
+        if isinstance(value, str) and value.strip():
+            return True
+        if isinstance(value, list) and value:
+            return True
+        if isinstance(value, (int, float)) and value not in (0, 0.0):
+            return True
+    return False
+
+
+def _parse_json_text(text: str) -> dict[str, Any] | None:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        fenced = "\n".join(lines).strip()
+        try:
+            parsed = json.loads(fenced)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
 def _default_sync_persistence() -> PersistenceContext:
     from bootstrap.container import get_container
 
@@ -386,18 +420,18 @@ class AgentRuntime:
         structured = result.get("structured_response")
         if structured is not None:
             data = structured.model_dump() if isinstance(structured, BaseModel) else dict(structured)
-            if schema:
-                validated = self.guardrails.validate_schema(data, schema)
-                return validated.model_dump()
-            return data
+            if _structured_has_content(data):
+                if schema:
+                    validated = self.guardrails.validate_schema(data, schema)
+                    return validated.model_dump()
+                return data
 
         messages = result.get("messages", [])
         if not messages:
             return {"error": "no response"}
         text = extract_message_content(messages[-1].content)
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
+        data = _parse_json_text(text)
+        if data is None:
             return {"raw_response": text}
 
         if schema:

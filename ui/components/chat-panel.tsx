@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 
 import { postEvent } from "@/lib/api-client"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import { Button } from "@/vendor/gui/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
 import { Input } from "@/vendor/gui/ui/input"
 
 export function ChatPanel() {
@@ -41,12 +41,13 @@ export function ChatPanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">New investigation</CardTitle>
+        <CardTitle>New investigation</CardTitle>
+        <CardDescription>
+          Describe the investigation goal. Planning runs in the background — you will be redirected
+          immediately while the LLM planner assigns personas.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-muted-foreground text-sm">
-          Describe the investigation goal. API and workers run via <code className="text-xs">make dev</code>.
-        </p>
         <form className="flex gap-2" onSubmit={onSubmit}>
           <Input
             value={goal}
@@ -58,7 +59,7 @@ export function ChatPanel() {
             {loading ? "Starting…" : "Start"}
           </Button>
         </form>
-        {error ? <p className="text-destructive text-sm">{error}</p> : null}
+        {error ? <p className="text-destructive text-xs">{error}</p> : null}
       </CardContent>
     </Card>
   )

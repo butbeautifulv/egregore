@@ -4,7 +4,7 @@ import { useState } from "react"
 
 import { resumeJob } from "@/lib/api-client"
 import type { PendingApproval } from "@/lib/types"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/vendor/gui/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
 
 export function ApprovalActions({ approval }: { approval: PendingApproval }) {
@@ -31,13 +31,13 @@ export function ApprovalActions({ approval }: { approval: PendingApproval }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">
+        <CardTitle>
           {approval.persona} · {approval.tool_name}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-muted-foreground text-sm">Job {approval.job_id}</p>
-        <pre className="bg-muted overflow-x-auto rounded-md p-2 text-xs">
+        <p className="text-muted-foreground text-xs">Job {approval.job_id}</p>
+        <pre className="bg-muted overflow-x-auto rounded-none p-2 text-xs">
           {JSON.stringify(approval.tool_args, null, 2)}
         </pre>
         <div className="flex gap-2">
@@ -48,7 +48,7 @@ export function ApprovalActions({ approval }: { approval: PendingApproval }) {
             Reject
           </Button>
         </div>
-        {message ? <p className="text-sm">{message}</p> : null}
+        {message ? <p className="text-xs">{message}</p> : null}
       </CardContent>
     </Card>
   )

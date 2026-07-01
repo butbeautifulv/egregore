@@ -42,6 +42,7 @@ class LLMConnector:
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
             temperature=settings.llm_temperature,
+            request_timeout=settings.llm_request_timeout,
         )
 
     def callbacks(self) -> list[Any]:

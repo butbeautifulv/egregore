@@ -6,6 +6,9 @@ tools:
   - parse_netflow
   - enrich_ioc
   - correlate_dns
+  - playbook_search
+  - playbook_get
+  - ti_search_in_category
 hitl_tools: {}
 trust_level: internal
 bus_recipients:

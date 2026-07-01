@@ -30,7 +30,7 @@ export function ShellBrand({
         <SidebarMenuButton size="lg" asChild>
           <Link href={href} className="min-w-0 overflow-hidden">
             {logo ?? (
-              <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-none bg-sidebar-primary text-sidebar-primary-foreground">
                 <Icon className="size-4" />
               </div>
             )}

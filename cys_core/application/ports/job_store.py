@@ -31,6 +31,16 @@ class JobRecordSummary:
 
 
 class JobStorePort(Protocol):
+    def upsert_pending(
+        self,
+        job_id: str,
+        persona: str,
+        *,
+        correlation_id: str = "",
+        tenant_id: str = "default",
+        event_id: str = "",
+    ) -> JobRecord: ...
+
     def upsert_running(
         self,
         job_id: str,

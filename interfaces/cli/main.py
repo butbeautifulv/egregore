@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import cys_core.observability.prometheus_setup  # noqa: F401 — multiprocess atexit
 import argparse
 import asyncio
 import json

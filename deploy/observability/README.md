@@ -23,7 +23,7 @@ docker compose -f deploy/observability/docker-compose.yml up -d
 
 Run `make dev-api` (or `uv run egregore serve`) on the host so Prometheus can reach `/metrics`.
 
-Optional tool gateway (not auto-started): `make dev-tool-gateway` → `:8090/metrics`. Enable routing in `.env` only when needed: `USE_TOOL_GATEWAY=true`.
+Optional tool gateway (not auto-started): `make dev-tool-gateway` → `:8092/metrics`. Enable routing in `.env` only when needed: `USE_TOOL_GATEWAY=true`.
 
 ## Prometheus scrape jobs
 
@@ -31,7 +31,7 @@ Optional tool gateway (not auto-started): `make dev-tool-gateway` → `:8090/met
 |-----|--------|---------|
 | `prometheus` | `localhost:9090` | Self-monitoring |
 | `egregore-api` | `host.docker.internal:8080/metrics` | Ingress + in-process worker metrics |
-| `egregore-tool-gateway` | `host.docker.internal:8090/metrics` | MCP tool gateway (when running) |
+| `egregore-tool-gateway` | `host.docker.internal:8092/metrics` | MCP tool gateway (when running) |
 | `tempo` | `tempo:3200/metrics` | Trace backend health |
 | `grafana` | `grafana:3000/metrics` | Grafana self-metrics |
 

@@ -74,6 +74,7 @@ class WorkerOrchestrator:
         self.sanitizer = get_input_sanitizer()
         self.guardrails = get_output_guardrails()
         container = get_container()
+        self.job_store = container.get_job_store()
         self._run_worker_job = RunWorkerJob(
             runtime=self.runtime,
             registry=self.registry,
@@ -83,7 +84,7 @@ class WorkerOrchestrator:
             queue=self.queue,
             sanitizer=self.sanitizer,
             guardrails=self.guardrails,
-            job_store=get_container().get_job_store(),
+            job_store=self.job_store,
             use_tool_gateway=settings.use_tool_gateway,
             resolve_mcp_tools=mcp_tool_registry.resolve,
             resolve_legacy_tools=_resolve_legacy_tools,
@@ -175,6 +176,34 @@ class WorkerOrchestrator:
                 previous_persona = persona
         return jobs
 
+    def _persist_and_enqueue_jobs(self, jobs: list[WorkerJob]) -> list[str]:
+        job_ids: list[str] = []
+        for job in jobs:
+            self.job_store.upsert_pending(
+                job.job_id,
+                job.persona,
+                correlation_id=job.correlation_id,
+                tenant_id=job.tenant_id,
+                event_id=job.event_id,
+            )
+            self.queue.enqueue(job.model_dump())
+            job_ids.append(job.job_id)
+        return job_ids
+
+    async def _apersist_and_enqueue_jobs(self, jobs: list[WorkerJob]) -> list[str]:
+        job_ids: list[str] = []
+        for job in jobs:
+            self.job_store.upsert_pending(
+                job.job_id,
+                job.persona,
+                correlation_id=job.correlation_id,
+                tenant_id=job.tenant_id,
+                event_id=job.event_id,
+            )
+            await self.queue.aenqueue(job.model_dump())
+            job_ids.append(job.job_id)
+        return job_ids
+
     def enqueue_from_routing_sync(
         self,
         event_id: str,
@@ -186,8 +215,7 @@ class WorkerOrchestrator:
         tenant_id: str = "default",
         sequential: bool = False,
     ) -> list[str]:
-        job_ids: list[str] = []
-        for job in self._jobs_for_routing(
+        jobs = self._jobs_for_routing(
             event_id,
             personas,
             playbook_id=playbook_id,
@@ -195,10 +223,8 @@ class WorkerOrchestrator:
             correlation_id=correlation_id,
             tenant_id=tenant_id,
             sequential=sequential,
-        ):
-            self.queue.enqueue(job.model_dump())
-            job_ids.append(job.job_id)
-        return job_ids
+        )
+        return self._persist_and_enqueue_jobs(jobs)
 
     async def enqueue_from_routing(
         self,
@@ -211,8 +237,7 @@ class WorkerOrchestrator:
         tenant_id: str = "default",
         sequential: bool = False,
     ) -> list[str]:
-        job_ids: list[str] = []
-        for job in self._jobs_for_routing(
+        jobs = self._jobs_for_routing(
             event_id,
             personas,
             playbook_id=playbook_id,
@@ -220,7 +245,5 @@ class WorkerOrchestrator:
             correlation_id=correlation_id,
             tenant_id=tenant_id,
             sequential=sequential,
-        ):
-            await self.queue.aenqueue(job.model_dump())
-            job_ids.append(job.job_id)
-        return job_ids
+        )
+        return await self._apersist_and_enqueue_jobs(jobs)

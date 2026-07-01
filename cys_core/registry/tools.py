@@ -178,6 +178,10 @@ _ALL_TOOLS: list[BaseTool] = [
     execute_command,
 ]
 
+from cys_core.registry.veil_tools import build_veil_tools
+
+_ALL_TOOLS.extend(build_veil_tools())
+
 
 class ToolRegistry:
     def __init__(self) -> None:

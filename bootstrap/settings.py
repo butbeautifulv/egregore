@@ -18,6 +18,21 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="anthropic/claude-sonnet-4", validation_alias="LLM_MODEL")
     llm_base_url: str | None = Field(default=None, validation_alias="LLM_BASE_URL")
     llm_temperature: float = Field(default=0.1, validation_alias="LLM_TEMPERATURE")
+    llm_request_timeout: float = Field(
+        default=120.0,
+        validation_alias="LLM_REQUEST_TIMEOUT",
+        description="LiteLLM request timeout in seconds (fail-fast when vLLM is down).",
+    )
+    manual_investigation_async: bool = Field(
+        default=True,
+        validation_alias="MANUAL_INVESTIGATION_ASYNC",
+        description="Defer manual.investigation LLM planner to background (API returns 202).",
+    )
+    planner_fallback_personas: str = Field(
+        default="consultant",
+        validation_alias="PLANNER_FALLBACK_PERSONAS",
+        description="Comma-separated worker personas when LLM planner fails or returns unparseable JSON.",
+    )
 
     stage: str = Field(default="dev", validation_alias="STAGE")
 
@@ -71,10 +86,18 @@ class Settings(BaseSettings):
     use_kafka: bool = Field(default=False, validation_alias="USE_KAFKA")
 
     tool_gateway_url: str = Field(
-        default="http://localhost:8090",
+        default="http://localhost:8092",
         validation_alias="TOOL_GATEWAY_URL",
+        description="egregore MCP Tool Gateway (avoid :8090 — Veil Graph API).",
     )
     use_tool_gateway: bool = Field(default=False, validation_alias="USE_TOOL_GATEWAY")
+
+    veil_mcp_url: str = Field(
+        default="http://localhost:8091/mcp",
+        validation_alias="VEIL_MCP_URL",
+    )
+    veil_mcp_enabled: bool = Field(default=True, validation_alias="VEIL_MCP_ENABLED")
+    veil_mcp_timeout: float = Field(default=30.0, validation_alias="VEIL_MCP_TIMEOUT")
 
     job_cost_per_1k_tokens_usd: float = Field(
         default=0.003,
