@@ -28,7 +28,7 @@ jobs:
       API_BASE_URL: ${{ inputs.api_base_url }}
       SCHEMATHESIS_PHASES: ${{ inputs.phases }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Schemathesis API fuzz
         run: |
           IMAGE="${OSS_SCHEMATHESIS_IMAGE:-ghcr.io/schemathesis/schemathesis:4.21.7}"

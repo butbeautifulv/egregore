@@ -22,7 +22,7 @@ jobs:
       FUZZ_TIME: ${{ inputs.fuzz_time }}
       FUZZ_TARGETS: ${{ inputs.fuzz_targets }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Binary fuzz (AFL++ / Go / Jazzer)
         run: |
           chmod +x scripts/run-binary-fuzz.sh
