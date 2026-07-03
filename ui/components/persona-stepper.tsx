@@ -1,6 +1,9 @@
+import { CheckCircle2, CircleDashed, LoaderCircle, XCircle } from "lucide-react"
+
 import type { JobSummary, PersonaStepState } from "@/lib/types"
+import { OverflowText } from "@/vendor/gui/layout/overflow-text"
 import { Badge } from "@/vendor/gui/ui/badge"
-import { cn } from "@/lib/utils"
+import { EmptyTableState } from "@/vendor/gui/layout/empty-table-state"
 
 type PersonaStepperProps = {
   plannerPlan: string[] | null | undefined
@@ -28,17 +31,29 @@ function stepState(persona: string, completed: string[], jobs: JobSummary[]): Pe
   return "pending"
 }
 
-const stateStyles: Record<PersonaStepState, string> = {
-  done: "border-primary/40 bg-primary/10 text-primary",
-  running: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  pending: "border-border bg-muted text-muted-foreground",
-  failed: "border-destructive/40 bg-destructive/10 text-destructive",
+const stateVariant: Record<PersonaStepState, "default" | "secondary" | "destructive" | "outline"> = {
+  done: "default",
+  running: "secondary",
+  pending: "outline",
+  failed: "destructive",
+}
+
+function StateIcon({ state }: { state: PersonaStepState }) {
+  if (state === "done") return <CheckCircle2 className="size-3.5" />
+  if (state === "running") return <LoaderCircle className="size-3.5 animate-spin" />
+  if (state === "failed") return <XCircle className="size-3.5" />
+  return <CircleDashed className="size-3.5" />
 }
 
 export function PersonaStepper({ plannerPlan, completedPersonas, jobs }: PersonaStepperProps) {
   const personas = plannerPlan?.length ? plannerPlan : [...new Set(jobs.map((job) => job.persona))]
   if (personas.length === 0) {
-    return <p className="text-muted-foreground text-xs">No persona plan yet.</p>
+    return (
+      <EmptyTableState
+        title="No persona plan yet"
+        description="The planner has not assigned personas to this investigation."
+      />
+    )
   }
 
   return (
@@ -47,8 +62,9 @@ export function PersonaStepper({ plannerPlan, completedPersonas, jobs }: Persona
         const state = stepState(persona, completedPersonas, jobs)
         return (
           <li key={persona} className="flex items-center gap-2">
-            <Badge className={cn("rounded-full px-3 py-1", stateStyles[state])} variant="outline">
-              {index + 1}. {persona}
+            <Badge variant={stateVariant[state]} className="gap-1.5 rounded-full px-3 py-1">
+              <StateIcon state={state} />
+              <OverflowText>{`${index + 1}. ${persona}`}</OverflowText>
             </Badge>
             {index < personas.length - 1 ? <span className="text-muted-foreground">→</span> : null}
           </li>

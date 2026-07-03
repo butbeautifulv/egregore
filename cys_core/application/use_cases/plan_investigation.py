@@ -6,6 +6,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
+from cys_core.application.advisory_goal import is_advisory_goal
 from cys_core.application.policy_resolver import get_profile_policy_resolver
 from cys_core.application.runtime_config import get_planner_fallback_personas, get_use_dynamic_catalog
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
@@ -145,6 +146,15 @@ class PlanInvestigation:
             state.planner_status = "planning"
             state.planner_error = ""
             self.investigation_store.upsert(state)
+
+        if is_advisory_goal(goal):
+            plan = InvestigationPlan(
+                personas=["consultant"],
+                sub_goals={"consultant": goal},
+                rationale="advisory_fast_path_consultant_only",
+            )
+            self._apply_plan_to_state(state, plan, status="ok")
+            return plan
 
         available = self._available_personas()
         prompt = json.dumps(

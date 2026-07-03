@@ -18,6 +18,12 @@ from cys_core.domain.security.sanitizer import InputSanitizer
 from cys_core.runtime.agent import _parse_json_text
 from cys_core.domain.workers.exceptions import JobBudgetExceeded
 from cys_core.domain.workers.models import RunResult, WorkerJob, WorkerJobStatus
+from cys_core.observability.metrics import metrics
+from cys_core.observability.worker_spans import observability_span
+
+
+class InvestigationStatusNotifier(Protocol):
+    def record_investigation_update(self, payload: dict[str, Any]) -> None: ...
 
 
 class AgentRegistryPort(Protocol):
@@ -56,6 +62,7 @@ class RunWorkerJob:
         memory_reader: MemoryReadService | None = None,
         memory_writer: MemoryWriteService | None = None,
         investigation_store: InvestigationStateStore | None = None,
+        investigation_status_notifier: InvestigationStatusNotifier | None = None,
         record_sanitizer_block: Callable[[str, str], None] | None = None,
         record_memory_write: Callable[[str, str], None] | None = None,
     ) -> None:
@@ -75,6 +82,7 @@ class RunWorkerJob:
         self.memory_reader = memory_reader
         self.memory_writer = memory_writer
         self.investigation_store = investigation_store
+        self.investigation_status_notifier = investigation_status_notifier
         self.record_sanitizer_block = record_sanitizer_block or (lambda _where, _mode: None)
         self.record_memory_write = record_memory_write or (lambda _tenant, _memory_type: None)
 
@@ -84,6 +92,25 @@ class RunWorkerJob:
             return
         investigation_id = job.correlation_id or job.event_id
         self.investigation_store.mark_persona_done(job.tenant_id, investigation_id, job.persona)
+        self._notify_investigation_update(job)
+
+    def _notify_investigation_update(self, job: WorkerJob) -> None:
+        if self.investigation_status_notifier is None or self.investigation_store is None:
+            return
+        investigation_id = job.correlation_id or job.event_id
+        state = self.investigation_store.get(job.tenant_id, investigation_id)
+        if state is None:
+            return
+        self.investigation_status_notifier.record_investigation_update(
+            {
+                "investigation_id": investigation_id,
+                "tenant_id": job.tenant_id,
+                "status": state.status,
+                "completed_personas": list(state.completed_personas),
+                "persona": job.persona,
+                "planner_status": state.planner_status,
+            }
+        )
 
     def _memory_investigation_id(self, job: WorkerJob) -> str:
         parent_key = job.payload.get("parent_correlation_key")
@@ -99,13 +126,19 @@ class RunWorkerJob:
             if state is not None:
                 context["state"] = state.model_dump(mode="json")
         if self.memory_reader is not None:
-            entries = self.memory_reader.query_investigation(
-                job.tenant_id,
-                investigation_id,
-                limit=10,
-                requesting_tenant_id=job.tenant_id,
-            )
+            with observability_span(
+                "worker.memory.load",
+                tenant_id=job.tenant_id,
+                investigation_id=investigation_id,
+            ):
+                entries = self.memory_reader.query_investigation(
+                    job.tenant_id,
+                    investigation_id,
+                    limit=10,
+                    requesting_tenant_id=job.tenant_id,
+                )
             if entries:
+                metrics.record_memory_read(job.tenant_id, entries_loaded=len(entries))
                 context["prior_findings"] = [
                     {
                         "agent": entry.source_agent,
@@ -140,7 +173,8 @@ class RunWorkerJob:
         run_id = job.job_id
         investigation_id = self._memory_investigation_id(job)
         try:
-            creds = await self.sandbox.acreate(run_id, job.persona)
+            with observability_span("worker.sandbox.create", persona=job.persona, job_id=job.job_id):
+                creds = await self.sandbox.acreate(run_id, job.persona)
             job.sandbox_id = creds.sandbox_id
             job.status = WorkerJobStatus.RUNNING
             self.job_store.upsert_running(
@@ -171,18 +205,19 @@ class RunWorkerJob:
             if defn.skills:
                 sandbox_tools.append(self.make_load_skill_tool(defn.skills, persona=job.persona, job_id=job.job_id))
 
-            result = await self.runtime.arun(
-                job.persona,
-                sanitized,
-                session_id=session_id,
-                sandbox_tools=sandbox_tools or None,
-                job_id=job.job_id,
-                event_id=job.event_id,
-                correlation_id=job.correlation_id,
-                tenant_id=job.tenant_id,
-                investigation_id=investigation_id,
-                sandbox_id=creds.sandbox_id,
-            )
+            with observability_span("worker.agent.run", persona=job.persona, job_id=job.job_id):
+                result = await self.runtime.arun(
+                    job.persona,
+                    sanitized,
+                    session_id=session_id,
+                    sandbox_tools=sandbox_tools or None,
+                    job_id=job.job_id,
+                    event_id=job.event_id,
+                    correlation_id=job.correlation_id,
+                    tenant_id=job.tenant_id,
+                    investigation_id=investigation_id,
+                    sandbox_id=creds.sandbox_id,
+                )
 
             if isinstance(result, dict) and "raw_response" in result and "error" not in result:
                 parsed = _parse_json_text(str(result["raw_response"]))
@@ -304,7 +339,8 @@ class RunWorkerJob:
                 await send_dlq(job.model_dump(), str(exc))
             return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
         finally:
-            await self.sandbox.adestroy(run_id)
+            with observability_span("worker.sandbox.destroy", persona=job.persona, job_id=job.job_id):
+                await self.sandbox.adestroy(run_id)
 
     async def _maybe_self_refine(self, job: WorkerJob, sanitized: str, result: dict[str, Any]) -> dict[str, Any]:
         from cys_core.application.runtime_config import get_self_refine_max

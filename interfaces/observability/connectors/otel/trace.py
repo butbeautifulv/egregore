@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from bootstrap.settings import settings
+from bootstrap.settings import get_settings, settings
 from cys_core.application.ports.observability.trace_backend import TraceBackendPort
 from cys_core.domain.observability.models import TraceContext
+from cys_core.observability.otel_bootstrap import instrument_dependencies
+from cys_core.observability.otel_provider import ensure_tracer_provider, flush_tracer_provider
 
 logger = logging.getLogger(__name__)
 
@@ -13,20 +15,16 @@ logger = logging.getLogger(__name__)
 class OtelTraceBackend:
     """OpenTelemetry trace export (parallel sink)."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, service_name: str | None = None) -> None:
         self._tracer = None
-        if settings.otel_enabled:
+        cfg = settings
+        self._service_name = service_name or cfg.otel_service_name or "egregore"
+        if cfg.otel_enabled:
             try:
                 from opentelemetry import trace
-                from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-                from opentelemetry.sdk.resources import Resource
-                from opentelemetry.sdk.trace import TracerProvider
-                from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-                provider = TracerProvider(resource=Resource.create({"service.name": "egregore"}))
-                exporter = OTLPSpanExporter(endpoint=settings.otel_exporter_endpoint, insecure=True)
-                provider.add_span_processor(BatchSpanProcessor(exporter))
-                trace.set_tracer_provider(provider)
+                ensure_tracer_provider(settings=cfg, service_name=self._service_name)
+                instrument_dependencies()
                 self._tracer = trace.get_tracer("egregore")
             except Exception:
                 logger.warning("OTel trace backend unavailable", exc_info=True)
@@ -44,7 +42,7 @@ class OtelTraceBackend:
         _ = span_id
 
     def flush(self) -> None:
-        return None
+        flush_tracer_provider()
 
     def shutdown(self) -> None:
-        return None
+        self.flush()

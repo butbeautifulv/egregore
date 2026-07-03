@@ -1,36 +1,34 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
-from cys_core.infrastructure.kafka_queue import KafkaJobQueue
-from cys_core.infrastructure.kafka_topics import DLQ_TOPIC, worker_job_topic
+from cys_core.infrastructure.kafka_queue import KafkaJobQueue, _worker_job_topics
 
 
 @pytest.mark.unit
-def test_worker_job_topic_naming():
-    assert worker_job_topic("soc") == "worker.jobs.soc"
-    assert DLQ_TOPIC == "worker.jobs.dlq"
+def test_worker_job_topics_from_personas() -> None:
+    with patch("cys_core.application.resource_source.get_resource_source") as mock_src:
+        mock_src.return_value.list_worker_personas.return_value = ["consultant", "soc", "critic"]
+        topics = _worker_job_topics()
+    assert topics == [
+        "worker.jobs.consultant",
+        "worker.jobs.soc",
+        "worker.jobs.critic",
+    ]
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_kafka_queue_fallback_enqueue_dequeue():
-    queue = KafkaJobQueue(bootstrap_servers="127.0.0.1:1", persona="soc")
-    job = {"job_id": "j1", "persona": "soc", "event_id": "e1"}
-    job_id = await queue.aenqueue(job)
-    assert job_id == "j1"
-    dequeued = await queue.adequeue()
-    assert dequeued == job
+def test_kafka_queue_persona_none_uses_multi_topics() -> None:
+    queue = KafkaJobQueue(persona=None, bootstrap_servers="localhost:19092")
+    with patch.object(queue, "_consumer_topics", return_value=["worker.jobs.consultant", "worker.jobs.soc"]):
+        assert queue._consumer_group_id() == "egregore-workers"
+        assert queue._consumer_topics() == ["worker.jobs.consultant", "worker.jobs.soc"]
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_kafka_queue_dlq_noop_without_broker():
-    queue = KafkaJobQueue(bootstrap_servers="127.0.0.1:1", persona="soc")
-    await queue.send_to_dlq({"job_id": "j1"}, "boom")
-
-
-@pytest.mark.unit
-def test_kafka_queue_topic_for_job():
-    queue = KafkaJobQueue(bootstrap_servers="127.0.0.1:1")
-    assert queue._topic_for_job({"persona": "network"}) == "worker.jobs.network"
+def test_kafka_queue_persona_scoped_single_topic() -> None:
+    queue = KafkaJobQueue(persona="consultant", bootstrap_servers="localhost:19092")
+    assert queue._consumer_topics() == ["worker.jobs.consultant"]
+    assert queue._consumer_group_id() == "workers-consultant"

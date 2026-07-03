@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from cys_core.application.use_cases.dispatch_event import DispatchEvent, fallback_plan
+from cys_core.application.use_cases.dispatch_event import DispatchEvent, fallback_plan, use_async_investigation_planner
 from cys_core.application.use_cases.plan_investigation import InvestigationPlan, PlanInvestigation
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
 from cys_core.application.routing.event_router import EventRouter
@@ -83,9 +83,14 @@ class RouteAndEnqueueEvent:
         cid_token = bind_correlation_id(event.correlation_id or event.id)
         try:
             self.record_event_ingested(event.type)
-            if self.use_kafka and self.publish_raw_event_sync and self.publish_raw_event_sync(event):
-                decision = self.router.route(event)
-                return event, decision, []
+            sync_investigation = (
+                event.type == "manual.investigation"
+                and not use_async_investigation_planner(event, payload)
+            )
+            if self.use_kafka and self.publish_raw_event_sync and not sync_investigation:
+                if self.publish_raw_event_sync(event):
+                    decision = self.router.route(event)
+                    return event, decision, []
 
             decision, job_ids = self._dispatcher.dispatch_sync(event, payload)
             return event, decision, job_ids
@@ -115,7 +120,11 @@ class RouteAndEnqueueEvent:
         cid_token = bind_correlation_id(event.correlation_id or event.id)
         try:
             self.record_event_ingested(event.type)
-            if self.use_kafka and self.publish_raw_event:
+            sync_investigation = (
+                event.type == "manual.investigation"
+                and not use_async_investigation_planner(event, payload)
+            )
+            if self.use_kafka and self.publish_raw_event and not sync_investigation:
                 if await self.publish_raw_event(event):
                     decision = self.router.route(event)
                     return event, decision, []

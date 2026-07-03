@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import asyncio
 
+import structlog
+
+from bootstrap.container import get_container
 from cys_core.infrastructure.daemon_runner import run_poll_daemon
 from cys_core.observability.langfuse_client import flush_langfuse
+from cys_core.observability.logging_setup import configure_logging
+from cys_core.observability.otel import setup_otel
 from interfaces.worker.orchestrator import WorkerOrchestrator
+
+logger = structlog.get_logger(__name__)
 
 
 class WorkerDaemon:
@@ -26,6 +33,9 @@ class WorkerDaemon:
         self._stop = True
 
     async def run(self) -> int:
+        configure_logging("egregore-worker")
+        setup_otel(service_name="egregore-worker")
+        logger.info("worker daemon starting", persona=self.persona)
         orch = WorkerOrchestrator(persona=self.persona)
         processed = 0
 
@@ -39,6 +49,7 @@ class WorkerDaemon:
                 return False
             processed += 1
             flush_langfuse()
+            get_container().get_trace_backend().flush()
             return True
 
         await run_poll_daemon(

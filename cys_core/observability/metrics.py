@@ -185,4 +185,12 @@ def seed_agent_trust_gauges() -> None:
                     defn.name, _DECLARED_TRUST_BY_LEVEL.get(defn.trust_level, 0.5)
                 )
         except Exception:
+            _FALLBACK_PERSONAS = {
+                "conductor": 0.9,
+                "consultant": 0.75,
+                "analyst": 0.75,
+                "responder": 0.75,
+            }
+            for persona, score in _FALLBACK_PERSONAS.items():
+                metrics.set_agent_trust_score(persona, score)
             return

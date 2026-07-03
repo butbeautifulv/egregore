@@ -4,9 +4,14 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 
 import { postEvent } from "@/lib/api-client"
+import { formatApiError } from "@/lib/format-api-error"
+import { PageSection } from "@/components/page-section"
+import { Alert, AlertDescription, AlertTitle } from "@/vendor/gui/ui/alert"
 import { Button } from "@/vendor/gui/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import { Field, FieldGroup, FieldLabel } from "@/vendor/gui/ui/field"
 import { Input } from "@/vendor/gui/ui/input"
+import { Spinner } from "@/vendor/gui/ui/spinner"
 
 export function ChatPanel() {
   const router = useRouter()
@@ -32,35 +37,48 @@ export function ChatPanel() {
       const investigationId = response.event.correlation_id || correlationId
       router.push(`/investigations/${investigationId}`)
     } catch (exc) {
-      setError(exc instanceof Error ? exc.message : "Failed to start investigation")
+      setError(formatApiError(exc, "Failed to start investigation"))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Card>
+    <PageSection>
       <CardHeader>
         <CardTitle>New investigation</CardTitle>
         <CardDescription>
-          Describe the investigation goal. Planning runs in the background — you will be redirected
-          immediately while the LLM planner assigns personas.
+          Describe the goal. Planning runs in the background — you are redirected while personas are assigned.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <form className="flex gap-2" onSubmit={onSubmit}>
-          <Input
-            value={goal}
-            onChange={(event) => setGoal(event.target.value)}
-            placeholder="Investigate suspicious login from 203.0.113.4"
-            disabled={loading}
-          />
-          <Button type="submit" disabled={loading || !goal.trim()}>
-            {loading ? "Starting…" : "Start"}
-          </Button>
+      <CardContent>
+        <form onSubmit={onSubmit}>
+          <FieldGroup className="flex flex-col gap-3">
+            <Field>
+              <FieldLabel htmlFor="investigation-goal">Goal</FieldLabel>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id="investigation-goal"
+                  value={goal}
+                  onChange={(event) => setGoal(event.target.value)}
+                  placeholder="Investigate suspicious login from 203.0.113.4"
+                  disabled={loading}
+                />
+                <Button type="submit" disabled={loading || !goal.trim()}>
+                  {loading ? <Spinner data-icon="inline-start" /> : null}
+                  {loading ? "Starting…" : "Start"}
+                </Button>
+              </div>
+            </Field>
+          </FieldGroup>
         </form>
-        {error ? <p className="text-destructive text-xs">{error}</p> : null}
+        {error ? (
+          <Alert variant="destructive" className="mt-3">
+            <AlertTitle>Could not start investigation</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
       </CardContent>
-    </Card>
+    </PageSection>
   )
 }

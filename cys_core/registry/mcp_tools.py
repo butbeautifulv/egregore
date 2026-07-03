@@ -7,6 +7,8 @@ import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 
 from bootstrap.settings import settings
+from cys_core.observability.metrics import metrics
+from cys_core.observability.tracing import inject_correlation_headers
 from cys_core.registry.tools import tool_registry
 
 
@@ -101,19 +103,27 @@ class McpToolRegistry:
         correlation_id: str = "",
     ) -> dict[str, Any]:
         require_sandbox(sandbox_id)
-        if self.use_gateway:
-            try:
-                return self._gateway_invoke(
-                    tool_name,
-                    sandbox_id,
-                    args,
-                    persona=persona,
-                    job_id=job_id,
-                    correlation_id=correlation_id,
-                )
-            except Exception:
-                pass
-        return self._local_invoke(tool_name, sandbox_id, args)
+        try:
+            if self.use_gateway:
+                try:
+                    result = self._gateway_invoke(
+                        tool_name,
+                        sandbox_id,
+                        args,
+                        persona=persona,
+                        job_id=job_id,
+                        correlation_id=correlation_id,
+                    )
+                    metrics.record_tool_invocation(tool_name, success=result.get("success", True))
+                    return result
+                except Exception:
+                    pass
+            result = self._local_invoke(tool_name, sandbox_id, args)
+            metrics.record_tool_invocation(tool_name, success=result.get("success", True))
+            return result
+        except Exception:
+            metrics.record_tool_invocation(tool_name, success=False)
+            raise
 
     def _local_invoke(self, tool_name: str, sandbox_id: str, args: dict[str, Any]) -> dict[str, Any]:
         from interfaces.gateways.tool.handler import invoke_tool
@@ -147,7 +157,7 @@ class McpToolRegistry:
             "job_id": job_id,
             "correlation_id": correlation_id,
         }
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = inject_correlation_headers()
         if settings.gateway_access_token:
             headers["Authorization"] = f"Bearer {settings.gateway_access_token}"
         if self._client is not None:

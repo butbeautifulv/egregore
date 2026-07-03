@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
+from cys_core.application.advisory_goal import is_advisory_goal
 from cys_core.application.runtime_config import (
     get_manual_investigation_async,
     get_use_conductor_for_events,
@@ -13,6 +14,17 @@ from cys_core.application.routing.event_router import EventRouter
 from cys_core.domain.runs.models import RunContext
 
 ASYNC_PLANNER_PENDING = "async_planner_pending"
+
+
+def _investigation_goal(payload: dict[str, Any]) -> str:
+    return str(payload.get("goal", payload.get("message", "")))
+
+
+def use_async_investigation_planner(event: SecurityEvent, payload: dict[str, Any]) -> bool:
+    """Async 202 only for non-advisory investigations; advisory enqueues synchronously."""
+    if event.type != "manual.investigation" or not get_manual_investigation_async():
+        return False
+    return not is_advisory_goal(_investigation_goal(payload))
 
 
 def enrich_payload_with_run_context(event: SecurityEvent, payload: dict[str, Any]) -> dict[str, Any]:
@@ -137,7 +149,7 @@ class DispatchEvent:
 
     async def dispatch_async(self, event: SecurityEvent, payload: dict[str, Any]) -> tuple[RoutingDecision, list[str]]:
         if event.type == "manual.investigation" and self.plan_investigation is not None:
-            if get_manual_investigation_async():
+            if use_async_investigation_planner(event, payload):
                 self.plan_investigation.begin_planning(event)
                 decision = RoutingDecision(
                     event_id=event.id,

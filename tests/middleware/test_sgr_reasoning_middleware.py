@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import ToolMessage
+from langchain.agents.middleware.types import ModelRequest, ModelResponse
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
 from cys_core.application.reasoning.sgr_policy import ResolvedSgrPolicy
@@ -62,3 +63,28 @@ def test_sgr_gate_allows_action_after_reasoning():
     result = mw.wrap_tool_call(request, handler)
     assert isinstance(result, ToolMessage)
     assert result.content == "ok"
+
+
+@pytest.mark.unit
+def test_sgr_wrap_model_call_prepends_reminder_to_system_message_not_messages():
+    mw = SchemaGuidedReasoningMiddleware(
+        policy=ResolvedSgrPolicy(enabled=True, mode="sgr_hybrid", require_before_action=True),
+    )
+    request = ModelRequest(
+        model=None,  # type: ignore[arg-type]
+        messages=[HumanMessage(content="user")],
+        system_message=SystemMessage(content="agent prompt"),
+    )
+    captured: list[ModelRequest] = []
+
+    def handler(req: ModelRequest) -> ModelResponse:
+        captured.append(req)
+        return ModelResponse(result=[], structured_response=None)
+
+    mw.wrap_model_call(request, handler)
+    assert len(captured) == 1
+    updated = captured[0]
+    assert all(not isinstance(m, SystemMessage) for m in updated.messages)
+    assert updated.system_message is not None
+    assert "reasoning_step" in str(updated.system_message.content)
+    assert "agent prompt" in str(updated.system_message.content)

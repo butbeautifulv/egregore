@@ -1,17 +1,45 @@
-import { listPendingApprovals } from "@/lib/api-client"
+"use client"
+
+import { useEffect, useState } from "react"
+
+import { listPendingApprovals, type PendingApproval } from "@/lib/api-client"
+import { formatApiError } from "@/lib/format-api-error"
 
 import { ApprovalActions } from "@/components/approval-actions"
+import { RouteSkeleton } from "@/vendor/gui/shared/skeletons"
+import { EmptyTableState } from "@/vendor/gui/layout/empty-table-state"
 import { PageHeader } from "@/vendor/gui/layout/page-header"
+import { Alert, AlertDescription } from "@/vendor/gui/ui/alert"
 
-export default async function ApprovalsPage() {
-  let error: string | null = null
-  let approvals: Awaited<ReturnType<typeof listPendingApprovals>>["approvals"] = []
+export default function ApprovalsPage() {
+  const [approvals, setApprovals] = useState<PendingApproval[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  try {
-    const response = await listPendingApprovals()
-    approvals = response.approvals
-  } catch (exc) {
-    error = exc instanceof Error ? exc.message : "Failed to load approvals"
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await listPendingApprovals()
+        if (cancelled) return
+        setApprovals(response.approvals)
+        setError(null)
+      } catch (exc) {
+        if (cancelled) return
+        setError(formatApiError(exc, "Failed to load approvals"))
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (loading) {
+    return <RouteSkeleton variant="table" />
   }
 
   return (
@@ -21,10 +49,14 @@ export default async function ApprovalsPage() {
         description="Human-in-the-loop tool actions awaiting operator decision."
       />
 
-      {error ? <p className="text-destructive text-xs">{error}</p> : null}
+      {error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
 
       {approvals.length === 0 ? (
-        <p className="text-muted-foreground text-xs">No pending approvals.</p>
+        <EmptyTableState title="No pending approvals" description="All tool actions are resolved." />
       ) : (
         <div className="grid gap-4">
           {approvals.map((approval) => (

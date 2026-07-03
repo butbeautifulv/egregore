@@ -1,11 +1,13 @@
 # Observability
 
-egregore exposes two complementary observability layers:
+egregore exposes complementary observability layers:
 
 | Layer | Tool | What it captures |
 |-------|------|------------------|
 | **LLM tracing** | [Langfuse](https://langfuse.com) | Prompts, model calls, tool spans, latency, tokens |
 | **Platform metrics** | Prometheus | Ingress events, worker duration, HITL, RAG, cost counters |
+| **HTTP / worker traces** | Tempo (OpenTelemetry) | FastAPI requests, worker job spans |
+| **Structured logs** | Loki (via Promtail) | JSON stdout with `correlation_id`, `trace_id`, `job_id` |
 
 ## Langfuse (LLM traces)
 
@@ -118,9 +120,11 @@ make dev-api        # scrape target http://localhost:8080/metrics
 | Tempo | OTLP gRPC localhost:4317 (when `OTEL_ENABLED=true`) |
 | Operator UI | http://localhost:3000 |
 
-Grafana auto-loads `deploy/grafana/dashboards/cys-agi.json` via provisioning.
+Grafana auto-loads dashboards from `deploy/observability/grafana/dashboards/egregore/`.
 
-**Note:** Worker daemon metrics are aggregated into the API `/metrics` scrape when `PROMETHEUS_MULTIPROC_DIR` is set (done automatically by `make dev` / `scripts/dev.sh`). Restart API and workers together after changing that directory.
+**K8s offline:** API and worker share `PROMETHEUS_MULTIPROC_DIR` via hostPath (`/var/lib/cxado/prom-multiproc`) so worker metrics appear on the API `/metrics` scrape target.
+
+**Local dev:** Worker daemon metrics are aggregated into the API `/metrics` scrape when `PROMETHEUS_MULTIPROC_DIR` is set (done automatically by `make dev` / `scripts/dev.sh`). Restart API and workers together after changing that directory.
 
 ## Prometheus metrics
 
@@ -147,18 +151,83 @@ curl -s localhost:8080/metrics | head
 | `cys_job_cost_usd` | `persona` | Estimated USD cost |
 | `cys_hitl_pending_total` | — | Jobs awaiting approval |
 
-Grafana dashboard: `deploy/grafana/dashboards/cys-agi.json`.
+Grafana dashboard: `deploy/observability/grafana/dashboards/egregore/egregore-cys-agi.json`.
 
-## OpenTelemetry (HTTP traces)
+## OpenTelemetry (HTTP + worker traces → Tempo)
 
-When `OTEL_ENABLED=true`, the API exports spans to Tempo via OTLP gRPC (`OTEL_EXPORTER_OTLP_ENDPOINT`, default `http://localhost:4317`).
+When `OTEL_ENABLED=true`, the API and worker export spans to Tempo via OTLP gRPC (`OTEL_EXPORTER_OTLP_ENDPOINT`, default `http://localhost:4317`).
+
+For production with Langfuse, use **composite** mode:
+
+```bash
+OTEL_ENABLED=true
+OBS_TRACE_BACKEND=composite
+OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.cxado-obs.svc.cluster.local:4317
+OTEL_SERVICE_NAME=egregore-api   # or egregore-worker
+```
 
 ```bash
 make dev-obs
 OTEL_ENABLED=true uv run egregore serve --port 8080
 ```
 
-View traces in Grafana → Explore → Tempo datasource. Langfuse remains the source for LLM prompt/tool spans; OTel covers FastAPI HTTP and (later) queue/DB instrumentation.
+View traces in Grafana → **Egregore / Observability** dashboard or Explore → Tempo. Langfuse remains the source for LLM prompt/tool spans; Tempo covers FastAPI HTTP and worker `worker.process_job` spans.
+
+### Trace ↔ log correlation
+
+Structured JSON logs include `trace_id` and `span_id` when OTEL is active. Grafana Tempo datasource is configured with `tracesToLogsV2` → Loki so you can jump from a span to related log lines.
+
+## Structured logging (Loki)
+
+Application logs are JSON on stdout (structlog). Key fields:
+
+| Field | Source |
+|-------|--------|
+| `service` | `egregore-api` or `egregore-worker` |
+| `level` | log level |
+| `correlation_id` | investigation / event chain |
+| `trace_id`, `span_id` | OpenTelemetry context (when enabled) |
+| `persona`, `job_id` | bound during worker job execution |
+
+Env vars:
+
+```bash
+LOG_LEVEL=INFO
+LOG_FORMAT=json
+```
+
+Grafana Loki queries (Explore or **Egregore / Observability** dashboard):
+
+```logql
+{namespace="cxado-app", app="egregore-worker"} | json | correlation_id="<uuid>"
+{namespace="cxado-app", app=~"egregore-.*", level="error"} | json
+```
+
+On k3s offline, Promtail in `cxado-obs` ships pod logs to Loki; no app-side Loki client required.
+
+## Trace path matrix (CLI vs API vs worker vs UI)
+
+Who emits Langfuse traces on k3s offline (`OBS_TRACE_BACKEND=composite`):
+
+| Path | Langfuse trace | When | Tags / name |
+|------|----------------|------|-------------|
+| **CLI** `egregore worker --once` | Yes | After `AgentRuntime.ainvoke` + `flush_langfuse()` | `persona:*`, `job:*` |
+| **Worker daemon** (k8s) | Yes | Same as CLI, per Kafka/Redis job | `egregore-worker-<persona>` |
+| **API** advisory fast-path | **No** | Planner skips LLM (`advisory_fast_path_consultant_only`) | — |
+| **API** async planner | Yes | LLM planner call only | `planner`, `LiteLLMChatModel` |
+| **UI** POST investigation | Indirect | Trace appears only after **worker** runs job | Search by goal substring or `job:` tag |
+
+OTEL spans (Tempo, not Langfuse UI):
+
+| Span | Emitter |
+|------|---------|
+| `worker.process_job` | Worker orchestrator |
+| `worker.agent.run` | Agent runtime |
+| FastAPI HTTP | API when `OTEL_ENABLED=true` |
+
+**Tool spans in Langfuse:** legacy tools (`playbook_*`, `ti_search_*`) may appear as CHAIN/GENERATION only unless LangChain tool callbacks are wired. Veil MCP tools require `USE_TOOL_GATEWAY=true` on worker.
+
+Evidence: `deploy_logs/trace_audit_20260703.md`, `deploy_logs/kafka_lag_20260703.md`.
 
 ## Architecture
 
@@ -170,6 +239,12 @@ flowchart LR
     CB --> LF[Langfuse API]
     Runtime --> PM[Prometheus metrics]
     API[FastAPI serve] --> PM
+    API --> OTEL[OTLP gRPC]
+    Worker --> OTEL
+    OTEL --> Tempo[Tempo]
+    API --> Logs[JSON stdout]
+    Worker --> Logs
+    Logs --> Loki[Loki via Promtail]
 ```
 
 ## Troubleshooting
@@ -177,6 +252,9 @@ flowchart LR
 | Symptom | Check |
 |---------|-------|
 | No traces in Langfuse | Both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` set; `LANGFUSE_HOST` reachable |
+| No traces in Tempo | `OTEL_ENABLED=true`, endpoint reachable; `OBS_TRACE_BACKEND=composite` or `otel` |
+| No logs in Loki | Promtail DaemonSet running; pods emit JSON (`LOG_FORMAT=json`); filter `{namespace="cxado-app"}` |
+| Trace/log mismatch | Ensure same `trace_id` in log JSON; use Tempo → View logs link in Grafana |
 | Traces missing after CLI | Ensure `flush_langfuse()` runs (built into `worker` / `agent` commands and worker daemon per job) |
 | Empty Langfuse queries | ClickHouse/Postgres timezone must be UTC |
 | Port conflict with Operator UI | Langfuse UI uses host port **3001**; Operator UI uses **3000** |

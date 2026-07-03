@@ -1,53 +1,52 @@
 "use client"
 
 import type { StatusStreamEvent } from "@/lib/types"
-import { Card, CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import { eventSummary, matchesInvestigation } from "@/lib/status-events"
+import { MotionStagger, MotionStaggerItem } from "@/vendor/gui/motion"
+import { EmptyTableState } from "@/vendor/gui/layout/empty-table-state"
+import { PageSection } from "@/components/page-section"
+import { CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
 
 type InvestigationTimelineProps = {
   investigationId: string
   events: StatusStreamEvent[]
 }
 
-function matchesInvestigation(event: StatusStreamEvent, investigationId: string): boolean {
-  const payload = event.payload
-  const candidates = [
-    payload.correlation_id,
-    payload.investigation_id,
-    (payload.event as Record<string, unknown> | undefined)?.correlation_id,
-  ]
-  return candidates.some((value) => typeof value === "string" && value === investigationId)
-}
-
 export function InvestigationTimeline({ investigationId, events }: InvestigationTimelineProps) {
   const filtered = events.filter((event) => matchesInvestigation(event, investigationId))
 
   return (
-    <Card>
+    <PageSection>
       <CardHeader>
-        <CardTitle>Live timeline</CardTitle>
+        <CardTitle>Timeline</CardTitle>
       </CardHeader>
       <CardContent>
         {filtered.length === 0 ? (
-          <p className="text-muted-foreground text-xs">Waiting for stream events…</p>
+          <EmptyTableState
+            title="Waiting for events"
+            description="Stream events for this investigation appear here."
+          />
         ) : (
-          <ul className="space-y-2">
+          <MotionStagger className="flex flex-col gap-1">
             {filtered
               .slice()
               .reverse()
               .map((event, index) => (
-                <li key={`${event.ts}-${index}`} className="rounded-none border p-2 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{event.kind}</span>
-                    <span className="text-muted-foreground text-xs">{event.ts}</span>
+                <MotionStaggerItem key={`${event.ts}-${index}`}>
+                  <div className="flex items-baseline justify-between gap-3 border-b py-2 text-xs last:border-0">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium">{event.kind}</span>
+                      <span className="text-muted-foreground ml-2 truncate">
+                        {eventSummary(event.payload)}
+                      </span>
+                    </div>
+                    <time className="text-muted-foreground shrink-0 tabular-nums">{event.ts}</time>
                   </div>
-                  <pre className="text-muted-foreground mt-1 overflow-x-auto text-xs">
-                    {JSON.stringify(event.payload, null, 2)}
-                  </pre>
-                </li>
+                </MotionStaggerItem>
               ))}
-          </ul>
+          </MotionStagger>
         )}
       </CardContent>
-    </Card>
+    </PageSection>
   )
 }

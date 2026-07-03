@@ -4,12 +4,42 @@ metadata:
   name: {{ include "egregore.fullname" . }}-env
   labels:
     {{- include "egregore.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
 data:
   STAGE: {{ .Values.env.stage | quote }}
   USE_MEMORY_FALLBACK: {{ .Values.env.useMemoryFallback | quote }}
+  USE_DYNAMIC_CATALOG: "true"
+  AGENTS_ROOT: "agents"
   USE_QDRANT: {{ .Values.env.useQdrant | quote }}
   AUTH_ENABLED: {{ .Values.env.authEnabled | quote }}
   OTEL_ENABLED: {{ .Values.env.otelEnabled | quote }}
+  LOG_LEVEL: {{ .Values.env.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.env.logFormat | quote }}
+  {{- if .Values.env.litellmLocalModelCostMap }}
+  LITELLM_LOCAL_MODEL_COST_MAP: {{ .Values.env.litellmLocalModelCostMap | quote }}
+  {{- end }}
+  {{- if .Values.env.traceCriticEnabled }}
+  TRACE_CRITIC_ENABLED: {{ .Values.env.traceCriticEnabled | quote }}
+  {{- end }}
+  {{- if .Values.env.llmRequestTimeout }}
+  LLM_REQUEST_TIMEOUT: {{ .Values.env.llmRequestTimeout | quote }}
+  {{- end }}
+  {{- if .Values.env.workerJobTimeout }}
+  WORKER_JOB_TIMEOUT: {{ .Values.env.workerJobTimeout | quote }}
+  {{- end }}
+  {{- if .Values.env.manualInvestigationAsync }}
+  MANUAL_INVESTIGATION_ASYNC: {{ .Values.env.manualInvestigationAsync | quote }}
+  {{- end }}
+  {{- if .Values.env.useKafka }}
+  USE_KAFKA: {{ .Values.env.useKafka | quote }}
+  {{- end }}
+  {{- if .Values.env.kafkaBootstrapServers }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.env.kafkaBootstrapServers | quote }}
+  {{- end }}
+  OBS_TRACE_BACKEND: {{ .Values.obs.traceBackend | quote }}
   POSTGRES_HOST: {{ .Values.postgres.host | quote }}
   POSTGRES_PORT: {{ .Values.postgres.port | quote }}
   POSTGRES_USER: {{ .Values.postgres.user | quote }}
@@ -19,8 +49,34 @@ data:
   QDRANT_URL: {{ .Values.qdrant.url | quote }}
   VEIL_MCP_URL: {{ .Values.veil.mcpUrl | quote }}
   OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.otel.endpoint | quote }}
-  {{- if .Values.langfuse.host }}
+  {{- if .Values.otel.resourceAttributes }}
+  OTEL_RESOURCE_ATTRIBUTES: {{ .Values.otel.resourceAttributes | quote }}
+  {{- end }}
+  OTEL_TRACES_SAMPLER: {{ .Values.otel.tracesSampler | quote }}
+  OTEL_TRACES_SAMPLER_ARG: {{ .Values.otel.tracesSamplerArg | quote }}
+  {{- if and .Values.langfuse.enabled .Values.langfuse.host }}
   LANGFUSE_HOST: {{ .Values.langfuse.host | quote }}
+  {{- end }}
+  {{- if and .Values.langfuse.enabled .Values.langfuse.publicKey }}
+  LANGFUSE_PUBLIC_KEY: {{ .Values.langfuse.publicKey | quote }}
+  {{- end }}
+  {{- if .Values.llm.provider }}
+  LLM_PROVIDER: {{ .Values.llm.provider | quote }}
+  {{- end }}
+  {{- if .Values.llm.model }}
+  LLM_MODEL: {{ .Values.llm.model | quote }}
+  {{- end }}
+  {{- if .Values.llm.baseUrl }}
+  LLM_BASE_URL: {{ .Values.llm.baseUrl | quote }}
+  {{- end }}
+  {{- if .Values.llm.temperature }}
+  LLM_TEMPERATURE: {{ .Values.llm.temperature | quote }}
+  {{- end }}
+  {{- if .Values.llm.reasoningModel }}
+  REASONING_MODEL: {{ .Values.llm.reasoningModel | quote }}
+  {{- end }}
+  {{- if .Values.llm.reasoningTemperature }}
+  REASONING_TEMPERATURE: {{ .Values.llm.reasoningTemperature | quote }}
   {{- end }}
   K8S_NAMESPACE: {{ .Release.Namespace | quote }}
 ---
@@ -28,7 +84,14 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: {{ include "egregore.fullname" . }}-secrets
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
 type: Opaque
 stringData:
   POSTGRES_PASSWORD: {{ .Values.postgres.password | quote }}
   REDIS_PASSWORD: {{ .Values.redis.password | quote }}
+  {{- if and .Values.langfuse.enabled .Values.langfuse.secretKey }}
+  LANGFUSE_SECRET_KEY: {{ .Values.langfuse.secretKey | quote }}
+  {{- end }}

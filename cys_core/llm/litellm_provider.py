@@ -11,6 +11,24 @@ from langchain_core.tools import BaseTool
 from pydantic import Field
 
 
+def normalize_messages_for_litellm(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Merge all SystemMessage entries into a single system message at the start."""
+    system_parts: list[str] = []
+    rest: list[BaseMessage] = []
+    for message in messages:
+        if isinstance(message, SystemMessage):
+            content = message.content
+            if isinstance(content, str) and content.strip():
+                system_parts.append(content)
+            elif content:
+                system_parts.append(str(content))
+        else:
+            rest.append(message)
+    if not system_parts:
+        return rest
+    return [SystemMessage(content="\n\n".join(system_parts)), *rest]
+
+
 def _to_litellm_message(message: BaseMessage) -> dict[str, Any]:
     if isinstance(message, SystemMessage):
         return {"role": "system", "content": message.content}
@@ -63,7 +81,8 @@ class LiteLLMChatModel(BaseChatModel):
         run_manager: Any = None,
         **kwargs: Any,
     ) -> ChatResult:
-        litellm_messages = [_to_litellm_message(m) for m in messages]
+        normalized = normalize_messages_for_litellm(messages)
+        litellm_messages = [_to_litellm_message(m) for m in normalized]
         call_kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": litellm_messages,
@@ -92,7 +111,8 @@ class LiteLLMChatModel(BaseChatModel):
         run_manager: Any = None,
         **kwargs: Any,
     ) -> ChatResult:
-        litellm_messages = [_to_litellm_message(m) for m in messages]
+        normalized = normalize_messages_for_litellm(messages)
+        litellm_messages = [_to_litellm_message(m) for m in normalized]
         call_kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": litellm_messages,

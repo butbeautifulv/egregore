@@ -9,5 +9,15 @@ ui/node_modules
 ui/.next
 tests
 docs
-*.md
+ui/docs
 .cursor
+refs
+deploy
+scripts
+grafana
+config
+migrations
+connectors
+*.md
+!README.md
+.agents

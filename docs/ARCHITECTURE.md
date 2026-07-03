@@ -1,8 +1,10 @@
-# Архитектура cys-agi
+# Архитектура egregore
+
+> **Visual overview for architects:** [docs/architecture-site/](../../../docs/architecture-site/) — static site with UML diagrams (k3s offline: `https://<host>:30080`).
 
 ## Обзор
 
-cys-agi — **event-driven** multi-agent SOC platform с тремя плоскостями:
+egregore — **event-driven** multi-agent SOC platform с тремя плоскостями:
 
 1. **Ingress** (`interfaces/ingress/`, `interfaces/api/`) — приём structured events (CLI, FastAPI, webhooks, SIEM poll)
 2. **Control plane** (`interfaces/control_plane/`, `cys_core/domain/events/`) — router, critic, coordinator, L2 HITL, escalation
@@ -10,18 +12,33 @@ cys-agi — **event-driven** multi-agent SOC platform с тремя плоско
 
 Единый **AgentRuntime** + **AgentRegistry** для LLM worker runs. Все сценарии идут через **EventIngress** (batch LangGraph pipeline удалён).
 
-### Слои (после DDD-рефактора)
+Интерактивный путь (Operator UI): `ManageRun` → `RunStep` → тот же `AgentRuntime`.
+
+### Слои (DDD)
 
 | Слой | Путь | Ответственность |
 |------|------|-----------------|
-| Domain | `cys_core/domain/` | модели, security, routing rules |
-| Application | `cys_core/application/` | ports, use-cases |
-| Infrastructure | `cys_core/infrastructure/` | Kafka, queue, sandbox |
+| Domain | `cys_core/domain/` | модели, security, routing rules, catalog, memory |
+| Application | `cys_core/application/` | ports, use-cases, `ProfilePolicyResolver` |
+| Infrastructure | `cys_core/infrastructure/` | Kafka, queue, sandbox, memory stores |
 | Product load | `bootstrap/product_loader.py` | YAML personas → `AgentDefinition` |
 | Registry | `cys_core/registry/` | `AgentRegistry`, tools, schemas |
 | Runtime | `cys_core/runtime/` | `AgentRuntime` — только `AgentDefinition`, без имён persona |
-| Delivery | `interfaces/` + root shims | FastAPI, workers, control, gateways |
+| Delivery | `interfaces/` | FastAPI, workers, control, gateways, RAG |
 | DI | `bootstrap/container.py` | wiring портов |
+
+### Middleware stack (`AgentRuntime._build_middleware`)
+
+1. `PromptContextMiddleware` — sanitizer + guardrails
+2. `MemoryContextMiddleware` — episodic injection (при `investigation_id`)
+3. `ContextSummaryMiddleware` — optional
+4. `ScopeMiddleware` — tool allowlist per persona
+5. `ToolCoercionMiddleware`
+6. `SecurityMiddleware` — rate limit, anomaly, L1 HITL
+7. `HumanInTheLoopMiddleware` — dangerous tools
+8. SGR middleware **или** `OneToolPerTurnMiddleware`
+
+Подробнее: [PLATFORM_TRUTH_MAP.md](PLATFORM_TRUTH_MAP.md).
 
 ## Data flow: event-driven + MAS memory
 
@@ -73,15 +90,17 @@ SIEM / NetFlow / Doc / Manual
 
 | Daemon | Topic in | Output |
 |--------|----------|--------|
-| `uv run cys-agi router` | `security.events.raw` | worker job enqueue |
-| `uv run cys-agi critic` | `bus.findings` (channel=critic) | awaiting_approval, escalation |
-| `uv run cys-agi coordinator` | `bus.findings` (channel=coordinator) | narratives |
+| `uv run egregore router` | `security.events.raw` | worker job enqueue |
+| `uv run egregore critic` | `bus.findings` (channel=critic) | awaiting_approval, escalation |
+| `uv run egregore coordinator` | `bus.findings` (channel=coordinator) | narratives |
 
 **L2 HITL:** critic `requires_hitl()` → `security.events.awaiting_approval`  
 **Escalation:** critic-approved → `security.events.escalation` → `redteam-engagement` plan  
 **Bus trust:** `soc→redteam` только через `escalation` + `critic_approved` (не direct `finding`)
 
 ## Роли агентов
+
+Полный индекс: `agents/manifest.yaml` (15 workers + 2 control). Примеры:
 
 ### Workers (ephemeral)
 
@@ -110,6 +129,16 @@ SIEM / NetFlow / Doc / Manual
 | Worker | ScopeMiddleware, SecurityMiddleware (L1 HITL interrupt), job budgets |
 | Bus | SecureAgentBus — HMAC, trust levels, escalation-only paths |
 | Output | OutputGuardrails — schema, PII, exfiltration |
+| Policy | `ProfilePolicyResolver` — catalog → env → defaults |
+
+## Tooling & datasources
+
+Отдельной domain-сущности «datasource» нет. Источники данных для агентов:
+
+- **RAG** — `interfaces/rag/`, Qdrant, tenant ACL
+- **Veil graph** — read-only MCP (`ti_*`, `playbook_*`)
+- **SIEM** — `query_siem_readonly` tool
+- **Veneno MCP** — HITL-gated exec tools (partial integration)
 
 ## Ports (`cys_core/application/ports/`)
 
@@ -123,25 +152,35 @@ SIEM / NetFlow / Doc / Manual
 | `JobQueueConnector` | `cys_core/infrastructure/queue.py` (Redis \| Kafka) |
 | `AgentTransportConnector` | `cys_core/infrastructure/bus_transport.py` (Redis + subscriber \| Kafka) |
 
-`bootstrap/container.py` — composition root: `get_persistence_connector()`, `get_job_store()`, memory stores.
+`bootstrap/container.py` — composition root.
 
 ## Observability
 
-- **Prometheus:** `GET /metrics` on ingress API and tool gateway (`cys_core/observability/`)
-- **Langfuse:** trace tags per job (`persona`, `job_id`, `correlation_id`)
-- **Grafana:** `deploy/grafana/dashboards/cys-agi.json`
-- **CI gates:** `.github/workflows/adversarial-gate.yml`, `agent-policy-gate.yml`
+- **Prometheus:** `GET /metrics` on ingress API and tool gateway
+- **OpenTelemetry:** worker/API spans → Tempo (`OTEL_ENABLED`, `cys_core/observability/otel*.py`)
+- **Langfuse:** LLM traces + LLM-as-judge (`persona`, `job_id`, `correlation_id`)
+- **Loki/Promtail:** structured JSON logs (k3s offline obs stack)
+- **Grafana:** `deploy/observability/grafana/dashboards/egregore/`
+
+Runbook: [OBSERVABILITY.md](OBSERVABILITY.md).
+
+## Evals
+
+- **Runtime:** trace critic (`evaluate_trace_critic.py`), Langfuse judge, critic trust_score
+- **Batch adapters (stub):** RAGAS, tau2, BFCL in `application/evals/` — not wired to CI yet
 
 ## API (`interfaces/api/app.py`)
 
 | Endpoint | Описание |
 |----------|----------|
 | `POST /events` | Ingest structured event |
-| `GET /status` | Control plane snapshot |
+| `GET /status`, `GET /status/stream` | Control plane snapshot + SSE |
 | `GET /metrics` | Prometheus metrics |
+| `GET /investigations`, `GET /investigations/{id}` | Investigation CRUD |
 | `GET /jobs/{id}` | Job status (incl. `awaiting_approval`) |
 | `GET /approvals/pending` | L1 HITL queue |
 | `POST /jobs/{id}/resume` | Resume paused worker job |
+| `POST /runs`, `POST /runs/{id}/steps` | Interactive runs (Operator UI) |
 | `POST /workers/process-one` | Process next queued job |
 
 ## Plans = routing rules
@@ -167,3 +206,4 @@ SIEM / NetFlow / Doc / Manual
 | `aiokafka` | Kafka transport |
 | `qdrant-client` | RAG vector store (optional) |
 | `prometheus-client` | Metrics |
+| `opentelemetry-*` | OTEL traces (optional) |

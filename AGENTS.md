@@ -134,6 +134,8 @@ Ingress → EventRouter → JobQueue → WorkerOrchestrator → Bus
 
 Подробнее: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
+**Visual architecture site** (for designers/architects): [docs/architecture-site/](../../docs/architecture-site/) in meta-repo · k3s offline `https://<host>:30080`
+
 ## Мастер-план (cloud / Cursor agents)
 
 Исполнение production roadmap — по [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATFORM.md).

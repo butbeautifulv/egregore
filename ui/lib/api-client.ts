@@ -1,4 +1,13 @@
-const API_BASE = process.env.NEXT_PUBLIC_EGREGORE_API_URL ?? "http://localhost:8080"
+const PROXY_BASE = "/api/egregore"
+const UPSTREAM_BASE = process.env.EGREGORE_API_UPSTREAM ?? "http://egregore-api:8080"
+
+function resolveApiBase(): string {
+  if (typeof window !== "undefined") {
+    return PROXY_BASE
+  }
+  // Server-side fetches (if any) talk to API directly inside the cluster.
+  return UPSTREAM_BASE.replace(/\/$/, "")
+}
 
 export class ApiError extends Error {
   constructor(
@@ -10,10 +19,8 @@ export class ApiError extends Error {
   }
 }
 
-function headers(): HeadersInit {
-  const result: Record<string, string> = {
-    "Content-Type": "application/json",
-  }
+export function apiAuthHeaders(): Record<string, string> {
+  const result: Record<string, string> = {}
   const token = process.env.NEXT_PUBLIC_EGREGORE_API_TOKEN
   if (token) {
     result.Authorization = `Bearer ${token}`
@@ -21,8 +28,15 @@ function headers(): HeadersInit {
   return result
 }
 
+function headers(): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    ...apiAuthHeaders(),
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${resolveApiBase()}${path}`, {
     ...init,
     headers: {
       ...headers(),
@@ -143,7 +157,47 @@ export function resumeJob(
 }
 
 export function statusStreamUrl() {
-  return `${API_BASE}/status/stream`
+  return `${PROXY_BASE}/status/stream`
+}
+
+export type CatalogEvaluation = {
+  persona: string
+  empirical_trust: number
+  sample_size: number
+  declared_trust_level: string
+}
+
+export type CatalogProfile = {
+  id: string
+  name?: string
+  description?: string
+}
+
+export function listCatalogEvaluations(profileId?: string) {
+  const query = profileId ? `?profile_id=${encodeURIComponent(profileId)}` : ""
+  return request<{ evaluations: CatalogEvaluation[] }>(`/catalog/evaluations${query}`)
+}
+
+export function listCatalogProfiles() {
+  return request<{ profiles: CatalogProfile[] }>("/catalog/profiles")
+}
+
+export function getProfilePolicy(profileId: string) {
+  return request<{
+    profile_id: string
+    profile: CatalogProfile | null
+    policy: Record<string, unknown>
+  }>(`/catalog/profiles/${encodeURIComponent(profileId)}/policy`)
+}
+
+export function putProfilePolicy(profileId: string, policy: Record<string, unknown>) {
+  return request<{ profile_id: string; policy: Record<string, unknown> }>(
+    `/catalog/profiles/${encodeURIComponent(profileId)}/policy`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ policy }),
+    },
+  )
 }
 
 export type RunResponse = {

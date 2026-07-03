@@ -10,8 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 def setup_otel_for_service(service_name: str = "egregore-api") -> None:
-    settings = get_settings()
-    build_trace_backend("otel", cfg=settings)
+    from cys_core.observability.otel_provider import ensure_tracer_provider
+
+    cfg = get_settings()
+    ensure_tracer_provider(settings=cfg, service_name=service_name)
+    build_trace_backend("otel", cfg=cfg, service_name=service_name)
     logger.info("OpenTelemetry trace backend initialized for %s", service_name)
 
 

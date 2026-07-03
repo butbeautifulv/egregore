@@ -18,12 +18,27 @@ worker:
   replicas: 2
   idleTimeout: 0
 
+migrate:
+  enabled: false
+
 env:
   stage: prod
   useMemoryFallback: "false"
+  useKafka: "false"
+  kafkaBootstrapServers: ""
   useQdrant: "true"
   authEnabled: "false"
   otelEnabled: "true"
+  logLevel: "INFO"
+  logFormat: "json"
+  litellmLocalModelCostMap: "false"
+  traceCriticEnabled: "true"
+
+obs:
+  traceBackend: "composite"
+
+prometheus:
+  multiprocHostPath: "/var/lib/cxado/prom-multiproc"
 
 postgres:
   host: ""
@@ -45,9 +60,23 @@ veil:
 
 otel:
   endpoint: ""
+  resourceAttributes: ""
+  tracesSampler: "parentbased_always_on"
+  tracesSamplerArg: "1.0"
 
 langfuse:
+  enabled: false
   host: ""
+  publicKey: ""
+  secretKey: ""
+
+llm:
+  provider: litellm
+  model: ""
+  baseUrl: ""
+  temperature: "0.1"
+  reasoningModel: ""
+  reasoningTemperature: "0.0"
 
 resources:
   api: {}

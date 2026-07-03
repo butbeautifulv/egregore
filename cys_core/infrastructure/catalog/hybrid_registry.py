@@ -77,7 +77,7 @@ def load_hybrid_registry(root=None):
         _catalog_version = max((catalog.get_version(DEFAULT_PROFILE_ID).version, 1))
         from cys_core.observability.metrics import metrics
 
-        metrics.catalog_version.set(_catalog_version)
+        metrics.catalog_version.labels(profile_id=DEFAULT_PROFILE_ID).set(_catalog_version)
         for profile in catalog.list_profiles():
             version = catalog.get_version(profile.id)
             metrics.catalog_version.labels(profile_id=profile.id).set(version.version)

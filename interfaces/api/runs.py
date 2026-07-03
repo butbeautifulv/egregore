@@ -12,6 +12,7 @@ from cys_core.infrastructure.runs.factory import get_attachment_store, get_run_s
 from cys_core.runtime.agent import get_runtime
 from bootstrap.container import get_container
 from interfaces.api.auth import require_ingress_role, require_operator_role
+from interfaces.api.run_errors import raise_run_api_error
 from interfaces.api.run_schemas import RunCreateIn, RunOut, RunStepIn, SessionCreateIn, new_job_context, new_session_context
 
 router = APIRouter(tags=["runs"])
@@ -39,7 +40,10 @@ async def create_run(
     manage.save_context(ctx, goal=user_input)
     if body.file_paths:
         _attach_paths_to_run(ctx.tenant_id, ctx.context_id, ctx.kind.value, body.file_paths)
-    out = await manage.create_and_step(ctx, user_input, persona=body.persona)
+    try:
+        out = await manage.create_and_step(ctx, user_input, persona=body.persona)
+    except Exception as exc:
+        raise_run_api_error(exc)
     return RunOut(run_context=out["run_context"], result=out["result"])
 
 
@@ -54,6 +58,8 @@ async def run_step(
         out = await _manage_run().step(run_id, body.message, tenant_id=tenant_id, mode=body.mode)
     except KeyError:
         raise HTTPException(status_code=404, detail="Run not found") from None
+    except Exception as exc:
+        raise_run_api_error(exc)
     return RunOut(run_context=out["run_context"], result=out["result"])
 
 
@@ -68,6 +74,8 @@ async def approve_plan(
         out = await _manage_run().approve_plan(run_id, body, tenant_id=tenant_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Run not found") from None
+    except Exception as exc:
+        raise_run_api_error(exc)
     return RunOut(run_context=out["run_context"], result=out["result"])
 
 
@@ -78,7 +86,10 @@ async def create_session(
 ) -> RunOut:
     ctx = new_session_context(body)
     user_input = body.message or body.goal
-    out = await _manage_run().create_and_step(ctx, user_input, persona="conductor")
+    try:
+        out = await _manage_run().create_and_step(ctx, user_input, persona="conductor")
+    except Exception as exc:
+        raise_run_api_error(exc)
     return RunOut(run_context=out["run_context"], result=out["result"])
 
 

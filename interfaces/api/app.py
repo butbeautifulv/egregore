@@ -4,7 +4,6 @@ import cys_core.observability.prometheus_setup  # noqa: F401 — multiprocess at
 import asyncio
 import contextlib
 import json
-import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -38,7 +37,9 @@ from interfaces.control_plane.status_store import MemoryStatusStore, get_status_
 from interfaces.ingress.router import EventIngress, get_event_ingress
 from interfaces.worker.hitl_resume import HitlResumeError, resume_worker_job
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class EventIn(BaseModel):
@@ -52,9 +53,15 @@ class EventIn(BaseModel):
 
 def create_app(ingress: EventIngress | None = None) -> FastAPI:
     """FastAPI app for event ingest and user status."""
+    from bootstrap.container import get_container
+
+    get_container()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        from cys_core.observability.logging_setup import configure_logging
+
+        configure_logging("egregore-api")
         setup_otel(service_name="egregore-api")
         refresh_task: asyncio.Task[None] | None = None
 

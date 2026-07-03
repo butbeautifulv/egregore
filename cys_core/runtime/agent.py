@@ -213,6 +213,23 @@ class AgentRuntime:
         goal: str = "",
     ):
         tool_names = filter_tools_for_profile(defn.tools, profile_id)
+        # Ensure reasoning_step is available when SGR is enabled by resolved policy.
+        try:
+            from cys_core.application.policy_resolver import get_profile_policy_resolver
+            from cys_core.application.reasoning.sgr_policy import resolve_sgr_policy
+            from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL
+
+            profile_policy = get_profile_policy_resolver().policy(profile_id)
+            sgr = resolve_sgr_policy(
+                profile_policy=profile_policy,
+                agent=defn,
+                use_sgr_reasoning=get_use_sgr_reasoning(),
+                default_mode=get_sgr_default_mode(),  # type: ignore[arg-type]
+            )
+            if getattr(sgr, "enabled", False) and REASONING_STEP_TOOL not in tool_names:
+                tool_names = [REASONING_STEP_TOOL, *tool_names]
+        except Exception:
+            pass
         tools = tool_registry.resolve(tool_names, profile_id=profile_id)
         if extra_tools:
             tools = [*tools, *extra_tools]

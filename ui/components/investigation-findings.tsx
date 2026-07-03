@@ -1,9 +1,12 @@
+import { PageSection } from "@/components/page-section"
+import type { JobSummary } from "@/lib/types"
 import { Badge } from "@/vendor/gui/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import { CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
 
 type InvestigationFindingsProps = {
   findings: Record<string, unknown>[]
   completedPersonas?: string[]
+  jobs?: JobSummary[]
 }
 
 function asString(value: unknown): string {
@@ -79,27 +82,34 @@ function FindingContent({ data }: { data: Record<string, unknown> }) {
   )
 }
 
-export function InvestigationFindings({ findings, completedPersonas = [] }: InvestigationFindingsProps) {
+export function InvestigationFindings({
+  findings,
+  completedPersonas = [],
+  jobs = [],
+}: InvestigationFindingsProps) {
   if (findings.length === 0) {
     const personasFinished = completedPersonas.length > 0
+    const completedJobs = jobs.filter((job) => job.status === "completed")
     return (
-      <Card>
+      <PageSection>
         <CardHeader>
           <CardTitle>Results</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-xs">
             {personasFinished
-              ? "Workers finished but no structured results were stored for this investigation. Create a new investigation to get a full consultant report."
+              ? completedJobs.length > 0
+                ? "Workers finished but no structured results were stored. The model may have returned unstructured text (check raw_response in Langfuse traces) or reasoning output without a JSON block."
+                : "Workers finished but no structured results were stored for this investigation. Create a new investigation to get a full consultant report."
               : "No findings yet. Results appear here when a worker completes."}
           </p>
         </CardContent>
-      </Card>
+      </PageSection>
     )
   }
 
   return (
-    <Card>
+    <PageSection>
       <CardHeader>
         <CardTitle>Results</CardTitle>
       </CardHeader>
@@ -120,6 +130,6 @@ export function InvestigationFindings({ findings, completedPersonas = [] }: Inve
           )
         })}
       </CardContent>
-    </Card>
+    </PageSection>
   )
 }

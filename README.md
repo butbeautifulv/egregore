@@ -24,6 +24,14 @@ Secure event-driven multi-agent cybersecurity platform with ephemeral sandbox wo
 - Продуктовый слой `agents/` — personas, rules, routing plans, skills
 - 100% unit test coverage gate on `cys_core/domain`
 
+## Architecture docs (visual)
+
+For architects and designers: [docs/architecture-site/](../../docs/architecture-site/) in the cxado meta-repo — UML-style Mermaid diagrams, security layers, Egregore backend deep dive.
+
+k3s offline: `https://<host>:30080` after `./scripts/k8s/k3s-deploy-arch-docs-offline.sh`.
+
+Markdown SSOT: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
+
 ## Быстрый старт
 
 ```bash

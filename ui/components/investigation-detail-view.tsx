@@ -2,20 +2,45 @@
 
 import { useCallback, useEffect, useState } from "react"
 
-import { getInvestigation, getInvestigationJobs } from "@/lib/api-client"
-import type { InvestigationDetail, JobSummary } from "@/lib/types"
+import { ApiError, getInvestigation, getInvestigationJobs } from "@/lib/api-client"
+import { isInvestigationTerminal } from "@/lib/investigation-status"
+import { matchesInvestigation } from "@/lib/status-events"
+import type { InvestigationDetail, JobSummary, StatusStreamEvent } from "@/lib/types"
 import { InvestigationFindings } from "@/components/investigation-findings"
 import { InvestigationTimeline } from "@/components/investigation-timeline"
 import { JobCard } from "@/components/job-card"
+import { PageSection } from "@/components/page-section"
 import { PersonaStepper } from "@/components/persona-stepper"
 import { useStatusStream } from "@/hooks/use-status-stream"
-import { Card, CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import { RouteSkeleton } from "@/vendor/gui/shared/skeletons"
 import { PageHeader } from "@/vendor/gui/layout/page-header"
+import { Alert, AlertDescription, AlertTitle } from "@/vendor/gui/ui/alert"
+import { Badge } from "@/vendor/gui/ui/badge"
+import { CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/vendor/gui/ui/collapsible"
 
 type InvestigationDetailViewProps = {
   investigationId: string
-  initialDetail: InvestigationDetail
-  initialJobs: JobSummary[]
+  initialDetail?: InvestigationDetail
+  initialJobs?: JobSummary[]
+}
+
+function plannerBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "ready" || status === "ok") return "default"
+  if (status === "fallback") return "secondary"
+  if (status === "error") return "destructive"
+  return "outline"
+}
+
+function formatPlannerRationale(rationale: string): string {
+  if (rationale === "planner_invalid_personas_fallback") {
+    return "Planner proposed unavailable personas; defaulted to catalog fallback."
+  }
+  return rationale
 }
 
 export function InvestigationDetailView({
@@ -23,12 +48,15 @@ export function InvestigationDetailView({
   initialDetail,
   initialJobs,
 }: InvestigationDetailViewProps) {
-  const [detail, setDetail] = useState(initialDetail)
-  const [jobs, setJobs] = useState(initialJobs)
+  const [detail, setDetail] = useState<InvestigationDetail | null>(initialDetail ?? null)
+  const [jobs, setJobs] = useState<JobSummary[]>(initialJobs ?? [])
   const [error, setError] = useState<string | null>(null)
-  const { events, connected } = useStatusStream()
+  const [loading, setLoading] = useState(!initialDetail)
 
   const refresh = useCallback(async () => {
+    if (!investigationId) {
+      return
+    }
     try {
       const [nextDetail, nextJobs] = await Promise.all([
         getInvestigation(investigationId),
@@ -38,51 +66,161 @@ export function InvestigationDetailView({
       setJobs(nextJobs.jobs)
       setError(null)
     } catch (exc) {
+      if (exc instanceof ApiError && exc.status === 404) {
+        setError("Investigation not found")
+        setDetail(null)
+        setJobs([])
+        return
+      }
       setError(exc instanceof Error ? exc.message : "Failed to refresh investigation")
+    } finally {
+      setLoading(false)
     }
   }, [investigationId])
 
+  const onStreamEvent = useCallback(
+    (event: StatusStreamEvent) => {
+      if (matchesInvestigation(event, investigationId)) {
+        void refresh()
+      }
+    },
+    [investigationId, refresh],
+  )
+
+  const { events, status: streamStatus } = useStatusStream(onStreamEvent)
+  const streamConnected = streamStatus === "open"
+  const terminal = isInvestigationTerminal(detail, jobs)
+
   useEffect(() => {
+    if (initialDetail) {
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [nextDetail, nextJobs] = await Promise.all([
+          getInvestigation(investigationId),
+          getInvestigationJobs(investigationId),
+        ])
+        if (cancelled) return
+        setDetail(nextDetail)
+        setJobs(nextJobs.jobs)
+        setError(null)
+      } catch (exc) {
+        if (cancelled) return
+        if (exc instanceof ApiError && exc.status === 404) {
+          setError("Investigation not found")
+          setDetail(null)
+          setJobs([])
+          return
+        }
+        setError(exc instanceof Error ? exc.message : "Failed to refresh investigation")
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [initialDetail, investigationId])
+
+  useEffect(() => {
+    if (!detail || terminal) {
+      return
+    }
+    if (detail.status !== "in_progress" && detail.status !== "open") {
+      return
+    }
     const timer = setInterval(() => {
       void refresh()
-    }, 5000)
+    }, 12000)
     return () => clearInterval(timer)
-  }, [refresh])
+  }, [detail, terminal, refresh])
+
+  if (!investigationId) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Missing investigation id</AlertTitle>
+      </Alert>
+    )
+  }
+
+  if (loading) {
+    return <RouteSkeleton variant="detail" />
+  }
+
+  if (!detail) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Investigation" description={investigationId} backHref="/" backLabel="Investigations" />
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title={detail.investigation_id}
-        description={
-          <>
-            {detail.goal || "No goal recorded"}
-            <span className="mt-1 block text-xs">
-              Status: {detail.status} · SSE {connected ? "connected" : "reconnecting"}
-            </span>
-          </>
+        backHref="/"
+        backLabel="Investigations"
+        description={detail.goal || "No goal recorded"}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{detail.status}</Badge>
+            {terminal ? (
+              <Badge variant="default">Completed</Badge>
+            ) : (
+              <Badge variant={streamConnected ? "secondary" : "outline"}>
+                {streamConnected ? "SSE Connected" : "SSE Reconnecting"}
+              </Badge>
+            )}
+          </div>
         }
       />
 
-      {error ? <p className="text-destructive text-xs">{error}</p> : null}
-
-      {detail.planner_status ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Planner</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 text-xs">
-            <p>
-              Status: <span className="font-medium">{detail.planner_status}</span>
-              {detail.planner_rationale ? ` · ${detail.planner_rationale}` : null}
-            </p>
-            {detail.planner_error ? (
-              <p className="text-destructive">Error: {detail.planner_error}</p>
-            ) : null}
-          </CardContent>
-        </Card>
+      {error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
-      <Card>
+      {detail.planner_status ? (
+        <PageSection>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle>Planner</CardTitle>
+            <Badge variant={plannerBadgeVariant(detail.planner_status)}>{detail.planner_status}</Badge>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 text-xs">
+            {detail.planner_rationale ? (
+              <p className="text-muted-foreground">{formatPlannerRationale(detail.planner_rationale)}</p>
+            ) : null}
+            {detail.planner_error ? (
+              <Collapsible>
+                <CollapsibleTrigger className="text-destructive hover:underline">
+                  Show planner error
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <Alert variant="destructive" className="mt-2">
+                    <AlertTitle>Planner error</AlertTitle>
+                    <AlertDescription className="font-mono text-xs whitespace-pre-wrap">
+                      {detail.planner_error}
+                    </AlertDescription>
+                  </Alert>
+                </CollapsibleContent>
+              </Collapsible>
+            ) : null}
+          </CardContent>
+        </PageSection>
+      ) : null}
+
+      <PageSection>
         <CardHeader>
           <CardTitle>Persona pipeline</CardTitle>
         </CardHeader>
@@ -93,18 +231,21 @@ export function InvestigationDetailView({
             jobs={jobs}
           />
         </CardContent>
-      </Card>
+      </PageSection>
 
       <InvestigationFindings
         findings={detail.findings_summary ?? []}
         completedPersonas={detail.completed_personas ?? []}
+        jobs={jobs}
       />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {jobs.map((job) => (
-          <JobCard key={job.job_id} job={job} />
-        ))}
-      </div>
+      {jobs.length > 0 ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {jobs.map((job) => (
+            <JobCard key={job.job_id} job={job} />
+          ))}
+        </div>
+      ) : null}
 
       <InvestigationTimeline investigationId={investigationId} events={events} />
     </div>

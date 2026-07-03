@@ -8,6 +8,17 @@ from bootstrap.settings import Settings, get_settings
 from cys_core.infrastructure.kafka_topics import DLQ_TOPIC, worker_job_topic
 from cys_core.infrastructure.queue import InMemoryJobQueue
 
+_WORKER_POOL_GROUP = "egregore-workers"
+
+
+def _worker_job_topics() -> list[str]:
+    from cys_core.application.resource_source import get_resource_source
+
+    personas = get_resource_source().list_worker_personas()
+    if not personas:
+        return [worker_job_topic("consultant")]
+    return [worker_job_topic(persona) for persona in personas]
+
 
 class KafkaJobQueue:
     """Kafka-backed worker job queue with in-memory fallback when broker is unavailable."""
@@ -47,9 +58,17 @@ class KafkaJobQueue:
             self._connected = False
             return False
 
+    def _consumer_topics(self) -> list[str]:
+        if self._persona:
+            return [worker_job_topic(self._persona)]
+        return _worker_job_topics()
+
+    def _consumer_group_id(self) -> str:
+        if self._persona:
+            return f"workers-{self._persona}"
+        return _WORKER_POOL_GROUP
+
     async def _ensure_consumer(self) -> bool:
-        if self._persona is None:
-            return False
         if self._consumer is not None:
             return self._connected
         if not await self._ensure_producer():
@@ -57,11 +76,14 @@ class KafkaJobQueue:
         try:
             from aiokafka import AIOKafkaConsumer
 
+            # Job processing blocks poll(); interval must exceed worker_job_timeout (default 180s).
+            max_poll_ms = max(600_000, int(cfg.worker_job_timeout * 1000) + 120_000)
             consumer = AIOKafkaConsumer(
-                worker_job_topic(self._persona),
+                *self._consumer_topics(),
                 bootstrap_servers=self._bootstrap,
-                group_id=f"workers-{self._persona}",
+                group_id=self._consumer_group_id(),
                 auto_offset_reset="earliest",
+                max_poll_interval_ms=max_poll_ms,
             )
             await consumer.start()
             self._consumer = consumer
@@ -86,8 +108,6 @@ class KafkaJobQueue:
         return job_id
 
     async def adequeue(self, timeout: float = 0.0) -> dict[str, Any] | None:
-        if self._persona is None:
-            return await self._fallback.adequeue(timeout)
         if not await self._ensure_consumer():
             return await self._fallback.adequeue(timeout)
         try:

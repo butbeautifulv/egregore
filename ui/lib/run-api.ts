@@ -5,7 +5,8 @@ export type RunContext = {
   context_id: string
   kind: string
   tenant_id: string
-  mode?: InteractionMode
+  // mode comes from API payload; keep it flexible for forward-compat
+  mode?: string
   correlation_key: string
 }
 

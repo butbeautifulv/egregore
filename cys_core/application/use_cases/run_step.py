@@ -62,10 +62,22 @@ class RunRuntime(Protocol):
 
 def _parse_work_plan(result: dict[str, Any]) -> WorkPlan | None:
     if "plan" in result and isinstance(result["plan"], dict):
-        return WorkPlan.model_validate(result["plan"])
+        try:
+            return WorkPlan.model_validate(result["plan"])
+        except Exception:
+            return None
     for key in ("work_plan", "WorkPlan"):
         if key in result and isinstance(result[key], dict):
-            return WorkPlan.model_validate(result[key])
+            try:
+                return WorkPlan.model_validate(result[key])
+            except Exception:
+                return None
+    plan_delta = result.get("plan_delta")
+    if isinstance(plan_delta, dict) and plan_delta:
+        try:
+            return WorkPlan.model_validate(plan_delta)
+        except Exception:
+            return None
     return None
 
 

@@ -14,14 +14,13 @@ spec:
       labels:
         app: egregore-worker
     spec:
+      enableServiceLinks: false
       containers:
         - name: worker
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
-            - uv
-            - run
-            - egregore
+            - /app/.venv/bin/egregore
             - worker
             - --daemon
             - --idle-timeout
@@ -33,4 +32,14 @@ spec:
                 name: {{ include "egregore.fullname" . }}-secrets
           env:
             - name: PROMETHEUS_MULTIPROC_DIR
-              value: ""
+              value: /tmp/prom-multiproc
+            - name: OTEL_SERVICE_NAME
+              value: egregore-worker
+          volumeMounts:
+            - name: prom-multiproc
+              mountPath: /tmp/prom-multiproc
+      volumes:
+        - name: prom-multiproc
+          hostPath:
+            path: {{ .Values.prometheus.multiprocHostPath }}
+            type: DirectoryOrCreate

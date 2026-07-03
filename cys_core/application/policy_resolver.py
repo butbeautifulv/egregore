@@ -4,6 +4,7 @@ from typing import Any
 
 from cys_core.domain.catalog.models import ProfilePolicyPayload
 from cys_core.domain.policy.defaults import default_profile_policy_payload
+from cys_core.observability.metrics import metrics
 
 _resolver: ProfilePolicyResolver | None = None
 
@@ -27,7 +28,10 @@ class ProfilePolicyResolver:
                 if loaded is not None:
                     return loaded
             except Exception:
-                pass
+                try:
+                    metrics.record_persistence_fallback("policy_loader")
+                except Exception:
+                    pass
         return default_profile_policy_payload()
 
     def trace_critic_threshold(self, profile_id: str) -> float:

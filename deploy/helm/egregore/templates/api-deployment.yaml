@@ -15,11 +15,12 @@ spec:
       labels:
         app: egregore-api
     spec:
+      enableServiceLinks: false
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["uv", "run", "egregore", "serve", "--host", "0.0.0.0", "--port", "8080"]
+          command: ["/app/.venv/bin/egregore", "serve", "--host", "0.0.0.0", "--port", "8080"]
           ports:
             - containerPort: {{ .Values.api.port }}
           envFrom:
@@ -27,6 +28,14 @@ spec:
                 name: {{ include "egregore.fullname" . }}-env
             - secretRef:
                 name: {{ include "egregore.fullname" . }}-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: egregore-api
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: /tmp/prom-multiproc
+          volumeMounts:
+            - name: prom-multiproc
+              mountPath: /tmp/prom-multiproc
           livenessProbe:
             httpGet:
               path: /health
@@ -36,6 +45,11 @@ spec:
             httpGet:
               path: /health
               port: {{ .Values.api.port }}
+      volumes:
+        - name: prom-multiproc
+          hostPath:
+            path: {{ .Values.prometheus.multiprocHostPath }}
+            type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

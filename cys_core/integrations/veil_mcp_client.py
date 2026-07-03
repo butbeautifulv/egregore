@@ -10,6 +10,8 @@ from cys_core.application.runtime_config import (
     get_veil_mcp_url,
     veil_mcp_enabled as _veil_mcp_enabled,
 )
+from cys_core.observability.metrics import metrics
+from cys_core.observability.tracing import inject_correlation_headers
 
 # Read-only Veil knowledge graph + playbook tools exposed to egregore agents.
 FALLBACK_VEIL_TOOL_NAMES: frozenset[str] = frozenset(
@@ -72,7 +74,9 @@ def call_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
         "method": "tools/call",
         "params": {"name": tool_name, "arguments": arguments or {}},
     }
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    headers = inject_correlation_headers(
+        {"Content-Type": "application/json", "Accept": "application/json"},
+    )
     url = get_veil_mcp_url().rstrip("/")
 
     try:
@@ -81,13 +85,16 @@ def call_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
             response.raise_for_status()
             body = response.json()
     except httpx.HTTPError as exc:
+        metrics.record_tool_invocation(tool_name, success=False)
         return {"success": False, "error": f"Veil MCP HTTP error: {exc}", "source": "veil-mcp", "tool": tool_name}
     except json.JSONDecodeError as exc:
+        metrics.record_tool_invocation(tool_name, success=False)
         return {"success": False, "error": f"Veil MCP invalid JSON: {exc}", "source": "veil-mcp", "tool": tool_name}
 
     if "error" in body:
         err = body["error"]
         message = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+        metrics.record_tool_invocation(tool_name, success=False)
         return {"success": False, "error": message, "source": "veil-mcp", "tool": tool_name}
 
     result = body.get("result") or {}
@@ -104,6 +111,7 @@ def call_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
         except json.JSONDecodeError:
             parsed = combined
 
+    metrics.record_tool_invocation(tool_name, success=True)
     return {
         "success": True,
         "source": "veil-mcp",

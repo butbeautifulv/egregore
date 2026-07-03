@@ -71,6 +71,23 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
 
 
 @pytest.mark.unit
+def test_normalize_messages_merges_system_at_start():
+    from cys_core.llm import litellm_provider as provider
+
+    messages = [
+        SystemMessage(content="agent"),
+        SystemMessage(content="sgr reminder"),
+        HumanMessage(content="hi"),
+    ]
+    normalized = provider.normalize_messages_for_litellm(messages)
+    assert len(normalized) == 2
+    assert isinstance(normalized[0], SystemMessage)
+    assert "agent" in str(normalized[0].content)
+    assert "sgr reminder" in str(normalized[0].content)
+    assert isinstance(normalized[1], HumanMessage)
+
+
+@pytest.mark.unit
 def test_litellm_message_conversion_and_sync_generation(monkeypatch):
     from cys_core.llm import litellm_provider as provider
 
@@ -110,6 +127,7 @@ def test_litellm_message_conversion_and_sync_generation(monkeypatch):
     result = model._generate([HumanMessage(content="hi")], stop=["END"], extra="value")
 
     assert result.generations[0].message.content == "answer"
+    assert calls[0]["messages"][0]["role"] == "user"
     assert calls[0]["api_key"] == "key"
     assert calls[0]["api_base"] == "https://base.example"
     assert calls[0]["stop"] == ["END"]
@@ -121,6 +139,32 @@ def test_litellm_message_conversion_and_sync_generation(monkeypatch):
     )
     assert isinstance(created, provider.LiteLLMChatModel)
     assert created.api_key is None
+
+
+@pytest.mark.unit
+def test_litellm_generate_merges_multiple_system_messages(monkeypatch):
+    from cys_core.llm import litellm_provider as provider
+
+    calls = []
+
+    def fake_completion(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))])
+
+    monkeypatch.setattr(provider.litellm, "completion", fake_completion)
+    model = provider.LiteLLMChatModel(model="test-model", temperature=0.1)
+    model._generate(
+        [
+            SystemMessage(content="agent"),
+            SystemMessage(content="reminder"),
+            HumanMessage(content="hi"),
+        ]
+    )
+    assert len(calls[0]["messages"]) == 2
+    assert calls[0]["messages"][0]["role"] == "system"
+    assert "agent" in calls[0]["messages"][0]["content"]
+    assert "reminder" in calls[0]["messages"][0]["content"]
+    assert calls[0]["messages"][1]["role"] == "user"
 
 
 @pytest.mark.unit

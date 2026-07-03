@@ -10,6 +10,14 @@ import psycopg
 from cys_core.domain.memory.models import InvestigationState, MemoryEntry, MemoryScope
 
 
+def _maybe_close_investigation(state: InvestigationState) -> None:
+    plan = state.planner_plan
+    if not plan:
+        return
+    if all(persona in state.completed_personas for persona in plan):
+        state.status = "closed"
+
+
 class InMemoryEpisodicMemoryStore:
     """Process-local episodic memory for tests and dev fallback."""
 
@@ -72,6 +80,7 @@ class InMemoryInvestigationStateStore:
                 state = InvestigationState(investigation_id=investigation_id, tenant_id=tenant_id, status="in_progress")
             if persona not in state.completed_personas:
                 state.completed_personas.append(persona)
+            _maybe_close_investigation(state)
             self._states[key] = state
 
     def list_recent(self, tenant_id: str, *, limit: int = 20) -> list[InvestigationState]:
@@ -247,6 +256,7 @@ class PostgresInvestigationStateStore:
             state = InvestigationState(investigation_id=investigation_id, tenant_id=tenant_id, status="in_progress")
         if persona not in state.completed_personas:
             state.completed_personas.append(persona)
+        _maybe_close_investigation(state)
         self.upsert(state)
 
     def list_recent(self, tenant_id: str, *, limit: int = 20) -> list[InvestigationState]:

@@ -1,4 +1,6 @@
 export type {
+  CatalogEvaluation,
+  CatalogProfile,
   InvestigationDetail,
   InvestigationSummary,
   JobSummary,
@@ -13,4 +15,5 @@ export type StatusStreamEvent = {
   kind: string
   payload: Record<string, unknown>
   ts: string
+  id?: string
 }

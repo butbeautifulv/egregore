@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 AttackPhase = Literal[
     "recon",
@@ -166,6 +166,19 @@ class ConductorStepResult(BaseModel):
     enough_data: bool = False
     remaining_steps: list[str] = Field(default_factory=list)
     task_completed: bool = False
+
+    @field_validator("reasoning_steps", "remaining_steps", mode="before")
+    @classmethod
+    def _coerce_step_list(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, int):
+            return [str(value)] if value else []
+        if isinstance(value, str):
+            return [value] if value.strip() else []
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        return []
 
 
 class CriticResult(BaseModel):

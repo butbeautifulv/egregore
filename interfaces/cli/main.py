@@ -8,6 +8,8 @@ import sys
 
 from bootstrap.settings import settings
 from bootstrap.container import get_container
+from cys_core.observability.logging_setup import configure_logging
+from cys_core.observability.otel import setup_otel
 from cys_core.registry.agents import get_agent_registry
 from cys_core.runtime.agent import get_runtime
 
@@ -39,6 +41,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 
 def cmd_worker(args: argparse.Namespace) -> int:
+    get_container()
+    configure_logging("egregore-worker")
+    setup_otel(service_name="egregore-worker")
     idle_timeout = settings.worker_idle_timeout if args.idle_timeout is None else args.idle_timeout
     if args.daemon:
         from interfaces.worker.daemon import run_worker_daemon
@@ -109,6 +114,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     from interfaces.api.app import create_app
 
+    get_container()
     uvicorn.run(create_app(), host=args.host, port=args.port)
     return 0
 
@@ -172,8 +178,15 @@ def cmd_catalog_seed(_args: argparse.Namespace) -> int:
 
 def cmd_migrate(_args: argparse.Namespace) -> int:
     from cys_core.infrastructure.migrations.runner import apply_migrations
+    from cys_core.observability.logging_setup import configure_logging
+    from cys_core.observability.otel import setup_otel
+
+    get_container()
+    configure_logging("egregore-migrate")
+    setup_otel(service_name="egregore-migrate")
 
     applied = apply_migrations(settings.postgres_url)
+    get_container().get_trace_backend().flush()
     print(json.dumps({"applied": applied}, indent=2, ensure_ascii=False))
     return 0
 
@@ -285,6 +298,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    # Ensure bootstrap wiring runs for ALL CLI commands (incl. migrate/serve),
+    # so registries/loaders are configured in offline/production environments.
+    from bootstrap.container import get_container
+
+    get_container()
     parser = build_parser()
     args = parser.parse_args()
     sys.exit(args.func(args))

@@ -31,6 +31,8 @@ class PersonaQuality(BaseModel):
     empirical_trust: float = 0.75
     critic_pass_rate: float = 0.0
     trace_critic_pass_rate: float = 0.0
+    factuality_score: float = 0.0
+    faithfulness_score: float = 0.0
     hitl_rate: float = 0.0
     avg_cost_usd: float = 0.0
     job_success_rate: float = 0.0

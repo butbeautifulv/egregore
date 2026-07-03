@@ -351,6 +351,70 @@ def delegate_research(subtask: str, *, context_id: str = "", tenant_id: str = "d
 
 
 @tool
+def spawn_worker(
+    persona: str,
+    sub_goal: str,
+    *,
+    context_id: str = "",
+    tenant_id: str = "default",
+    persona_overlay: str = "",
+) -> str:
+    """Enqueue a specialist worker spawned from the active conductor session."""
+    from bootstrap.container import get_container
+    from cys_core.application.spawn_broker import SubagentSpawnBroker
+    from cys_core.domain.runs.models import ContextKind
+    from cys_core.domain.runs.spawn import SpawnWorkerPayload, sanitize_persona_overlay
+    from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
+    from cys_core.infrastructure.runs.factory import get_run_state_store
+
+    if not context_id:
+        return json.dumps({"error": "missing context_id"}, ensure_ascii=False)
+
+    store = get_run_state_store()
+    state = None
+    for kind in (ContextKind.SESSION, ContextKind.JOB, ContextKind.INVESTIGATION):
+        state = store.get(tenant_id, context_id, kind.value)
+        if state is not None:
+            break
+    if state is None:
+        return json.dumps({"error": "run_context_not_found"}, ensure_ascii=False)
+
+    ctx = state.run_context
+    broker = SubagentSpawnBroker(get_agent_catalog())
+    payload = SpawnWorkerPayload(
+        parent_context=ctx,
+        persona=persona,
+        sub_goal=sub_goal,
+        persona_overlay=sanitize_persona_overlay(persona_overlay),
+    )
+    reason = broker.validate(
+        payload,
+        mode=ctx.mode,
+        profile_id=ctx.profile_id,
+        parent_persona="conductor",
+    )
+    if reason:
+        return json.dumps({"error": reason}, ensure_ascii=False)
+
+    job = broker.to_worker_job(payload, event_id=context_id)
+    container = get_container()
+    job_store = container.get_job_store()
+    queue = container.get_job_queue(persona=persona)
+    job_store.upsert_pending(
+        job.job_id,
+        job.persona,
+        correlation_id=job.correlation_id,
+        tenant_id=job.tenant_id,
+        event_id=job.event_id,
+    )
+    queue.enqueue(job.model_dump())
+    return json.dumps(
+        {"job_id": job.job_id, "persona": persona, "status": "enqueued"},
+        ensure_ascii=False,
+    )
+
+
+@tool
 def plan_tool_calls(goal: str, steps_json: str) -> str:
     """ReWOO-style upfront tool plan (search → read → extract) without reactive loops."""
     try:
@@ -444,6 +508,7 @@ _ALL_TOOLS: list[BaseTool] = [
     vision_analyze,
     search_archived_webpage,
     delegate_research,
+    spawn_worker,
     plan_tool_calls,
     create_report_outline,
     browser_use,

@@ -23,6 +23,11 @@ class Settings(BaseSettings):
         validation_alias="LLM_REQUEST_TIMEOUT",
         description="LiteLLM request timeout in seconds (fail-fast when vLLM is down).",
     )
+    worker_job_timeout: float = Field(
+        default=180.0,
+        validation_alias="WORKER_JOB_TIMEOUT",
+        description="Hard wall-clock cap per worker job (sandbox + LLM + bus).",
+    )
     manual_investigation_async: bool = Field(
         default=True,
         validation_alias="MANUAL_INVESTIGATION_ASYNC",
@@ -66,6 +71,17 @@ class Settings(BaseSettings):
         default="http://localhost:4317",
         validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
     )
+    otel_service_name: str = Field(default="", validation_alias="OTEL_SERVICE_NAME")
+
+    log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+    log_format: str = Field(default="json", validation_alias="LOG_FORMAT")
+
+    otel_resource_attributes: str = Field(default="", validation_alias="OTEL_RESOURCE_ATTRIBUTES")
+    otel_traces_sampler: str = Field(
+        default="parentbased_always_on",
+        validation_alias="OTEL_TRACES_SAMPLER",
+    )
+    otel_traces_sampler_arg: float = Field(default=1.0, validation_alias="OTEL_TRACES_SAMPLER_ARG")
 
     hitl_auto_approve_threshold: str = Field(default="low", validation_alias="HITL_AUTO_APPROVE_THRESHOLD")
     max_tool_calls_per_minute: int = Field(default=30, validation_alias="MAX_TOOL_CALLS_PER_MINUTE")

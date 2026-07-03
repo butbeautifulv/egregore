@@ -20,7 +20,12 @@ def resolve_trace_backend_name(cfg: Settings | None = None) -> str:
     return cfg.obs_trace_backend
 
 
-def build_trace_backend(name: str, *, cfg: Settings | None = None) -> TraceBackendPort:
+def build_trace_backend(
+    name: str,
+    *,
+    cfg: Settings | None = None,
+    service_name: str | None = None,
+) -> TraceBackendPort:
     cfg = cfg or settings
     if name == "noop":
         return NoopTraceBackend()
@@ -31,14 +36,14 @@ def build_trace_backend(name: str, *, cfg: Settings | None = None) -> TraceBacke
     if name == "otel":
         from interfaces.observability.connectors.otel.trace import OtelTraceBackend
 
-        return OtelTraceBackend()
+        return OtelTraceBackend(service_name=service_name)
     if name == "composite":
         from interfaces.observability.connectors.langfuse.trace import CompositeTraceBackend, LangfuseTraceBackend
         from interfaces.observability.connectors.otel.trace import OtelTraceBackend
 
         sinks: list[TraceBackendPort] = [LangfuseTraceBackend()]
         if cfg.otel_enabled:
-            sinks.append(OtelTraceBackend())
+            sinks.append(OtelTraceBackend(service_name=service_name))
         return CompositeTraceBackend(*sinks)
     return NoopTraceBackend()
 

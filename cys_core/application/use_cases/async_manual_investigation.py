@@ -34,7 +34,7 @@ async def complete_manual_investigation_planning(
             payload=enriched,
             correlation_id=event.correlation_id or event.id,
             tenant_id=event.tenant_id,
-            sequential=True,
+            sequential=bool(plan.depends_on),
         )
         if status_notifier is not None:
             state = plan_investigation.investigation_store.get(

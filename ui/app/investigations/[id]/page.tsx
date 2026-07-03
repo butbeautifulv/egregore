@@ -1,28 +1,12 @@
-import { notFound } from "next/navigation"
+"use client"
 
-import { ApiError, getInvestigation, getInvestigationJobs } from "@/lib/api-client"
+import { useParams } from "next/navigation"
+
 import { InvestigationDetailView } from "@/components/investigation-detail-view"
 
-type PageProps = {
-  params: Promise<{ id: string }>
-}
+export default function InvestigationDetailPage() {
+  const params = useParams()
+  const id = typeof params.id === "string" ? params.id : ""
 
-export default async function InvestigationDetailPage({ params }: PageProps) {
-  const { id } = await params
-
-  try {
-    const [detail, jobsResponse] = await Promise.all([getInvestigation(id), getInvestigationJobs(id)])
-    return (
-      <InvestigationDetailView
-        investigationId={id}
-        initialDetail={detail}
-        initialJobs={jobsResponse.jobs}
-      />
-    )
-  } catch (exc) {
-    if (exc instanceof ApiError && exc.status === 404) {
-      notFound()
-    }
-    throw exc
-  }
+  return <InvestigationDetailView investigationId={id} />
 }

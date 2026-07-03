@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
+import structlog
+
 from bootstrap.container import get_container
-from bootstrap.settings import settings
+from bootstrap.settings import settings, get_settings
 from cys_core.application.use_cases.run_worker_job import RunWorkerJob
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID, resolve_profile_id
 from cys_core.domain.security.agent_bus import AgentTrustLevel, SecureAgentBus
@@ -18,11 +21,15 @@ from cys_core.infrastructure.queue import get_job_queue
 from cys_core.infrastructure.sandbox import get_sandbox_connector
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import bind_correlation_id, reset_correlation_id
+from cys_core.observability.worker_spans import observability_span, worker_job_span
 from cys_core.registry.agents import AgentRegistry, get_agent_registry
 from cys_core.registry.mcp_tools import mcp_tool_registry
 from cys_core.registry.skills_tool import make_load_skill_tool
 from cys_core.runtime.agent import AgentRuntime, get_runtime
 from interfaces.gateways.tool.policy import clear_chain_state
+from interfaces.control_plane.status_store import get_status_store
+
+logger = structlog.get_logger(__name__)
 
 _TRUST_MAP = {
     "untrusted": AgentTrustLevel.UNTRUSTED,
@@ -79,6 +86,7 @@ class WorkerOrchestrator:
         self.guardrails = get_output_guardrails()
         container = get_container()
         self.job_store = container.get_job_store()
+        status_store = get_status_store()
         self._run_worker_job = RunWorkerJob(
             runtime=self.runtime,
             registry=self.registry,
@@ -96,6 +104,9 @@ class WorkerOrchestrator:
             memory_reader=get_memory_read_service(),
             memory_writer=get_memory_write_service(),
             investigation_store=container.get_investigation_state_store(),
+            investigation_status_notifier=(
+                status_store if hasattr(status_store, "record_investigation_update") else None
+            ),
             record_sanitizer_block=metrics.record_sanitizer_block,
             record_memory_write=metrics.record_memory_write,
         )
@@ -118,7 +129,13 @@ class WorkerOrchestrator:
         budgeted = enrich_job_budget(job)
         run_id = job.job_id
         session_id = f"worker:{job.persona}:{run_id}"
-        cid_token = bind_correlation_id(job.correlation_id or job.event_id)
+        investigation_id = job.correlation_id or job.event_id
+        cid_token = bind_correlation_id(investigation_id)
+        structlog.contextvars.bind_contextvars(
+            persona=job.persona,
+            job_id=job.job_id,
+            correlation_id=investigation_id,
+        )
         from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
 
         catalog_entry = get_agent_catalog().get_agent(budgeted.persona)
@@ -138,10 +155,34 @@ class WorkerOrchestrator:
             profile_id=profile_id,
         )
         try:
-            with metrics.track_worker_job(job.persona) as job_state:
-                self._run_worker_job.sanitizer = self.sanitizer
-                self._run_worker_job.transport = self.transport
-                return await self._run_worker_job.execute(job, budgeted, session_id, job_state)
+            with worker_job_span(
+                persona=job.persona,
+                job_id=job.job_id,
+                investigation_id=investigation_id,
+            ):
+                with metrics.track_worker_job(job.persona) as job_state:
+                    self._run_worker_job.sanitizer = self.sanitizer
+                    self._run_worker_job.transport = self.transport
+                    job_timeout = get_settings().worker_job_timeout
+                    return await asyncio.wait_for(
+                        self._run_worker_job.execute(job, budgeted, session_id, job_state),
+                        timeout=job_timeout,
+                    )
+        except TimeoutError:
+            logger.error(
+                "worker job timed out",
+                job_id=job.job_id,
+                persona=job.persona,
+                timeout_s=get_settings().worker_job_timeout,
+            )
+            self.job_store.mark_failed(job.job_id)
+            self._run_worker_job._mark_persona_terminal(job)
+            return RunResult(
+                job_id=job.job_id,
+                persona=job.persona,
+                success=False,
+                error="worker_job_timeout",
+            )
         finally:
             state = JobBudgetTracker.get(session_id)
             if state is not None:
@@ -153,9 +194,11 @@ class WorkerOrchestrator:
             JobBudgetTracker.clear(session_id)
             clear_chain_state(job.job_id)
             reset_correlation_id(cid_token)
+            structlog.contextvars.unbind_contextvars("persona", "job_id", "correlation_id")
 
     async def process_next(self) -> RunResult | None:
-        raw = await self.queue.adequeue(timeout=0.0)
+        with observability_span("worker.dequeue", persona=self.persona or ""):
+            raw = await self.queue.adequeue(timeout=2.0)
         if raw is None:
             return None
         job = WorkerJob.model_validate(raw)

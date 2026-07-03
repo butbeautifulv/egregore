@@ -21,7 +21,7 @@ Open [http://localhost:3000](http://localhost:3000). API must be running on `htt
 |----------|---------|---------|
 | `NEXT_PUBLIC_EGREGORE_API_URL` | `http://localhost:8080` | Egregore API base URL |
 | `NEXT_PUBLIC_EGREGORE_API_TOKEN` | — | Optional Bearer token when API auth is enabled |
-| `NEXT_PUBLIC_LANGFUSE_HOST` | `http://localhost:3000` | Langfuse UI for job trace links |
+| `NEXT_PUBLIC_LANGFUSE_HOST` | `http://localhost:3001` | Langfuse UI for job trace links |
 
 ## GUI vendor sync
 

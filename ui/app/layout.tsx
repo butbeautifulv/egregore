@@ -3,7 +3,8 @@ import { Geist_Mono, Inter } from "next/font/google"
 import "./globals.css"
 import { AppShellLayout } from "@/components/app-shell-layout"
 import { ThemeProvider } from "@/components/theme-provider"
-import { cn } from "@/lib/utils"
+import { Toaster } from "@/vendor/gui/ui/sonner"
+import { cn } from "@/vendor/gui/utils"
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'})
 
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <AppShellLayout>{children}</AppShellLayout>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>
