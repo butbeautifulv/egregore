@@ -8,7 +8,7 @@ T = TypeVar("T")
 
 
 class CatalogSingletons:
-    _lock = threading.Lock()
+    _lock = threading.RLock()
     _instances: dict[str, object] = {}
 
     @classmethod

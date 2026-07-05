@@ -26,9 +26,9 @@ class AgentRegistry:
         loader: AgentDefinitionsLoaderPort | None = None,
     ) -> AgentRegistry:
         if get_use_dynamic_catalog():
-            from cys_core.infrastructure.catalog.hybrid_registry import load_hybrid_registry
+            from cys_core.infrastructure.catalog.catalog_registry import load_catalog_registry
 
-            return load_hybrid_registry(root)
+            return load_catalog_registry(root)
         definitions_loader = loader or _loader
         if definitions_loader is None:
             raise RuntimeError("Agent definitions loader not configured")
@@ -36,7 +36,7 @@ class AgentRegistry:
 
     def reload(self) -> None:
         """Reload agents from catalog + filesystem."""
-        from cys_core.infrastructure.catalog.hybrid_registry import reload_agent_registry
+        from cys_core.infrastructure.catalog.catalog_registry import reload_agent_registry
 
         refreshed = reload_agent_registry()
         self._agents = refreshed._agents

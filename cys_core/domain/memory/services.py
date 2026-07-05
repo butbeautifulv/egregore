@@ -146,6 +146,37 @@ class MemoryReadService:
         valid.sort(key=lambda item: item.trust_score, reverse=True)
         return valid[:limit]
 
+    def list_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        limit: int = 100,
+        agent: str | None = None,
+        requesting_tenant_id: str | None = None,
+    ) -> list[MemoryEntry]:
+        if requesting_tenant_id is not None and requesting_tenant_id != tenant_id:
+            return []
+        list_fn = getattr(self.store, "list_by_tenant", None)
+        if list_fn is None:
+            return []
+        cap = min(max(limit, 1), 200)
+        entries = list_fn(tenant_id, limit=cap, agent=agent)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.MEMORY_TTL_HOURS)
+        validator_cache: dict[str, MemoryEntryValidator] = {}
+        valid: list[MemoryEntry] = []
+        for entry in entries:
+            if entry.created_at < cutoff:
+                continue
+            inv_id = entry.scope.investigation_id
+            ns = f"{tenant_id}:{inv_id}"
+            if ns not in validator_cache:
+                validator_cache[ns] = MemoryEntryValidator(namespace_key=ns, signing_key=self._signing_key)
+            if entry.checksum and not validator_cache[ns].verify_checksum(entry.content, entry.checksum):
+                continue
+            valid.append(entry)
+        valid.sort(key=lambda item: item.created_at, reverse=True)
+        return valid[:cap]
+
     def format_for_prompt(self, entries: list[MemoryEntry], *, max_chars: int = 4000) -> str:
         if not entries:
             return ""

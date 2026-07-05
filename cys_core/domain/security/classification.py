@@ -20,13 +20,6 @@ _CLASS_ORDER = [
 
 
 def persona_clearance_for(persona: str, entry: AgentCatalogEntry | None = None) -> DataClassification:
-    if entry is None:
-        try:
-            from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
-
-            entry = get_agent_catalog().get_agent(persona)
-        except Exception:
-            entry = None
     return persona_clearance_pure(persona, entry)
 
 

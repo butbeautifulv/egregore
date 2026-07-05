@@ -1,26 +1,19 @@
 ---
 name: ai-agent-security
-description: Secure AI agent architectures — tool least privilege, HITL, memory isolation, output guardrails, multi-agent trust, monitoring, and adversarial testing. Use when designing, reviewing, or hardening agent systems.
+description: Secure AI agent architectures: tool boundaries, prompt injection surfaces, and agent-to-agent trust.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# ai-agent-security (cys-agi)
+# Ai Agent Security
 
-Extends: [cxado-skills/agent/ai-agent-security](../../../../shared/skills/agent/ai-agent-security/SKILL.md)
+## Scope
+Secure AI agent architectures: tool boundaries, prompt injection surfaces, and agent-to-agent trust.
 
-Read and apply the generic skill first; then apply cys-agi integration below.
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-## cys-agi integration
-
-| Control | Location |
-|---------|----------|
-| Tool allowlist | `agent.yaml`; dangerous tools in `hitl_tools` |
-| Input sanitization | ingress + `cys_core/domain/security/patterns/` |
-| Multi-agent bus | `SecureAgentBus` — HMAC, trust levels, mTLS |
-| HITL | `run_active_scan`, `write_file` when configured |
-| Adversarial gate | `tests/adversarial/` in CI for security changes |
-| Platform baseline | `agents/rules/security.md` |
-
-## Deep reference
-
-- [reference.md](reference.md)
-- [refs/owasp/AI_Agent_Security_Cheat_Sheet.md](../../../refs/owasp/AI_Agent_Security_Cheat_Sheet.md)
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

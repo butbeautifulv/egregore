@@ -10,7 +10,7 @@ def test_config_computed_fields(monkeypatch):
     settings = Settings(OPENAI_API_KEY="openai-key", REDIS_PASSWORD="")
 
     assert settings.llm_api_key == "openai-key"
-    assert settings.postgres_url == "postgresql://postgres:password@localhost:5432/cys_agi"
+    assert settings.postgres_url == "postgresql://postgres:password@localhost:5432/egregore"
     assert settings.redis_url == "redis://localhost:6379/0"
     assert settings.persistence_connector == "auto"
 
@@ -34,4 +34,3 @@ def test_config_computed_fields(monkeypatch):
     assert defaults.worker_idle_timeout == 0.0
     assert defaults.worker_replicas == 2
     assert defaults.llm_request_timeout == 120.0
-    assert defaults.manual_investigation_async is True

@@ -1,6 +1,6 @@
 "use client"
 
-import { ClipboardCheck, LayoutDashboard, Library, PlayCircle, Shield } from "lucide-react"
+import { BarChart3, ClipboardCheck, GitCompare, LayoutDashboard, Library, PlayCircle, Shield, Waypoints } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 
@@ -13,6 +13,9 @@ const navItems = [
   { title: "Agent runs", href: "/runs", icon: PlayCircle },
   { title: "Approvals", href: "/approvals", icon: ClipboardCheck },
   { title: "Quality", href: "/catalog", icon: Library },
+  { title: "Eval runs", href: "/eval", icon: BarChart3 },
+  { title: "Traces", href: "/traces", icon: Waypoints },
+  { title: "Compare", href: "/compare", icon: GitCompare },
 ]
 
 export function AppSidebar() {

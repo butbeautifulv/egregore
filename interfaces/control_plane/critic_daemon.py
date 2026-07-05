@@ -8,6 +8,11 @@ from interfaces.control_plane.critic_service import get_critic_service
 
 def run_critic_daemon(*, idle_timeout: float = 0.0) -> int:
     """Kafka or Redis bus consumer daemon for critic control plane."""
+    from cys_core.observability.logging_setup import configure_logging
+    from cys_core.observability.otel import setup_otel
+
+    configure_logging("egregore-critic")
+    setup_otel(service_name="egregore-critic")
     critic = get_critic_service()
     if not settings.use_kafka:
         transport = get_bus_transport()

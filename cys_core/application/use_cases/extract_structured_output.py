@@ -4,19 +4,23 @@ import json
 import re
 from typing import Any
 
+from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.domain.findings.models import ConductorStepResult
+
+_catalog: AgentCatalogPort | None = None
+
+
+def configure_output_schema_catalog(catalog: AgentCatalogPort) -> None:
+    global _catalog
+    _catalog = catalog
 
 
 def detect_output_schema(goal: str, *, persona: str = "", profile_id: str = "cybersec-soc") -> str:
-    if persona:
-        try:
-            from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
-
-            entry = get_agent_catalog().get_agent(persona)
-            if entry and entry.output_schema:
-                return entry.output_schema
-        except Exception:
-            pass
+    del profile_id
+    if persona and _catalog is not None:
+        entry = _catalog.get_agent(persona)
+        if entry and entry.output_schema:
+            return entry.output_schema
     lower = goal.lower()
     if any(word in lower for word in ("severity", "priority", "p0", "p1")):
         return "finding"

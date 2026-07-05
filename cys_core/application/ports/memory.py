@@ -14,8 +14,13 @@ class EpisodicMemoryStore(Protocol):
         self, tenant_id: str, investigation_id: str, *, limit: int = 20
     ) -> list[MemoryEntry]: ...
 
+    def list_by_tenant(
+        self, tenant_id: str, *, limit: int = 100, agent: str | None = None
+    ) -> list[MemoryEntry]: ...
+
 
 class InvestigationStateStore(Protocol):
+    """Deprecated: use ``EngagementStateStore`` instead."""
     def get(self, tenant_id: str, investigation_id: str) -> InvestigationState | None: ...
 
     def upsert(self, state: InvestigationState) -> None: ...

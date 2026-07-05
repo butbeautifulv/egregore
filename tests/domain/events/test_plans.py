@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from cys_core.domain.events.plans import load_plan_routing, load_plans_from_dir, severity_at_least
+from cys_core.application.plans.plan_loader import load_plan_routing, load_plans_from_dir
+from cys_core.domain.events.plans import severity_at_least
 from cys_core.registry.product_context import default_agents_root
 
 

@@ -14,6 +14,17 @@ class WorkerJobStatus(str, Enum):
     FAILED = "failed"
 
 
+_ALLOWED_TRANSITIONS: dict[WorkerJobStatus, frozenset[WorkerJobStatus]] = {
+    WorkerJobStatus.PENDING: frozenset({WorkerJobStatus.RUNNING, WorkerJobStatus.FAILED}),
+    WorkerJobStatus.RUNNING: frozenset(
+        {WorkerJobStatus.COMPLETED, WorkerJobStatus.FAILED, WorkerJobStatus.AWAITING_APPROVAL}
+    ),
+    WorkerJobStatus.AWAITING_APPROVAL: frozenset({WorkerJobStatus.RUNNING, WorkerJobStatus.FAILED}),
+    WorkerJobStatus.COMPLETED: frozenset(),
+    WorkerJobStatus.FAILED: frozenset(),
+}
+
+
 class PersonaBudget(BaseModel):
     max_tokens: int
     max_cost_usd: float
@@ -40,6 +51,23 @@ class WorkerJob(BaseModel):
     max_tokens: int = 0
     max_cost_usd: float = 0.0
     max_tool_calls: int = 0
+
+    def transition_to(self, status: WorkerJobStatus) -> None:
+        if status == self.status:
+            return
+        allowed = _ALLOWED_TRANSITIONS.get(self.status, frozenset())
+        if status not in allowed:
+            raise ValueError(f"invalid job status transition: {self.status.value} -> {status.value}")
+        self.status = status
+
+    def apply_budget(self, budget: PersonaBudget) -> WorkerJob:
+        return self.model_copy(
+            update={
+                "max_tokens": self.max_tokens or budget.max_tokens,
+                "max_cost_usd": self.max_cost_usd or budget.max_cost_usd,
+                "max_tool_calls": self.max_tool_calls or budget.max_tool_calls,
+            }
+        )
 
 
 class SandboxCredentials(BaseModel):
@@ -80,3 +108,16 @@ class RunResult(BaseModel):
     finding: dict[str, Any] = Field(default_factory=dict)
     error: str = ""
     sandbox_id: str = ""
+
+
+class WorkloadSpec(BaseModel):
+    persona: str
+    engagement_id: str
+    image: str = "egregore-agent:latest"
+    policy: str = "default"
+
+
+class WorkloadHandle(BaseModel):
+    workload_id: str
+    sandbox_id: str
+    endpoint: str = ""

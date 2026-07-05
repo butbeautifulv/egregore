@@ -11,16 +11,22 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from cys_core.application.runtime_config import (
+    get_budget_use_api_usage,
     get_context_summary_enabled,
     get_egregore_one_tool_per_turn,
     get_keep_tool_results,
-    get_sgr_default_mode,
+    get_sgr_iron_max_retries,
     get_stage,
     get_use_sgr_reasoning,
 )
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.domain.security.profile_tools import filter_tools_for_profile
-from cys_core.llm import get_default_recursion_limit
+from cys_core.application.policy_resolver import get_profile_policy_resolver
+from cys_core.application.reasoning.sgr_tooling import (
+    resolve_agent_tool_names,
+    resolve_sgr_for_agent,
+    scope_allowed_tools,
+)
+from cys_core.llm import get_default_recursion_limit, get_model_connector
 from cys_core.application.ports import ModelConnector, PersistenceContext
 from cys_core.domain.agents.policies import build_interrupt_on
 from cys_core.domain.memory.services import MemoryReadService
@@ -29,7 +35,11 @@ from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.factory import get_input_sanitizer, get_output_guardrails
 from cys_core.domain.security.prompt_context import REFUSAL_MESSAGE
 from cys_core.domain.workers.job_budget import JobBudgetExceeded, JobBudgetTracker
-from cys_core.llm import get_model_connector
+from cys_core.application.ports.stream_context import StreamContext
+from cys_core.infrastructure.observability.egress_streaming_callback import (
+    build_egress_streaming_callbacks,
+)
+from cys_core.infrastructure.observability.budget_usage_callback import build_budget_usage_callback
 from cys_core.middleware.context_summary_middleware import ContextSummaryMiddleware
 from cys_core.middleware.memory_context_middleware import MemoryContextMiddleware
 from cys_core.middleware.one_tool_middleware import OneToolPerTurnMiddleware
@@ -37,7 +47,7 @@ from cys_core.middleware.prompt_context_middleware import PromptContextMiddlewar
 from cys_core.middleware.scope_middleware import ScopeMiddleware
 from cys_core.middleware.security_middleware import SecurityMiddleware
 from cys_core.middleware.tool_coercion_middleware import ToolCoercionMiddleware
-from cys_core.observability.trace_attributes import merge_langchain_config
+from cys_core.observability.trace_attributes import build_sgr_trace_metadata, merge_langchain_config
 from cys_core.observability.metrics import metrics
 from cys_core.registry.agents import AgentDefinition, AgentRegistry, get_agent_registry
 from cys_core.registry.schemas import schema_registry
@@ -57,27 +67,7 @@ def _structured_has_content(data: dict[str, Any]) -> bool:
     return False
 
 
-def _parse_json_text(text: str) -> dict[str, Any] | None:
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        parsed = None
-    if isinstance(parsed, dict):
-        return parsed
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        fenced = "\n".join(lines).strip()
-        try:
-            parsed = json.loads(fenced)
-        except json.JSONDecodeError:
-            return None
-        return parsed if isinstance(parsed, dict) else None
-    return None
+from cys_core.domain.parsing.json_text import parse_json_text as _parse_json_text
 
 
 def _default_sync_persistence() -> PersistenceContext:
@@ -92,10 +82,16 @@ async def _default_async_persistence() -> PersistenceContext:
     return await get_async_persistence()
 
 
-def _default_memory_reader() -> MemoryReadService | None:
-    from cys_core.infrastructure.memory.factory import get_memory_read_service
+_memory_reader: MemoryReadService | None = None
 
-    return get_memory_read_service()
+
+def configure_runtime_memory_reader(reader: MemoryReadService | None) -> None:
+    global _memory_reader
+    _memory_reader = reader
+
+
+def _default_memory_reader() -> MemoryReadService | None:
+    return _memory_reader
 
 
 class AgentRuntime:
@@ -167,9 +163,15 @@ class AgentRuntime:
                     keep_tool_results=get_keep_tool_results(),
                 )
             )
+        from cys_core.application.policy_resolver import get_profile_policy_resolver
+        from cys_core.middleware.sgr_one_tool_middleware import SgrOneToolMiddleware
+        from cys_core.middleware.sgr_reasoning_middleware import SchemaGuidedReasoningMiddleware
+        from cys_core.middleware.sgr_session import SgrSessionState
+
+        sgr = resolve_sgr_for_agent(defn, profile_id)
         middleware.extend(
             [
-                ScopeMiddleware(allowed_tools=defn.allowed_tools),
+                ScopeMiddleware(allowed_tools=scope_allowed_tools(defn, profile_id)),
                 ToolCoercionMiddleware(),
                 SecurityMiddleware(agent_id=defn.name, session_id=session_id, profile_id=profile_id),
             ]
@@ -178,19 +180,6 @@ class AgentRuntime:
         if interrupt_on:
             middleware.append(HumanInTheLoopMiddleware(interrupt_on=interrupt_on))
 
-        from cys_core.application.policy_resolver import get_profile_policy_resolver
-        from cys_core.application.reasoning.sgr_policy import resolve_sgr_policy
-        from cys_core.middleware.sgr_one_tool_middleware import SgrOneToolMiddleware
-        from cys_core.middleware.sgr_reasoning_middleware import SchemaGuidedReasoningMiddleware
-        from cys_core.middleware.sgr_session import SgrSessionState
-
-        profile_policy = get_profile_policy_resolver().policy(profile_id)
-        sgr = resolve_sgr_policy(
-            profile_policy=profile_policy,
-            agent=defn,
-            use_sgr_reasoning=get_use_sgr_reasoning(),
-            default_mode=get_sgr_default_mode(),  # type: ignore[arg-type]
-        )
         if sgr.enabled:
             session = SgrSessionState()
             middleware.append(SchemaGuidedReasoningMiddleware(policy=sgr, session=session))
@@ -212,24 +201,7 @@ class AgentRuntime:
         profile_id: str = DEFAULT_PROFILE_ID,
         goal: str = "",
     ):
-        tool_names = filter_tools_for_profile(defn.tools, profile_id)
-        # Ensure reasoning_step is available when SGR is enabled by resolved policy.
-        try:
-            from cys_core.application.policy_resolver import get_profile_policy_resolver
-            from cys_core.application.reasoning.sgr_policy import resolve_sgr_policy
-            from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL
-
-            profile_policy = get_profile_policy_resolver().policy(profile_id)
-            sgr = resolve_sgr_policy(
-                profile_policy=profile_policy,
-                agent=defn,
-                use_sgr_reasoning=get_use_sgr_reasoning(),
-                default_mode=get_sgr_default_mode(),  # type: ignore[arg-type]
-            )
-            if getattr(sgr, "enabled", False) and REASONING_STEP_TOOL not in tool_names:
-                tool_names = [REASONING_STEP_TOOL, *tool_names]
-        except Exception:
-            pass
+        tool_names = resolve_agent_tool_names(defn, profile_id)
         tools = tool_registry.resolve(tool_names, profile_id=profile_id)
         if extra_tools:
             tools = [*tools, *extra_tools]
@@ -278,7 +250,7 @@ class AgentRuntime:
         if sandbox_tools is not None:
             tools = sandbox_tools
         else:
-            tool_names = filter_tools_for_profile(defn.tools, profile_id)
+            tool_names = resolve_agent_tool_names(defn, profile_id)
             tools = tool_registry.resolve(tool_names, profile_id=profile_id)
             if extra_tools:
                 tools = [*tools, *extra_tools]
@@ -353,6 +325,7 @@ class AgentRuntime:
         investigation_id: str = "",
         sandbox_id: str = "",
         profile_id: str = DEFAULT_PROFILE_ID,
+        stream_context: StreamContext | None = None,
     ) -> dict[str, Any]:
         defn = self.registry.get(name)
         sid = session_id or f"agent-{name}"
@@ -373,7 +346,12 @@ class AgentRuntime:
             goal=user_input,
         )
         schema = schema_registry.get(defn.schema_name)
-        return await self._ainvoke(
+        sgr_metadata = self._run_sgr_preflight(
+            defn,
+            user_input,
+            profile_id=profile_id,
+        )
+        result = await self._ainvoke(
             agent,
             user_input,
             session_id=sid,
@@ -387,7 +365,67 @@ class AgentRuntime:
             tenant_id=tenant_id,
             sandbox_id=sandbox_id,
             memory_entries_loaded=entries_loaded,
+            sgr_metadata=sgr_metadata,
+            stream_context=stream_context,
         )
+        if sgr_metadata and isinstance(result, dict) and "error" not in result:
+            result = {**result, "sgr_metadata": sgr_metadata}
+        return result
+
+    def _run_sgr_preflight(
+        self,
+        defn: AgentDefinition,
+        user_input: str,
+        *,
+        profile_id: str,
+    ) -> dict[str, Any]:
+        sgr = resolve_sgr_for_agent(defn, profile_id)
+        if not sgr.enabled or sgr.mode == "off":
+            return {}
+        tool_names = resolve_agent_tool_names(defn, profile_id)
+        profile_policy = get_profile_policy_resolver().policy(profile_id)
+        try:
+            if sgr.mode == "sgr_hybrid":
+                from cys_core.application.reasoning.sgr_runtime import SgrHybridRuntime
+
+                hres = SgrHybridRuntime().reason_then_act(
+                    prompt=user_input,
+                    tool_names=tool_names,
+                )
+                return {
+                    "mode": sgr.mode,
+                    "selected_tool": hres.selected_tool,
+                    "tool_args": hres.tool_args,
+                    "reasoning": hres.reasoning.model_dump(),
+                    **build_sgr_trace_metadata(
+                        phase="hybrid_reason_then_act",
+                        task_completed=hres.reasoning.task_completed,
+                        enough_data=hres.reasoning.enough_data,
+                    ),
+                }
+            if sgr.mode == "sgr_iron":
+                from cys_core.application.reasoning.sgr_iron import SgrIronRuntime
+
+                ires = SgrIronRuntime(max_retries=get_sgr_iron_max_retries()).reason_then_act(
+                    prompt=user_input,
+                    tool_names=tool_names,
+                    profile_id=profile_id,
+                    policy=profile_policy,
+                )
+                return {
+                    "mode": sgr.mode,
+                    "selected_tool": ires.selected_tool,
+                    "tool_args": ires.tool_args,
+                    "reasoning": ires.reasoning.model_dump(),
+                    **build_sgr_trace_metadata(
+                        phase="iron_reason_then_act",
+                        task_completed=ires.reasoning.task_completed,
+                        enough_data=ires.reasoning.enough_data,
+                    ),
+                }
+        except Exception:
+            return {"mode": sgr.mode, "error": "sgr_preflight_failed"}
+        return {}
 
     async def aresume(self, name: str, session_id: str, resume: dict[str, Any]) -> dict[str, Any]:
         defn = self.registry.get(name)
@@ -457,18 +495,27 @@ class AgentRuntime:
         tenant_id: str = "default",
         sandbox_id: str = "",
         memory_entries_loaded: int = 0,
+        sgr_metadata: dict[str, Any] | None = None,
+        stream_context: StreamContext | None = None,
     ) -> dict[str, Any]:
         try:
             sanitized = self.sanitizer.sanitize(user_input, source="user")
         except SecurityViolation:
             metrics.record_sanitizer_block("user", "hard")
             return {"error": REFUSAL_MESSAGE}
-        JobBudgetTracker.record_tokens(session_id, JobBudgetTracker.estimate_tokens(sanitized))
+        use_api_usage = get_budget_use_api_usage()
+        if not use_api_usage:
+            JobBudgetTracker.record_tokens(session_id, JobBudgetTracker.estimate_tokens(sanitized))
+        callbacks = list(self.model_connector.callbacks())
+        callbacks.append(build_budget_usage_callback(session_id, use_api_usage=use_api_usage))
+        if stream_context is not None:
+            callbacks.extend(build_egress_streaming_callbacks(stream_context))
         config = merge_langchain_config(
             {
                 "configurable": {"thread_id": session_id},
-                "callbacks": self.model_connector.callbacks(),
+                "callbacks": callbacks,
                 "recursion_limit": recursion_limit or get_default_recursion_limit(),
+                "metadata": dict(sgr_metadata or {}),
             },
             persona=agent_id or session_id,
             job_id=job_id,
@@ -488,13 +535,14 @@ class AgentRuntime:
         except JobBudgetExceeded as exc:
             return {"error": str(exc)}
         coerced = self._coerce_result(result, schema=schema)
-        try:
-            JobBudgetTracker.record_tokens(
-                session_id,
-                JobBudgetTracker.estimate_tokens(json.dumps(coerced, ensure_ascii=False)),
-            )
-        except JobBudgetExceeded as exc:
-            return {"error": str(exc)}
+        if not use_api_usage:
+            try:
+                JobBudgetTracker.record_tokens(
+                    session_id,
+                    JobBudgetTracker.estimate_tokens(json.dumps(coerced, ensure_ascii=False)),
+                )
+            except JobBudgetExceeded as exc:
+                return {"error": str(exc)}
         return coerced
 
     def _coerce_result(

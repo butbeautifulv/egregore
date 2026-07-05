@@ -7,10 +7,7 @@ from interfaces.gateways.tool.server import create_app
 
 
 @pytest.mark.integration
-def test_invoke_sanitizes_and_returns_payload(monkeypatch):
-    from cys_core.registry.mcp_tools import require_sandbox
-
-    monkeypatch.setattr("interfaces.gateways.tool.handler.require_sandbox", require_sandbox)
+def test_invoke_sanitizes_and_returns_payload():
     client = TestClient(create_app())
     response = client.post(
         "/invoke",

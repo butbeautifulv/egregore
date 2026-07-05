@@ -16,8 +16,9 @@ async def test_hitl_api_job_status_and_resume(monkeypatch):
 
     store = JobStore()
     monkeypatch.setattr("interfaces.api.app.get_job_store", lambda: store)
-    monkeypatch.setattr("interfaces.control_plane.job_store.get_job_store", lambda: store)
+    monkeypatch.setattr("interfaces.control_plane.job_store.get_job_store", lambda _settings=None: store)
     monkeypatch.setattr("interfaces.worker.hitl_resume.get_job_store", lambda: store)
+    monkeypatch.setattr("bootstrap.container.Container.get_job_store", lambda self: store)
 
     pending = PendingHitlAction(
         job_id="job-hitl",
@@ -64,7 +65,9 @@ async def test_hitl_resume_rejects_bad_approval_id(monkeypatch):
 
     store = JobStore()
     monkeypatch.setattr("interfaces.api.app.get_job_store", lambda: store)
+    monkeypatch.setattr("interfaces.control_plane.job_store.get_job_store", lambda _settings=None: store)
     monkeypatch.setattr("interfaces.worker.hitl_resume.get_job_store", lambda: store)
+    monkeypatch.setattr("bootstrap.container.Container.get_job_store", lambda self: store)
 
     pending = PendingHitlAction(
         job_id="job-bad",

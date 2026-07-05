@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from cys_core.application.ports.catalog_audit import CatalogAuditPort
-from cys_core.infrastructure.catalog.audit import record_catalog_change
+from cys_core.infrastructure.catalog.audit import list_catalog_audit, record_catalog_change
 
 
 class InMemoryCatalogAudit(CatalogAuditPort):

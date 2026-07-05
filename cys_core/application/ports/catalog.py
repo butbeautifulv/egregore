@@ -7,7 +7,7 @@ from cys_core.domain.catalog.models import AgentCatalogEntry, CatalogVersion, Pr
 # AgentCatalogPort covers agent entries and profile packs (write-path seeding).
 # Resource catalogs (skills, plans, MCP servers, tools) use separate ports in
 # application/ports/registry_catalogs.py and application/ports/tool_catalog.py.
-# There is no CatalogRegistryPort — hybrid_registry implements AgentCatalogPort only.
+# There is no CatalogRegistryPort — catalog_registry implements AgentCatalogPort only.
 
 
 class AgentCatalogPort(Protocol):

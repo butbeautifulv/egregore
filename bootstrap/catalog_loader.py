@@ -15,6 +15,7 @@ __all__ = [
 
 
 def load_profile_pack() -> tuple[ProfilePack, list[AgentCatalogEntry]]:
+    from bootstrap.persona_skills import apply_persona_skills
     from bootstrap.policy_defaults import default_profile_pack
 
     agents = load_agent_definitions()
@@ -23,5 +24,5 @@ def load_profile_pack() -> tuple[ProfilePack, list[AgentCatalogEntry]]:
         id=DEFAULT_PROFILE_ID,
         default_personas=[a.name for a in workers],
     )
-    entries = [definition_to_entry(defn) for defn in agents.values()]
+    entries = apply_persona_skills([definition_to_entry(defn) for defn in agents.values()])
     return profile, entries

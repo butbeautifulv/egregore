@@ -50,22 +50,20 @@ def cmd_worker(args: argparse.Namespace) -> int:
 
         processed = run_worker_daemon(
             args.persona,
-            max_jobs=args.max_jobs if args.max_jobs > 0 else None,
+            max_jobs=args.max_jobs,
             idle_timeout=idle_timeout,
         )
         get_container().get_trace_backend().flush()
         print(json.dumps({"persona": args.persona, "processed": processed}, indent=2))
         return 0
 
-    from interfaces.worker.orchestrator import WorkerOrchestrator
-
     async def _run() -> dict:
-        orch = WorkerOrchestrator(persona=args.persona or None)
+        orch = get_container().get_worker_orchestrator(persona=args.persona or None)
         if args.once:
             result = await orch.process_next()
             return {"result": result.model_dump() if result else None}
         results = []
-        for _ in range(args.max_jobs):
+        for _ in range(args.max_jobs or 1):
             result = await orch.process_next()
             if result is None:
                 break
@@ -120,22 +118,29 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_session(args: argparse.Namespace) -> int:
-    from interfaces.ingress.router import get_event_ingress
+    import asyncio
 
-    ingress = get_event_ingress()
-    event, decision, job_ids = ingress.ingest(
-        "manual.investigation",
-        {"goal": args.goal},
-        severity="medium",
-        source="user",
-    )
+    from bootstrap.container import get_container
+    from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
+
+    async def _run():
+        start = get_container().get_start_engagement()
+        request = EngagementRequest(
+            goal=args.goal,
+            plan_strategy=PlanStrategy.META_LLM,
+            mode=EngagementMode.ASYNC,
+        )
+        return await start.execute(request)
+
+    engagement, decision, job_ids = asyncio.run(_run())
     print(
         json.dumps(
             {
-                "event": event.model_dump(),
+                "engagement_id": engagement.id,
+                "status": engagement.status.value,
                 "routing": decision.model_dump(),
                 "job_ids": job_ids,
-                "message": "Investigation jobs enqueued. Run: uv run egregore worker --max-jobs N",
+                "message": "Engagement jobs enqueued. Run: uv run egregore worker --max-jobs N",
             },
             indent=2,
             ensure_ascii=False,
@@ -145,6 +150,10 @@ def cmd_session(args: argparse.Namespace) -> int:
 
 
 def cmd_agent(args: argparse.Namespace) -> int:
+    from cys_core.observability.logging_setup import configure_logging
+
+    configure_logging("egregore-agent")
+    setup_otel(service_name="egregore-agent")
     registry = get_agent_registry()
     runtime = get_runtime()
     if args.name not in registry.names():
@@ -166,7 +175,7 @@ def cmd_adversarial_test(_args: argparse.Namespace) -> int:
 
 def cmd_catalog_seed(_args: argparse.Namespace) -> int:
     from bootstrap.catalog_loader import load_profile_pack
-    from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog, reload_agent_registry
+    from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog, reload_agent_registry
 
     profile, entries = load_profile_pack()
     catalog = get_agent_catalog()
@@ -238,7 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     worker = sub.add_parser("worker", help="Process queued worker jobs")
     worker.add_argument("--once", action="store_true", help="Process single job")
-    worker.add_argument("--max-jobs", type=int, default=1, help="Max jobs per invocation")
+    worker.add_argument("--max-jobs", type=int, default=None, help="Max jobs (daemon: unlimited by default; batch: 1)")
     worker.add_argument("--persona", default="", help="Worker persona (required for daemon/Kafka)")
     worker.add_argument("--daemon", action="store_true", help="Run as long-lived daemon")
     worker.add_argument(

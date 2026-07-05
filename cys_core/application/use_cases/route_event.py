@@ -14,10 +14,12 @@ class RouteEvent:
         *,
         plan_catalog=None,
         record_event_ingested=None,
+        mutation=None,
     ) -> None:
         self._router = router
         self._plan_catalog = plan_catalog
         self._record_event_ingested = record_event_ingested
+        self._mutation = mutation
 
     def execute(self, event: SecurityEvent, *, profile_id: str = DEFAULT_PROFILE_ID) -> RoutingDecision:
         decision = self._router.route(event, profile_id=profile_id)
@@ -34,27 +36,11 @@ class RouteEvent:
             try:
                 from cys_core.application.use_cases.update_plan_quality import UpdatePlanQuality
 
-                UpdatePlanQuality(self._plan_catalog).record_match(plan_id, jobs=jobs)
-            except Exception:
-                pass
-        else:
-            try:
-                from cys_core.infrastructure.catalog.registry_factory import get_plan_catalog
-
-                from cys_core.application.use_cases.update_plan_quality import UpdatePlanQuality
-
-                UpdatePlanQuality(get_plan_catalog()).record_match(plan_id, jobs=jobs)
+                UpdatePlanQuality(self._plan_catalog, mutation=self._mutation).record_match(plan_id, jobs=jobs)
             except Exception:
                 pass
         if self._record_event_ingested is not None:
             try:
                 self._record_event_ingested(f"plan_match:{plan_id}:{rule_idx}")
-            except Exception:
-                pass
-        else:
-            try:
-                from cys_core.observability.metrics import metrics
-
-                metrics.record_event_ingested(f"plan_match:{plan_id}:{rule_idx}")
             except Exception:
                 pass

@@ -70,7 +70,7 @@ def catalog_with_soc_profile(
         AgentCatalogEntry(name="consultant", role="worker", enabled=True, profile_id=DEFAULT_PROFILE_ID),
         AgentCatalogEntry(
             name="conductor",
-            role="orchestrator",
+            role="coordinator",
             enabled=True,
             profile_id=DEFAULT_PROFILE_ID,
             capabilities=["research", "spawn_worker"],
@@ -83,8 +83,16 @@ def catalog_with_soc_profile(
 def patch_catalog(monkeypatch, catalog: InMemoryAgentCatalog) -> None:
     """Patch common catalog singleton targets to use an in-memory catalog."""
     monkeypatch.setattr(
-        "cys_core.infrastructure.catalog.hybrid_registry.get_agent_catalog",
+        "cys_core.infrastructure.catalog.catalog_registry.get_agent_catalog",
         lambda: catalog,
+    )
+    monkeypatch.setattr(
+        "bootstrap.container.get_agent_catalog",
+        lambda: catalog,
+    )
+    monkeypatch.setattr(
+        "bootstrap.container.Container.get_agent_catalog",
+        lambda self: catalog,
     )
     loader = ProfilePolicyLoader(lambda: catalog)
     monkeypatch.setattr(
@@ -94,6 +102,16 @@ def patch_catalog(monkeypatch, catalog: InMemoryAgentCatalog) -> None:
     from cys_core.application.policy_resolver import ProfilePolicyResolver, set_policy_resolver
 
     set_policy_resolver(ProfilePolicyResolver(policy_loader=loader))
+
+
+def default_policy_port() -> FakePolicyPort:
+    return FakePolicyPort(ProfilePolicyPayload())
+
+
+def make_event_router(plans):
+    from cys_core.application.routing.event_router import EventRouter
+
+    return EventRouter(plans, policy_port=default_policy_port())
 
 
 class FakeRunRuntime:
@@ -118,3 +136,72 @@ def fake_runtime() -> FakeRunRuntime:
 @pytest.fixture
 def soc_catalog() -> InMemoryAgentCatalog:
     return catalog_with_soc_profile()
+
+
+@pytest.fixture(autouse=True)
+def _reset_container_and_memory_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use in-memory catalog and reset DI container between tests."""
+    import bootstrap.container as container_mod
+    from bootstrap.settings import get_settings
+
+    monkeypatch.setenv("AUTH_ENABLED", "0")
+    monkeypatch.setenv("USE_MEMORY_FALLBACK", "true")
+    get_settings.cache_clear()
+    container_mod._container = None
+    from cys_core.infrastructure.catalog.catalog_singletons import CatalogSingletons
+
+    CatalogSingletons.reset()
+    catalog = catalog_with_soc_profile()
+    patch_catalog(monkeypatch, catalog)
+    monkeypatch.setattr(
+        "cys_core.infrastructure.catalog.registry_factory._use_postgres",
+        lambda: False,
+    )
+    yield
+    container_mod._container = None
+    CatalogSingletons.reset()
+
+
+@pytest.fixture
+def reset_infra_caches() -> None:
+    """Reset singleton infrastructure connectors between tests."""
+    from cys_core.infrastructure.kafka_publisher import reset_kafka_publisher_cache
+    from cys_core.infrastructure.queue import reset_job_queue_cache
+    from cys_core.infrastructure.bus_transport import reset_bus_transport_cache
+
+    reset_job_queue_cache()
+    reset_kafka_publisher_cache()
+    reset_bus_transport_cache()
+    yield
+    reset_job_queue_cache()
+    reset_kafka_publisher_cache()
+    reset_bus_transport_cache()
+
+
+@pytest.fixture
+async def fastapi_app(monkeypatch: pytest.MonkeyPatch):
+    """FastAPI app with lifespan for API integration tests."""
+    from unittest.mock import MagicMock
+
+    from httpx import ASGITransport, AsyncClient
+    from interfaces.api.app import create_app
+
+    ingress = MagicMock()
+    ingress.aingest = AsyncMock(return_value=([], MagicMock(), []))
+    app = create_app(ingress=ingress)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", lifespan="on") as client:
+        yield client, app
+
+
+@pytest.fixture
+async def kafka_queue(reset_infra_caches, monkeypatch: pytest.MonkeyPatch):
+    """Isolated KafkaJobQueue with broker calls patched out."""
+    from cys_core.infrastructure.kafka_queue import KafkaJobQueue
+
+    queue = KafkaJobQueue(persona="consultant", bootstrap_servers="localhost:19092")
+    monkeypatch.setattr(queue, "_ensure_producer", AsyncMock(return_value=MagicMock()))
+    monkeypatch.setattr(queue, "_ensure_consumer", AsyncMock(return_value=True))
+    yield queue
+    if hasattr(queue, "aclose"):
+        await queue.aclose()

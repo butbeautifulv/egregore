@@ -19,6 +19,9 @@ def test_query_siem_readonly_search_mock():
 
 @pytest.mark.unit
 def test_gateway_invoke_query_siem_readonly():
+    from bootstrap.container import get_container
+
+    get_container()
     client = TestClient(create_app())
     response = client.post(
         "/invoke",
@@ -38,12 +41,10 @@ def test_gateway_invoke_query_siem_readonly():
 
 
 @pytest.mark.unit
-def test_handler_uses_adapter_not_registry_stub(monkeypatch):
-    monkeypatch.setattr(
-        "interfaces.gateways.tool.handler.invoke_adapter",
-        lambda name, args: {"adapter": True, "query": args.get("query", "")},
-    )
+def test_handler_uses_adapter_not_registry_stub():
+    from bootstrap.container import get_container
 
+    get_container()
     response = invoke_tool(
         ToolInvokeRequest(
             tool_name="query_siem_readonly",
@@ -53,4 +54,5 @@ def test_handler_uses_adapter_not_registry_stub(monkeypatch):
         )
     )
     assert response.success is True
-    assert response.data["adapter"] is True
+    assert response.data["readonly"] is True
+    assert response.data["adapter"] == "mock"

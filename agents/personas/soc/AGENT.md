@@ -38,3 +38,8 @@ Incident Priorities:
 - P2: likely malicious activity
 - P3: suspicious behavior
 - P4: informational
+
+Skills (load on demand via `load_skill`):
+- network-beaconing — C2/beaconing analysis patterns
+- threat-intel-osint — IOC and campaign enrichment context
+- prompt-injection-defense — when analyzing LLM-assisted alert content

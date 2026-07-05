@@ -1,25 +1,19 @@
 ---
 name: ci-cd-threats
-description: CI/CD and supply-chain threat patterns for authorized repo assessment
+description: CI/CD pipeline threat modeling: secrets in logs, poisoned dependencies, and build integrity.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# CI/CD Threat Patterns
+# Ci Cd Threats
 
-## When to use
+## Scope
+CI/CD pipeline threat modeling: secrets in logs, poisoned dependencies, and build integrity.
 
-- GitHub Actions / GitLab CI workflow review
-- `pull_request_target` and fork-based attacks
-- Secrets in workflow env or logs
-- Third-party action pinning and supply chain
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-## High-signal checks
-
-1. Workflows triggered by `pull_request_target` from forks with checkout of untrusted code
-2. Secrets available to workflows from fork PRs
-3. Unpinned third-party actions (`@main`, floating tags)
-4. Self-hosted runners with excessive permissions
-5. OIDC trust policies that are too broad
-
-## Output guidance
-
-Correlate weak signals into exploit paths; state preconditions and blast radius.
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

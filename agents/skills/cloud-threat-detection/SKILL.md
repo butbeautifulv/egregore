@@ -1,24 +1,19 @@
 ---
 name: cloud-threat-detection
-description: Cloud audit and exfiltration detection playbooks
+description: Cloud control-plane and workload threat detection (IAM, storage, K8s).
+version: "1.0.0"
+author: cys-agi
 ---
 
 # Cloud Threat Detection
 
-## When to use
+## Scope
+Cloud control-plane and workload threat detection (IAM, storage, K8s).
 
-- CloudTrail / Activity Log anomalies
-- Compromised cloud credentials and IAM misconfigurations
-- S3/blob storage exfiltration indicators
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-## Veil playbook anchors
-
-- `detecting-aws-cloudtrail-anomalies`
-- `analyzing-azure-activity-logs-for-threats`
-- `detecting-s3-data-exfiltration-attempts`
-- `detecting-compromised-cloud-credentials`
-- `performing-gcp-security-assessment-with-forseti`
-
-## Output guidance
-
-Always set cloud_provider and blast_radius. Map attack_phase to delivery/exploitation/actions as appropriate.
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

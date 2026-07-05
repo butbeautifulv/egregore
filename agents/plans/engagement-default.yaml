@@ -1,0 +1,13 @@
+id: engagement-default
+name: Engagement default routing
+description: Declarative routing for engagement.start events
+
+routing:
+  rules:
+    - event_types: [engagement.start]
+      personas: [conductor]
+      notify_control: true
+
+hitl:
+  auto_approve_dev: true
+  trust_threshold: 0.5

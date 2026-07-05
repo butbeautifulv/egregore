@@ -4,9 +4,8 @@ from typing import Annotated
 
 from fastapi import Header, HTTPException
 
-from bootstrap.settings import get_settings
+from bootstrap.container import get_container
 from cys_core.domain.security.auth_models import AuthClaims, AuthError
-from cys_core.infrastructure.auth.factory import get_token_verifier
 
 
 def require_role_setting(*setting_fields: str):
@@ -15,10 +14,10 @@ def require_role_setting(*setting_fields: str):
     async def _dependency(
         authorization: Annotated[str | None, Header()] = None,
     ) -> AuthClaims | None:
-        settings = get_settings()
+        settings = get_container().settings
         if not settings.auth_enabled:
             return None
-        verifier = get_token_verifier()
+        verifier = get_container().get_token_verifier()
         try:
             claims = verifier.verify_bearer(authorization)
         except AuthError as exc:

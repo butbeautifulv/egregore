@@ -1,33 +1,25 @@
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any, Protocol
+from typing import Protocol
 
-from pydantic import BaseModel, Field
+from langchain_core.tools import BaseTool
 
-
-class ToolStatus(str, Enum):
-    REAL = "real"
-    SIMULATED = "simulated"
-    STUB = "stub"
-    DISABLED = "disabled"
-
-
-class ToolDefinitionView(BaseModel):
-    """Metadata surface for registries, schema export, docs generation, and evals."""
-
-    name: str
-    description: str = ""
-    status: ToolStatus = ToolStatus.REAL
-    risk_tier: str = "medium"
-    tags: list[str] = Field(default_factory=list)
-    json_schema: dict[str, Any] = Field(default_factory=dict)
+from cys_core.domain.tools.models import ToolDefinitionView
 
 
 class ToolProviderPort(Protocol):
-    """Provides tool definitions + concrete tool objects for a profile/persona."""
+    """Resolve tool definitions and LangChain tools for a profile/persona."""
 
-    def list_definitions(self, *, profile_id: str) -> list[ToolDefinitionView]: ...
+    @property
+    def module_id(self) -> str: ...
 
-    def resolve(self, tool_names: list[str], *, profile_id: str) -> list[Any]: ...
+    def definitions(self, *, profile_id: str, persona: str = "") -> list[ToolDefinitionView]: ...
 
+    def resolve(
+        self,
+        tool_names: list[str],
+        *,
+        profile_id: str,
+        persona: str = "",
+        sandbox_id: str = "",
+    ) -> list[BaseTool]: ...

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from cys_core.application.ports.catalog import AgentCatalogPort
+from cys_core.application.ports.persona_ranking import PersonaRankingPort
 from cys_core.application.runtime_config import get_use_dynamic_catalog
-from cys_core.domain.runs.mode_policy import ModePolicy
+from cys_core.infrastructure.policy.mode_policy_adapter import allow_tool_for_profile
 from cys_core.domain.runs.models import InteractionMode
 from cys_core.infrastructure.catalog.profile_policy import get_trust_floor
 from cys_core.registry.agents import AgentRegistry
@@ -10,6 +11,7 @@ from cys_core.registry.skill_registry import SkillRegistry
 from cys_core.registry.tools import list_tools
 
 _catalog_provider: AgentCatalogPort | None = None
+_ranking_provider: PersonaRankingPort | None = None
 
 
 def set_catalog_provider(catalog: AgentCatalogPort | None) -> None:
@@ -17,18 +19,23 @@ def set_catalog_provider(catalog: AgentCatalogPort | None) -> None:
     _catalog_provider = catalog
 
 
+def set_persona_ranking_provider(port: PersonaRankingPort | None) -> None:
+    global _ranking_provider
+    _ranking_provider = port
+
+
 def _default_catalog() -> AgentCatalogPort | None:
-    if _catalog_provider is not None:
-        return _catalog_provider
     if not get_use_dynamic_catalog():
         return None
+    if _catalog_provider is not None:
+        return _catalog_provider
     try:
         from bootstrap.container import get_container
 
         return get_container().get_agent_catalog()
     except Exception:
         try:
-            from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
+            from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 
             return get_agent_catalog()
         except Exception:
@@ -120,13 +127,15 @@ def search_tools(
     q = query.lower()
     names = list_tools(profile_id=profile_id)
     hits = [name for name in names if q in name]
-    allowed = [name for name in hits if ModePolicy.allow_tool(mode, name, profile_id)]
+    allowed = [name for name in hits if allow_tool_for_profile(mode, name, profile_id)]
     return [{"name": name} for name in allowed[:limit]]
 
 
 def rank_personas_by_quality(
     personas: list[str], *, catalog: AgentCatalogPort | None = None, profile_id: str = "cybersec-soc"
 ) -> list[str]:
+    if _ranking_provider is not None:
+        return _ranking_provider.rank(personas, profile_id=profile_id)
     catalog = catalog or _default_catalog()
     floor = get_trust_floor(profile_id)
     scored = [(name, _persona_trust_score(name, catalog)) for name in personas]

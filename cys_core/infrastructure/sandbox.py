@@ -52,6 +52,10 @@ def get_sandbox_connector(
         from cys_core.infrastructure.k8s_sandbox import K8sSandboxConnector
 
         connector: LocalSandboxConnector = K8sSandboxConnector(settings=cfg)
+    elif cfg.egregore_sandbox_v2:
+        from cys_core.infrastructure.sandbox_v2 import DockerSandboxConnector
+
+        connector = DockerSandboxConnector()
     else:
         connector = LocalSandboxConnector()
     if settings is None:

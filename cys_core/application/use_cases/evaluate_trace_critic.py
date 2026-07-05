@@ -4,6 +4,8 @@ import json
 from typing import Any
 
 from cys_core.application.ports.observability.judge_backend import JudgeBackendPort
+from cys_core.application.ports.trace_callbacks import get_trace_callbacks
+from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
 from cys_core.domain.observability.models import JudgeRequest, PromptRef
 from cys_core.domain.runs.trace_models import TraceVerdict
 
@@ -16,11 +18,24 @@ class EvaluateTraceCritic:
         *,
         judge_backend: JudgeBackendPort | None = None,
         threshold: float = 0.55,
+        application_tracing: ApplicationTracingPort | None = None,
     ) -> None:
         self.judge_backend = judge_backend
         self.threshold = threshold
+        self._tracing = application_tracing or NOOP_APPLICATION_TRACING
 
     def execute(
+        self,
+        *,
+        goal: str,
+        trace: dict[str, Any] | list[Any] | str,
+        step_count: int = 0,
+        engagement_id: str = "",
+    ) -> TraceVerdict:
+        with self._tracing.span("run.trace_critic", engagement_id=engagement_id, step_count=step_count):
+            return self._execute_inner(goal=goal, trace=trace, step_count=step_count)
+
+    def _execute_inner(
         self,
         *,
         goal: str,
@@ -70,10 +85,9 @@ class EvaluateTraceCritic:
 
     def _reasoning_judge(self, goal: str, trace_text: str, step_count: int) -> TraceVerdict | None:
         try:
-            from bootstrap.settings import get_settings
-            from cys_core.application.runtime_config import get_trace_critic_use_reasoning
+            from cys_core.application.runtime_config import get_reasoning_llm_settings, get_trace_critic_use_reasoning
 
-            if not get_trace_critic_use_reasoning() or not get_settings().reasoning_model.strip():
+            if not get_trace_critic_use_reasoning() or not str(get_reasoning_llm_settings().get("model", "")).strip():
                 return None
             from cys_core.domain.workers.job_budget import JobBudgetTracker
             from cys_core.llm.reasoning import get_reasoning_model_connector
@@ -86,7 +100,7 @@ class EvaluateTraceCritic:
                 f"Trace:\n{trace_text[:6000]}\n"
                 "Reply JSON: {\"score\":0.0-1.0,\"verdict\":\"pass|fail\",\"reasoning\":\"...\"}"
             )
-            response = model.invoke(prompt)
+            response = model.invoke(prompt, config={"callbacks": get_trace_callbacks()})
             text = str(getattr(response, "content", response))
             data = json.loads(text[text.find("{") : text.rfind("}") + 1]) if "{" in text else {}
             score = float(data.get("score", 0.5))

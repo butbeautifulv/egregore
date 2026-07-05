@@ -1,8 +1,19 @@
 from functools import lru_cache
 from typing import Any, Self
 
-from pydantic import Field, computed_field, model_validator
+from pydantic import Field, SecretStr, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ALLOWED_STAGES = frozenset({"dev", "test", "staging", "prod"})
+_ALLOWED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+_ALLOWED_LOG_FORMATS = frozenset({"json", "text"})
+_ALLOWED_CONTROL_MODES = frozenset({"inprocess", "daemon"})
+_ALLOWED_SIEM_ADAPTERS = frozenset({"mock", "http"})
+_ALLOWED_SGR_MODES = frozenset({"off", "soft", "iron", "sgr_hybrid", "sgr_iron", "hybrid"})
+_ALLOWED_STORE_CONNECTORS = frozenset({"auto", "memory", "postgres", "redis"})
+_DEFAULT_REDIS_PASSWORD = "password"
+_DEFAULT_POSTGRES_PASSWORD = "password"
+_DEFAULT_BUS_SIGNING_KEY = "cys-agi-bus-key"
 
 
 class Settings(BaseSettings):
@@ -12,6 +23,7 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
     gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
+    deepseek_api_key: str = Field(default="", validation_alias="DEEPSEEK_API_KEY")
     ai_apikey: str = Field(default="", validation_alias="AI_APIKEY")
 
     llm_provider: str = Field(default="litellm", validation_alias="LLM_PROVIDER")
@@ -28,10 +40,20 @@ class Settings(BaseSettings):
         validation_alias="WORKER_JOB_TIMEOUT",
         description="Hard wall-clock cap per worker job (sandbox + LLM + bus).",
     )
-    manual_investigation_async: bool = Field(
+    engagement_async_planning: bool = Field(
         default=True,
-        validation_alias="MANUAL_INVESTIGATION_ASYNC",
-        description="Defer manual.investigation LLM planner to background (API returns 202).",
+        validation_alias="ENGAGEMENT_ASYNC_PLANNING",
+        description="Defer meta-LLM engagement planning to background (API returns 202).",
+    )
+    coordinator_llm_narrative: bool = Field(
+        default=False,
+        validation_alias="COORDINATOR_LLM_NARRATIVE",
+        description="Use LLM coordinator narrator (worker/control pod only).",
+    )
+    egregore_sandbox_v2: bool = Field(
+        default=False,
+        validation_alias="EGREGORE_SANDBOX_V2",
+        description="Use Docker/Kata sandbox v2 workload isolation.",
     )
     planner_fallback_personas: str = Field(
         default="consultant",
@@ -43,13 +65,19 @@ class Settings(BaseSettings):
 
     redis_host: str = Field(default="localhost", validation_alias="REDIS_HOST")
     redis_port: int = Field(default=6379, validation_alias="REDIS_PORT")
-    redis_password: str = Field(default="password", validation_alias="REDIS_PASSWORD")
+    redis_password: SecretStr = Field(
+        default=SecretStr(_DEFAULT_REDIS_PASSWORD),
+        validation_alias="REDIS_PASSWORD",
+    )
     redis_db: int = Field(default=0, validation_alias="REDIS_DB")
 
     postgres_host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, validation_alias="POSTGRES_PORT")
     postgres_user: str = Field(default="postgres", validation_alias="POSTGRES_USER")
-    postgres_password: str = Field(default="password", validation_alias="POSTGRES_PASSWORD")
+    postgres_password: SecretStr = Field(
+        default=SecretStr(_DEFAULT_POSTGRES_PASSWORD),
+        validation_alias="POSTGRES_PASSWORD",
+    )
     postgres_db: str = Field(default="cys_agi", validation_alias="POSTGRES_DB")
 
     langfuse_public_key: str = Field(default="", validation_alias="LANGFUSE_PUBLIC_KEY")
@@ -93,12 +121,16 @@ class Settings(BaseSettings):
     use_memory_fallback: bool = Field(default=False, validation_alias="USE_MEMORY_FALLBACK")
     persistence_connector: str = Field(default="auto", validation_alias="PERSISTENCE_CONNECTOR")
     job_store_connector: str = Field(default="auto", validation_alias="JOB_STORE_CONNECTOR")
-    bus_signing_key: str = Field(default="cys-agi-bus-key", validation_alias="BUS_SIGNING_KEY")
+    engagement_store_connector: str = Field(default="auto", validation_alias="ENGAGEMENT_STORE_CONNECTOR")
+    bus_signing_key: SecretStr = Field(
+        default=SecretStr(_DEFAULT_BUS_SIGNING_KEY),
+        validation_alias="BUS_SIGNING_KEY",
+    )
     siem_adapter: str = Field(default="mock", validation_alias="SIEM_ADAPTER")
     siem_base_url: str = Field(default="", validation_alias="SIEM_BASE_URL")
     use_real_embeddings: bool = Field(default=False, validation_alias="USE_REAL_EMBEDDINGS")
     agents_root: str = Field(default="agents", validation_alias="AGENTS_ROOT")
-    use_dynamic_catalog: bool = Field(default=False, validation_alias="USE_DYNAMIC_CATALOG")
+    use_dynamic_catalog: bool = Field(default=True, validation_alias="USE_DYNAMIC_CATALOG")
     obs_prompt_backend: str = Field(default="filesystem", validation_alias="OBS_PROMPT_BACKEND")
     obs_trace_backend: str = Field(default="langfuse", validation_alias="OBS_TRACE_BACKEND")
     obs_judge_backend: str = Field(default="noop", validation_alias="OBS_JUDGE_BACKEND")
@@ -112,6 +144,8 @@ class Settings(BaseSettings):
         description="Limit agents to one tool call per model turn.",
     )
     egregore_strict_plan: bool = Field(default=False, validation_alias="EGREGORE_STRICT_PLAN")
+    stream_agent_output: bool = Field(default=False, validation_alias="STREAM_AGENT_OUTPUT")
+    stream_agent_tools: bool = Field(default=True, validation_alias="STREAM_AGENT_TOOLS")
     keep_tool_results: int = Field(default=3, validation_alias="KEEP_TOOL_RESULTS")
     search_judge_llm: bool = Field(default=False, validation_alias="SEARCH_JUDGE_LLM")
     self_consistency_n: int = Field(default=0, validation_alias="SELF_CONSISTENCY_N")
@@ -148,6 +182,14 @@ class Settings(BaseSettings):
         validation_alias="KAFKA_BOOTSTRAP_SERVERS",
     )
     use_kafka: bool = Field(default=False, validation_alias="USE_KAFKA")
+    strict_redis_queue: bool = Field(default=False, validation_alias="STRICT_REDIS_QUEUE")
+    bus_max_jobs_per_engagement: int = Field(default=20, validation_alias="BUS_MAX_JOBS_PER_ENGAGEMENT")
+    bus_max_total_jobs_window: int = Field(default=50, validation_alias="BUS_MAX_TOTAL_JOBS_WINDOW")
+    bus_dedup_trip_threshold: int = Field(default=5, validation_alias="BUS_DEDUP_TRIP_THRESHOLD")
+    bus_pingpong_trip_threshold: int = Field(default=3, validation_alias="BUS_PINGPONG_TRIP_THRESHOLD")
+    bus_noop_churn_threshold: int = Field(default=10, validation_alias="BUS_NOOP_CHURN_THRESHOLD")
+    bus_guard_window_seconds: int = Field(default=600, validation_alias="BUS_GUARD_WINDOW_SECONDS")
+    budget_use_api_usage: bool = Field(default=True, validation_alias="BUDGET_USE_API_USAGE")
 
     tool_gateway_url: str = Field(
         default="http://localhost:8092",
@@ -216,7 +258,10 @@ class Settings(BaseSettings):
     rbac_role_operator: str = Field(default="egregore-operator", validation_alias="RBAC_ROLE_OPERATOR")
     rbac_role_gateway: str = Field(default="egregore-gateway", validation_alias="RBAC_ROLE_GATEWAY")
     rbac_role_reader: str = Field(default="egregore-reader", validation_alias="RBAC_ROLE_READER")
-    gateway_access_token: str = Field(default="", validation_alias="GATEWAY_ACCESS_TOKEN")
+    gateway_access_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="GATEWAY_ACCESS_TOKEN",
+    )
 
     auth_broker_url: str = Field(default="", validation_alias="BROKER_URL")
     auth_broker_service_token: str = Field(default="", validation_alias="BROKER_SERVICE_TOKEN")
@@ -225,7 +270,7 @@ class Settings(BaseSettings):
     use_auth_broker: bool = Field(default=False, validation_alias="USE_AUTH_BROKER")
 
     ui_cors_origins_raw: str = Field(
-        default="http://localhost:3000,http://localhost:5173",
+        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173",
         validation_alias="UI_CORS_ORIGINS",
     )
 
@@ -244,6 +289,69 @@ class Settings(BaseSettings):
             data = {**data, "UI_CORS_ORIGINS": ",".join(str(item) for item in raw)}
         return data
 
+    @field_validator("log_level")
+    @classmethod
+    def normalize_log_level(cls, value: str) -> str:
+        upper = value.upper()
+        if upper not in _ALLOWED_LOG_LEVELS:
+            raise ValueError(f"LOG_LEVEL must be one of {sorted(_ALLOWED_LOG_LEVELS)}")
+        return upper
+
+    @model_validator(mode="after")
+    def validate_runtime_config(self) -> Self:
+        stage = self.stage.lower()
+        if stage not in _ALLOWED_STAGES:
+            raise ValueError(f"STAGE must be one of {sorted(_ALLOWED_STAGES)}")
+
+        if self.log_format not in _ALLOWED_LOG_FORMATS:
+            raise ValueError(f"LOG_FORMAT must be one of {sorted(_ALLOWED_LOG_FORMATS)}")
+
+        control_mode = self.control_mode.lower()
+        if control_mode not in _ALLOWED_CONTROL_MODES:
+            raise ValueError(f"CONTROL_MODE must be one of {sorted(_ALLOWED_CONTROL_MODES)}")
+
+        siem_adapter = self.siem_adapter.lower()
+        if siem_adapter not in _ALLOWED_SIEM_ADAPTERS:
+            raise ValueError(f"SIEM_ADAPTER must be one of {sorted(_ALLOWED_SIEM_ADAPTERS)}")
+
+        sgr_mode = self.sgr_default_mode.lower()
+        if sgr_mode not in _ALLOWED_SGR_MODES:
+            raise ValueError(f"SGR_DEFAULT_MODE must be one of {sorted(_ALLOWED_SGR_MODES)}")
+
+        for name, value in (
+            ("PERSISTENCE_CONNECTOR", self.persistence_connector),
+            ("JOB_STORE_CONNECTOR", self.job_store_connector),
+            ("STATUS_STORE_CONNECTOR", self.status_store_connector),
+        ):
+            normalized = value.lower()
+            if normalized not in _ALLOWED_STORE_CONNECTORS:
+                raise ValueError(f"{name} must be one of {sorted(_ALLOWED_STORE_CONNECTORS)}")
+
+        if self.llm_request_timeout <= 0:
+            raise ValueError("LLM_REQUEST_TIMEOUT must be positive")
+        if self.worker_job_timeout <= 0:
+            raise ValueError("WORKER_JOB_TIMEOUT must be positive")
+        if self.worker_job_timeout < self.llm_request_timeout:
+            raise ValueError("WORKER_JOB_TIMEOUT must be >= LLM_REQUEST_TIMEOUT")
+
+        if self.use_kafka and not self.kafka_bootstrap_servers.strip():
+            raise ValueError("KAFKA_BOOTSTRAP_SERVERS is required when USE_KAFKA=1")
+
+        if siem_adapter == "http" and not self.siem_base_url.strip():
+            raise ValueError("SIEM_BASE_URL is required when SIEM_ADAPTER=http")
+
+        if stage == "prod":
+            if self.use_memory_fallback:
+                raise ValueError("USE_MEMORY_FALLBACK must be false when STAGE=prod")
+            if self.redis_password.get_secret_value() == _DEFAULT_REDIS_PASSWORD:
+                raise ValueError("REDIS_PASSWORD must not use the default value in prod")
+            if self.postgres_password.get_secret_value() == _DEFAULT_POSTGRES_PASSWORD:
+                raise ValueError("POSTGRES_PASSWORD must not use the default value in prod")
+            if self.bus_signing_key.get_secret_value() == _DEFAULT_BUS_SIGNING_KEY:
+                raise ValueError("BUS_SIGNING_KEY must not use the default value in prod")
+
+        return self
+
     @model_validator(mode="after")
     def validate_auth_config(self) -> Self:
         if self.auth_enabled and not self.keycloak_issuer.strip():
@@ -254,6 +362,7 @@ class Settings(BaseSettings):
     @property
     def llm_api_key(self) -> str:
         for key in (
+            self.deepseek_api_key,
             self.openrouter_api_key,
             self.openai_api_key,
             self.anthropic_api_key,
@@ -270,15 +379,16 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def postgres_url(self) -> str:
+        password = self.postgres_password.get_secret_value()
         return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
+            f"postgresql://{self.postgres_user}:{password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
     @computed_field
     @property
     def bus_signing_key_bytes(self) -> bytes:
-        return self.bus_signing_key.encode("utf-8")
+        return self.bus_signing_key.get_secret_value().encode("utf-8")
 
     @computed_field
     @property
@@ -298,9 +408,20 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def redis_url(self) -> str:
-        if self.redis_password:
-            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        password = self.redis_password.get_secret_value()
+        if password:
+            return f"redis://:{password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    def __repr__(self) -> str:
+        return (
+            "Settings("
+            f"stage={self.stage!r}, "
+            f"use_kafka={self.use_kafka}, "
+            f"control_mode={self.control_mode!r}, "
+            f"auth_enabled={self.auth_enabled}"
+            ")"
+        )
 
 
 @lru_cache

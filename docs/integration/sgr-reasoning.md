@@ -23,7 +23,13 @@ Egregore adapts patterns from [`shared/references/sgr-agent-core-main`](../../..
 | `GeneratePlanTool` | `GeneratePlanPayload` in `plan_investigation` |
 | `AdaptPlanTool` | `AdaptPlanPayload` in PLAN mode |
 | `BaseAgent` two-phase loop | `SchemaGuidedReasoningMiddleware` |
-| `NextStepToolsBuilder` | deferred (P9+) |
+| `NextStepToolsBuilder` | **Deferred P4+** — optional extension; not required for hybrid/iron gate. See [NextStepTools (deferred)](#nextsteptools-deferred) |
+
+## NextStepTools (deferred)
+
+`NextStepToolsBuilder` from the SGR reference (dynamic per-turn tool schema narrowing) is **not** in P4 scope.
+Hybrid and iron paths use full allowlisted tools + `reasoning_step` gate. A future P9+ extension may add
+per-turn tool subsets without changing the middleware order above.
 
 ## Middleware stack order
 

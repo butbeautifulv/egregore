@@ -4,29 +4,45 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
-from cys_core.application.use_cases.manage_run import ManageRun
+from bootstrap.container import get_container
+from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
 from cys_core.domain.runs.plan_models import PlanApproval
 from cys_core.domain.security.auth_models import AuthClaims
-from cys_core.infrastructure.runs.factory import get_attachment_store, get_run_state_store, get_work_todo_store
-from cys_core.runtime.agent import get_runtime
-from bootstrap.container import get_container
 from interfaces.api.auth import require_ingress_role, require_operator_role
-from interfaces.api.run_errors import raise_run_api_error
-from interfaces.api.run_schemas import RunCreateIn, RunOut, RunStepIn, SessionCreateIn, new_job_context, new_session_context
+from interfaces.api.run_schemas import RunCreateIn, RunOut, RunStepIn, SessionCreateIn
 
 router = APIRouter(tags=["runs"])
 
 
-def _manage_run() -> ManageRun:
-    container = get_container()
-    return ManageRun(
-        runtime=get_runtime(),
-        state_store=get_run_state_store(),
-        catalog=get_agent_catalog(),
-        todo_store=get_work_todo_store(),
-        judge_backend=container.get_judge_backend(),
+def _start_engagement():
+    return get_container().get_start_engagement()
+
+
+async def _create_via_engagement(
+    *,
+    goal: str,
+    profile_id: str,
+    tenant_id: str,
+    persona: str = "conductor",
+) -> dict[str, Any]:
+    request = EngagementRequest(
+        profile_id=profile_id,
+        goal=goal,
+        mode=EngagementMode.INTERACTIVE,
+        plan_strategy=PlanStrategy.DECLARATIVE,
+        input={"persona": persona},
+        tenant_id=tenant_id,
     )
+    engagement, decision, job_ids = await _start_engagement().execute(request)
+    return {
+        "run_context": {"context_id": engagement.id, "kind": "job", "tenant_id": engagement.tenant_id},
+        "result": {
+            "engagement_id": engagement.id,
+            "status": engagement.status.value,
+            "job_ids": job_ids,
+            "playbook_id": decision.playbook_id,
+        },
+    }
 
 
 @router.post("/runs", response_model=RunOut)
@@ -34,16 +50,12 @@ async def create_run(
     body: RunCreateIn,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> RunOut:
-    ctx = new_job_context(body)
-    user_input = body.message or body.goal
-    manage = _manage_run()
-    manage.save_context(ctx, goal=user_input)
-    if body.file_paths:
-        _attach_paths_to_run(ctx.tenant_id, ctx.context_id, ctx.kind.value, body.file_paths)
-    try:
-        out = await manage.create_and_step(ctx, user_input, persona=body.persona)
-    except Exception as exc:
-        raise_run_api_error(exc)
+    out = await _create_via_engagement(
+        goal=body.message or body.goal,
+        profile_id=body.profile_id,
+        tenant_id=body.tenant_id,
+        persona=body.persona,
+    )
     return RunOut(run_context=out["run_context"], result=out["result"])
 
 
@@ -54,12 +66,13 @@ async def run_step(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> RunOut:
-    try:
-        out = await _manage_run().step(run_id, body.message, tenant_id=tenant_id, mode=body.mode)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Run not found") from None
-    except Exception as exc:
-        raise_run_api_error(exc)
+    out = await _create_via_engagement(
+        goal=body.message,
+        profile_id="cybersec-soc",
+        tenant_id=tenant_id,
+        persona="conductor",
+    )
+    out["run_context"]["context_id"] = run_id
     return RunOut(run_context=out["run_context"], result=out["result"])
 
 
@@ -70,13 +83,7 @@ async def approve_plan(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> RunOut:
-    try:
-        out = await _manage_run().approve_plan(run_id, body, tenant_id=tenant_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Run not found") from None
-    except Exception as exc:
-        raise_run_api_error(exc)
-    return RunOut(run_context=out["run_context"], result=out["result"])
+    raise HTTPException(status_code=501, detail="Plan approval via engagement queue not implemented")
 
 
 @router.post("/sessions", response_model=RunOut)
@@ -84,12 +91,12 @@ async def create_session(
     body: SessionCreateIn,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> RunOut:
-    ctx = new_session_context(body)
-    user_input = body.message or body.goal
-    try:
-        out = await _manage_run().create_and_step(ctx, user_input, persona="conductor")
-    except Exception as exc:
-        raise_run_api_error(exc)
+    out = await _create_via_engagement(
+        goal=body.message or body.goal,
+        profile_id=body.profile_id,
+        tenant_id=body.tenant_id,
+        persona="conductor",
+    )
     return RunOut(run_context=out["run_context"], result=out["result"])
 
 
@@ -99,26 +106,13 @@ async def get_run(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> dict[str, Any]:
-    store = get_run_state_store()
-    try:
-        ctx = _manage_run().get_context(run_id, tenant_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Run not found") from None
-    state = store.get(tenant_id, run_id, ctx.kind.value)
+    engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Run not found")
     return {
-        "run_context": ctx.model_dump(),
-        "state": state.model_dump() if state else None,
+        "run_context": {"context_id": engagement.id, "kind": "job", "tenant_id": engagement.tenant_id},
+        "state": {"status": engagement.status.value, "goal": engagement.goal},
     }
-
-
-def _attach_paths_to_run(tenant_id: str, run_id: str, kind: str, paths: list[str]) -> None:
-    store = get_run_state_store()
-    state = store.get(tenant_id, run_id, kind)
-    if state is None:
-        return
-    attachments = [{"path": path, "name": path.rsplit("/", 1)[-1]} for path in paths]
-    state.attachments = [*state.attachments, *attachments]
-    store.upsert(state)
 
 
 @router.post("/runs/{run_id}/attachments")
@@ -128,15 +122,9 @@ async def upload_attachment(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> dict[str, Any]:
-    store = get_run_state_store()
-    try:
-        ctx = _manage_run().get_context(run_id, tenant_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Run not found") from None
+    engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Run not found")
     data = await file.read()
-    saved_path = get_attachment_store().save(tenant_id, run_id, file.filename or "attachment.bin", data)
-    state = store.get(tenant_id, run_id, ctx.kind.value)
-    if state is not None:
-        state.attachments = [*state.attachments, {"path": saved_path, "name": file.filename or "attachment.bin"}]
-        store.upsert(state)
+    saved_path = get_container().get_attachment_store().save(tenant_id, run_id, file.filename or "attachment.bin", data)
     return {"path": saved_path, "run_id": run_id}

@@ -11,6 +11,7 @@ tools:
   - build_timeline
 skills:
   - endpoint-hunting
+  - threat-intel-osint
 hitl_tools: {}
 trust_level: internal
 bus_recipients:

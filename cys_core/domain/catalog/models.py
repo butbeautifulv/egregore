@@ -90,6 +90,9 @@ class ProfilePolicyPayload(BaseModel):
     breaker_reset_seconds: int = 60
     tool_allowlist: dict[str, list[str] | None] = Field(default_factory=dict)
     tool_risk: dict[str, str] = Field(default_factory=dict)
+    datasource_allowlist: dict[str, list[str] | None] = Field(default_factory=dict)
+    persona_datasource_allowlist: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    datasource_capability_grants: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
     hitl_auto_approve_threshold: str = "low"
     mode_policy: ModePolicyPayload = Field(default_factory=ModePolicyPayload)
     escalation_paths: list[list[str]] = Field(default_factory=list)

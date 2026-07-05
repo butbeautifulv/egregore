@@ -7,7 +7,9 @@ tools:
   - playbook_get
   - playbook_procedure
   - ti_search_in_category
-skills: []
+skills:
+  - compliance-frameworks
+  - secure-deployment
 hitl_tools: {}
 trust_level: internal
 bus_recipients:

@@ -9,7 +9,7 @@ _POLICY_GETTER_DEPRECATION = (
 )
 
 _stage: str = "dev"
-_manual_investigation_async: bool = True
+_engagement_async_planning: bool = True
 _use_conductor_for_events: bool = False
 _max_spawn_depth: int = 5
 _use_dynamic_catalog: bool = False
@@ -30,6 +30,8 @@ _veneno_mcp_timeout: float = 60.0
 _planner_fallback_personas: str = "consultant"
 _egregore_one_tool_per_turn: bool = True
 _egregore_strict_plan: bool = False
+_stream_agent_output: bool = False
+_stream_agent_tools: bool = True
 _keep_tool_results: int = 3
 _search_judge_llm: bool = False
 _self_consistency_n: int = 0
@@ -57,8 +59,10 @@ _python_sandbox_timeout: float = 30.0
 _use_sgr_reasoning: bool = True
 _sgr_default_mode: str = "off"
 _sgr_iron_max_retries: int = 3
+_use_run_kernel: bool = False
+_budget_use_api_usage: bool = True
 def configure_from_settings(settings: Any) -> None:
-    global _stage, _manual_investigation_async, _use_conductor_for_events
+    global _stage, _engagement_async_planning, _use_conductor_for_events
     global _max_spawn_depth, _use_dynamic_catalog, _use_memory_fallback
     global _postgres_url, _default_job_recursion_limit
     global _llm_model, _llm_api_key, _llm_base_url, _llm_temperature, _llm_request_timeout
@@ -70,11 +74,12 @@ def configure_from_settings(settings: Any) -> None:
     global _context_summary_enabled, _trace_critic_rerun_max, _trace_critic_hitl_on_exhausted
     global _reasoning_model, _reasoning_temperature, _e2b_api_key, _python_sandbox_timeout
     global _egregore_strict_plan, _keep_tool_results, _search_judge_llm, _self_consistency_n
+    global _stream_agent_output, _stream_agent_tools
     global _self_refine_max, _browser_enabled, _perplexity_api_key, _jina_api_key, _delegate_budget_fraction
     global _trace_critic_use_reasoning
-    global _use_sgr_reasoning, _sgr_default_mode, _sgr_iron_max_retries
+    global _use_sgr_reasoning, _sgr_default_mode, _sgr_iron_max_retries, _use_run_kernel, _budget_use_api_usage
     _stage = settings.stage
-    _manual_investigation_async = settings.manual_investigation_async
+    _engagement_async_planning = settings.engagement_async_planning
     _use_conductor_for_events = settings.use_conductor_for_events
     _max_spawn_depth = settings.max_spawn_depth
     _use_dynamic_catalog = settings.use_dynamic_catalog
@@ -95,6 +100,8 @@ def configure_from_settings(settings: Any) -> None:
     _planner_fallback_personas = settings.planner_fallback_personas
     _egregore_one_tool_per_turn = settings.egregore_one_tool_per_turn
     _egregore_strict_plan = settings.egregore_strict_plan
+    _stream_agent_output = settings.stream_agent_output
+    _stream_agent_tools = settings.stream_agent_tools
     _keep_tool_results = settings.keep_tool_results
     _search_judge_llm = settings.search_judge_llm
     _self_consistency_n = settings.self_consistency_n
@@ -121,15 +128,20 @@ def configure_from_settings(settings: Any) -> None:
     _python_sandbox_timeout = settings.python_sandbox_timeout
     _use_sgr_reasoning = settings.use_sgr_reasoning
     _sgr_default_mode = settings.sgr_default_mode
+    from cys_core.application.reasoning.sgr_tooling import normalize_sgr_mode
+
+    _sgr_default_mode = normalize_sgr_mode(_sgr_default_mode)
     _sgr_iron_max_retries = settings.sgr_iron_max_retries
+    _use_run_kernel = getattr(settings, "use_run_kernel", False)
+    _budget_use_api_usage = settings.budget_use_api_usage
 
 
 def get_stage() -> str:
     return _stage
 
 
-def get_manual_investigation_async() -> bool:
-    return _manual_investigation_async
+def get_engagement_async_planning() -> bool:
+    return _engagement_async_planning
 
 
 def get_use_conductor_for_events() -> bool:
@@ -299,6 +311,14 @@ def get_egregore_strict_plan() -> bool:
     return _egregore_strict_plan
 
 
+def get_stream_agent_output() -> bool:
+    return _stream_agent_output
+
+
+def get_stream_agent_tools() -> bool:
+    return _stream_agent_output and _stream_agent_tools
+
+
 def get_keep_tool_results() -> int:
     return _keep_tool_results
 
@@ -333,3 +353,11 @@ def get_delegate_budget_fraction() -> float:
     from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 
     return get_profile_policy_resolver().delegate_budget_fraction(DEFAULT_PROFILE_ID)
+
+
+def get_use_run_kernel() -> bool:
+    return _use_run_kernel
+
+
+def get_budget_use_api_usage() -> bool:
+    return _budget_use_api_usage

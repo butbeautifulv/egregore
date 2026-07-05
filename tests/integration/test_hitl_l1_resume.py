@@ -24,6 +24,10 @@ async def test_hitl_resume_rejects_forged_approval(monkeypatch):
         {"params_hash": "abc"},
     )
     monkeypatch.setattr("interfaces.worker.hitl_resume.get_job_store", lambda: store)
+    monkeypatch.setattr(
+        "interfaces.worker.hitl_resume.get_runtime",
+        lambda: __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(),
+    )
     with pytest.raises(HitlResumeError, match="approval_id"):
         await resume_worker_job(
             "job-bad",

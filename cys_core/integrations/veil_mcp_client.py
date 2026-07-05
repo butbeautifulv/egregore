@@ -10,6 +10,7 @@ from cys_core.application.runtime_config import (
     get_veil_mcp_url,
     veil_mcp_enabled as _veil_mcp_enabled,
 )
+from cys_core.infrastructure.http_client import sync_http_client
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
 
@@ -80,8 +81,8 @@ def call_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
     url = get_veil_mcp_url().rstrip("/")
 
     try:
-        with httpx.Client(timeout=get_veil_mcp_timeout()) as client:
-            response = client.post(url, json=payload, headers=headers)
+        with sync_http_client(timeout=get_veil_mcp_timeout(), headers=headers) as client:
+            response = client.post(url, json=payload)
             response.raise_for_status()
             body = response.json()
     except httpx.HTTPError as exc:

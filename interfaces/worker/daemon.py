@@ -9,7 +9,6 @@ from cys_core.infrastructure.daemon_runner import run_poll_daemon
 from cys_core.observability.langfuse_client import flush_langfuse
 from cys_core.observability.logging_setup import configure_logging
 from cys_core.observability.otel import setup_otel
-from interfaces.worker.orchestrator import WorkerOrchestrator
 
 logger = structlog.get_logger(__name__)
 
@@ -35,8 +34,21 @@ class WorkerDaemon:
     async def run(self) -> int:
         configure_logging("egregore-worker")
         setup_otel(service_name="egregore-worker")
-        logger.info("worker daemon starting", persona=self.persona)
-        orch = WorkerOrchestrator(persona=self.persona)
+        from bootstrap.bus_lifecycle import wire_async_bus
+
+        await wire_async_bus()
+        queue = get_container().get_job_queue(self.persona or None)
+        backend = getattr(queue, "active_backend", queue.name)
+        egress = get_container().get_engagement_egress()
+        egress_backend = getattr(egress, "active_backend", "unknown")
+        logger.info(
+            "worker daemon starting",
+            persona=self.persona or "*",
+            queue_backend=backend,
+            egress_backend=egress_backend,
+            queue_name=queue.name,
+        )
+        orch = get_container().get_worker_orchestrator(persona=self.persona)
         processed = 0
 
         async def process_one(_timeout: float) -> bool:
@@ -52,12 +64,16 @@ class WorkerDaemon:
             get_container().get_trace_backend().flush()
             return True
 
-        await run_poll_daemon(
-            process_one,
-            idle_timeout=self.idle_timeout,
-            idle_sleep=asyncio.sleep,
-            request_stop=self.request_stop,
-        )
+        try:
+            await run_poll_daemon(
+                process_one,
+                idle_timeout=self.idle_timeout,
+                idle_sleep=asyncio.sleep,
+                request_stop=self.request_stop,
+            )
+        finally:
+            if hasattr(queue, "aclose"):
+                await queue.aclose()
         return processed
 
 

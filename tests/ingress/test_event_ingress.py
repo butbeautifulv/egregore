@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
-from cys_core.domain.events.plans import load_plan_routing
-from cys_core.application.routing.event_router import EventRouter
+from tests.application.port_fakes import fake_correlation_id_port
+from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
+from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
+from cys_core.application.plans.plan_loader import load_plan_routing
+from tests.conftest import make_event_router
+from cys_core.infrastructure.queue import InMemoryJobQueue
 from interfaces.ingress.router import EventIngress
 
 
@@ -20,8 +26,14 @@ routing:
 """,
         encoding="utf-8",
     )
-    router = EventRouter([load_plan_routing(plan)])
-    ingress = EventIngress(router=router)
+    router = make_event_router([load_plan_routing(plan)])
+    enqueuer = EnqueueWorkerJobs(queue=InMemoryJobQueue(), job_store=MagicMock())
+    route_and_enqueue = RouteAndEnqueueEvent(
+        router=router,
+        enqueuer=enqueuer,
+        correlation_id_port=fake_correlation_id_port(),
+    )
+    ingress = EventIngress(route_and_enqueue=route_and_enqueue)
     event, decision, job_ids = ingress.ingest("siem.alert", {"alert": "powershell"}, severity="high")
     assert event.type == "siem.alert"
     assert decision.personas == ["soc"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 import httpx
 import pytest
@@ -9,6 +10,17 @@ from fastapi.testclient import TestClient
 from cys_core.integrations.veil_mcp_client import call_veil_mcp_tool
 from interfaces.gateways.tool.adapters.veil_mcp import call_veil_tool
 from interfaces.gateways.tool.server import create_app
+
+
+def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
+    @contextmanager
+    def _fake_sync_http_client(**_kwargs: object):
+        yield mock_client
+
+    monkeypatch.setattr(
+        "cys_core.integrations.veil_mcp_client.sync_http_client",
+        _fake_sync_http_client,
+    )
 
 
 @pytest.mark.unit
@@ -34,18 +46,7 @@ def test_call_veil_mcp_tool_success(monkeypatch):
         )
 
     mock_client = httpx.Client(transport=httpx.MockTransport(handler))
-
-    class _ClientFactory:
-        def __init__(self, timeout: float) -> None:
-            self._client = mock_client
-
-        def __enter__(self) -> httpx.Client:
-            return self._client
-
-        def __exit__(self, *args: object) -> None:
-            self._client.close()
-
-    monkeypatch.setattr("cys_core.integrations.veil_mcp_client.httpx.Client", _ClientFactory)
+    _patch_sync_http_client(monkeypatch, mock_client)
     result = call_veil_mcp_tool("playbook_search", {"query": "forensics", "limit": 2})
     assert result["success"] is True
     assert result["content"]["count"] == 1
@@ -74,18 +75,7 @@ def test_gateway_invoke_playbook_search(monkeypatch):
         )
 
     mock_client = httpx.Client(transport=httpx.MockTransport(handler))
-
-    class _ClientFactory:
-        def __init__(self, timeout: float) -> None:
-            self._client = mock_client
-
-        def __enter__(self) -> httpx.Client:
-            return self._client
-
-        def __exit__(self, *args: object) -> None:
-            self._client.close()
-
-    monkeypatch.setattr("cys_core.integrations.veil_mcp_client.httpx.Client", _ClientFactory)
+    _patch_sync_http_client(monkeypatch, mock_client)
 
     client = TestClient(create_app())
     response = client.post(

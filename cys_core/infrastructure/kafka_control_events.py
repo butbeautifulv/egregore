@@ -1,33 +1,25 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import uuid
 from typing import Any
 
 from bootstrap.settings import settings
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.infrastructure.kafka_events import publish_raw_event
+from cys_core.infrastructure.kafka_publisher import get_kafka_publisher
 from cys_core.infrastructure.kafka_topics import AWAITING_APPROVAL_TOPIC, ESCALATION_EVENTS_TOPIC
 
 
 async def _publish_json(topic: str, payload: dict[str, Any]) -> bool:
-    try:
-        from aiokafka import AIOKafkaProducer
-
-        producer = AIOKafkaProducer(bootstrap_servers=settings.kafka_bootstrap_servers)
-        await producer.start()
-        try:
-            await producer.send_and_wait(topic, json.dumps(payload, ensure_ascii=False).encode())
-            return True
-        finally:
-            await producer.stop()
-    except Exception:
-        return False
+    if not settings.use_kafka:
+        return True
+    return await get_kafka_publisher().publish_json(topic, payload)
 
 
 def _publish_json_sync(topic: str, payload: dict[str, Any]) -> bool:
-    return asyncio.run(_publish_json(topic, payload))
+    if not settings.use_kafka:
+        return True
+    return get_kafka_publisher().publish_json_sync(topic, payload)
 
 
 async def publish_awaiting_approval(payload: dict[str, Any]) -> bool:
@@ -37,9 +29,7 @@ async def publish_awaiting_approval(payload: dict[str, Any]) -> bool:
         "status": "awaiting_approval",
         **payload,
     }
-    if settings.use_kafka:
-        return await _publish_json(AWAITING_APPROVAL_TOPIC, record)
-    return True
+    return await _publish_json(AWAITING_APPROVAL_TOPIC, record)
 
 
 async def publish_escalation_event(
@@ -67,4 +57,6 @@ async def publish_escalation_event(
 
 
 def publish_escalation_event_sync(**kwargs: Any) -> bool:
-    return asyncio.run(publish_escalation_event(**kwargs))
+    from cys_core.infrastructure.async_boundary import run_sync_from_sync_context
+
+    return run_sync_from_sync_context(lambda: publish_escalation_event(**kwargs))

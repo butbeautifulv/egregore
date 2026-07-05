@@ -9,13 +9,18 @@ from cys_core.infrastructure.bus_transport import RedisBusTransport
 
 class _FakePubSub:
     def __init__(self, messages: list[dict]) -> None:
-        self._messages = messages
+        self._messages = list(messages)
 
     def subscribe(self, channel: str) -> None:
         return
 
-    def listen(self):
-        yield from self._messages
+    def get_message(self, timeout: float = 1.0):
+        if not self._messages:
+            return None
+        return self._messages.pop(0)
+
+    def close(self) -> None:
+        return
 
 
 class _FakeRedis:

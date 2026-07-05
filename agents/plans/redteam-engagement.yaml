@@ -4,7 +4,7 @@ description: Authorized offensive analysis worker
 
 routing:
   rules:
-    - event_types: [escalation, manual.investigation]
+    - event_types: [escalation, engagement.start]
       min_severity: high
       personas: [redteam]
       playbook_id: redteam-engagement

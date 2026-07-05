@@ -250,7 +250,7 @@ class PostgresJobStore:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id
+                SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id, created_at
                 FROM worker_jobs
                 WHERE tenant_id = %s AND correlation_id = %s
                 ORDER BY created_at ASC
@@ -266,6 +266,34 @@ class PostgresJobStore:
                 correlation_id=row[4] or "",
                 tenant_id=row[5] or "default",
                 event_id=row[6] or "",
+                created_at=row[7].isoformat() if row[7] is not None else "",
             )
             for row in rows
         ]
+
+    def count_running(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM worker_jobs WHERE status = %s",
+                (WorkerJobStatus.RUNNING.value,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def count_active_bus_jobs(self, tenant_id: str, engagement_id: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) FROM worker_jobs
+                WHERE tenant_id = %s
+                  AND job_id LIKE '%%-bus-%%'
+                  AND status IN (%s, %s)
+                  AND correlation_id LIKE %s
+                """,
+                (
+                    tenant_id,
+                    WorkerJobStatus.PENDING.value,
+                    WorkerJobStatus.RUNNING.value,
+                    f"%{engagement_id}%",
+                ),
+            ).fetchone()
+        return int(row[0]) if row else 0

@@ -157,11 +157,13 @@ Ingress → EventRouter → JobQueue → WorkerOrchestrator → Bus
 ```bash
 ./scripts/pytest_batches.sh
 ./scripts/pytest_batches.sh --cov --domain-gate
-make domain-gate              # alias: 100% on domain/runs, domain/catalog, domain/observability
-make verify-architecture      # no langfuse SDK imports in cys_core
+make -C projects/egregore domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
+make -C projects/egregore verify-architecture  # import boundaries + lint-imports + tests/architecture
 ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
 USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=cys_core/domain --cov-fail-under=100
 ```
+
+Architecture debt inventory: [`docs/ARCHITECTURE_DEBT.md`](docs/ARCHITECTURE_DEBT.md). Regenerate table: `python3 scripts/arch_inventory.py`.
 
 **CI gates** (all required on PR): `arch-gate`, `adversarial-gate`, `agent-policy-gate`, `security-shift-left` (Fabrica B1–B6). See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#ci).
 

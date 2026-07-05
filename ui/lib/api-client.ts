@@ -1,5 +1,7 @@
 const PROXY_BASE = "/api/egregore"
-const UPSTREAM_BASE = process.env.EGREGORE_API_UPSTREAM ?? "http://egregore-api:8080"
+const UPSTREAM_BASE =
+  process.env.EGREGORE_API_UPSTREAM ??
+  (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8080" : "http://egregore-api:8080")
 
 function resolveApiBase(): string {
   if (typeof window !== "undefined") {
@@ -73,6 +75,60 @@ export type PostEventResponse = {
   job_ids: string[]
   accepted?: boolean
   planner_status?: string
+  investigation_id?: string
+}
+
+export type EngagementSummary = {
+  engagement_id: string
+  status: string
+  job_ids: string[]
+  playbook_id?: string
+  reason?: string
+  goal?: string
+  completed_personas?: string[]
+}
+
+export function createEngagement(body: {
+  goal: string
+  profile_id?: string
+  domain_id?: string
+  mode?: string
+  plan_strategy?: string
+  tenant_id?: string
+  correlation_id?: string
+  input?: Record<string, unknown>
+}) {
+  return request<EngagementSummary>("/v1/engagements", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export function getEngagement(engagementId: string, tenantId = "default") {
+  return request<EngagementSummary>(
+    `/v1/engagements/${encodeURIComponent(engagementId)}?tenant_id=${encodeURIComponent(tenantId)}`,
+  )
+}
+
+export function engagementStreamUrl(engagementId: string, tenantId = "default") {
+  const params = new URLSearchParams({ tenant_id: tenantId })
+  return `${PROXY_BASE}/v1/engagements/${encodeURIComponent(engagementId)}/stream?${params}`
+}
+
+export function subscribeEngagementStream(
+  engagementId: string,
+  onEvent: (event: Record<string, unknown>) => void,
+  tenantId = "default",
+): () => void {
+  const source = new EventSource(engagementStreamUrl(engagementId, tenantId))
+  source.onmessage = (message) => {
+    try {
+      onEvent(JSON.parse(message.data) as Record<string, unknown>)
+    } catch {
+      // ignore malformed frames
+    }
+  }
+  return () => source.close()
 }
 
 export function postEvent(body: {
@@ -115,15 +171,32 @@ export type JobSummary = {
 }
 
 export function listInvestigations(tenantId = "default", limit = 20) {
-  return request<{ investigations: InvestigationSummary[] }>(
-    `/investigations?tenant_id=${encodeURIComponent(tenantId)}&limit=${limit}`,
-  )
+  return request<{ engagements: EngagementSummary[] }>(
+    `/v1/engagements?tenant_id=${encodeURIComponent(tenantId)}&limit=${limit}`,
+  ).then((data) => ({
+    investigations: data.engagements.map((eng) => ({
+      investigation_id: eng.engagement_id,
+      tenant_id: tenantId,
+      goal: eng.goal ?? "",
+      status: eng.status,
+      completed_personas: eng.completed_personas ?? [],
+    })),
+  }))
 }
 
 export function getInvestigation(investigationId: string, tenantId = "default") {
-  return request<InvestigationDetail>(
-    `/investigations/${encodeURIComponent(investigationId)}?tenant_id=${encodeURIComponent(tenantId)}`,
-  )
+  return getEngagement(investigationId, tenantId).then((eng) => ({
+    investigation_id: eng.engagement_id,
+    tenant_id: tenantId,
+    goal: "",
+    status: eng.status,
+    completed_personas: [],
+    planner_plan: null,
+    planner_status: null,
+    planner_rationale: "",
+    planner_error: "",
+    findings_summary: [],
+  }))
 }
 
 export function getInvestigationJobs(investigationId: string, tenantId = "default") {
@@ -229,10 +302,24 @@ export function createRun(body: {
   mode?: string
   persona?: string
 }) {
-  return request<RunResponse>("/runs", {
-    method: "POST",
-    body: JSON.stringify(body),
-  })
+  return createEngagement({
+    goal: body.goal || body.message || "",
+    mode: "interactive",
+    plan_strategy: "declarative",
+    input: body.persona ? { persona: body.persona } : {},
+  }).then((engagement) => ({
+    run_context: {
+      context_id: engagement.engagement_id,
+      kind: "job",
+      tenant_id: "default",
+      correlation_key: engagement.engagement_id,
+    },
+    result: {
+      engagement_id: engagement.engagement_id,
+      status: engagement.status,
+      job_ids: engagement.job_ids,
+    },
+  }))
 }
 
 export function runStep(runId: string, body: { message: string; mode?: string }) {

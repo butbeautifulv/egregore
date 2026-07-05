@@ -6,6 +6,7 @@ from cys_core.application.use_cases.run_step import RunStep
 from cys_core.domain.runs.models import InteractionMode, RunContext
 from cys_core.domain.runs.plan_models import WorkTodo
 from cys_core.domain.runs.state_models import RunState, RunStatus
+from tests.application.port_fakes import run_step_port_kwargs
 
 
 class _StateStore:
@@ -60,7 +61,13 @@ async def test_run_step_uses_injected_ports():
     todos = _TodoStore()
     store = _StateStore()
     ctx = RunContext.from_session_id("s1", mode=InteractionMode.AGENT)
-    step = RunStep(runtime=FakeRuntime(), state_store=store, catalog=_Catalog(), todo_store=todos)
+    step = RunStep(
+        runtime=FakeRuntime(),
+        state_store=store,
+        catalog=_Catalog(),
+        todo_store=todos,
+        **run_step_port_kwargs(),
+    )
     await step.execute(ctx, "hello")
     assert len(todos.replaced) == 1
     assert store.states[0].status == RunStatus.IN_PROGRESS

@@ -9,9 +9,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 
+def _last_json_object(text: str) -> dict:
+    return json.loads(text[text.find("{") :])
+
+
 @pytest.mark.unit
 def test_main_cli_commands_and_entrypoint(monkeypatch, capsys):
     import interfaces.cli.main as main
+
+    monkeypatch.setattr(main, "configure_logging", lambda _name: None)
+    monkeypatch.setattr(main, "setup_otel", lambda **_kwargs: None)
 
     ingest_result = (
         SimpleNamespace(id="e1", model_dump=lambda: {"id": "e1"}),
@@ -22,6 +29,14 @@ def test_main_cli_commands_and_entrypoint(monkeypatch, capsys):
         "interfaces.ingress.router.get_event_ingress",
         lambda: SimpleNamespace(ingest=lambda *a, **k: ingest_result),
     )
+    mock_orch = SimpleNamespace(
+        process_next=AsyncMock(return_value=SimpleNamespace(model_dump=lambda: {"success": True}))
+    )
+    mock_container = SimpleNamespace(
+        get_worker_orchestrator=lambda persona=None: mock_orch,
+        get_trace_backend=lambda: SimpleNamespace(flush=lambda: None),
+    )
+    monkeypatch.setattr(main, "get_container", lambda: mock_container)
     ingest_args = SimpleNamespace(
         type="siem.alert",
         payload='{"x":1}',
@@ -33,12 +48,8 @@ def test_main_cli_commands_and_entrypoint(monkeypatch, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["job_ids"] == ["soc-e1-abc"]
 
-    monkeypatch.setattr(
-        "interfaces.worker.orchestrator.WorkerOrchestrator.process_next",
-        AsyncMock(return_value=SimpleNamespace(model_dump=lambda: {"success": True})),
-    )
     assert main.cmd_worker(SimpleNamespace(once=True, max_jobs=1, daemon=False, persona="", idle_timeout=30.0)) == 0
-    assert json.loads(capsys.readouterr().out)["result"]["success"] is True
+    assert _last_json_object(capsys.readouterr().out)["result"]["success"] is True
 
     assert main.cmd_status(SimpleNamespace()) == 0
     capsys.readouterr()

@@ -82,7 +82,7 @@ async def run_gaia_solver(question: str, *, file_path: str = "") -> dict[str, An
     from cys_core.domain.runs.models import InteractionMode, RunContext
     from cys_core.infrastructure.runs.factory import get_run_state_store, get_work_todo_store
     from cys_core.application.use_cases.run_step import RunStep
-    from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
+    from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
     from cys_core.runtime.agent import get_runtime
 
     get_container().wire_agent_definitions_loader()

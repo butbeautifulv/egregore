@@ -13,7 +13,7 @@ from cys_core.domain.catalog.models import (
     SkillCatalogEntry,
     ToolCatalogEntry,
 )
-from cys_core.infrastructure.catalog.catalog_write_gate import CatalogWriteGate
+from cys_core.application.ports.catalog_write_gate import CatalogWriteGatePort
 
 
 class CatalogMutationService:
@@ -22,7 +22,7 @@ class CatalogMutationService:
     def __init__(
         self,
         *,
-        write_gate: CatalogWriteGate,
+        write_gate: CatalogWriteGatePort,
         agent_catalog: AgentCatalogPort,
         tool_catalog: ToolCatalogPort,
         audit: CatalogAuditPort | None = None,
@@ -80,6 +80,37 @@ class CatalogMutationService:
 
     def delete_agent(self, name: str, *, profile_id: str, actor: str = "api") -> bool:
         return self._write_gate.delete_agent(name, profile_id=profile_id, actor=actor)
+
+    def seed_pack(
+        self,
+        profile: ProfilePack,
+        entries: list,
+        *,
+        skills: list | None = None,
+        plans: list | None = None,
+        mcp_servers: list | None = None,
+        tools: list | None = None,
+        actor: str = "seed",
+    ) -> dict[str, int]:
+        self._agents.seed(
+            entries,
+            profile,
+            skills=skills or [],
+            plans=plans or [],
+            mcp_servers=mcp_servers or [],
+        )
+        if tools:
+            self._tools.seed(tools)
+        if self._audit is not None:
+            self._audit.record_change("seed", agent=profile.id, actor=actor, resource_type="profile", resource_id=profile.id)
+        self._reload()
+        return {
+            "seeded": len(entries),
+            "skills": len(skills or []),
+            "plans": len(plans or []),
+            "mcp_servers": len(mcp_servers or []),
+            "tools": len(tools or []),
+        }
 
     def delete_skill(self, skill_id: str, *, profile_id: str, actor: str = "api") -> bool:
         return self._write_gate.delete_skill(skill_id, profile_id=profile_id, actor=actor)

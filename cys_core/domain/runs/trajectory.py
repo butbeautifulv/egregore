@@ -29,6 +29,8 @@ class AgentTrajectory(BaseModel):
     tenant_id: str = "default"
     profile_id: str = ""
     persona: str = ""
+    correlation_id: str = ""
+    run_id: str = ""
     events: list[TraceEvent] = Field(default_factory=list)
 
     def record(self, event: TraceEvent) -> None:

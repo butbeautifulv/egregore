@@ -4,7 +4,12 @@ import time
 from collections import defaultdict, deque
 from typing import Deque
 
+import structlog
+
 from bootstrap.settings import settings
+from cys_core.observability.metrics import metrics
+
+logger = structlog.get_logger(__name__)
 
 
 class RateLimitExceeded(Exception):
@@ -62,11 +67,17 @@ class RedisRateLimiter:
 
             self._redis = redis.from_url(self._redis_url, decode_responses=True)
             self._redis.ping()
-        except Exception:
+        except Exception as exc:
+            metrics.record_infrastructure_fallback("rate_limiter", reason="sync_connect_failed")
+            logger.warning("rate_limiter_sync_redis_unavailable", error=str(exc))
             self._redis = None
+
+    def _record_fallback(self, reason: str) -> None:
+        metrics.record_infrastructure_fallback("rate_limiter", reason=reason)
 
     def allow(self, key: str) -> bool:
         if self._redis is None:
+            self._record_fallback("sync_memory")
             return self._fallback.allow(key)
         now = int(time.time())
         pipe = self._redis.pipeline()
@@ -93,14 +104,17 @@ class RedisRateLimiter:
             self._async_redis = aioredis.from_url(self._redis_url, decode_responses=True)
             await self._async_redis.ping()
             return self._async_redis
-        except Exception:
+        except Exception as exc:
             self._async_redis = None
             self._async_redis_unavailable = True
+            self._record_fallback("async_connect_failed")
+            logger.warning("rate_limiter_async_redis_unavailable", error=str(exc))
             return None
 
     async def aallow(self, key: str) -> bool:
         redis_client = await self._get_async_redis()
         if redis_client is None:
+            self._record_fallback("async_memory")
             return await self._fallback.aallow(key)
         now = int(time.time())
         pipe = redis_client.pipeline()
@@ -115,3 +129,9 @@ class RedisRateLimiter:
     async def acheck(self, key: str) -> None:
         if not await self.aallow(key):
             raise RateLimitExceeded(f"Rate limit exceeded for key: {key}")
+
+    async def aclose(self) -> None:
+        if self._async_redis is None:
+            return
+        await self._async_redis.aclose()
+        self._async_redis = None

@@ -27,7 +27,7 @@ _VEIL_TOOL_DESCRIPTIONS: dict[str, str] = {
 
 def make_veil_tool(name: str, description: str) -> BaseTool:
     def _run(**kwargs: Any) -> str:
-        from interfaces.gateways.tool.adapters.veil_mcp import call_veil_tool
+        from cys_core.infrastructure.tools.adapters.veil_mcp import call_veil_tool
 
         result = call_veil_tool(name, kwargs)
         return json.dumps(result, ensure_ascii=False)

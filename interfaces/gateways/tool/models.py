@@ -14,6 +14,7 @@ class ToolInvokeRequest(BaseModel):
     sandbox_id: str
     job_id: str = ""
     correlation_id: str = ""
+    profile_id: str = "cybersec-soc"
 
 
 class ToolInvokeResponse(BaseModel):

@@ -5,20 +5,27 @@ import json
 import sys
 
 from bootstrap.catalog_loader import load_profile_pack
+from bootstrap.container import get_container
 from bootstrap.policy_defaults import default_profile_policy
-from cys_core.application.catalog_mutation_factory import get_catalog_mutation_service
 from cys_core.application.use_cases.seed_catalog import SeedCatalog
 from cys_core.application.use_cases.upsert_profile_policy import UpsertProfilePolicy
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog, get_catalog_version_metric, reload_agent_registry
+from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog, get_catalog_version_metric, reload_agent_registry
 from cys_core.infrastructure.catalog.profile_policy import get_profile_policy
 
 
 def cmd_seed(_args: argparse.Namespace) -> int:
+    from cys_core.infrastructure.catalog.tool_catalog_seed import load_tools_for_seed
+
+    container = get_container()
     result = SeedCatalog(
-        get_agent_catalog(),
+        container.get_agent_catalog(),
+        tool_catalog=container.get_tool_catalog(),
+        seed_loaders=container.get_catalog_seed_loaders_port(),
         load_profile_pack=load_profile_pack,
+        load_tools_for_seed=load_tools_for_seed,
         reload=reload_agent_registry,
+        mutation=container.get_catalog_mutation_service(),
     ).execute()
     print(json.dumps(result, indent=2, default=str))
     return 0
@@ -61,7 +68,9 @@ def cmd_policy_diff(args: argparse.Namespace) -> int:
 def cmd_policy_apply(args: argparse.Namespace) -> int:
     UpsertProfilePolicy(
         get_agent_catalog(),
-        mutation=get_catalog_mutation_service(reload=reload_agent_registry),
+        policy_merge=get_container().get_policy_merge_port(),
+        policy_defaults=get_container().get_policy_defaults_port(),
+        mutation=get_container().get_catalog_mutation_service(),
         reload=reload_agent_registry,
     ).apply_seed_defaults(args.profile_id, actor="cli")
     print(json.dumps({"profile_id": args.profile_id, "applied": True}))

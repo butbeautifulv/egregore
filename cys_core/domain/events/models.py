@@ -23,7 +23,7 @@ EventType = Literal[
     "compliance.schedule",
     "finding.reference",
     "escalation",
-    "manual.investigation",
+    "engagement.start",
     "manual.consultation",
 ]
 

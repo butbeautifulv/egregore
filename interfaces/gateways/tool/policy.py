@@ -1,52 +1,44 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from bootstrap.settings import settings
-from cys_core.domain.security.risk import RiskLevel, classify_tool_risk
+from cys_core.application.tools.tool_chain_policy import ToolChainPolicy, ToolChainState
+from cys_core.domain.tools.exceptions import ToolChainDepthExceeded
 from interfaces.gateways.tool.models import ToolInvokeRequest
 
+__all__ = [
+    "ToolChainDepthExceeded",
+    "ToolChainState",
+    "ToolChainPolicy",
+    "check_tool_chain",
+    "clear_all_chain_states",
+    "clear_chain_state",
+    "get_chain_state",
+    "is_high_risk_tool",
+]
 
-class ToolChainDepthExceeded(Exception):
-    """Raised when sequential high-risk tool chain exceeds policy limit."""
 
+def _policy() -> ToolChainPolicy:
+    from bootstrap.container import get_container
 
-@dataclass
-class ToolChainState:
-    consecutive_high_risk: int = 0
-
-
-_chains: dict[str, ToolChainState] = {}
-
-
-def _chain_key(request: ToolInvokeRequest) -> str:
-    return request.job_id or request.sandbox_id
+    return get_container().get_tool_chain_policy()
 
 
 def is_high_risk_tool(tool_name: str) -> bool:
-    return classify_tool_risk(tool_name) >= RiskLevel.HIGH
+    return ToolChainPolicy.is_high_risk_tool(tool_name)
 
 
 def check_tool_chain(request: ToolInvokeRequest) -> None:
-    """Enforce max sequential high-risk tool depth per job."""
-    key = _chain_key(request)
-    state = _chains.setdefault(key, ToolChainState())
-    if is_high_risk_tool(request.tool_name):
-        limit = settings.max_high_risk_tool_chain_depth
-        if state.consecutive_high_risk >= limit:
-            raise ToolChainDepthExceeded(f"High-risk tool chain depth exceeded ({limit} sequential max)")
-        state.consecutive_high_risk += 1
-    else:
-        state.consecutive_high_risk = 0
+    from interfaces.gateways.tool.mappers import to_command
+
+    _policy().check(to_command(request))
 
 
 def get_chain_state(key: str) -> ToolChainState:
-    return _chains.setdefault(key, ToolChainState())
+    return _policy().get_chain_state(key)
 
 
 def clear_chain_state(key: str) -> None:
-    _chains.pop(key, None)
+    _policy().clear(key)
 
 
 def clear_all_chain_states() -> None:
-    _chains.clear()
+    _policy().clear_all()

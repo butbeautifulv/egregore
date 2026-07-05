@@ -37,13 +37,21 @@ async def test_orchestrator_job_budget_exceeded(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_orchestrator_security_violation_on_sanitize(monkeypatch):
-    orch = _orch_with_mocks(monkeypatch, arun_return={"ok": True})
-    job = WorkerJob(job_id="j2", event_id="e1", persona="soc", payload={})
-
     def raise_violation(text, source="external"):
         raise SecurityViolation("blocked")
 
-    orch.sanitizer = SimpleNamespace(sanitize=raise_violation)
+    registry = SimpleNamespace(
+        all=lambda: [SimpleNamespace(name="soc", trust_level="internal", bus_recipients=["critic"])],
+        get=lambda name: SimpleNamespace(schema_name=None, tools=[], skills=[]),
+    )
+    runtime = SimpleNamespace(arun=AsyncMock(return_value={"ok": True}))
+    orch = WorkerOrchestrator(
+        runtime=runtime,
+        registry=registry,
+        bus=build_agent_bus(registry),
+        sanitizer=SimpleNamespace(sanitize=raise_violation),
+    )
+    job = WorkerJob(job_id="j2", event_id="e1", persona="soc", payload={})
     result = await orch.run_job(job)
     assert result.success is False
     assert job.status == WorkerJobStatus.FAILED

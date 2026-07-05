@@ -5,11 +5,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from cys_core.application.use_cases.plan_investigation import PlanInvestigation
+from tests.application.port_fakes import plan_investigation_port_kwargs
 
 
 @pytest.mark.unit
 def test_parse_plan_includes_reasoning_metadata():
-    pi = PlanInvestigation(runtime=MagicMock(), investigation_store=MagicMock())
+    pi = PlanInvestigation(runtime=MagicMock(), engagement_store=MagicMock(), **plan_investigation_port_kwargs())
     plan = pi._parse_plan(
         {
             "personas": ["soc"],

@@ -14,7 +14,7 @@ Secure event-driven multi-agent cybersecurity platform with ephemeral sandbox wo
 - Secure-by-design: MILS boundaries, A2A envelopes, mTLS metadata, scope/HITL middleware
 - Cross-session episodic memory + investigation state (Postgres)
 - Durable JobStore (HITL pause/resume survives restart)
-- LLM planner for `manual.investigation` with sequential worker chain
+- LLM planner for `engagement.start` / `POST /v1/engagements` with sequential worker chain
 - Kafka/Redpanda event bus (`USE_KAFKA`), worker daemons, router/critic/coordinator consumers
 - MCP Tool Gateway (PEP), HITL L1/L2, DoW job budgets
 - Secure RAG (`rag_query`), Skill Gateway (`load_skill`), K8s sandbox connector
@@ -58,7 +58,31 @@ cd ui && cp .env.local.example .env.local && npm install && npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8080/status](http://localhost:8080/status).
 
+### Minimal console (no Node)
+
+Lightweight static UI for smoke tests — start investigation, jobs, HITL approvals:
+
+```bash
+uv run egregore serve --port 8080
+uv run egregore worker --daemon   # when testing worker pipeline
+make -C projects/egregore dev-console
+```
+
+Open [http://localhost:5173](http://localhost:5173). See [`ui-minimal/README.md`](ui-minimal/README.md).
+
+**Smoke (consultant advisory):** goal «Как защититься от вирусов?» → Response shows consultant JSON, critic verdict (`critic:{engagement_id}`), coordinator narrative (`coordinator:{engagement_id}`). Enable `STREAM_AGENT_OUTPUT=true` and `CRITIC_USE_LLM_JUDGE=true` in local env. If consultant findings are summary-only, re-seed catalog: `uv run egregore catalog seed` (ensures `ConsultantFinding` schema).
+
+**Smoke pitfalls:** use a **new** engagement after code/deploy changes (old `eng-smoke-*` rows may be pytest leftovers in Postgres). Restart `egregore serve` and `egregore worker` after env changes (avoid duplicate worker processes). Integration test [`test_shared_engagement_state`](tests/worker/test_shared_engagement_state.py) uses prefix `eng-test-shared-` and deletes its row — do not confuse with manual smoke.
+
+**Langfuse traces ≠ UI progress:** planner/LLM spans in Langfuse do not mean worker jobs ran — check `worker_jobs.status` and Live events (`job_started`). **`GET /health/infra`** reports `queue.backend`, `queue.depth`, and `workers_hint` (`backlog` vs `processing`).
+
+**Bus-loop symptoms:** thousands of `soc-bus-*` / `network-bus-*` jobs, `LLEN cys:worker:jobs:queue` huge, new engagements stuck at `enqueued`. Purge spam from Redis, fail stuck `running` bus jobs in Postgres, restart a single API + 2 workers. Suppressed/duplicate findings should no longer re-enqueue after phase-5 guards.
+
+If Jobs shows only planner, check `worker_jobs` for the engagement id and that workers are running.
+
 One-command dev (infra + api + worker + ui): `./scripts/dev.sh`
+
+If staged pipeline jobs stay `pending` with a long Redis backlog, flush the worker queue and restart workers (`redis-cli DEL` on the job list key, or restart with an empty queue).
 
 Docker app profile (no host Node/Python): `make dev-docker` (requires `.env`).
 
@@ -96,7 +120,7 @@ uv run egregore serve --port 8080
 | `coordinator` | Coordinator bus consumer |
 | `status` | Snapshot control plane (findings, narratives) |
 | `serve [--port 8080]` | FastAPI event/status server |
-| `session -g "..."` | Manual investigation (`manual.investigation` + LLM planner) |
+| `session -g "..."` | Start engagement (`POST /v1/engagements` / `engagement.start`) |
 | `migrate` | Apply SQL migrations to Postgres |
 | `agent <worker>` | Debug: один worker без очереди |
 | `adversarial-test` | `pytest tests/` |

@@ -7,6 +7,7 @@ from cys_core.domain.runs.models import InteractionMode, RunContext
 from cys_core.domain.runs.state_models import RunStatus
 from cys_core.infrastructure.runs.memory import InMemoryRunStateStore
 from cys_core.infrastructure.runs.todo_store import InMemoryWorkTodoStore
+from tests.application.port_fakes import run_step_port_kwargs
 
 
 class _Catalog:
@@ -31,6 +32,7 @@ async def test_run_step_plan_mode_awaits_approval():
         state_store=store,
         catalog=_Catalog(),
         todo_store=InMemoryWorkTodoStore(),
+        **run_step_port_kwargs(),
     )
     out = await step.execute(ctx, "investigate host")
     assert out["status"] == RunStatus.AWAITING_PLAN_APPROVAL.value
@@ -56,6 +58,7 @@ async def test_run_step_applies_plan_delta():
         state_store=store,
         catalog=_Catalog(),
         todo_store=todos,
+        **run_step_port_kwargs(),
     )
     await step.execute(ctx, "continue", persona="conductor")
     saved = todos.list_todos(ctx.tenant_id, ctx.context_id)
@@ -120,6 +123,7 @@ async def test_run_step_trace_rerun_on_low_score(monkeypatch):
         state_store=InMemoryRunStateStore(),
         catalog=_Catalog(),
         todo_store=InMemoryWorkTodoStore(),
+        **run_step_port_kwargs(),
     )
     step._trace_critic_for = lambda profile_id: FakeCritic()
     out = await step.execute(ctx, "investigate", persona="conductor")
@@ -139,6 +143,7 @@ async def test_run_step_trace_rerun_on_low_score(monkeypatch):
         state_store=InMemoryRunStateStore(),
         catalog=_Catalog(),
         todo_store=InMemoryWorkTodoStore(),
+        **run_step_port_kwargs(),
     )
     await step.execute(ctx, "scan", persona="soc")
     assert captured["session_id"] == "worker:soc:job-1"

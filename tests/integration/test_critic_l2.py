@@ -1,40 +1,42 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from interfaces.control_plane.critic_service import CriticService
-from interfaces.control_plane.status_store import MemoryStatusStore
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_critic_l2_then_escalation(monkeypatch):
-    store = MemoryStatusStore()
+async def test_critic_flags_low_trust_finding(monkeypatch):
+    egress = MagicMock()
+    monkeypatch.setattr(
+        "interfaces.control_plane.critic_service.get_container",
+        lambda: MagicMock(
+            get_engagement_egress=lambda: egress,
+            get_profile_policy_port=lambda: MagicMock(get_trust_floor=lambda _pid: 0.5),
+        ),
+    )
+    monkeypatch.setattr(
+        "cys_core.application.use_cases.process_finding_critic.record_critic_verdict",
+        lambda *a, **k: None,
+    )
+    monkeypatch.setattr(
+        "interfaces.control_plane.critic_service.build_agent_bus",
+        lambda *a, **k: MagicMock(send_message=lambda *a, **k: {"signature": "s"}),
+    )
     critic = CriticService()
-    critic.store = store
 
-    async def noop_awaiting(_payload: dict) -> bool:
-        return True
-
-    async def capture_escalation(**_kwargs) -> bool:
-        return True
-
-    monkeypatch.setattr("interfaces.control_plane.critic_service.publish_awaiting_approval", noop_awaiting)
-    monkeypatch.setattr("interfaces.control_plane.critic_service.publish_escalation_event", capture_escalation)
-
-    feedback = await critic.handle_message(
+    result = await critic.handle_message(
         {
             "sender": "soc",
-            "payload": {"event_id": "e1", "data": {"severity": "critical", "confidence": 0.2}},
+            "payload": {
+                "event_id": "e1",
+                "correlation_id": "e1",
+                "data": {"severity": "critical", "confidence": 0.2, "trust_score": 0.2},
+            },
         }
     )
-    assert feedback.get("requires_hitl") is True
-
-    approval = {
-        "envelope": {
-            "sender": "soc",
-            "payload": {"event_id": "e1", "data": {"severity": "critical"}},
-        }
-    }
-    assert await critic.escalate_after_l2_approval(approval) is True
-    assert len(store.escalations) == 1
+    assert result.get("passed") is False
+    egress.publish_event.assert_called_once()

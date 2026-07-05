@@ -15,6 +15,9 @@ def test_require_sandbox_denies_host():
 
 @pytest.mark.unit
 def test_mcp_tool_invoke_in_sandbox():
+    from bootstrap.container import get_container
+
+    get_container()
     reg = McpToolRegistry(use_gateway=False)
     result = reg.invoke("dedup_alerts", "sandbox-1", {"alerts_text": "alert"})
     assert result["success"] is True

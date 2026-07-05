@@ -8,6 +8,9 @@ from interfaces.gateways.tool.server import create_app
 
 @pytest.mark.unit
 def test_gateway_auth_disabled_invoke_works():
+    from bootstrap.container import get_container
+
+    get_container()
     client = TestClient(create_app())
     response = client.post(
         "/invoke",

@@ -89,6 +89,11 @@ class CysMetrics:
             "Silent fallbacks from durable persistence to in-memory stores",
             ["component"],
         )
+        self.infrastructure_fallback = Counter(
+            "cys_infrastructure_fallback_total",
+            "Fallbacks from durable infrastructure adapters to in-memory paths",
+            ["component", "reason"],
+        )
         self.sgr_reasoning_steps_total = Counter(
             "cys_sgr_reasoning_steps_total",
             "Schema-guided reasoning steps recorded",
@@ -96,6 +101,21 @@ class CysMetrics:
         self.sgr_iron_parse_retries = Counter(
             "cys_sgr_iron_parse_retries_total",
             "Iron-mode JSON parse retries",
+        )
+        self.bus_dedup_dropped = Counter(
+            "cys_bus_dedup_dropped_total",
+            "Bus ingress envelopes dropped by dedup layer",
+            ["reason"],
+        )
+        self.engagement_guardrail_trip = Counter(
+            "cys_engagement_guardrail_trip_total",
+            "Engagement bus loop guardrail trips",
+            ["reason"],
+        )
+        self.skill_loads = Counter(
+            "cys_skill_loads_total",
+            "Skills loaded by workers via load_skill",
+            ["skill", "persona"],
         )
 
     def record_event_ingested(self, event_type: str) -> None:
@@ -139,6 +159,18 @@ class CysMetrics:
     def record_persistence_fallback(self, component: str) -> None:
         self.persistence_fallback.labels(component=component).inc()
 
+    def record_infrastructure_fallback(self, component: str, *, reason: str) -> None:
+        self.infrastructure_fallback.labels(component=component, reason=reason).inc()
+
+    def record_bus_dedup_dropped(self, reason: str) -> None:
+        self.bus_dedup_dropped.labels(reason=reason).inc()
+
+    def record_engagement_guardrail_trip(self, reason: str) -> None:
+        self.engagement_guardrail_trip.labels(reason=reason).inc()
+
+    def record_skill_load(self, skill_name: str, persona: str) -> None:
+        self.skill_loads.labels(skill=skill_name, persona=persona).inc()
+
     @contextmanager
     def track_worker_job(self, persona: str) -> Iterator[dict[str, str]]:
         started = time.perf_counter()
@@ -155,23 +187,16 @@ class CysMetrics:
 
 metrics = CysMetrics()
 
-_DECLARED_TRUST_BY_LEVEL = {
-    "untrusted": 0.25,
-    "internal": 0.75,
-    "privileged": 0.9,
-    "system": 1.0,
-}
+from cys_core.domain.catalog.trust import declared_trust_score as _declared_trust_score
 
 
 def declared_trust_score(entry) -> float:
-    if entry.quality.sample_size > 0:
-        return entry.quality.empirical_trust
-    return _DECLARED_TRUST_BY_LEVEL.get(entry.trust_level, 0.5)
+    return _declared_trust_score(entry)
 
 
 def seed_agent_trust_gauges() -> None:
     try:
-        from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
+        from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 
         catalog = get_agent_catalog()
         for entry in catalog.list_agents(enabled_only=False):
@@ -181,9 +206,7 @@ def seed_agent_trust_gauges() -> None:
             from cys_core.registry.agents import get_agent_registry
 
             for defn in get_agent_registry().all():
-                metrics.set_agent_trust_score(
-                    defn.name, _DECLARED_TRUST_BY_LEVEL.get(defn.trust_level, 0.5)
-                )
+                metrics.set_agent_trust_score(defn.name, declared_trust_score(defn))
         except Exception:
             _FALLBACK_PERSONAS = {
                 "conductor": 0.9,

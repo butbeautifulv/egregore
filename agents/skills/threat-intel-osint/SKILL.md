@@ -1,24 +1,19 @@
 ---
 name: threat-intel-osint
-description: OSINT, MISP, and threat actor TTP analysis playbooks
+description: OSINT and threat intelligence collection for investigations and IOC enrichment.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# Threat Intelligence & OSINT
+# Threat Intel Osint
 
-## When to use
+## Scope
+OSINT and threat intelligence collection for investigations and IOC enrichment.
 
-- TI feed enrichment and IOC correlation
-- OSINT on domains, certificates, and external attack surface
-- Threat actor TTP profiling with MITRE ATT&CK mapping
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-## Veil playbook anchors
-
-- `performing-open-source-intelligence-gathering`
-- `collecting-threat-intelligence-with-misp`
-- `analyzing-threat-actor-ttps-with-mitre-attack`
-- `performing-dns-enumeration-and-zone-transfer`
-- `analyzing-certificate-transparency-for-phishing`
-
-## Output guidance
-
-Populate mitre_techniques and attack_phase (typically recon). Cite source confidence for each IOC.
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

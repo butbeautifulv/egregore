@@ -1,24 +1,19 @@
 ---
 name: endpoint-hunting
-description: Proactive endpoint threat hunting for persistence and evasion
+description: Endpoint hunting hypotheses, EDR queries, and persistence mechanism checks.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# Endpoint Threat Hunting
+# Endpoint Hunting
 
-## When to use
+## Scope
+Endpoint hunting hypotheses, EDR queries, and persistence mechanism checks.
 
-- Hypothesis-driven hunts before SOC alert fires
-- Persistence, fileless malware, LOLBin abuse
-- Defense evasion and anomalous PowerShell execution
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-## Veil playbook anchors
-
-- `hunting-for-registry-persistence-mechanisms`
-- `detecting-fileless-malware-techniques`
-- `hunting-for-anomalous-powershell-execution`
-- `building-threat-hunt-hypothesis-framework`
-- `hunting-for-scheduled-task-persistence`
-
-## Output guidance
-
-Set hunt_status explicitly. List detection_gaps when telemetry is insufficient. Map to technique_ids.
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

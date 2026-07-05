@@ -44,6 +44,14 @@ class InMemoryEpisodicMemoryStore:
     def search_by_investigation(self, tenant_id: str, investigation_id: str, *, limit: int = 20) -> list[MemoryEntry]:
         return self.query(MemoryScope(tenant_id=tenant_id, investigation_id=investigation_id), limit=limit)
 
+    def list_by_tenant(self, tenant_id: str, *, limit: int = 100, agent: str | None = None) -> list[MemoryEntry]:
+        with self._lock:
+            matches = [entry for entry in self._entries if entry.scope.tenant_id == tenant_id]
+        if agent:
+            matches = [entry for entry in matches if entry.source_agent == agent]
+        matches.sort(key=lambda item: item.created_at, reverse=True)
+        return matches[:limit]
+
 
 class InMemoryInvestigationStateStore:
     def __init__(self) -> None:
@@ -185,6 +193,35 @@ class PostgresEpisodicMemoryStore:
 
     def search_by_investigation(self, tenant_id: str, investigation_id: str, *, limit: int = 20) -> list[MemoryEntry]:
         return self.query(MemoryScope(tenant_id=tenant_id, investigation_id=investigation_id), limit=limit)
+
+    def list_by_tenant(self, tenant_id: str, *, limit: int = 100, agent: str | None = None) -> list[MemoryEntry]:
+        cap = min(max(limit, 1), 500)
+        with self._connect() as conn:
+            if agent:
+                rows = conn.execute(
+                    """
+                    SELECT id, tenant_id, investigation_id, persona, content, memory_type,
+                           source_agent, source_job_id, trust_score, checksum, created_at
+                    FROM agent_memory_entries
+                    WHERE tenant_id = %s AND source_agent = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (tenant_id, agent, cap),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, tenant_id, investigation_id, persona, content, memory_type,
+                           source_agent, source_job_id, trust_score, checksum, created_at
+                    FROM agent_memory_entries
+                    WHERE tenant_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (tenant_id, cap),
+                ).fetchall()
+        return [self._row_to_entry(row) for row in rows]
 
     @staticmethod
     def _row_to_entry(row: tuple[Any, ...]) -> MemoryEntry:

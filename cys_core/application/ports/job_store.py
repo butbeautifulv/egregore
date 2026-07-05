@@ -28,6 +28,7 @@ class JobRecordSummary:
     correlation_id: str = ""
     tenant_id: str = "default"
     event_id: str = ""
+    created_at: str = ""
 
 
 class JobStorePort(Protocol):
@@ -65,3 +66,7 @@ class JobStorePort(Protocol):
     def list_pending_approvals(self) -> list[PendingHitlAction]: ...
 
     def list_by_investigation(self, tenant_id: str, investigation_id: str) -> list[JobRecordSummary]: ...
+
+    def count_running(self) -> int: ...
+
+    def count_active_bus_jobs(self, tenant_id: str, engagement_id: str) -> int: ...

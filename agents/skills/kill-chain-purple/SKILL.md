@@ -1,10 +1,19 @@
 ---
 name: kill-chain-purple
-description: Purple-team kill-chain mapping overlay for conductor orchestration
+description: Purple-team kill-chain mapping from detection to validation exercises.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# Kill-chain purple overlay
+# Kill Chain Purple
 
-- Align todos to kill-chain phases when assessing attack paths.
-- Spawn network + soc workers in parallel when scopes are independent.
-- Route compliance mapping after technical findings are confirmed.
+## Scope
+Purple-team kill-chain mapping from detection to validation exercises.
+
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
+
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

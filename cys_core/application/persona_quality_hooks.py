@@ -1,20 +1,41 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
+from cys_core.application.ports.catalog import AgentCatalogPort
+from cys_core.application.ports.profile_policy import ProfilePolicyPort
 from cys_core.application.use_cases.update_persona_quality import UpdatePersonaQuality
 from cys_core.domain.catalog.quality_events import PersonaQualityEvent, PersonaQualityEventKind
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
-from cys_core.infrastructure.catalog.profile_runtime import get_profile_runtime
+
+_catalog: AgentCatalogPort | None = None
+_policy_port: ProfilePolicyPort | None = None
+_updater: UpdatePersonaQuality | None = None
+
+
+def configure_persona_quality(
+    *,
+    catalog: AgentCatalogPort,
+    policy_port: ProfilePolicyPort,
+    metrics_port=None,
+    mutation=None,
+) -> None:
+    global _catalog, _policy_port, _updater
+    _catalog = catalog
+    _policy_port = policy_port
+    _updater = UpdatePersonaQuality(
+        catalog, policy_port=policy_port, metrics_port=metrics_port, mutation=mutation
+    )
 
 
 def emit_persona_quality(event: PersonaQualityEvent) -> None:
-    UpdatePersonaQuality(get_agent_catalog()).apply(event)
+    if _updater is None:
+        raise RuntimeError("Persona quality not configured — wire via bootstrap Container")
+    _updater.apply(event)
 
 
 def _trust_signal(kind: PersonaQualityEventKind, *, profile_id: str) -> float:
-    signals = get_profile_runtime(profile_id).policy.quality_signals
+    if _policy_port is None:
+        raise RuntimeError("Persona quality not configured — wire via bootstrap Container")
+    signals = _policy_port.get_policy(profile_id).quality_signals
     mapping = {
         PersonaQualityEventKind.JOB_COMPLETED: signals.job_success,
         PersonaQualityEventKind.JOB_FAILED: signals.job_failure,

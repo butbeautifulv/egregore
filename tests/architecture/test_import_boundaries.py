@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+import scripts.verify_import_boundaries as boundaries
+
 ROOT = Path(__file__).resolve().parents[2]
 CORE = ROOT / "cys_core"
 
@@ -28,8 +30,7 @@ def test_registry_agents_no_bootstrap_product_loader():
 
 @pytest.mark.unit
 def test_infrastructure_no_interfaces_imports():
-    matches = _rg(r"from interfaces\.|import interfaces\.", CORE / "infrastructure")
-    assert matches == []
+    assert boundaries.check_infrastructure_no_interfaces() == []
 
 
 @pytest.mark.unit
@@ -40,7 +41,19 @@ def test_verify_no_langfuse_in_core_script():
 
 
 @pytest.mark.unit
+def test_domain_no_infrastructure_imports():
+    assert boundaries.check_domain_no_infrastructure() == []
+
+
+@pytest.mark.unit
+def test_domain_no_plan_filesystem_io():
+    assert boundaries.check_domain_no_plan_filesystem_io() == []
+
+
+@pytest.mark.unit
 def test_verify_import_boundaries_script():
     script = ROOT / "scripts" / "verify_import_boundaries.py"
     result = subprocess.run(["uv", "run", "python", str(script)], cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "Architecture import boundary summary:" in result.stdout
+    assert "OK application → infrastructure" in result.stdout

@@ -38,3 +38,7 @@ Constraints:
 Output Requirements:
 - HunterFinding with hypothesis, technique_ids, hunt_status, detection_gaps.
 - attack_phase typically "installation" or "c2" when persistence/C2 hunting.
+
+Skills (load on demand via `load_skill`):
+- endpoint-hunting — persistence and evasion hunt playbooks
+- threat-intel-osint — adversary TTP and IOC context for hypotheses

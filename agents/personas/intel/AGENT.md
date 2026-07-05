@@ -38,3 +38,7 @@ Constraints:
 Output Requirements:
 - IntelFinding schema with actor_profile, ttps, iocs, recon_indicators, mitre_techniques.
 - attack_phase typically "recon" or "weaponization" when applicable.
+
+Skills (load on demand via `load_skill`):
+- threat-intel-osint — OSINT and CTI collection playbooks
+- ai-agent-security — when analyzing AI-assisted threat campaigns

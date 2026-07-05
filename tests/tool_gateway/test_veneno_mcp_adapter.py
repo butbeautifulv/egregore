@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 import httpx
 import pytest
 
 from cys_core.integrations.veneno_mcp_client import call_veneno_mcp_tool
 from interfaces.gateways.tool.adapters.veneno_mcp import call_veneno_tool
+
+
+def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
+    @contextmanager
+    def _fake_sync_http_client(**_kwargs: object):
+        yield mock_client
+
+    monkeypatch.setattr(
+        "cys_core.integrations.veneno_mcp_client.sync_http_client",
+        _fake_sync_http_client,
+    )
 
 
 @pytest.mark.unit
@@ -39,17 +51,6 @@ def test_call_veneno_mcp_success(monkeypatch):
         )
 
     mock_client = httpx.Client(transport=httpx.MockTransport(handler))
-
-    class _ClientFactory:
-        def __init__(self, timeout: float) -> None:
-            self._client = mock_client
-
-        def __enter__(self) -> httpx.Client:
-            return self._client
-
-        def __exit__(self, *args: object) -> None:
-            self._client.close()
-
-    monkeypatch.setattr("cys_core.integrations.veneno_mcp_client.httpx.Client", _ClientFactory)
+    _patch_sync_http_client(monkeypatch, mock_client)
     result = call_veneno_tool("run_active_scan", {"target": "10.0.0.1"})
     assert result["success"] is True

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 
-import { ApiError, getInvestigation, getInvestigationJobs } from "@/lib/api-client"
+import { ApiError, getInvestigation, getInvestigationJobs, subscribeEngagementStream } from "@/lib/api-client"
 import { isInvestigationTerminal } from "@/lib/investigation-status"
 import { matchesInvestigation } from "@/lib/status-events"
 import type { InvestigationDetail, JobSummary, StatusStreamEvent } from "@/lib/types"
@@ -138,6 +138,15 @@ export function InvestigationDetailView({
     }, 12000)
     return () => clearInterval(timer)
   }, [detail, terminal, refresh])
+
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_EGRESS_SSE !== "1" || !investigationId || terminal) {
+      return
+    }
+    return subscribeEngagementStream(investigationId, () => {
+      void refresh()
+    })
+  }, [investigationId, terminal, refresh])
 
   if (!investigationId) {
     return (

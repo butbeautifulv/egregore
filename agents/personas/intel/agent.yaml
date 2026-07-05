@@ -11,6 +11,7 @@ tools:
   - rag_query
 skills:
   - threat-intel-osint
+  - ai-agent-security
 hitl_tools: {}
 trust_level: internal
 bus_recipients:

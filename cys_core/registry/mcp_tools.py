@@ -7,6 +7,9 @@ import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 
 from bootstrap.settings import settings
+from cys_core.application.datasources.attach_filter import filter_attachable_tools
+from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+from cys_core.infrastructure.http_client import sync_http_client
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
 from cys_core.registry.tools import tool_registry
@@ -54,11 +57,24 @@ class McpToolRegistry:
         persona: str = "",
         job_id: str = "",
         correlation_id: str = "",
+        profile_id: str = DEFAULT_PROFILE_ID,
     ) -> list[BaseTool]:
         require_sandbox(sandbox_id)
+        filtered = filter_attachable_tools(
+            tool_names,
+            profile_id=profile_id,
+            persona=persona,
+        )
         return [
-            self._make_tool(name, sandbox_id, persona=persona, job_id=job_id, correlation_id=correlation_id)
-            for name in tool_names
+            self._make_tool(
+                name,
+                sandbox_id,
+                persona=persona,
+                job_id=job_id,
+                correlation_id=correlation_id,
+                profile_id=profile_id,
+            )
+            for name in filtered
         ]
 
     def _make_tool(
@@ -69,6 +85,7 @@ class McpToolRegistry:
         persona: str,
         job_id: str,
         correlation_id: str,
+        profile_id: str = DEFAULT_PROFILE_ID,
     ) -> BaseTool:
         base = tool_registry.get(tool_name)
 
@@ -80,6 +97,7 @@ class McpToolRegistry:
                 persona=persona,
                 job_id=job_id,
                 correlation_id=correlation_id,
+                profile_id=profile_id,
             )
             if not result.get("success", True):
                 return json.dumps({"error": result.get("error", "gateway invoke failed")}, ensure_ascii=False)
@@ -101,6 +119,7 @@ class McpToolRegistry:
         persona: str = "",
         job_id: str = "",
         correlation_id: str = "",
+        profile_id: str = DEFAULT_PROFILE_ID,
     ) -> dict[str, Any]:
         require_sandbox(sandbox_id)
         try:
@@ -113,31 +132,53 @@ class McpToolRegistry:
                         persona=persona,
                         job_id=job_id,
                         correlation_id=correlation_id,
+                        profile_id=profile_id,
                     )
                     metrics.record_tool_invocation(tool_name, success=result.get("success", True))
                     return result
                 except Exception:
                     pass
-            result = self._local_invoke(tool_name, sandbox_id, args)
+            result = self._local_invoke(
+                tool_name,
+                sandbox_id,
+                args,
+                persona=persona,
+                profile_id=profile_id,
+                job_id=job_id,
+                correlation_id=correlation_id,
+            )
             metrics.record_tool_invocation(tool_name, success=result.get("success", True))
             return result
         except Exception:
             metrics.record_tool_invocation(tool_name, success=False)
             raise
 
-    def _local_invoke(self, tool_name: str, sandbox_id: str, args: dict[str, Any]) -> dict[str, Any]:
-        from interfaces.gateways.tool.handler import invoke_tool
-        from interfaces.gateways.tool.models import ToolInvokeRequest
+    def _local_invoke(
+        self,
+        tool_name: str,
+        sandbox_id: str,
+        args: dict[str, Any],
+        *,
+        persona: str = "local",
+        profile_id: str = DEFAULT_PROFILE_ID,
+        job_id: str = "",
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        from cys_core.domain.tools.models import ToolInvokeCommand
+        from cys_core.infrastructure.tools.gateway_factory import get_tool_execution_gateway
 
-        response = invoke_tool(
-            ToolInvokeRequest(
+        result = get_tool_execution_gateway().invoke(
+            ToolInvokeCommand(
                 tool_name=tool_name,
                 args=args,
-                persona="local",
+                persona=persona,
                 sandbox_id=sandbox_id,
+                job_id=job_id,
+                correlation_id=correlation_id,
+                profile_id=profile_id,
             )
         )
-        return response.model_dump()
+        return result.model_dump()
 
     def _gateway_invoke(
         self,
@@ -148,6 +189,7 @@ class McpToolRegistry:
         persona: str,
         job_id: str,
         correlation_id: str,
+        profile_id: str = DEFAULT_PROFILE_ID,
     ) -> dict[str, Any]:
         body = {
             "tool_name": tool_name,
@@ -156,16 +198,18 @@ class McpToolRegistry:
             "sandbox_id": sandbox_id,
             "job_id": job_id,
             "correlation_id": correlation_id,
+            "profile_id": profile_id,
         }
         headers: dict[str, str] = inject_correlation_headers()
-        if settings.gateway_access_token:
-            headers["Authorization"] = f"Bearer {settings.gateway_access_token}"
+        token = settings.gateway_access_token.get_secret_value()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         if self._client is not None:
             response = self._client.post(f"{self.gateway_url}/invoke", json=body, headers=headers)
             response.raise_for_status()
             return response.json()
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(f"{self.gateway_url}/invoke", json=body, headers=headers)
+        with sync_http_client(timeout=30.0, headers=headers) as client:
+            response = client.post(f"{self.gateway_url}/invoke", json=body)
             response.raise_for_status()
             return response.json()
 

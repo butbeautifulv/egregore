@@ -19,27 +19,28 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
             return {"created": kwargs}
 
     provider = DummyProvider()
-    monkeypatch.setitem(llm._PROVIDERS, "dummy", provider)
-    monkeypatch.setattr(llm.settings, "llm_provider", "dummy")
-    monkeypatch.setattr(llm.settings, "llm_model", "model-a")
-    monkeypatch.setattr(llm.settings, "openai_api_key", "api-key")
-    monkeypatch.setattr(llm.settings, "llm_base_url", "https://llm.example")
-    monkeypatch.setattr(llm.settings, "llm_temperature", 0.2)
+    llm.configure_llm_provider("dummy", provider)
+    llm._MODEL_CONNECTORS["dummy"] = llm.LLMConnector("dummy")
+    monkeypatch.setattr(
+        "cys_core.application.runtime_config.get_llm_settings",
+        lambda: {
+            "model": "model-a",
+            "api_key": "api-key",
+            "base_url": "https://llm.example",
+            "temperature": 0.2,
+            "request_timeout": 120.0,
+        },
+    )
 
     assert llm.get_provider("dummy") is provider
-    monkeypatch.setitem(llm._MODEL_CONNECTORS, "dummy", llm.LLMConnector("dummy"))
     assert llm.get_model_connector("dummy").name == "dummy"
-    assert llm.get_model()["created"]["model"] == "model-a"
+    assert llm.get_model_connector("dummy").create_model()["created"]["model"] == "model-a"
     with pytest.raises(ValueError, match="Unknown LLM provider"):
         llm.get_provider("missing")
     with pytest.raises(ValueError, match="Unknown model connector"):
         llm.get_model_connector("missing")
 
-    monkeypatch.setattr(llm.settings, "langfuse_public_key", "")
-    monkeypatch.setattr(llm.settings, "langfuse_secret_key", "")
-    monkeypatch.setattr(llm.settings, "langfuse_api_key", "")
-    assert llm.get_langfuse_callbacks() == []
-
+    from cys_core.application.ports.trace_callbacks import configure_trace_callbacks
     from cys_core.observability import langfuse_client
 
     langfuse_client.reset_langfuse_client_cache()
@@ -47,26 +48,12 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
     class DummyCallbackHandler:
         pass
 
-    class FakeTraceBackend:
-        def get_callback_handler(self):
-            if not llm.settings.langfuse_enabled:
-                return None
-            return DummyCallbackHandler()
-
-    monkeypatch.setattr(
-        "bootstrap.container.get_container",
-        lambda: type("C", (), {"get_trace_backend": lambda self: FakeTraceBackend()})(),
-    )
-    monkeypatch.setattr(llm.settings, "langfuse_public_key", "public")
-    monkeypatch.setattr(llm.settings, "langfuse_secret_key", "secret")
+    configure_trace_callbacks(lambda: [DummyCallbackHandler()])
     callbacks = llm.get_langfuse_callbacks()
     assert len(callbacks) == 1
     assert isinstance(callbacks[0], DummyCallbackHandler)
 
-    monkeypatch.setattr(
-        "bootstrap.container.get_container",
-        lambda: type("C", (), {"get_trace_backend": lambda self: type("T", (), {"get_callback_handler": lambda s: None})()})(),
-    )
+    configure_trace_callbacks(lambda: [])
     assert llm.get_langfuse_callbacks() == []
 
 

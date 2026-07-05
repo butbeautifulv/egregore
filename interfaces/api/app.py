@@ -2,21 +2,18 @@ from __future__ import annotations
 
 import cys_core.observability.prometheus_setup  # noqa: F401 — multiprocess atexit
 import asyncio
-import contextlib
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from bootstrap.container import get_container
 from bootstrap.settings import get_settings
-from cys_core.application.use_cases.async_manual_investigation import complete_manual_investigation_planning
-from cys_core.application.use_cases.dispatch_event import ASYNC_PLANNER_PENDING
 from cys_core.domain.security.auth_models import AuthClaims
 from cys_core.domain.workers.models import JobResumeRequest
 from cys_core.observability.http import mount_metrics
@@ -24,6 +21,9 @@ from cys_core.observability.metrics import metrics, seed_agent_trust_gauges
 from cys_core.observability.platform_gauges import refresh_platform_gauges
 from cys_core.observability.otel import instrument_fastapi, setup_otel
 from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
+from interfaces.api.tracing_middleware import tracing_middleware
+from interfaces.api.task_supervisor import BackgroundTaskSupervisor
+from interfaces.api.engagements import _latest_egress_phase
 from interfaces.api.schemas import (
     InvestigationDetailOut,
     InvestigationJobsOut,
@@ -31,7 +31,6 @@ from interfaces.api.schemas import (
     InvestigationSummaryOut,
     JobSummaryOut,
 )
-from interfaces.control_plane.job_store import get_job_store
 from interfaces.control_plane.postgres_status_store import PostgresStatusStore
 from interfaces.control_plane.status_store import MemoryStatusStore, get_status_store
 from interfaces.ingress.router import EventIngress, get_event_ingress
@@ -58,27 +57,36 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     get_container()
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI):
+    async def lifespan(app: FastAPI):
         from cys_core.observability.logging_setup import configure_logging
 
         configure_logging("egregore-api")
         setup_otel(service_name="egregore-api")
-        refresh_task: asyncio.Task[None] | None = None
+        from bootstrap.bus_lifecycle import wire_async_bus
+
+        await wire_async_bus()
+        supervisor = BackgroundTaskSupervisor()
+        app.state.task_supervisor = supervisor
 
         async def _refresh_gauges_loop() -> None:
+            container = get_container()
             while True:
-                refresh_platform_gauges()
+                refresh_platform_gauges(
+                    engagement_store=container.get_engagement_state_store(),
+                    job_store=container.get_job_store(),
+                )
                 await asyncio.sleep(30)
 
-        refresh_platform_gauges()
-        refresh_task = asyncio.create_task(_refresh_gauges_loop())
+        container = get_container()
+        refresh_platform_gauges(
+            engagement_store=container.get_engagement_state_store(),
+            job_store=container.get_job_store(),
+        )
+        supervisor.spawn(_refresh_gauges_loop(), name="refresh-platform-gauges")
         try:
             yield
         finally:
-            if refresh_task is not None:
-                refresh_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await refresh_task
+            await supervisor.shutdown()
             trace_backend = get_container().get_trace_backend()
             trace_backend.flush()
             trace_backend.shutdown()
@@ -91,23 +99,31 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+    @app.middleware("http")
+    async def _tracing_middleware(request: Request, call_next):
+        return await tracing_middleware(request, call_next)
+
     mount_metrics(app)
     instrument_fastapi(app)
     seed_agent_trust_gauges()
 
     from interfaces.api.catalog import router as catalog_router
     from interfaces.api.runs import router as runs_router
+    from interfaces.api.engagements import router as engagements_router
 
     app.include_router(catalog_router)
     app.include_router(runs_router)
+    app.include_router(engagements_router)
 
     event_ingress = ingress or get_event_ingress()
     store = get_status_store()
-    job_store = get_job_store()
+    job_store = get_container().get_job_store()
 
     @app.post("/events")
     async def post_event(
         event_in: EventIn,
+        request: Request,
         _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)],
     ) -> dict[str, Any]:
         if get_settings().control_mode != "daemon":
@@ -116,6 +132,26 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
 
             get_critic_service()
             get_coordinator_service()
+
+        eng_request = None
+        from interfaces.api.engagement_ingress import engagement_request_from_event, handle_engagement_ingress
+
+        try:
+            eng_request = engagement_request_from_event(
+                event_in.event_type,
+                event_in.payload,
+                correlation_id=event_in.correlation_id,
+            )
+        except HTTPException:
+            raise
+        if eng_request is not None:
+            return await handle_engagement_ingress(
+                request,
+                eng_request=eng_request,
+                payload=event_in.payload,
+                record_event=store.record_event,
+            )
+
         event, decision, job_ids = await event_ingress.aingest(
             event_in.event_type,
             event_in.payload,
@@ -126,32 +162,6 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         )
         store.record_event(event.model_dump())
 
-        if getattr(decision, "reason", None) == ASYNC_PLANNER_PENDING:
-            planner = event_ingress.plan_investigation
-            orchestrator = event_ingress.orchestrator
-
-            async def _run_planner() -> None:
-                try:
-                    await complete_manual_investigation_planning(
-                        event,
-                        event_in.payload,
-                        plan_investigation=planner,
-                        enqueuer=orchestrator,
-                        status_notifier=store if hasattr(store, "record_investigation_update") else None,
-                    )
-                except Exception:
-                    logger.exception("Async planner failed for event %s", event.id)
-
-            asyncio.create_task(_run_planner())
-            body = {
-                "event": event.model_dump(),
-                "routing": decision.model_dump(),
-                "job_ids": job_ids,
-                "accepted": True,
-                "planner_status": "planning",
-            }
-            return JSONResponse(status_code=202, content=body)
-
         return {
             "event": event.model_dump(),
             "routing": decision.model_dump(),
@@ -159,8 +169,31 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         }
 
     @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    async def health() -> dict[str, Any]:
+        settings = get_settings()
+        return {
+            "status": "ok",
+            "features": {
+                "stream_agent_output": settings.stream_agent_output,
+                "stream_agent_tools": settings.stream_agent_output and settings.stream_agent_tools,
+            },
+        }
+
+    @app.get("/health/infra")
+    async def health_infra() -> dict[str, Any]:
+        from cys_core.infrastructure.bus_transport import get_bus_transport
+        from cys_core.infrastructure.infra_health import collect_infra_health
+
+        container = get_container()
+        return {
+            "status": "ok",
+            **collect_infra_health(
+                queue=container.get_job_queue(),
+                egress=container.get_engagement_egress(),
+                transport=get_bus_transport(),
+                job_store=container.get_job_store(),
+            ),
+        }
 
     @app.get("/status")
     async def get_status(
@@ -220,18 +253,18 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         limit: int = 20,
         _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     ) -> InvestigationsListOut:
-        inv_store = get_container().get_investigation_state_store()
-        states = inv_store.list_recent(tenant_id, limit=limit)
+        eng_store = get_container().get_engagement_state_store()
+        engagements = eng_store.list_recent(tenant_id, limit=limit)
         return InvestigationsListOut(
             investigations=[
                 InvestigationSummaryOut(
-                    investigation_id=state.investigation_id,
-                    tenant_id=state.tenant_id,
-                    goal=state.goal,
-                    status=state.status,
-                    completed_personas=state.completed_personas,
+                    investigation_id=eng.id,
+                    tenant_id=eng.tenant_id,
+                    goal=eng.goal,
+                    status=eng.status.value,
+                    completed_personas=eng.completed_personas,
                 )
-                for state in states
+                for eng in engagements
             ]
         )
 
@@ -241,21 +274,24 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         tenant_id: str = "default",
         _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     ) -> InvestigationDetailOut:
-        inv_store = get_container().get_investigation_state_store()
-        state = inv_store.get(tenant_id, investigation_id)
-        if state is None:
+        eng_store = get_container().get_engagement_state_store()
+        engagement = eng_store.get(tenant_id, investigation_id)
+        if engagement is None:
             raise HTTPException(status_code=404, detail="Investigation not found")
+        egress = get_container().get_engagement_egress()
+        snapshot = getattr(egress, "snapshot", lambda *_a, **_k: [])(investigation_id, tenant_id=tenant_id)
         return InvestigationDetailOut(
-            investigation_id=state.investigation_id,
-            tenant_id=state.tenant_id,
-            goal=state.goal,
-            status=state.status,
-            completed_personas=state.completed_personas,
-            planner_plan=state.planner_plan,
-            planner_status=state.planner_status,
-            planner_rationale=state.planner_rationale,
-            planner_error=state.planner_error,
-            findings_summary=state.findings_summary,
+            investigation_id=engagement.id,
+            tenant_id=engagement.tenant_id,
+            goal=engagement.goal,
+            status=engagement.status.value,
+            latest_phase=_latest_egress_phase(snapshot),
+            completed_personas=engagement.completed_personas,
+            planner_plan=engagement.planner_plan,
+            planner_status=engagement.planner_status,
+            planner_rationale=engagement.planner_rationale,
+            planner_error=engagement.planner_error,
+            findings_summary=engagement.findings_summary,
         )
 
     @app.get("/investigations/{investigation_id}/jobs", response_model=InvestigationJobsOut)
@@ -274,6 +310,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
                     session_id=job.session_id,
                     correlation_id=job.correlation_id,
                     event_id=job.event_id,
+                    created_at=job.created_at,
                 )
                 for job in jobs
             ]
@@ -318,9 +355,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     async def process_one_worker(
         _auth: Annotated[AuthClaims | None, Depends(require_operator_role)],
     ) -> dict[str, Any]:
-        from interfaces.worker.orchestrator import WorkerOrchestrator
-
-        result = await WorkerOrchestrator().process_next()
+        result = await get_container().get_worker_orchestrator().process_next()
         if result is None:
             return {"status": "idle"}
         return {"status": "done", "result": result.model_dump()}

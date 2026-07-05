@@ -47,11 +47,32 @@ def _inject_otel_context(headers: dict[str, str]) -> dict[str, str]:
     return headers
 
 
-def bind_from_headers(headers: dict[str, str]) -> Token[str] | None:
+def bind_from_carrier(headers: dict[str, str]) -> Token[str] | None:
+    """Extract W3C trace context and bind correlation_id from carrier headers."""
+    try:
+        from opentelemetry import context, propagate
+
+        ctx = propagate.extract(headers)
+        context.attach(ctx)
+    except Exception:
+        pass
     cid = extract_correlation_id(headers)
     if not cid:
         return None
     return bind_correlation_id(cid)
+
+
+def bind_from_headers(headers: dict[str, str]) -> Token[str] | None:
+    return bind_from_carrier(headers)
+
+
+def trace_carrier() -> dict[str, str]:
+    """W3C trace context + correlation_id for messaging carriers."""
+    return inject_correlation_headers({})
+
+
+def kafka_produce_headers() -> list[tuple[str, bytes]]:
+    return [(key, value.encode("utf-8")) for key, value in trace_carrier().items()]
 
 
 def structlog_context() -> dict[str, Any]:

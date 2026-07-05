@@ -1,24 +1,19 @@
 ---
 name: identity-attacks
-description: AD/IAM credential access and lateral movement playbooks
+description: Identity attack patterns: credential abuse, MFA bypass, and privilege escalation.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# Identity & Access Attacks
+# Identity Attacks
 
-## When to use
+## Scope
+Identity attack patterns: credential abuse, MFA bypass, and privilege escalation.
 
-- Kerberoasting, DCSync, Pass-the-Ticket indicators
-- AD ACL abuse and privilege escalation paths
-- IAM anomaly correlation with endpoint alerts
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-## Veil playbook anchors
-
-- `performing-kerberoasting-attack`
-- `hunting-for-dcsync-attacks`
-- `analyzing-active-directory-acl-abuse`
-- `detecting-mimikatz-execution-patterns`
-- `conducting-pass-the-ticket-attack`
-
-## Output guidance
-
-Populate lateral_movement_stage and mitre_techniques. Correlate identity_asset with evidence chain.
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

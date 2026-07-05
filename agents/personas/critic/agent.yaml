@@ -7,5 +7,8 @@ hitl_tools: {}
 trust_level: privileged
 bus_recipients:
   - coordinator
+  - soc
+  - network
+  - consultant
 language: ru
 sample: samples/default.txt

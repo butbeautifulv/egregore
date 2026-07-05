@@ -10,9 +10,16 @@ from interfaces.gateways.tool.server import create_app
 
 @pytest.mark.adversarial
 def test_gateway_blocks_high_risk_tool_chain(monkeypatch):
+    from bootstrap.container import get_container
+    from bootstrap.settings import Settings
+
     clear_all_chain_states()
     JobBudgetTracker.clear_all()
-    monkeypatch.setattr("interfaces.gateways.tool.policy.settings.max_high_risk_tool_chain_depth", 1)
+    get_container.cache_clear()
+    monkeypatch.setattr(
+        "bootstrap.settings.get_settings",
+        lambda: Settings(max_high_risk_tool_chain_depth=1),
+    )
 
     client = TestClient(create_app())
     body = {

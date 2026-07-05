@@ -26,7 +26,7 @@ def _seed(store: MemoryVectorStore) -> None:
 def test_rag_query_tool_success(monkeypatch):
     store = MemoryVectorStore()
     _seed(store)
-    monkeypatch.setattr("interfaces.rag.retrieve.get_vector_store", lambda: store)
+    monkeypatch.setattr("cys_core.infrastructure.rag.retrieve.get_vector_store", lambda: store)
     data = rag_query_tool(query="powershell triage", persona="soc", tenant="default")
     assert data["success"] is True
     assert "BEGIN_RETRIEVED_CONTENT" in data["content"]
@@ -34,10 +34,13 @@ def test_rag_query_tool_success(monkeypatch):
 
 @pytest.mark.unit
 def test_gateway_invoke_rag_query(monkeypatch):
+    from bootstrap.container import get_container
+
     store = MemoryVectorStore()
     _seed(store)
-    monkeypatch.setattr("interfaces.rag.retrieve.get_vector_store", lambda: store)
+    monkeypatch.setattr("cys_core.infrastructure.rag.retrieve.get_vector_store", lambda: store)
 
+    get_container()
     client = TestClient(create_app())
     response = client.post(
         "/invoke",

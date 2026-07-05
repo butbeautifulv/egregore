@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from bootstrap.policy_defaults import default_profile_policy
 from cys_core.application.catalog_mutation_service import CatalogMutationService
 from cys_core.application.ports.catalog import AgentCatalogPort
+from cys_core.application.ports.policy_defaults import PolicyDefaultsPort
+from cys_core.application.ports.policy_merge import PolicyMergePort
 from cys_core.domain.catalog.models import ProfilePack, ProfilePolicyPayload
-from cys_core.infrastructure.catalog.policy_merge import merge_profile_policy
 
 
 class UpsertProfilePolicy:
@@ -14,10 +14,14 @@ class UpsertProfilePolicy:
         self,
         catalog: AgentCatalogPort,
         *,
+        policy_merge: PolicyMergePort,
+        policy_defaults: PolicyDefaultsPort,
         mutation: CatalogMutationService | None = None,
         reload: Callable[[], None] | None = None,
     ) -> None:
         self._catalog = catalog
+        self._policy_merge = policy_merge
+        self._policy_defaults = policy_defaults
         self._mutation = mutation
         self._reload = reload or (lambda: None)
 
@@ -34,7 +38,7 @@ class UpsertProfilePolicy:
         )
         if existing is None:
             existing = ProfilePack(id=profile_id, name=profile_id)
-        merged = merge_profile_policy(existing.policy, policy_patch)
+        merged = self._policy_merge.merge_profile_policy(existing.policy, policy_patch)
         existing.policy = merged
         if self._mutation is not None:
             self._mutation.upsert_profile(existing, actor=actor)
@@ -50,7 +54,9 @@ class UpsertProfilePolicy:
         )
         if existing is None:
             existing = ProfilePack(id=profile_id, name=profile_id)
-        merged = merge_profile_policy(existing.policy, default_profile_policy().model_dump())
+        merged = self._policy_merge.merge_profile_policy(
+            existing.policy, self._policy_defaults.default_profile_policy().model_dump()
+        )
         existing.policy = merged
         if self._mutation is not None:
             self._mutation.upsert_profile(existing, actor=actor)

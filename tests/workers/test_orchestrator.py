@@ -27,7 +27,12 @@ async def test_orchestrator_run_job_publishes_finding(monkeypatch):
         all=lambda: [
             SimpleNamespace(name="soc", trust_level="internal", bus_recipients=["critic"], schema_name="SocFinding"),
         ],
-        get=lambda name: SimpleNamespace(schema_name="SocFinding", tools=[], skills=[]),
+        get=lambda name: SimpleNamespace(
+            schema_name="SocFinding",
+            tools=[],
+            skills=[],
+            bus_recipients=["critic"],
+        ),
     )
     runtime = SimpleNamespace(
         arun=AsyncMock(return_value={"incident_id": "i1", "priority": "high", "confidence": 0.8, "summary": "ok"}),
@@ -42,8 +47,11 @@ async def test_orchestrator_run_job_publishes_finding(monkeypatch):
 
 @pytest.mark.unit
 def test_enqueue_from_routing_sync():
-    registry = SimpleNamespace(all=lambda: [], get=lambda n: SimpleNamespace(schema_name=None))
-    orch = WorkerOrchestrator(registry=registry, bus=build_agent_bus(registry))
-    ids = orch.enqueue_from_routing_sync("e1", ["soc"], playbook_id="incident-triage", payload={"a": 1})
+    from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
+    from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
+    from cys_core.infrastructure.queue import InMemoryJobQueue
+
+    service = EnqueueWorkerJobs(queue=InMemoryJobQueue(), job_store=InMemoryJobStore())
+    ids = service.enqueue_from_routing_sync("e1", ["soc"], playbook_id="incident-triage", payload={"a": 1})
     assert len(ids) == 1
     assert ids[0].startswith("soc-e1-")

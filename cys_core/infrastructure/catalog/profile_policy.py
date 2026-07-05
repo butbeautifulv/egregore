@@ -62,7 +62,7 @@ class ProfilePolicyLoader:
 
 
 def _loader() -> ProfilePolicyLoader:
-    from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
+    from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 
     return ProfilePolicyLoader(get_agent_catalog)
 

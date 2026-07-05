@@ -10,6 +10,8 @@ from cys_core.application.runtime_config import (
     get_veneno_mcp_url,
     veneno_mcp_enabled as _veneno_mcp_enabled,
 )
+from cys_core.infrastructure.http_client import sync_http_client
+from cys_core.observability.tracing import inject_correlation_headers
 
 # HITL-gated execution tools (veneno-mcp when enabled).
 VENENO_MCP_TOOL_NAMES: frozenset[str] = frozenset(
@@ -42,12 +44,14 @@ def call_veneno_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None
         "method": "tools/call",
         "params": {"name": tool_name, "arguments": arguments or {}},
     }
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    headers = inject_correlation_headers(
+        {"Content-Type": "application/json", "Accept": "application/json"},
+    )
     url = get_veneno_mcp_url().rstrip("/")
 
     try:
-        with httpx.Client(timeout=get_veneno_mcp_timeout()) as client:
-            response = client.post(url, json=payload, headers=headers)
+        with sync_http_client(timeout=get_veneno_mcp_timeout(), headers=headers) as client:
+            response = client.post(url, json=payload)
             response.raise_for_status()
             body = response.json()
     except httpx.HTTPError as exc:

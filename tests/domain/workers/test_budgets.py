@@ -17,7 +17,8 @@ def test_persona_budget_defaults():
 @pytest.mark.unit
 def test_enrich_job_budget_applies_persona_defaults():
     job = WorkerJob(job_id="j1", event_id="e1", persona="soc")
-    enriched = enrich_job_budget(job)
+    budget = persona_budget("soc")
+    enriched = enrich_job_budget(job, budget)
     assert enriched.max_tokens == 50_000
     assert enriched.max_cost_usd == 2.0
     assert enriched.max_tool_calls == 50
@@ -33,7 +34,7 @@ def test_enrich_job_budget_respects_explicit_limits():
         max_cost_usd=0.5,
         max_tool_calls=5,
     )
-    enriched = enrich_job_budget(job)
+    enriched = enrich_job_budget(job, persona_budget("soc"))
     assert enriched.max_tokens == 10_000
     assert enriched.max_cost_usd == 0.5
     assert enriched.max_tool_calls == 5

@@ -1,25 +1,19 @@
 ---
 name: compliance-frameworks
-description: Map observations to SOC 2, ISO 27001, NIST CSF, and CIS controls
+description: Map findings to common compliance frameworks (SOC2, ISO 27001, PCI-DSS) for advisory output.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# Compliance Framework Mapping
+# Compliance Frameworks
 
-## When to use
+## Scope
+Map findings to common compliance frameworks (SOC2, ISO 27001, PCI-DSS) for advisory output.
 
-- Policy vs practice gap analysis
-- Break-glass, access review, logging retention
-- Control coverage and auditability questions
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-## Framework quick reference
-
-| Framework | Focus |
-|-----------|-------|
-| SOC 2 | CC6 logical access, CC7 monitoring |
-| ISO 27001 | Annex A controls, ISMS |
-| NIST CSF | Identify, Protect, Detect, Respond, Recover |
-| CIS Controls | Implementation groups IG1–IG3 |
-
-## Output guidance
-
-Require evidence for each compliance assertion; separate policy violation from operational risk.
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

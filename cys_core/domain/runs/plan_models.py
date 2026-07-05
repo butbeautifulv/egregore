@@ -54,6 +54,16 @@ class InvestigationPlanStep(BaseModel):
     enough_data: bool = False
 
 
+class EngagementPlannerOutput(BaseModel):
+    """Structured meta-LLM planner response for engagement.start."""
+
+    personas: list[str] = Field(default_factory=list, max_length=3)
+    sub_goals: dict[str, str] = Field(default_factory=dict)
+    rationale: str = ""
+    reasoning_steps: list[str] = Field(default_factory=list, max_length=3)
+    plan_status: str = ""
+
+
 class GeneratePlanPayload(BaseModel):
     """Initial investigation plan (SGR GeneratePlanTool analogue)."""
 

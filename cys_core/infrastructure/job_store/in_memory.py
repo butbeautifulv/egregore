@@ -115,3 +115,17 @@ class InMemoryJobStore:
             if record.tenant_id == tenant_id and record.correlation_id == investigation_id
         ]
         return sorted(matches, key=lambda item: item.job_id)
+
+    def count_running(self) -> int:
+        return sum(1 for record in self._jobs.values() if record.status == WorkerJobStatus.RUNNING)
+
+    def count_active_bus_jobs(self, tenant_id: str, engagement_id: str) -> int:
+        active = {WorkerJobStatus.PENDING, WorkerJobStatus.RUNNING}
+        return sum(
+            1
+            for record in self._jobs.values()
+            if record.tenant_id == tenant_id
+            and record.status in active
+            and "-bus-" in record.job_id
+            and engagement_id in record.correlation_id
+        )

@@ -2,6 +2,21 @@ name: cys-agi
 version: "0.1.0"
 description: Secure multi-agent cybersecurity assessment platform
 
+# Multi-product schema (Stream D1). Each product maps to a catalog profile_id.
+products:
+  - id: cybersec-soc
+    profile_id: cybersec-soc
+    domain: cybersecurity
+    pack: bootstrap.product_packs.CYBERSEC_SOC_PRODUCT
+  - id: general-assistant
+    profile_id: general-assistant
+    domain: general
+    pack: bootstrap.product_packs.GENERAL_ASSISTANT_PRODUCT
+  - id: gaia-benchmark
+    profile_id: gaia-benchmark
+    domain: benchmark
+    pack: bootstrap.product_packs.GAIA_BENCHMARK_PRODUCT
+
 layout:
   personas: personas/       # agent definitions (agent.yaml + AGENT.md)
   rules: rules/             # global constraints for all agents

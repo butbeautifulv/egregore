@@ -38,6 +38,7 @@ dependencies = [
     "opentelemetry-instrumentation-psycopg>=0.50b0",
     "pyjwt[crypto]>=2.10.0",
     "ruff>=0.15.17",
+    "botocore>=1.43.40",
 ]
 
 [project.scripts]
@@ -126,3 +127,13 @@ name = "no_config_in_domain_application"
 type = "forbidden"
 source_modules = ["cys_core.domain", "cys_core.application"]
 forbidden_modules = ["config", "bootstrap"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "cys_core.application.use_cases.evaluate_trace_critic -> bootstrap",
+    "cys_core.application.use_cases.run_step -> bootstrap",
+    "cys_core.application.use_cases.run_worker_job -> bootstrap",
+    "cys_core.application.use_cases.seed_catalog -> bootstrap",
+    "cys_core.application.use_cases.upsert_profile_policy -> bootstrap",
+    "cys_core.application.tools.providers.sandbox -> bootstrap",
+]

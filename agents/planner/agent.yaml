@@ -1,7 +1,7 @@
 name: planner
 description: Investigation planner for manual security assessments
 role: control
-output_schema: null
+output_schema: EngagementPlannerOutput
 tools: []
 hitl_tools: {}
 trust_level: system

@@ -6,27 +6,22 @@ from typing import Any
 
 from bootstrap.settings import settings
 from cys_core.domain.events.models import SecurityEvent
+from cys_core.infrastructure.kafka_publisher import get_kafka_publisher
 from cys_core.infrastructure.kafka_topics import RAW_EVENTS_TOPIC
+from cys_core.observability.tracing import bind_from_carrier
 
 
 async def publish_raw_event(event: SecurityEvent) -> bool:
     """Publish a security event to the raw ingress topic."""
-    try:
-        from aiokafka import AIOKafkaProducer
-
-        producer = AIOKafkaProducer(bootstrap_servers=settings.kafka_bootstrap_servers)
-        await producer.start()
-        try:
-            await producer.send_and_wait(RAW_EVENTS_TOPIC, event.model_dump_json().encode())
-            return True
-        finally:
-            await producer.stop()
-    except Exception:
-        return False
+    if not settings.use_kafka:
+        return True
+    return await get_kafka_publisher().publish_bytes(RAW_EVENTS_TOPIC, event.model_dump_json().encode())
 
 
 def publish_raw_event_sync(event: SecurityEvent) -> bool:
-    return asyncio.run(publish_raw_event(event))
+    if not settings.use_kafka:
+        return True
+    return get_kafka_publisher().publish_bytes_sync(RAW_EVENTS_TOPIC, event.model_dump_json().encode())
 
 
 async def consume_raw_event(timeout: float = 1.0) -> SecurityEvent | None:
@@ -43,6 +38,12 @@ async def consume_raw_event(timeout: float = 1.0) -> SecurityEvent | None:
         )
         await consumer.start()
         record = await asyncio.wait_for(consumer.getone(), timeout=timeout)
+        if record.headers:
+            header_map = {
+                key: value.decode("utf-8") if isinstance(value, bytes) else str(value)
+                for key, value in record.headers
+            }
+            bind_from_carrier(header_map)
         data = json.loads(record.value.decode())
         return SecurityEvent.model_validate(data)
     except (TimeoutError, Exception):

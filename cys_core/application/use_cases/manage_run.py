@@ -3,9 +3,13 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from cys_core.application.ports.catalog import AgentCatalogPort
+from cys_core.application.ports.context_summarizer import ContextSummarizerPort
+from cys_core.application.ports.profile_policy import ProfilePolicyPort
+from cys_core.application.ports.reflexion import ReflexionStorePort
 from cys_core.application.ports.run_state import RunStateStorePort
 from cys_core.application.ports.work_todo import WorkTodoStorePort
-from cys_core.application.spawn_broker import SubagentSpawnBroker
+from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
+from cys_core.application.use_cases.analyze_task_hints import AnalyzeTaskHints
 from cys_core.application.use_cases.run_step import RunStep
 from cys_core.domain.runs.models import ContextKind, InteractionMode, RunContext
 from cys_core.domain.runs.plan_models import PlanApproval
@@ -34,16 +38,28 @@ class ManageRun:
         state_store: RunStateStorePort,
         catalog: AgentCatalogPort,
         todo_store: WorkTodoStorePort,
+        context_summarizer: ContextSummarizerPort,
+        reflexion_store: ReflexionStorePort,
+        policy_port: ProfilePolicyPort,
         judge_backend=None,
+        task_hints: AnalyzeTaskHints | None = None,
+        application_tracing: ApplicationTracingPort | None = None,
     ) -> None:
+        tracing = application_tracing or NOOP_APPLICATION_TRACING
         self._step = RunStep(
             runtime=runtime,
             state_store=state_store,
             catalog=catalog,
             todo_store=todo_store,
             judge_backend=judge_backend,
+            context_summarizer=context_summarizer,
+            reflexion_store=reflexion_store,
+            policy_port=policy_port,
+            task_hints=task_hints,
+            application_tracing=tracing,
         )
         self._state_store = state_store
+        self._todo_store = todo_store
 
     def get_context(self, run_id: str, tenant_id: str = "default") -> RunContext:
         for kind in (ContextKind.SESSION, ContextKind.JOB, ContextKind.INVESTIGATION):
@@ -104,9 +120,7 @@ class ManageRun:
             if approval.edited_plan is not None:
                 state.plan = approval.edited_plan
             if state.plan and state.plan.todos:
-                from cys_core.infrastructure.runs.factory import get_work_todo_store
-
-                get_work_todo_store().replace_todos(ctx.tenant_id, ctx.context_id, state.plan.todos)
+                self._todo_store.replace_todos(ctx.tenant_id, ctx.context_id, state.plan.todos)
                 state.todos = state.plan.todos
             self._state_store.upsert(state)
         return await self._step.execute(ctx, "execute approved plan")

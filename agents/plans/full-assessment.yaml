@@ -4,7 +4,7 @@ description: Manual investigation triggers all worker contours
 
 routing:
   rules:
-    - event_types: [manual.investigation]
+    - event_types: [engagement.start]
       personas:
         - redteam
         - network

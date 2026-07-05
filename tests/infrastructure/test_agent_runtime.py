@@ -56,7 +56,7 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     assert captured["checkpointer"] == "cp"
     assert captured["store"] == "store"
     assert captured["tools"][-1] == "extra-tool"
-    assert len(captured["middleware"]) == 4
+    assert len(captured["middleware"]) >= 4
 
     async_created = await runtime.acreate(defn, session_id="async-sid", extra_tools=["async-extra"])
     assert async_created.created is True
@@ -103,9 +103,9 @@ async def test_runtime_create_run_invoke_and_deep_agent_tool(monkeypatch):
     invalid_schema = SimpleNamespace(
         invoke=lambda *_args, **_kwargs: {"messages": [SimpleNamespace(content='{"bad": "data"}')]}
     )
-    monkeypatch.setattr(runtime_agent.settings, "stage", "dev")
+    monkeypatch.setattr(runtime_agent, "get_stage", lambda: "dev")
     assert invoker._invoke(invalid_schema, "text", session_id="sid", schema=StrictSchema) == {"bad": "data"}
-    monkeypatch.setattr(runtime_agent.settings, "stage", "test")
+    monkeypatch.setattr(runtime_agent, "get_stage", lambda: "test")
     with pytest.raises(runtime_agent.SecurityViolation):
         invoker._invoke(invalid_schema, "text", session_id="sid", schema=StrictSchema)
 

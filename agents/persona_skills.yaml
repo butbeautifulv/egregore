@@ -1,0 +1,36 @@
+# Persona → allowlisted skills for load_skill (merged at catalog seed).
+soc:
+  - network-beaconing
+  - threat-intel-osint
+  - prompt-injection-defense
+hunter:
+  - endpoint-hunting
+  - threat-intel-osint
+intel:
+  - threat-intel-osint
+  - ai-agent-security
+consultant:
+  - compliance-frameworks
+  - secure-deployment
+network:
+  - network-beaconing
+compliance:
+  - compliance-frameworks
+  - ci-cd-threats
+dfir:
+  - digital-forensics
+identity:
+  - identity-attacks
+cloud:
+  - cloud-threat-detection
+purple:
+  - kill-chain-purple
+redteam:
+  - ai-agent-security
+  - skill-supply-chain
+coding:
+  - ci-cd-threats
+  - secure-deployment
+research:
+  - threat-intel-osint
+  - rag-security

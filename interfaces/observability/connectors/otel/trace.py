@@ -33,10 +33,9 @@ class OtelTraceBackend:
         return None
 
     def start_span(self, ctx: TraceContext) -> str:
-        if self._tracer is None:
-            return ""
-        span = self._tracer.start_span(ctx.span_name or "run")
-        return format(span.get_span_context().span_id)
+        # OTEL spans are created via observability_span in WorkerTracingAdapter.
+        _ = ctx
+        return ""
 
     def end_span(self, span_id: str) -> None:
         _ = span_id

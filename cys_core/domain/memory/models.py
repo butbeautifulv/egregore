@@ -30,6 +30,8 @@ class MemoryEntry(BaseModel):
 
 
 class InvestigationState(BaseModel):
+    """Deprecated: use ``Engagement`` as the canonical investigation aggregate."""
+
     investigation_id: str
     tenant_id: str
     goal: str = ""
@@ -40,3 +42,4 @@ class InvestigationState(BaseModel):
     planner_status: PlannerStatus | None = None
     planner_rationale: str = ""
     planner_error: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)

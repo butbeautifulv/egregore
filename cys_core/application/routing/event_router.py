@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
+from cys_core.application.ports.registry_catalogs import PlanCatalogPort
 from cys_core.application.runtime_config import get_use_dynamic_catalog
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
-from cys_core.domain.events.plans import PlanRoutingConfig, load_plans_from_dir, rule_matches
+from cys_core.application.plans.plan_loader import load_plans_from_dir
+from cys_core.domain.events.plans import PlanRoutingConfig, parse_rule, rule_matches
 
 
 class EventRouter:
@@ -27,7 +29,7 @@ class EventRouter:
         plans_dir: Path,
         *,
         policy_port: ProfilePolicyPort | None = None,
-        plan_catalog=None,
+        plan_catalog: PlanCatalogPort | None = None,
     ) -> EventRouter:
         if get_use_dynamic_catalog() and plan_catalog is not None:
             catalog_plans = plan_catalog.load_active()
@@ -42,13 +44,6 @@ class EventRouter:
                     for entry in catalog_plans
                 ]
                 return cls(configs, policy_port=policy_port)
-        if get_use_dynamic_catalog():
-            try:
-                from cys_core.infrastructure.catalog.registry_factory import get_plan_catalog
-
-                return cls.from_plans_dir(plans_dir, policy_port=policy_port, plan_catalog=get_plan_catalog())
-            except Exception:
-                pass
         return cls(load_plans_from_dir(plans_dir), policy_port=policy_port)
 
     def route(self, event: SecurityEvent, *, profile_id: str = DEFAULT_PROFILE_ID) -> RoutingDecision:
@@ -100,14 +95,10 @@ class EventRouter:
         )
 
     def _notify_control_severities(self, profile_id: str) -> set[str]:
-        if self._policy_port is not None:
-            return self._policy_port.get_notify_control_severities(profile_id)
-        from cys_core.infrastructure.catalog.profile_policy import get_notify_control_severities
-
-        return get_notify_control_severities(profile_id)
+        if self._policy_port is None:
+            raise RuntimeError("Profile policy port required for EventRouter")
+        return self._policy_port.get_notify_control_severities(profile_id)
 
 
 def _rule_from_dict(raw: dict):
-    from cys_core.domain.events.plans import _parse_rule
-
-    return _parse_rule(raw)
+    return parse_rule(raw)

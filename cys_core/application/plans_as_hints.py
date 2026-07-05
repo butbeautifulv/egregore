@@ -4,18 +4,29 @@ from pathlib import Path
 
 import yaml
 
+from cys_core.application.ports.agents_root import AgentsRootPort
+from cys_core.application.ports.registry_catalogs import PlanCatalogPort
 from cys_core.application.runtime_config import get_use_dynamic_catalog
-from cys_core.registry.product_context import default_agents_root
-from cys_core.infrastructure.catalog.registry_factory import get_plan_catalog
+
+_plan_catalog: PlanCatalogPort | None = None
+_agents_root: AgentsRootPort | None = None
+
+
+def configure_plan_hints(*, plan_catalog: PlanCatalogPort, agents_root: AgentsRootPort) -> None:
+    global _plan_catalog, _agents_root
+    _plan_catalog = plan_catalog
+    _agents_root = agents_root
 
 
 def load_plan_hints(plans_dir: Path | None = None) -> list[dict]:
     """Load routing plans as conductor context hints (catalog when dynamic)."""
-    if get_use_dynamic_catalog():
-        entries = get_plan_catalog().load_active()
+    if get_use_dynamic_catalog() and _plan_catalog is not None:
+        entries = _plan_catalog.load_active()
         if entries:
             return [{"plan_id": entry.id, "rules": entry.rules} for entry in entries]
-    base = plans_dir or (default_agents_root() / "plans")
+    if _agents_root is None:
+        raise RuntimeError("Plan hints not configured — wire via bootstrap Container")
+    base = plans_dir or (_agents_root.agents_root() / "plans")
     hints: list[dict] = []
     if not base.is_dir():
         return hints

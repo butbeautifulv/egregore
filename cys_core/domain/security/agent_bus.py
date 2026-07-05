@@ -172,8 +172,8 @@ class SecureAgentBus:
         if trust_level <= AgentTrustLevel.UNTRUSTED:
             return ["finding"]
         if trust_level >= AgentTrustLevel.PRIVILEGED:
-            return ["finding", "escalation", "control", "report"]
-        return ["finding", "escalation"]
+            return ["finding", "escalation", "control", "report", "revision", "delegate"]
+        return ["finding", "escalation", "delegate"]
 
     def _sanitize_payload(self, payload: dict[str, Any], trust_level: AgentTrustLevel) -> dict[str, Any]:
         cleaned = dict(payload)

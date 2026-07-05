@@ -1,28 +1,19 @@
 ---
 name: skill-supply-chain
-description: Vet external agent skills and MCP servers for prompt injection, hidden instructions, and auto-exec risk.
+description: Vet third-party agent skills and MCP tools for supply-chain risk.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# skill-supply-chain (cys-agi)
+# Skill Supply Chain
 
-Extends: [cxado-skills/agent/skill-supply-chain](../../../../shared/skills/agent/skill-supply-chain/SKILL.md)
+## Scope
+Vet third-party agent skills and MCP tools for supply-chain risk.
 
-## cys-agi skill lifecycle
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-| Stage | Location | Runtime? |
-|-------|----------|----------|
-| Builtin (signed) | `agents/skills/` | Yes — SkillRegistry |
-| External staging | `agents/skills/external/staging/` | **No** |
-| Vetted external | pinned in `agents/manifest.yaml` | Yes — after L3 approval |
-
-### Runtime rules
-
-- Metadata only in context; body via `load_skill` → Skill Gateway
-- Per-persona allowlist in `agent.yaml` `skills:`
-- Audit topic: `audit.skill.loads`
-
-## Deep reference
-
-- [reference.md](reference.md)
-- `docs/SKILLS_VETTING.md`
-- [docs/reference/CISCO_AI_DEFENCE.md](../../../docs/reference/CISCO_AI_DEFENCE.md)
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

@@ -7,6 +7,7 @@ from cys_core.application.runs.plan_strict import merge_plan_delta_with_policy, 
 from cys_core.application.runs.tool_coercion import coerce_tool_args
 from cys_core.application.skills.catalog import list_skill_metadata
 from cys_core.domain.runs.plan_models import WorkTodo, TodoStatus
+from cys_core.domain.policy.product_payloads import gaia_profile_policy_payload
 from cys_core.domain.security.profile_tools import filter_tools_for_profile
 from cys_core.domain.security.risk import classify_tool_risk, RiskLevel
 from cys_core.infrastructure.reflexion.memory import InMemoryReflexionStore
@@ -27,9 +28,11 @@ def test_trim_tool_results_keeps_last_n():
 
 def test_profile_tool_allowlist_gaia():
     names = ["web_search", "run_active_scan", "browser_use"]
-    filtered = filter_tools_for_profile(names, "gaia-bench")
+    policy = gaia_profile_policy_payload()
+    filtered = filter_tools_for_profile(names, "gaia-benchmark", policy=policy)
     assert "web_search" in filtered
     assert "run_active_scan" not in filtered
+    assert "browser_use" in filtered
 
 
 def test_classify_new_tool_risks():
@@ -46,10 +49,13 @@ def test_strict_plan_blocks_delta(monkeypatch):
     assert plan_delta_allowed() is False
 
 
-def test_skill_metadata_lists_general_reasoning():
+def test_skill_metadata_lists_prompt_injection_defense():
+    from bootstrap.container import get_container
+
+    get_container()
     meta = list_skill_metadata()
     ids = {item["id"] for item in meta}
-    assert "general-reasoning" in ids
+    assert "prompt-injection-defense" in ids
 
 
 def test_reflexion_poison_sanitized():

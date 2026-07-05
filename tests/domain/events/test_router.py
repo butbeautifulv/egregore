@@ -1,8 +1,14 @@
 import pytest
 
 from cys_core.domain.events.models import RoutingRule, SecurityEvent
-from cys_core.domain.events.plans import PlanRoutingConfig, load_plan_routing, rule_matches, severity_at_least
+from cys_core.application.plans.plan_loader import load_plan_routing
+from cys_core.domain.events.plans import PlanRoutingConfig, rule_matches, severity_at_least
 from cys_core.application.routing.event_router import EventRouter
+from tests.application.port_fakes import fake_policy_port
+
+
+def _router(plans):
+    return EventRouter(plans, policy_port=fake_policy_port())
 
 
 @pytest.mark.unit
@@ -33,7 +39,7 @@ routing:
 """,
         encoding="utf-8",
     )
-    router = EventRouter([load_plan_routing(plan_file)])
+    router = _router([load_plan_routing(plan_file)])
     event = SecurityEvent(id="e1", type="siem.alert", severity="high", payload={"alert": "powershell"})
     decision = router.route(event)
     assert decision.personas == ["soc"]
@@ -44,7 +50,7 @@ routing:
 
 @pytest.mark.unit
 def test_event_router_no_match():
-    router = EventRouter([])
+    router = _router([])
     event = SecurityEvent(id="e2", type="doc.upload", severity="low")
     decision = router.route(event)
     assert decision.personas == []
@@ -66,7 +72,7 @@ routing:
 """,
         encoding="utf-8",
     )
-    router = EventRouter.from_plans_dir(tmp_path)
+    router = EventRouter.from_plans_dir(tmp_path, policy_port=fake_policy_port())
     decision = router.route(SecurityEvent(id="e3", type="escalation", severity="critical"))
     assert decision.personas == ["redteam"]
     assert decision.playbook_id == "custom-playbook"
@@ -74,7 +80,7 @@ routing:
 
 @pytest.mark.unit
 def test_event_router_skips_non_matching_rules():
-    router = EventRouter(
+    router = _router(
         [
             PlanRoutingConfig(
                 id="p1",
@@ -91,7 +97,7 @@ def test_event_router_skips_non_matching_rules():
 
 @pytest.mark.unit
 def test_event_router_deduplicates_personas():
-    router = EventRouter(
+    router = _router(
         [
             PlanRoutingConfig(
                 id="p1",

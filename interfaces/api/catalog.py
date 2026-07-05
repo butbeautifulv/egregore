@@ -6,9 +6,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from bootstrap.catalog_loader import load_profile_pack
-from cys_core.application.catalog_mutation_factory import get_catalog_mutation_service
-from cys_core.application.use_cases.seed_catalog import SeedCatalog
+from bootstrap.container import get_container
 from cys_core.application.use_cases.upsert_catalog_agent import UpsertCatalogAgent
 from cys_core.application.use_cases.upsert_catalog_resource import (
     UpsertMcpServer,
@@ -20,15 +18,6 @@ from cys_core.application.use_cases.upsert_profile_pack import UpsertProfilePack
 from cys_core.application.use_cases.upsert_profile_policy import UpsertProfilePolicy
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.security.auth_models import AuthClaims
-from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog, get_catalog_version_metric, reload_agent_registry
-from cys_core.infrastructure.catalog.registry_factory import (
-    get_catalog_audit,
-    get_catalog_write_gate,
-    get_mcp_catalog,
-    get_plan_catalog,
-    get_skill_catalog,
-    get_tool_catalog,
-)
 from interfaces.api.auth import require_operator_role, require_reader_role
 from interfaces.api.deps import api_actor
 
@@ -47,6 +36,11 @@ class AgentCatalogOut(BaseModel):
     version_tag: str = ""
     enabled: bool = True
     empirical_trust: float = 0.75
+
+
+class AgentCatalogDetailOut(AgentCatalogOut):
+    system_prompt: str = ""
+    system_prompt_digest: str = ""
 
 
 class AgentCatalogPut(BaseModel):
@@ -114,8 +108,12 @@ class ProfilePackPut(BaseModel):
     policy: dict = Field(default_factory=dict)
 
 
+def _container():
+    return get_container()
+
+
 def _mutation():
-    return get_catalog_mutation_service(reload=reload_agent_registry)
+    return get_container().get_catalog_mutation_service()
 
 
 def _entry_out(entry) -> AgentCatalogOut:
@@ -134,6 +132,24 @@ def _entry_out(entry) -> AgentCatalogOut:
     )
 
 
+def _detail_out(entry) -> AgentCatalogDetailOut:
+    return AgentCatalogDetailOut(
+        name=entry.name,
+        description=entry.description,
+        role=entry.role,
+        output_schema=entry.output_schema,
+        tools=entry.tools,
+        skills=entry.skills,
+        profile_id=entry.profile_id,
+        version=entry.version,
+        version_tag=entry.version_tag,
+        enabled=entry.enabled,
+        empirical_trust=entry.quality.empirical_trust,
+        system_prompt=entry.system_prompt,
+        system_prompt_digest=entry.system_prompt_digest,
+    )
+
+
 @router.get("/agents")
 async def list_agents(
     profile_id: str | None = None,
@@ -141,7 +157,7 @@ async def list_agents(
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
     enabled_only = False
-    agents = get_agent_catalog().list_agents(profile_id=profile_id, enabled_only=enabled_only)
+    agents = _container().get_agent_catalog().list_agents(profile_id=profile_id, enabled_only=enabled_only)
     if enabled is not None:
         agents = [agent for agent in agents if agent.enabled == enabled]
     return {"agents": [_entry_out(a).model_dump() for a in agents]}
@@ -151,11 +167,11 @@ async def list_agents(
 async def get_agent(
     name: str,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
-) -> AgentCatalogOut:
-    entry = get_agent_catalog().get_agent(name)
+) -> AgentCatalogDetailOut:
+    entry = _container().get_agent_catalog().get_agent(name)
     if entry is None:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return _entry_out(entry)
+    return _detail_out(entry)
 
 
 @router.put("/agents/{name}")
@@ -165,9 +181,10 @@ async def put_agent(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> AgentCatalogOut:
     saved = UpsertCatalogAgent(
-        get_agent_catalog(),
-        reload=reload_agent_registry,
-        write_gate=get_catalog_write_gate(),
+        _container().get_agent_catalog(),
+        schema_registry=get_container().get_schema_registry_port(),
+        reload=_container().reload_catalog,
+        mutation=_mutation(),
     ).execute(
         name,
         body.model_dump(),
@@ -182,7 +199,7 @@ async def delete_agent(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
-    ok = get_catalog_write_gate().delete_agent(
+    ok = _mutation().delete_agent(
         name,
         profile_id=profile_id,
         actor=api_actor(_auth),
@@ -197,7 +214,7 @@ async def list_skills(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    skills = get_skill_catalog().list_skills(profile_id=profile_id, enabled_only=False)
+    skills = _container().get_skill_catalog().list_skills(profile_id=profile_id, enabled_only=False)
     return {"skills": [skill.model_dump(mode="json") for skill in skills]}
 
 
@@ -207,7 +224,7 @@ async def get_skill(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    entry = get_skill_catalog().get_skill(skill_id, profile_id=profile_id)
+    entry = _container().get_skill_catalog().get_skill(skill_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Skill not found")
     return entry.model_dump(mode="json")
@@ -265,7 +282,7 @@ async def list_plans(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    plans = get_plan_catalog().list_plans(profile_id=profile_id, enabled_only=False)
+    plans = _container().get_plan_catalog().list_plans(profile_id=profile_id, enabled_only=False)
     return {"plans": [plan.model_dump(mode="json") for plan in plans]}
 
 
@@ -275,7 +292,7 @@ async def get_plan(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    entry = get_plan_catalog().get_plan(plan_id, profile_id=profile_id)
+    entry = _container().get_plan_catalog().get_plan(plan_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Plan not found")
     return entry.model_dump(mode="json")
@@ -301,10 +318,10 @@ async def activate_plan(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
-    entry = get_plan_catalog().activate_plan(plan_id, profile_id=profile_id)
+    entry = _container().get_plan_catalog().activate_plan(plan_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Plan not found")
-    reload_agent_registry()
+    _container().reload_catalog()
     return entry.model_dump(mode="json")
 
 
@@ -313,7 +330,7 @@ async def list_mcp_servers(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    servers = get_mcp_catalog().list_servers(profile_id=profile_id, enabled_only=False)
+    servers = _container().get_mcp_catalog().list_servers(profile_id=profile_id, enabled_only=False)
     return {"servers": [server.model_dump(mode="json") for server in servers]}
 
 
@@ -337,7 +354,7 @@ async def mcp_health_check(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    entry = get_mcp_catalog().get_server(server_id, profile_id=profile_id)
+    entry = _container().get_mcp_catalog().get_server(server_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="MCP server not found")
     status = "unknown"
@@ -347,7 +364,7 @@ async def mcp_health_check(
     except Exception:
         status = "unreachable"
     entry.health_status = status
-    get_mcp_catalog().upsert_server(entry)
+    _container().get_mcp_catalog().upsert_server(entry)
     return {"id": server_id, "health_status": status}
 
 
@@ -358,9 +375,10 @@ async def put_profile(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
     saved = UpsertProfilePack(
-        get_agent_catalog(),
+        _container().get_agent_catalog(),
+        policy_merge=get_container().get_policy_merge_port(),
         mutation=_mutation(),
-        reload=reload_agent_registry,
+        reload=_container().reload_catalog,
     ).execute(
         profile_id,
         body.model_dump(),
@@ -374,11 +392,9 @@ async def get_profile_policy(
     profile_id: str,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    from cys_core.infrastructure.catalog.profile_policy import get_profile_policy as load_policy
-
-    profiles = get_agent_catalog().list_profiles()
+    profiles = _container().get_agent_catalog().list_profiles()
     profile = next((item for item in profiles if item.id == profile_id), None)
-    policy = load_policy(profile_id)
+    policy = _container().get_profile_policy_port().get_policy(profile_id)
     return {
         "profile_id": profile_id,
         "profile": profile.model_dump(mode="json") if profile else None,
@@ -393,9 +409,11 @@ async def put_profile_policy(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
     policy = UpsertProfilePolicy(
-        get_agent_catalog(),
+        _container().get_agent_catalog(),
+        policy_merge=get_container().get_policy_merge_port(),
+        policy_defaults=get_container().get_policy_defaults_port(),
         mutation=_mutation(),
-        reload=reload_agent_registry,
+        reload=_container().reload_catalog,
     ).execute(profile_id, body.policy, actor=api_actor(_auth))
     return {"profile_id": profile_id, "policy": policy.model_dump(mode="json")}
 
@@ -405,7 +423,7 @@ async def list_tools_api(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    tools = get_tool_catalog().list_tools(profile_id=profile_id, enabled_only=False)
+    tools = _container().get_tool_catalog().list_tools(profile_id=profile_id, enabled_only=False)
     return {"tools": [tool.model_dump(mode="json") for tool in tools]}
 
 
@@ -415,7 +433,7 @@ async def get_tool_api(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    entry = get_tool_catalog().get_tool(tool_id, profile_id=profile_id)
+    entry = _container().get_tool_catalog().get_tool(tool_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Tool not found")
     return entry.model_dump(mode="json")
@@ -440,7 +458,7 @@ async def get_evaluation(
     persona: str,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    entry = get_agent_catalog().get_agent(persona)
+    entry = _container().get_agent_catalog().get_agent(persona)
     if entry is None:
         raise HTTPException(status_code=404, detail="Persona not found")
     return {
@@ -455,7 +473,7 @@ async def list_evaluations(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    agents = get_agent_catalog().list_agents(profile_id=profile_id, enabled_only=False)
+    agents = _container().get_agent_catalog().list_agents(profile_id=profile_id, enabled_only=False)
     leaderboard = sorted(agents, key=lambda item: item.quality.empirical_trust, reverse=True)
     return {
         "evaluations": [
@@ -474,7 +492,7 @@ async def list_evaluations(
 async def list_profiles(
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    catalog = get_agent_catalog()
+    catalog = _container().get_agent_catalog()
     profiles = catalog.list_profiles()
     return {"profiles": [p.model_dump() if hasattr(p, "model_dump") else p for p in profiles]}
 
@@ -484,23 +502,19 @@ async def catalog_audit(
     limit: int = 50,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
-    return {"entries": get_catalog_audit().list_entries(limit=limit)}
+    return {"entries": _container().get_catalog_audit().list_entries(limit=limit)}
 
 
 @router.post("/reload")
 async def reload_catalog(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
-    reload_agent_registry()
-    return {"reloaded": True, "version": get_catalog_version_metric()}
+    _container().reload_catalog()
+    return {"reloaded": True, "version": _container().get_catalog_version()}
 
 
 @router.post("/seed")
 async def seed_catalog(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
-    return SeedCatalog(
-        get_agent_catalog(),
-        load_profile_pack=load_profile_pack,
-        reload=reload_agent_registry,
-    ).execute()
+    return _container().get_seed_catalog().execute()

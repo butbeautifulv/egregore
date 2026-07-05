@@ -36,11 +36,9 @@ class SubagentSpawnBroker:
         return get_profile_policy_resolver().max_spawn_depth(profile_id)
 
     def _resolve_trust_floor(self, profile_id: str) -> float:
-        if self._policy_port is not None:
-            return self._policy_port.get_trust_floor(profile_id)
-        from cys_core.infrastructure.catalog.profile_policy import get_trust_floor
-
-        return get_trust_floor(profile_id)
+        if self._policy_port is None:
+            raise RuntimeError("Profile policy port required for SubagentSpawnBroker")
+        return self._policy_port.get_trust_floor(profile_id)
 
     def validate(
         self,

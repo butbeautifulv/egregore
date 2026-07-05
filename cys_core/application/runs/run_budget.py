@@ -3,9 +3,9 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Iterator
 
+from cys_core.application.runs.budget_metrics import _metrics
 from cys_core.domain.workers.budgets import persona_budget
 from cys_core.domain.workers.job_budget import JobBudgetTracker
-from cys_core.observability.metrics import metrics
 
 
 @contextmanager
@@ -23,7 +23,7 @@ def run_session_budget(session_id: str, persona: str) -> Iterator[None]:
     finally:
         state = JobBudgetTracker.get(session_id)
         if state is not None:
-            metrics.record_job_usage(
+            _metrics().record_job_usage(
                 persona,
                 tokens=state.tokens_used,
                 cost_usd=state.cost_usd,

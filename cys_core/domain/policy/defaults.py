@@ -111,45 +111,20 @@ ACTION_RISK_MAPPING: dict[str, str] = {
 
 PROFILE_TOOL_ALLOWLIST: dict[str, frozenset[str] | None] = {
     DEFAULT_PROFILE_ID: None,
-    "gaia-bench": frozenset(
-        {
-            "web_search",
-            "read_document",
-            "reasoning_check",
-            "extract_structured_output",
-            "delegate_research",
-            "python_sandbox",
-            "vision_analyze",
-            "search_archived_webpage",
-            "plan_tool_calls",
-            "browser_use",
-            "transcribe_audio",
-            "load_skill",
-            "search_personas",
-            "search_skills",
-            "search_tools",
-            "update_todos",
-            "ask_user",
-        }
-    ),
-    "general": frozenset(
-        {
-            "search_personas",
-            "search_skills",
-            "search_tools",
-            "update_todos",
-            "ask_user",
-            "web_search",
-            "read_document",
-            "reasoning_check",
-            "extract_structured_output",
-            "delegate_research",
-            "load_skill",
-            "plan_tool_calls",
-            "create_report_outline",
-        }
-    ),
 }
+
+
+def default_profile_policy_payload() -> ProfilePolicyPayload:
+    from cys_core.domain.policy.product_payloads import profile_policy_for
+
+    return profile_policy_for(DEFAULT_PROFILE_ID)
+
+
+def gaia_profile_policy_payload() -> ProfilePolicyPayload:
+    from cys_core.domain.policy.product_payloads import gaia_profile_policy_payload as _gaia
+
+    return _gaia()
+
 
 PERSONA_BUDGETS: dict[str, PersonaBudget] = {
     "soc": PersonaBudget(max_tokens=50_000, max_cost_usd=2.0),
@@ -185,26 +160,3 @@ PERSONA_CLEARANCE: dict[str, str] = {
     "critic": "internal",
 }
 
-
-def default_profile_policy_payload() -> ProfilePolicyPayload:
-    tool_allowlist: dict[str, list[str] | None] = {}
-    for profile_id, allow in PROFILE_TOOL_ALLOWLIST.items():
-        tool_allowlist[profile_id] = None if allow is None else sorted(allow)
-    tool_risk = dict(ACTION_RISK_MAPPING)
-    escalation_paths = [list(pair) for pair in sorted(ESCALATION_ONLY_PATHS)]
-    return ProfilePolicyPayload(
-        tool_allowlist=tool_allowlist,
-        tool_risk=tool_risk,
-        hitl_auto_approve_threshold="low",
-        mode_policy=DEFAULT_MODE_POLICY,
-        escalation_paths=escalation_paths,
-        max_spawn_depth=5,
-        cost_per_1k_tokens_usd=0.003,
-        delegate_budget_fraction=0.35,
-        sgr=SgrPolicy(),
-    )
-
-
-def gaia_profile_policy_payload() -> ProfilePolicyPayload:
-    policy = default_profile_policy_payload()
-    return policy.model_copy(update={"sgr": SgrPolicy(enabled=True, mode="sgr_hybrid")})

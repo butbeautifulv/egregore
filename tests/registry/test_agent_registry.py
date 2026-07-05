@@ -15,6 +15,9 @@ WORKER_NAMES = {
     "cloud",
     "purple",
     "conductor",
+    "research",
+    "gaia_solver",
+    "coding",
 }
 
 ALL_AGENT_NAMES = WORKER_NAMES | {"critic", "coordinator", "planner"}
@@ -70,6 +73,7 @@ def test_schema_registry_resolves_names():
     assert schema_registry.get("RedTeamFinding").__name__ == "RedTeamFinding"
     assert schema_registry.get("ConsultantFinding").__name__ == "ConsultantFinding"
     assert schema_registry.get("CriticResult").__name__ == "CriticResult"
+    assert schema_registry.get("EngagementPlannerOutput").__name__ == "EngagementPlannerOutput"
     assert schema_registry.get("IntelFinding").__name__ == "IntelFinding"
     assert schema_registry.get("HunterFinding").__name__ == "HunterFinding"
     assert schema_registry.get("IdentityFinding").__name__ == "IdentityFinding"

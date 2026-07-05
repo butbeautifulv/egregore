@@ -4,28 +4,22 @@ import json
 import logging
 from typing import Any, Protocol
 
-from pydantic import BaseModel, Field
-
-from cys_core.application.advisory_goal import is_advisory_goal
-from cys_core.application.policy_resolver import get_profile_policy_resolver
-from cys_core.application.runtime_config import get_planner_fallback_personas, get_use_dynamic_catalog
-from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
-from cys_core.registry.discovery_tools import rank_personas_by_quality
-from cys_core.application.ports.memory import InvestigationStateStore
+from cys_core.application.engagement_streaming import publish_assistant_snapshot
+from cys_core.application.errors import PlanningFailedError
+from cys_core.application.ports.catalog import AgentCatalogPort
+from cys_core.application.ports.engagement_egress import EngagementEgressPort
+from cys_core.application.ports.engagement_store import EngagementStateStore
+from cys_core.application.ports.persona_ranking import PersonaRankingPort
+from cys_core.application.ports.resource_source import ResourceSourcePort
+from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
+from cys_core.application.ports.stream_context import StreamContext
+from cys_core.domain.engagement.models import Engagement, EngagementPlan, EngagementStatus
 from cys_core.domain.events.models import SecurityEvent
-from cys_core.domain.memory.models import InvestigationState
+from cys_core.domain.parsing.json_text import parse_json_text
 
 logger = logging.getLogger(__name__)
 
-
-class InvestigationPlan(BaseModel):
-    personas: list[str] = Field(default_factory=list)
-    sub_goals: dict[str, str] = Field(default_factory=dict)
-    rationale: str = ""
-    depends_on: dict[str, list[str]] = Field(default_factory=dict)
-    reasoning_steps: list[str] = Field(default_factory=list)
-    plan_status: str = ""
+MAX_PLANNER_PERSONAS = 3
 
 
 class PlannerRuntime(Protocol):
@@ -38,166 +32,248 @@ class PlannerRuntime(Protocol):
         tenant_id: str | None = None,
         investigation_id: str | None = None,
         profile_id: str | None = None,
+        job_id: str | None = None,
+        stream_context: StreamContext | None = None,
     ) -> dict[str, Any]: ...
 
 
 class PlanInvestigation:
-    """LLM planner for manual.investigation events — produces ordered persona plan."""
+    """LLM planner for engagement meta-LLM strategy — produces ordered persona plan."""
 
     def __init__(
         self,
         *,
         runtime: PlannerRuntime,
-        investigation_store: InvestigationStateStore,
+        engagement_store: EngagementStateStore,
+        resource_source: ResourceSourcePort,
+        persona_ranking: PersonaRankingPort,
+        agent_catalog: AgentCatalogPort,
         planner_persona: str = "planner",
         profile_id: str = "cybersec-soc",
+        application_tracing: ApplicationTracingPort | None = None,
+        engagement_egress: EngagementEgressPort | None = None,
     ) -> None:
         self.runtime = runtime
-        self.investigation_store = investigation_store
+        self.engagement_store = engagement_store
+        self.resource_source = resource_source
+        self.persona_ranking = persona_ranking
+        self.agent_catalog = agent_catalog
         self.planner_persona = planner_persona
         self.profile_id = profile_id
+        self._tracing = application_tracing or NOOP_APPLICATION_TRACING
+        self._engagement_egress = engagement_egress
 
     def _available_personas(self) -> list[str]:
-        from cys_core.application.resource_source import get_resource_source
+        return self.resource_source.list_worker_personas(profile_id=self.profile_id)
 
-        return get_resource_source().list_worker_personas(profile_id=self.profile_id)
-
-    @classmethod
-    def fallback_personas(cls, *, profile_id: str = DEFAULT_PROFILE_ID) -> list[str]:
-        return get_profile_policy_resolver().planner_fallback_personas(
-            profile_id,
-            env_csv=get_planner_fallback_personas(),
-        )
-
-    def _investigation_id(self, event: SecurityEvent) -> str:
+    def _engagement_id(self, event: SecurityEvent) -> str:
         return event.correlation_id or event.id
 
     def _goal_from_event(self, event: SecurityEvent) -> str:
         return str(event.payload.get("goal", event.payload.get("message", "Investigate security incident")))
 
-    def _fallback_plan(self, goal: str, *, rationale: str) -> InvestigationPlan:
-        personas = self.fallback_personas(profile_id=self.profile_id)
-        return InvestigationPlan(
-            personas=personas,
-            sub_goals={persona: goal for persona in personas},
-            rationale=rationale,
-        )
+    def _cap_personas(self, personas: list[str]) -> list[str]:
+        if len(personas) <= MAX_PLANNER_PERSONAS:
+            return list(personas)
+        return list(personas[:MAX_PLANNER_PERSONAS])
 
-    def _parse_plan(self, result: dict[str, Any], goal: str) -> InvestigationPlan:
+    @staticmethod
+    def _raw_snippet(result: dict[str, Any]) -> str:
+        raw = str(result.get("raw_response", ""))
+        return raw[:500] if raw else ""
+
+    def _parse_plan(self, result: dict[str, Any], goal: str) -> EngagementPlan:
+        if not isinstance(result, dict):
+            raise PlanningFailedError("planner", "planner returned non-object response")
+
+        if result.get("error"):
+            raise PlanningFailedError("planner", str(result["error"]))
+
+        response_text = result.get("response")
+        if isinstance(response_text, str) and response_text.strip():
+            parsed = parse_json_text(response_text)
+            if parsed is not None:
+                return self._parse_plan(parsed, goal)
+
         if "personas" in result and isinstance(result["personas"], list):
             personas = [str(item) for item in result["personas"]]
             sub_goals = result.get("sub_goals", {})
-            if not isinstance(sub_goals, dict):
+            if isinstance(sub_goals, list):
+                sub_goals = (
+                    {persona: str(item) for persona, item in zip(personas, sub_goals, strict=False)}
+                    if personas
+                    else {}
+                )
+            elif not isinstance(sub_goals, dict):
                 sub_goals = {}
-            return InvestigationPlan(
+            if not sub_goals and personas:
+                sub_goals = {persona: goal for persona in personas}
+            return EngagementPlan(
                 personas=personas,
                 sub_goals={str(k): str(v) for k, v in sub_goals.items()},
                 rationale=str(result.get("rationale", "")),
                 reasoning_steps=[str(s) for s in result.get("reasoning_steps", []) if s],
                 plan_status=str(result.get("plan_status", "")),
             )
+
         raw = result.get("raw_response", "")
         if raw:
-            try:
-                parsed = json.loads(raw)
+            parsed = parse_json_text(str(raw))
+            if parsed is not None and "personas" in parsed:
                 return self._parse_plan(parsed, goal)
-            except json.JSONDecodeError:
-                pass
-        return self._fallback_plan(goal, rationale="fallback_default_plan")
+            snippet = self._raw_snippet(result)
+            raise PlanningFailedError(
+                "planner",
+                f"unparseable planner response{f': {snippet}' if snippet else ''}",
+            )
 
-    def begin_planning(self, event: SecurityEvent) -> InvestigationState:
-        """Create or update investigation state before async planner runs."""
+        raise PlanningFailedError("planner", "planner returned empty response")
+
+    def begin_planning(self, event: SecurityEvent) -> Engagement:
+        """Create or update engagement state before async planner runs."""
         goal = self._goal_from_event(event)
-        investigation_id = self._investigation_id(event)
-        state = self.investigation_store.get(event.tenant_id, investigation_id)
-        if state is None:
-            state = InvestigationState(
-                investigation_id=investigation_id,
+        engagement_id = self._engagement_id(event)
+        engagement = self.engagement_store.get(event.tenant_id, engagement_id)
+        if engagement is None:
+            engagement = Engagement(
+                id=engagement_id,
                 tenant_id=event.tenant_id,
                 goal=goal,
-                status="in_progress",
+                status=EngagementStatus.PLANNING,
+                correlation_id=engagement_id,
             )
-        state.goal = goal
-        state.status = "in_progress"
-        state.planner_status = "planning"
-        state.planner_plan = None
-        state.planner_rationale = ""
-        state.planner_error = ""
-        self.investigation_store.upsert(state)
-        return state
+        engagement.begin_planning(goal=goal)
+        self.engagement_store.upsert(engagement)
+        return engagement
 
-    def _apply_plan_to_state(self, state: InvestigationState, plan: InvestigationPlan, *, status: str, error: str = "") -> None:
-        state.planner_plan = plan.personas
-        state.planner_status = status  # type: ignore[assignment]
-        state.planner_rationale = plan.rationale
-        state.planner_error = error
-        state.goal = state.goal or ""
-        if state.status == "open":
-            state.status = "in_progress"
-        self.investigation_store.upsert(state)
+    def _apply_plan_to_engagement(
+        self,
+        engagement: Engagement,
+        plan: EngagementPlan,
+        *,
+        status: str,
+        error: str = "",
+    ) -> None:
+        self.engagement_store.update_planner_state(
+            engagement.tenant_id,
+            engagement.id,
+            planner_plan=plan.personas,
+            planner_status=status,
+            planner_rationale=plan.rationale,
+            planner_error=error,
+            goal=engagement.goal or None,
+        )
 
-    async def execute(self, event: SecurityEvent) -> InvestigationPlan:
+    def _apply_planning_error(self, engagement: Engagement, message: str) -> None:
+        self._apply_plan_to_engagement(
+            engagement,
+            EngagementPlan(personas=[], sub_goals={}, rationale=""),
+            status="error",
+            error=message,
+        )
+
+    async def execute(self, event: SecurityEvent) -> EngagementPlan:
         goal = self._goal_from_event(event)
-        investigation_id = self._investigation_id(event)
-        state = self.investigation_store.get(event.tenant_id, investigation_id)
-        if state is None:
-            state = self.begin_planning(event)
-        elif state.planner_status != "planning":
-            state.planner_status = "planning"
-            state.planner_error = ""
-            self.investigation_store.upsert(state)
+        engagement_id = self._engagement_id(event)
+        with self._tracing.span(
+            "engagement.plan",
+            event_type=event.type,
+            engagement_id=engagement_id,
+            tenant_id=event.tenant_id,
+        ):
+            return await self._execute_plan(event, goal, engagement_id)
 
-        if is_advisory_goal(goal):
-            plan = InvestigationPlan(
-                personas=["consultant"],
-                sub_goals={"consultant": goal},
-                rationale="advisory_fast_path_consultant_only",
-            )
-            self._apply_plan_to_state(state, plan, status="ok")
-            return plan
+    async def _execute_plan(self, event: SecurityEvent, goal: str, engagement_id: str) -> EngagementPlan:
+        engagement = self.engagement_store.get(event.tenant_id, engagement_id)
+        if engagement is None:
+            engagement = self.begin_planning(event)
+        elif engagement.planner_status != "planning":
+            engagement.planner_status = "planning"
+            engagement.planner_error = ""
+            self.engagement_store.upsert(engagement)
 
         available = self._available_personas()
-        prompt = json.dumps(
-            {
-                "goal": goal,
-                "event_type": event.type,
-                "severity": event.severity,
-                "available_personas": available,
-                "instructions": (
-                    "Return JSON with keys: personas (ordered list), sub_goals (map persona->task), rationale. "
-                    "Use consultant alone for general IB advisory questions."
-                ),
-            },
-            ensure_ascii=False,
+        prompt = (
+            f"Goal: {goal}\n"
+            f"Event type: {event.type}\n"
+            f"Severity: {event.severity}\n"
+            f"Available personas: {', '.join(available)}\n"
+            "Select up to 3 personas. Use consultant alone for general IB advisory or consultation. "
+            "Use network (+ optional compliance) for LAN hardening and segmentation questions."
         )
         try:
             result = await self.runtime.arun(
                 self.planner_persona,
                 prompt,
-                session_id=f"planner:{investigation_id}",
+                session_id=f"planner:{engagement_id}",
                 tenant_id=event.tenant_id,
-                investigation_id=investigation_id,
+                investigation_id=engagement_id,
                 profile_id=self.profile_id,
+                job_id=f"planner:{engagement_id}",
+                stream_context=StreamContext(
+                    engagement_id=engagement_id,
+                    job_id=f"planner:{engagement_id}",
+                    persona=self.planner_persona,
+                    tenant_id=event.tenant_id,
+                ),
             )
             plan = self._parse_plan(result, goal)
             if not plan.personas:
-                plan = self._fallback_plan(goal, rationale="fallback_default_plan")
+                raise PlanningFailedError(engagement_id, "planner returned empty personas list")
+
+            requested = list(plan.personas)
             allowed = set(available)
             plan.personas = [persona for persona in plan.personas if persona in allowed]
             if not plan.personas:
-                plan = self._fallback_plan(goal, rationale="planner_invalid_personas_fallback")
-            plan.personas = rank_personas_by_quality(
-                plan.personas, catalog=get_agent_catalog(), profile_id=self.profile_id
+                raise PlanningFailedError(
+                    engagement_id,
+                    f"planner personas not in catalog: {requested}",
+                )
+
+            ranked = self.persona_ranking.rank(plan.personas, profile_id=self.profile_id)
+            if len(ranked) > MAX_PLANNER_PERSONAS:
+                logger.warning(
+                    "Planner personas truncated from %d to %d for %s",
+                    len(ranked),
+                    MAX_PLANNER_PERSONAS,
+                    engagement_id,
+                )
+            plan.personas = self._cap_personas(ranked)
+            self._apply_plan_to_engagement(engagement, plan, status="ok")
+            if self._engagement_egress is not None:
+                publish_assistant_snapshot(
+                    egress=self._engagement_egress,
+                    engagement_id=engagement_id,
+                    job_id=f"planner:{engagement_id}",
+                    persona=self.planner_persona,
+                    tenant_id=event.tenant_id,
+                    text=json.dumps(
+                        {
+                            "personas": plan.personas,
+                            "sub_goals": plan.sub_goals,
+                            "rationale": plan.rationale,
+                            "depends_on": plan.depends_on,
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                )
+            logger.info(
+                "planner succeeded for %s: personas=%s rationale=%s",
+                engagement_id,
+                plan.personas,
+                plan.rationale,
             )
-            self._apply_plan_to_state(state, plan, status="ok")
+            return plan
+        except PlanningFailedError as exc:
+            self._apply_planning_error(engagement, str(exc))
+            raise
         except Exception as exc:
-            logger.warning("Planner failed for %s: %s", investigation_id, exc)
-            plan = self._fallback_plan(goal, rationale="planner_unavailable_fallback")
-            self._apply_plan_to_state(state, plan, status="fallback", error=str(exc))
+            logger.warning("Planner failed for %s: %s", engagement_id, exc)
+            self._apply_planning_error(engagement, str(exc))
+            raise PlanningFailedError(engagement_id, str(exc)) from exc
 
-        return plan
-
-    def to_worker_jobs_payload(self, plan: InvestigationPlan) -> dict[str, Any]:
+    def to_worker_jobs_payload(self, plan: EngagementPlan) -> dict[str, Any]:
         return {
             "planner_plan": plan.personas,
             "sub_goals": plan.sub_goals,

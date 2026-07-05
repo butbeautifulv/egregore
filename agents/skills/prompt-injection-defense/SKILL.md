@@ -1,23 +1,19 @@
 ---
 name: prompt-injection-defense
-description: Detect and mitigate LLM prompt injection — direct, indirect, encoding, typoglycemia, jailbreak, RAG poisoning, and agent-specific attacks.
+description: Identify and mitigate prompt injection in LLM-integrated workflows and tool outputs.
+version: "1.0.0"
+author: cys-agi
 ---
 
-# prompt-injection-defense (cys-agi)
+# Prompt Injection Defense
 
-Extends: [cxado-skills/agent/prompt-injection-defense](../../../../shared/skills/agent/prompt-injection-defense/SKILL.md)
+## Scope
+Identify and mitigate prompt injection in LLM-integrated workflows and tool outputs.
 
-## cys-agi integration
+## Checklist
+- Gather context from engagement goal and prior findings.
+- Apply domain-specific heuristics; cite evidence for each claim.
+- Flag uncertainty explicitly; do not invent IOCs or CVEs.
 
-| Layer | Location |
-|-------|----------|
-| Pattern filters | `cys_core/domain/security/patterns/` |
-| Ingress sanitization | before LLM call |
-| Global rules | `agents/rules/security.md` |
-| Injection corpus (triage only) | `docs/injections/` — never copy payloads into code/tests |
-| Tests | `tests/adversarial/` |
-
-## Deep reference
-
-- [reference.md](reference.md)
-- [refs/owasp/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md](../../../refs/owasp/LLM_Prompt_Injection_Prevention_Cheat_Sheet.md)
+## Output format
+Return structured JSON aligned with persona schema: concise `summary`, actionable fields, `confidence` 0–1.

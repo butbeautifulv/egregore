@@ -1,20 +1,32 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
+from cys_core.application.tools.tool_chain_policy import ToolChainPolicy
+from cys_core.domain.tools.exceptions import ToolChainDepthExceeded
 from interfaces.gateways.tool.models import ToolInvokeRequest
 from interfaces.gateways.tool.policy import (
-    ToolChainDepthExceeded,
     check_tool_chain,
     clear_all_chain_states,
     get_chain_state,
 )
 
 
+def _patch_policy(monkeypatch: pytest.MonkeyPatch, *, max_depth: int) -> ToolChainPolicy:
+    policy = ToolChainPolicy(max_high_risk_depth=max_depth)
+    monkeypatch.setattr(
+        "bootstrap.container.get_container",
+        lambda: SimpleNamespace(get_tool_chain_policy=lambda: policy),
+    )
+    return policy
+
+
 @pytest.mark.unit
 def test_high_risk_chain_depth_limit(monkeypatch):
     clear_all_chain_states()
-    monkeypatch.setattr("interfaces.gateways.tool.policy.settings.max_high_risk_tool_chain_depth", 2)
+    _patch_policy(monkeypatch, max_depth=2)
     req = ToolInvokeRequest(
         tool_name="run_active_scan",
         args={"target": "lab"},
@@ -33,7 +45,7 @@ def test_high_risk_chain_depth_limit(monkeypatch):
 @pytest.mark.unit
 def test_low_risk_tool_resets_chain(monkeypatch):
     clear_all_chain_states()
-    monkeypatch.setattr("interfaces.gateways.tool.policy.settings.max_high_risk_tool_chain_depth", 2)
+    _patch_policy(monkeypatch, max_depth=2)
     high = ToolInvokeRequest(
         tool_name="run_active_scan",
         args={},

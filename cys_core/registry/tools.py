@@ -217,7 +217,7 @@ def ask_user(question: str, *, context_id: str = "", tenant_id: str = "default")
 @tool
 def web_search(query: str, limit: int = 5) -> str:
     """Search the public web for OSINT and factual references (read-only)."""
-    from interfaces.gateways.tool.adapters.web_search import web_search as _search
+    from cys_core.infrastructure.tools.adapters.web_search import web_search as _search
 
     return json.dumps(_search(query, limit=limit), ensure_ascii=False)
 
@@ -225,7 +225,7 @@ def web_search(query: str, limit: int = 5) -> str:
 @tool
 def read_document(path: str) -> str:
     """Read a local document attachment (txt, md, json, csv, pdf stub)."""
-    from interfaces.gateways.tool.adapters.read_document import read_document as _read
+    from cys_core.infrastructure.tools.adapters.read_document import read_document as _read
 
     return json.dumps(_read(path), ensure_ascii=False)
 
@@ -317,7 +317,7 @@ def extract_structured_output(goal: str, agent_summary: str, schema_type: str = 
 @tool
 def python_sandbox(code: str) -> str:
     """Execute Python code in a restricted local subprocess. Requires HITL approval."""
-    from interfaces.gateways.tool.adapters.multimodal import python_sandbox as _run
+    from cys_core.infrastructure.tools.adapters.multimodal import python_sandbox as _run
 
     return json.dumps(_run(code), ensure_ascii=False)
 
@@ -325,7 +325,7 @@ def python_sandbox(code: str) -> str:
 @tool
 def vision_analyze(path: str, question: str = "Describe this image in detail.") -> str:
     """Analyze image attachments (charts, screenshots, diagrams)."""
-    from interfaces.gateways.tool.adapters.multimodal import vision_analyze as _vision
+    from cys_core.infrastructure.tools.adapters.multimodal import vision_analyze as _vision
 
     return json.dumps(_vision(path, question=question), ensure_ascii=False)
 
@@ -333,7 +333,7 @@ def vision_analyze(path: str, question: str = "Describe this image in detail.") 
 @tool
 def search_archived_webpage(url: str, timestamp: str = "") -> str:
     """Retrieve historical webpage content via Wayback Machine."""
-    from interfaces.gateways.tool.adapters.multimodal import search_archived_webpage as _archive
+    from cys_core.infrastructure.tools.adapters.multimodal import search_archived_webpage as _archive
 
     return json.dumps(_archive(url, timestamp=timestamp), ensure_ascii=False)
 
@@ -342,7 +342,7 @@ def search_archived_webpage(url: str, timestamp: str = "") -> str:
 def delegate_research(subtask: str, *, context_id: str = "", tenant_id: str = "default") -> str:
     """Delegate a read-only research subtask to the research persona in-process."""
     from cys_core.application.use_cases.delegate_research import DelegateResearch
-    from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
+    from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
     from cys_core.runtime.agent import get_runtime
 
     use_case = DelegateResearch(runtime=get_runtime(), catalog=get_agent_catalog())
@@ -364,7 +364,7 @@ def spawn_worker(
     from cys_core.application.spawn_broker import SubagentSpawnBroker
     from cys_core.domain.runs.models import ContextKind
     from cys_core.domain.runs.spawn import SpawnWorkerPayload, sanitize_persona_overlay
-    from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
+    from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
     from cys_core.infrastructure.runs.factory import get_run_state_store
 
     if not context_id:
@@ -523,10 +523,10 @@ _ALL_TOOLS.extend(build_veil_tools())
 
 
 def list_tools(*, profile_id: str = DEFAULT_PROFILE_ID, enabled_only: bool = True) -> list[str]:
-    from cys_core.domain.security.profile_tools import filter_tools_for_profile
+    from cys_core.infrastructure.policy.profile_policy_adapter import filter_tools_for_profile_live
 
     names = tool_registry.names()
-    return filter_tools_for_profile(names, profile_id)
+    return filter_tools_for_profile_live(names, profile_id)
 
 
 class ToolRegistry:
@@ -560,9 +560,9 @@ class ToolRegistry:
         return self._tools[name]
 
     def resolve(self, names: list[str], profile_id: str = DEFAULT_PROFILE_ID) -> list[BaseTool]:
-        from cys_core.domain.security.profile_tools import filter_tools_for_profile
+        from cys_core.infrastructure.policy.profile_policy_adapter import filter_tools_for_profile_live
 
-        filtered = filter_tools_for_profile(names, profile_id)
+        filtered = filter_tools_for_profile_live(names, profile_id)
         return [self.get(n) for n in filtered]
 
     def names(self, *, profile_id: str | None = None) -> list[str]:

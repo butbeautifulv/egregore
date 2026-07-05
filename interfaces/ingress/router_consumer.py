@@ -5,13 +5,10 @@ from collections.abc import Awaitable, Callable
 
 from bootstrap.container import get_container
 from cys_core.application.use_cases.dispatch_event import DispatchEvent
-from cys_core.application.use_cases.plan_investigation import PlanInvestigation
 from cys_core.domain.events.models import SecurityEvent
-from cys_core.application.routing.event_router import EventRouter
 from cys_core.infrastructure.daemon_runner import run_poll_daemon
 from cys_core.infrastructure.kafka_events import consume_raw_event
-from cys_core.registry.product_context import default_agents_root
-from interfaces.worker.orchestrator import WorkerOrchestrator
+from cys_core.observability.worker_spans import observability_span
 
 ConsumeRawFn = Callable[[float], Awaitable[SecurityEvent | None]]
 
@@ -21,24 +18,12 @@ class RouterConsumer:
 
     def __init__(
         self,
-        router: EventRouter | None = None,
-        orchestrator: WorkerOrchestrator | None = None,
+        dispatch: DispatchEvent | None = None,
         consume_raw: ConsumeRawFn | None = None,
     ) -> None:
-        self.router = router or EventRouter.from_plans_dir(default_agents_root() / "plans")
-        self.orchestrator = orchestrator or WorkerOrchestrator()
+        self._dispatch = dispatch or get_container().get_dispatch_event()
         self._consume_raw = consume_raw or consume_raw_event
         self._stop = False
-        container = get_container()
-        plan_investigation = PlanInvestigation(
-            runtime=self.orchestrator.runtime,
-            investigation_store=container.get_investigation_state_store(),
-        )
-        self._dispatch = DispatchEvent(
-            router=self.router,
-            enqueuer=self.orchestrator,
-            plan_investigation=plan_investigation,
-        )
 
     def request_stop(self) -> None:
         self._stop = True
@@ -47,7 +32,8 @@ class RouterConsumer:
         event = await self._consume_raw(timeout)
         if event is None:
             return False
-        await self._dispatch.dispatch_async(event, event.payload)
+        with observability_span("ingress.kafka.consume", event_type=event.type):
+            await self._dispatch.dispatch_async(event, event.payload)
         return True
 
     async def run(self, *, idle_timeout: float = 30.0) -> int:

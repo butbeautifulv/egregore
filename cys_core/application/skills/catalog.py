@@ -1,28 +1,30 @@
 from __future__ import annotations
 
-from pathlib import Path
+from cys_core.application.ports.agents_root import AgentsRootPort
+from cys_core.application.ports.skill_registry import SkillRegistryPort
 
-from cys_core.registry.product_context import default_agents_root
-from cys_core.registry.skill_registry import SkillRegistry
+_skill_registry: SkillRegistryPort | None = None
+_agents_root: AgentsRootPort | None = None
 
 
-def skills_root() -> Path:
-    return default_agents_root() / "skills"
+def configure_skill_registry(port: SkillRegistryPort) -> None:
+    global _skill_registry
+    _skill_registry = port
+
+
+def configure_skills_agents_root(port: AgentsRootPort) -> None:
+    global _agents_root
+    _agents_root = port
 
 
 def list_skill_metadata(profile_id: str = "") -> list[dict[str, str]]:
-    """Return skill metadata from SkillRegistry manifest (single source)."""
-    reg = SkillRegistry.load()
-    items: list[dict[str, str]] = []
-    for manifest in reg.all():
-        skill_id = manifest.skill_id
-        if profile_id == "gaia-bench" and skill_id.startswith("dfir"):
-            continue
-        items.append(
-            {
-                "id": skill_id,
-                "name": manifest.name,
-                "description": manifest.description,
-            }
-        )
-    return items
+    if _skill_registry is None:
+        raise RuntimeError("Skill registry not configured — wire via bootstrap Container")
+    return _skill_registry.list_metadata(profile_id)
+
+
+def skills_root(agents_root: AgentsRootPort | None = None):
+    root = agents_root or _agents_root
+    if root is None:
+        raise RuntimeError("Skills agents root not configured — wire via bootstrap Container")
+    return root.agents_root() / "skills"

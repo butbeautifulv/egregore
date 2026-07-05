@@ -1,20 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Protocol
+
+from cys_core.domain.tools.models import ToolInvokeCommand, ToolInvokeResult
 
 
-class ToolExecutionGateway(Protocol):
-    """Abstract execution boundary for tool calls (local vs gateway)."""
+class ToolExecutionGatewayPort(Protocol):
+    """Execution boundary for sandbox tool invokes (PEP)."""
 
-    def invoke(
-        self,
-        tool_name: str,
-        args: dict[str, Any],
-        *,
-        persona: str,
-        sandbox_id: str = "",
-        job_id: str = "",
-        correlation_id: str = "",
-        profile_id: str = "",
-    ) -> dict[str, Any]: ...
-
+    def invoke(self, command: ToolInvokeCommand) -> ToolInvokeResult: ...

@@ -6,7 +6,9 @@ from typing import Any, Protocol
 from cys_core.application.plans_as_hints import load_plan_hints
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.observability.judge_backend import JudgeBackendPort
-from cys_core.application.ports.reflexion import ReflexionLesson
+from cys_core.application.ports.context_summarizer import ContextSummarizerPort
+from cys_core.application.ports.profile_policy import ProfilePolicyPort
+from cys_core.application.ports.reflexion import ReflexionLesson, ReflexionStorePort
 from cys_core.application.ports.run_state import RunStateStorePort
 from cys_core.application.ports.work_todo import WorkTodoStorePort
 from cys_core.application.runs.attachment_hints import process_attachment_hints
@@ -16,6 +18,7 @@ from cys_core.application.runs.run_budget import run_session_budget
 from cys_core.application.skills.catalog import list_skill_metadata
 from cys_core.application.spawn_broker import SubagentSpawnBroker
 from cys_core.application.use_cases.analyze_task_hints import AnalyzeTaskHints
+from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
 from cys_core.application.use_cases.evaluate_trace_critic import EvaluateTraceCritic
 from cys_core.application.use_cases.extract_structured_output import enrich_conductor_result
 from cys_core.application.policy_resolver import get_profile_policy_resolver
@@ -24,9 +27,10 @@ from cys_core.application.runtime_config import (
     get_task_hints_enabled,
     get_trace_critic_enabled,
     get_trace_critic_hitl_on_exhausted,
+    get_use_run_kernel,
 )
-from cys_core.infrastructure.context.factory import get_context_summarizer
-from cys_core.infrastructure.reflexion.memory import get_reflexion_store
+from cys_core.application.runs.agent_run_kernel import AgentRunKernel
+from cys_core.application.runs.kernel_mappers import run_state_to_kernel_request
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.runs.checkpoint import checkpoint_key
 from cys_core.domain.runs.models import InteractionMode, RunContext
@@ -36,9 +40,9 @@ from cys_core.domain.runs.state_models import RunState, RunStatus
 
 def _default_task_hints() -> AnalyzeTaskHints:
     try:
-        from bootstrap.settings import get_settings
+        from cys_core.application.runtime_config import get_reasoning_llm_settings
 
-        if not get_settings().reasoning_model.strip():
+        if not str(get_reasoning_llm_settings().get("model", "")).strip():
             return AnalyzeTaskHints()
         from cys_core.llm.reasoning import get_reasoning_model_connector
 
@@ -81,14 +85,7 @@ def _parse_work_plan(result: dict[str, Any]) -> WorkPlan | None:
     return None
 
 
-def _status_from_result(result: dict[str, Any], *, mode: InteractionMode | None) -> RunStatus:
-    if result.get("status") == "awaiting_user":
-        return RunStatus.AWAITING_USER
-    if result.get("trace_critic_escalation"):
-        return RunStatus.AWAITING_USER
-    if mode == InteractionMode.PLAN:
-        return RunStatus.AWAITING_PLAN_APPROVAL
-    return RunStatus.IN_PROGRESS
+from cys_core.domain.runs.status_policy import derive_run_status
 
 
 def _merge_todos_from_result(
@@ -115,9 +112,9 @@ def _attachment_paths(state: RunState) -> list[str]:
     return paths
 
 
-def _inject_reflexion_hints(state: RunState, ctx: RunContext) -> None:
+def _inject_reflexion_hints(state: RunState, ctx: RunContext, reflexion_store: ReflexionStorePort) -> None:
     inv_id = ctx.context_id
-    lessons = get_reflexion_store().list_for_investigation(ctx.tenant_id, inv_id)
+    lessons = reflexion_store.list_for_investigation(ctx.tenant_id, inv_id)
     for lesson in lessons:
         note = f"reflexion: {lesson}"
         if note not in state.reasoning_notes:
@@ -157,12 +154,17 @@ def _build_step_prompt(
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _maybe_failed_summary(state: RunState, user_input: str) -> None:
+def _maybe_failed_summary(
+    state: RunState,
+    user_input: str,
+    *,
+    context_summarizer: ContextSummarizerPort,
+) -> None:
     failed = state.last_trace_verdict.get("verdict") == "fail" or has_failed_todos(state.todos)
     if not failed:
         return
     blob = json.dumps(state.last_result, ensure_ascii=False, default=str)
-    state.context_summary = get_context_summarizer().summarize(
+    state.context_summary = context_summarizer.summarize(
         goal=state.goal or user_input,
         messages_text=blob,
         prior_summary=state.context_summary,
@@ -179,23 +181,35 @@ class RunStep:
         state_store: RunStateStorePort,
         catalog: AgentCatalogPort,
         todo_store: WorkTodoStorePort,
+        context_summarizer: ContextSummarizerPort,
+        reflexion_store: ReflexionStorePort,
+        policy_port: ProfilePolicyPort,
         judge_backend: JudgeBackendPort | None = None,
         task_hints: AnalyzeTaskHints | None = None,
+        application_tracing: ApplicationTracingPort | None = None,
     ) -> None:
         self.runtime = runtime
         self.state_store = state_store
         self.catalog = catalog
         self.todo_store = todo_store
-        self.spawn_broker = SubagentSpawnBroker(self.catalog)
+        self.context_summarizer = context_summarizer
+        self.reflexion_store = reflexion_store
+        self.policy_port = policy_port
+        self.spawn_broker = SubagentSpawnBroker(self.catalog, policy_port=policy_port)
         self._task_hints = task_hints or _default_task_hints()
         self._judge_backend = judge_backend
+        self._tracing = application_tracing or NOOP_APPLICATION_TRACING
 
     def _policy_resolver(self):
         return get_profile_policy_resolver()
 
     def _trace_critic_for(self, profile_id: str) -> EvaluateTraceCritic:
         threshold = self._policy_resolver().trace_critic_threshold(profile_id)
-        return EvaluateTraceCritic(judge_backend=self._judge_backend, threshold=threshold)
+        return EvaluateTraceCritic(
+            judge_backend=self._judge_backend,
+            threshold=threshold,
+            application_tracing=self._tracing,
+        )
 
     def _trace_policy(self, profile_id: str):
         return self._policy_resolver().policy(profile_id).trace_critic
@@ -211,15 +225,29 @@ class RunStep:
         todos: list[WorkTodo],
         mode: InteractionMode,
     ) -> tuple[dict[str, Any], list[WorkTodo]]:
-        with run_session_budget(session_id, persona):
-            result = await self.runtime.arun(
-                persona,
-                prompt,
-                session_id=session_id,
-                tenant_id=ctx.tenant_id,
-                investigation_id=ctx.context_id,
-                profile_id=ctx.profile_id,
+        if get_use_run_kernel() and persona == "conductor":
+            kernel = AgentRunKernel(self.runtime)
+            request = run_state_to_kernel_request(
+                state=state,
+                ctx=ctx,
+                user_input=prompt,
+                persona=persona,
+                prompt=prompt,
             )
+            kernel_result = await kernel.execute(request)
+            result = kernel_result.output
+            if isinstance(result, dict) and kernel_result.trajectory.events:
+                result = {**result, "_kernel_trajectory": kernel_result.trajectory.model_dump(mode="json")}
+        else:
+            with run_session_budget(session_id, persona):
+                result = await self.runtime.arun(
+                    persona,
+                    prompt,
+                    session_id=session_id,
+                    tenant_id=ctx.tenant_id,
+                    investigation_id=ctx.context_id,
+                    profile_id=ctx.profile_id,
+                )
         last_result = result if isinstance(result, dict) else {"raw": result}
         if isinstance(last_result, dict):
             todos = _merge_todos_from_result(last_result, todos=todos)
@@ -249,6 +277,7 @@ class RunStep:
                 goal=state.goal or prompt,
                 trace=last_result,
                 step_count=state.step_count,
+                engagement_id=ctx.context_id,
             )
             state.last_trace_verdict = verdict.model_dump()
             try:
@@ -259,7 +288,7 @@ class RunStep:
                 pass
             if verdict.verdict == "fail":
                 lesson = verdict.reasoning or "; ".join(verdict.issues) or "trace critic failed"
-                get_reflexion_store().append(
+                self.reflexion_store.append(
                     ReflexionLesson(
                         investigation_id=ctx.context_id,
                         tenant_id=ctx.tenant_id,
@@ -311,6 +340,21 @@ class RunStep:
         *,
         persona: str = "conductor",
     ) -> dict[str, Any]:
+        with self._tracing.span(
+            "run.step",
+            engagement_id=ctx.context_id,
+            tenant_id=ctx.tenant_id,
+            persona=persona,
+        ):
+            return await self._execute_step(ctx, user_input, persona=persona)
+
+    async def _execute_step(
+        self,
+        ctx: RunContext,
+        user_input: str,
+        *,
+        persona: str = "conductor",
+    ) -> dict[str, Any]:
         state = self.state_store.get(ctx.tenant_id, ctx.context_id, ctx.kind.value)
         if state is None:
             state = RunState(run_context=ctx, goal=user_input, mode=ctx.mode, status=RunStatus.IN_PROGRESS)
@@ -318,7 +362,7 @@ class RunStep:
         session_id = checkpoint_key(ctx, persona=persona)
         todos = self.todo_store.list_todos(ctx.tenant_id, ctx.context_id) or state.todos
 
-        _inject_reflexion_hints(state, ctx)
+        _inject_reflexion_hints(state, ctx, self.reflexion_store)
 
         if (
             persona in ("conductor", "gaia_solver")
@@ -332,7 +376,7 @@ class RunStep:
         if state.step_count >= 3 and state.last_result:
             trace_blob = json.dumps(state.last_result, ensure_ascii=False, default=str)
             if len(trace_blob) > 2500:
-                state.context_summary = get_context_summarizer().summarize(
+                state.context_summary = self.context_summarizer.summarize(
                     goal=state.goal or user_input,
                     messages_text=trace_blob,
                     prior_summary=state.context_summary,
@@ -371,8 +415,8 @@ class RunStep:
                 mode=mode,
             )
             state.last_result = last_result
-            state.status = _status_from_result(state.last_result, mode=mode)
-            _maybe_failed_summary(state, user_input)
+            state.status = derive_run_status(state.last_result, mode=mode)
+            _maybe_failed_summary(state, user_input, context_summarizer=self.context_summarizer)
         else:
             ephemeral_session = f"worker:{persona}:{ctx.context_id}"
             with run_session_budget(ephemeral_session, persona):

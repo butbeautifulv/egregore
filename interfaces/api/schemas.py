@@ -12,6 +12,7 @@ class InvestigationSummaryOut(BaseModel):
 
 
 class InvestigationDetailOut(InvestigationSummaryOut):
+    latest_phase: str | None = None
     planner_plan: list[str] | None = None
     planner_status: str | None = None
     planner_rationale: str = ""
@@ -26,6 +27,7 @@ class JobSummaryOut(BaseModel):
     session_id: str
     correlation_id: str = ""
     event_id: str = ""
+    created_at: str = ""
 
 
 class InvestigationsListOut(BaseModel):

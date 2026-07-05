@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from cys_core.domain.catalog.models import ProfilePolicyPayload
 from cys_core.domain.policy.defaults import ACTION_RISK_MAPPING
 from cys_core.domain.policy.pure import classify_tool_risk_pure
 from cys_core.domain.security.risk_level import RiskLevel
@@ -14,15 +15,8 @@ SEVERITY_RISK: dict[str, RiskLevel] = {
 }
 
 
-def classify_tool_risk(tool_name: str, profile_id: str | None = None) -> RiskLevel:
-    if profile_id:
-        try:
-            from cys_core.infrastructure.catalog.profile_policy import get_profile_policy
-
-            return classify_tool_risk_pure(tool_name, get_profile_policy(profile_id))
-        except Exception:
-            pass
-    return classify_tool_risk_pure(tool_name, None)
+def classify_tool_risk(tool_name: str, policy: ProfilePolicyPayload | None = None) -> RiskLevel:
+    return classify_tool_risk_pure(tool_name, policy)
 
 
 def classify_severity(severity: str) -> RiskLevel:

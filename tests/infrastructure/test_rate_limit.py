@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import types
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -112,6 +113,12 @@ async def test_rate_limiters_memory_and_redis(monkeypatch):
     assert await async_limiter.aallow("async-key") is False
     with pytest.raises(rate_limit.RateLimitExceeded):
         await async_limiter.acheck("async-key")
+
+    closed = AsyncMock()
+    async_limiter._async_redis = closed
+    await async_limiter.aclose()
+    closed.aclose.assert_awaited_once()
+    assert async_limiter._async_redis is None
 
     async_module.from_url = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("redis down"))
     fallback_async = rate_limit.RedisRateLimiter(max_calls=1, window_seconds=10, redis_url="redis://unit")

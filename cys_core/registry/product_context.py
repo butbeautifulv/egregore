@@ -31,7 +31,7 @@ def _default_catalog() -> AgentCatalogPort | None:
         return get_container().get_agent_catalog()
     except Exception:
         try:
-            from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog
+            from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 
             return get_agent_catalog()
         except Exception:

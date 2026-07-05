@@ -51,6 +51,36 @@ def _to_litellm_message(message: BaseMessage) -> dict[str, Any]:
     return {"role": "user", "content": str(message.content)}
 
 
+def _usage_from_litellm_response(response: Any) -> dict[str, int]:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    if isinstance(usage, dict):
+        prompt = int(usage.get("prompt_tokens") or 0)
+        completion = int(usage.get("completion_tokens") or 0)
+    else:
+        prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+        completion = int(getattr(usage, "completion_tokens", 0) or 0)
+    total = int(getattr(usage, "total_tokens", 0) or prompt + completion)
+    return {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total}
+
+
+def _chat_result_from_litellm(response: Any) -> ChatResult:
+    choice = response.choices[0]
+    content = choice.message.content or ""
+    token_usage = _usage_from_litellm_response(response)
+    usage_metadata = {
+        "input_tokens": token_usage["prompt_tokens"],
+        "output_tokens": token_usage["completion_tokens"],
+        "total_tokens": token_usage["total_tokens"],
+    }
+    ai_message = AIMessage(content=content, usage_metadata=usage_metadata)
+    return ChatResult(
+        generations=[ChatGeneration(message=ai_message)],
+        llm_output={"token_usage": token_usage},
+    )
+
+
 class LiteLLMChatModel(BaseChatModel):
     """Thin LangChain adapter over litellm.completion — no OpenAI SDK dependency."""
 
@@ -99,10 +129,7 @@ class LiteLLMChatModel(BaseChatModel):
         call_kwargs.update(kwargs)
 
         response = litellm.completion(**call_kwargs)
-        choice = response.choices[0]
-        content = choice.message.content or ""
-        ai_message = AIMessage(content=content)
-        return ChatResult(generations=[ChatGeneration(message=ai_message)])
+        return _chat_result_from_litellm(response)
 
     async def _agenerate(
         self,
@@ -129,9 +156,7 @@ class LiteLLMChatModel(BaseChatModel):
         call_kwargs.update(kwargs)
 
         response = await litellm.acompletion(**call_kwargs)
-        choice = response.choices[0]
-        content = choice.message.content or ""
-        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+        return _chat_result_from_litellm(response)
 
 
 class LiteLLMProvider:

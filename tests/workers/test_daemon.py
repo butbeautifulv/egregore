@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -17,18 +17,26 @@ async def test_worker_daemon_processes_jobs_then_idles_out():
         None,
     ]
 
-    with patch("interfaces.worker.daemon.WorkerOrchestrator") as orch_cls, patch(
-        "interfaces.worker.daemon.flush_langfuse"
-    ) as flush_mock:
-        orch = orch_cls.return_value
-        orch.process_next = AsyncMock(side_effect=results)
+    orch = MagicMock()
+    orch.process_next = AsyncMock(side_effect=results)
+    container = MagicMock()
+    container.get_worker_orchestrator.return_value = orch
+    container.get_trace_backend.return_value = MagicMock(flush=MagicMock())
+
+    queue = MagicMock()
+    del queue.aclose
+
+    with (
+        patch("interfaces.worker.daemon.get_container", return_value=container),
+        patch("interfaces.worker.daemon.flush_langfuse") as flush_mock,
+        patch("bootstrap.bus_lifecycle.wire_async_bus", new_callable=AsyncMock),
+        patch("cys_core.infrastructure.queue.get_job_queue", return_value=queue),
+    ):
         daemon = WorkerDaemon("soc", max_jobs=1, idle_timeout=0.1)
-        with patch("asyncio.get_running_loop") as loop_mock:
-            loop_mock.return_value.add_signal_handler = lambda *a, **k: None
-            processed = await daemon.run()
+        processed = await daemon.run()
     assert processed == 1
     flush_mock.assert_called_once()
-    orch_cls.assert_called_once_with(persona="soc")
+    container.get_worker_orchestrator.assert_called_once_with(persona="soc")
 
 
 @pytest.mark.unit

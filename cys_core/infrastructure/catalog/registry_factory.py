@@ -72,7 +72,7 @@ def get_catalog_audit():
 
 def get_catalog_write_gate(*, reload=None):
     def factory():
-        from cys_core.infrastructure.catalog.hybrid_registry import get_agent_catalog, reload_agent_registry
+        from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog, reload_agent_registry
 
         return CatalogWriteGate(
             agent_catalog=get_agent_catalog(),

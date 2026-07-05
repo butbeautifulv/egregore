@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
-from cys_core.application.use_cases.dispatch_event import use_async_investigation_planner
+from cys_core.application.use_cases.engagement_planner import use_async_engagement_planner
 from cys_core.domain.events.models import SecurityEvent
 
 
 @pytest.mark.unit
-def test_advisory_investigation_uses_sync_planner(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MANUAL_INVESTIGATION_ASYNC", "true")
+def test_advisory_investigation_uses_async_planner_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENGAGEMENT_ASYNC_PLANNING", "true")
     from bootstrap.settings import get_settings
 
     get_settings.cache_clear()
@@ -20,17 +18,17 @@ def test_advisory_investigation_uses_sync_planner(monkeypatch: pytest.MonkeyPatc
 
     event = SecurityEvent(
         id="evt-ad",
-        type="manual.investigation",
+        type="engagement.start",
         severity="low",
         source="test",
-        payload={"goal": "Как защитить Active Directory?"},
+        payload={"goal": "Как защитить Active Directory?", "plan_strategy": "meta_llm"},
     )
-    assert use_async_investigation_planner(event, event.payload) is False
+    assert use_async_engagement_planner(event, event.payload) is True
 
 
 @pytest.mark.unit
 def test_incident_investigation_stays_async(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MANUAL_INVESTIGATION_ASYNC", "true")
+    monkeypatch.setenv("ENGAGEMENT_ASYNC_PLANNING", "true")
     from bootstrap.settings import get_settings
 
     get_settings.cache_clear()
@@ -40,9 +38,9 @@ def test_incident_investigation_stays_async(monkeypatch: pytest.MonkeyPatch) -> 
 
     event = SecurityEvent(
         id="evt-inc",
-        type="manual.investigation",
+        type="engagement.start",
         severity="high",
         source="test",
-        payload={"goal": "Investigate lateral movement on DC-01"},
+        payload={"goal": "Investigate lateral movement on DC-01", "plan_strategy": "meta_llm"},
     )
-    assert use_async_investigation_planner(event, event.payload) is True
+    assert use_async_engagement_planner(event, event.payload) is True

@@ -1,47 +1,17 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Any
 
 from bootstrap.container import get_container
-from bootstrap.settings import settings
-from cys_core.application.use_cases.plan_investigation import PlanInvestigation
 from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
-from cys_core.application.routing.event_router import EventRouter
-from cys_core.infrastructure.kafka_events import publish_raw_event, publish_raw_event_sync
-from cys_core.observability.metrics import metrics
-from cys_core.registry.product_context import default_agents_root
-from interfaces.worker.orchestrator import WorkerOrchestrator
 
 
 class EventIngress:
     """Accept structured events, route to workers, enqueue jobs."""
 
-    def __init__(
-        self,
-        router: EventRouter | None = None,
-        orchestrator: WorkerOrchestrator | None = None,
-    ) -> None:
-        self.router = router or EventRouter.from_plans_dir(default_agents_root() / "plans")
-        self.orchestrator = orchestrator or WorkerOrchestrator()
-        self._route_and_enqueue = RouteAndEnqueueEvent(
-            router=self.router,
-            enqueuer=self.orchestrator,
-            use_kafka=settings.use_kafka,
-            publish_raw_event_sync=publish_raw_event_sync,
-            publish_raw_event=publish_raw_event,
-            record_event_ingested=metrics.record_event_ingested,
-            plan_investigation=self.plan_investigation,
-        )
-
-    @property
-    def plan_investigation(self) -> PlanInvestigation:
-        container = get_container()
-        return PlanInvestigation(
-            runtime=self.orchestrator.runtime,
-            investigation_store=container.get_investigation_state_store(),
-        )
+    def __init__(self, route_and_enqueue: RouteAndEnqueueEvent) -> None:
+        self._route_and_enqueue = route_and_enqueue
 
     def ingest(
         self,
@@ -86,6 +56,5 @@ class EventIngress:
         )
 
 
-@lru_cache
 def get_event_ingress() -> EventIngress:
-    return EventIngress()
+    return get_container().get_event_ingress()

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cys_core.domain.memory.models import InvestigationState
+from cys_core.domain.engagement.models import Engagement, EngagementMode, EngagementStatus
 from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
 
 
@@ -13,26 +13,32 @@ def _fake_ingress() -> SimpleNamespace:
     return SimpleNamespace(aingest=AsyncMock())
 
 
+def _patch_container(monkeypatch, container: SimpleNamespace) -> None:
+    import bootstrap.container as container_mod
+
+    container_mod._container = container
+    monkeypatch.setattr("bootstrap.container.get_container", lambda: container)
+    monkeypatch.setattr("interfaces.api.app.get_container", lambda: container)
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_investigations(monkeypatch):
     from interfaces.api.app import create_app
 
-    inv_store = SimpleNamespace(
+    eng_store = SimpleNamespace(
         list_recent=lambda tenant_id, limit=20: [
-            InvestigationState(
-                investigation_id="inv-1",
+            Engagement(
+                id="inv-1",
                 tenant_id=tenant_id,
                 goal="test goal",
-                status="in_progress",
+                status=EngagementStatus.RUNNING,
+                mode=EngagementMode.ASYNC,
                 completed_personas=["soc"],
             )
         ]
     )
-    monkeypatch.setattr(
-        "interfaces.api.app.get_container",
-        lambda: SimpleNamespace(get_investigation_state_store=lambda: inv_store),
-    )
+    _patch_container(monkeypatch, SimpleNamespace(get_engagement_state_store=lambda: eng_store))
 
     app = create_app(ingress=_fake_ingress())
     from httpx import ASGITransport, AsyncClient
@@ -50,20 +56,25 @@ async def test_list_investigations(monkeypatch):
 async def test_get_investigation_detail(monkeypatch):
     from interfaces.api.app import create_app
 
-    state = InvestigationState(
-        investigation_id="inv-2",
+    engagement = Engagement(
+        id="inv-2",
         tenant_id="default",
         goal="detail goal",
-        status="open",
+        status=EngagementStatus.PLANNING,
+        mode=EngagementMode.ASYNC,
         planner_plan=["soc", "network"],
     )
-    inv_store = SimpleNamespace(
-        get=lambda tenant_id, investigation_id: state if investigation_id == "inv-2" else None,
+    eng_store = SimpleNamespace(
+        get=lambda tenant_id, investigation_id: engagement if investigation_id == "inv-2" else None,
         list_recent=lambda tenant_id, limit=20: [],
     )
-    monkeypatch.setattr(
-        "interfaces.api.app.get_container",
-        lambda: SimpleNamespace(get_investigation_state_store=lambda: inv_store),
+    egress = SimpleNamespace(snapshot=lambda *_a, **_k: [])
+    _patch_container(
+        monkeypatch,
+        SimpleNamespace(
+            get_engagement_state_store=lambda: eng_store,
+            get_engagement_egress=lambda: egress,
+        ),
     )
 
     app = create_app(ingress=_fake_ingress())
@@ -84,10 +95,10 @@ async def test_get_investigation_jobs(monkeypatch):
     store = InMemoryJobStore()
     store.upsert_running("job-a", "sess-a", "soc", correlation_id="inv-3", tenant_id="default", event_id="evt-3")
     monkeypatch.setattr("interfaces.api.app.get_job_store", lambda: store)
-    monkeypatch.setattr(
-        "interfaces.api.app.get_container",
-        lambda: SimpleNamespace(
-            get_investigation_state_store=lambda: SimpleNamespace(
+    _patch_container(
+        monkeypatch,
+        SimpleNamespace(
+            get_engagement_state_store=lambda: SimpleNamespace(
                 list_recent=lambda *a, **k: [],
                 get=lambda *a, **k: None,
             )
@@ -102,3 +113,44 @@ async def test_get_investigation_jobs(monkeypatch):
         resp = await client.get("/investigations/inv-3/jobs")
         assert resp.status_code == 200
         assert resp.json()["jobs"][0]["persona"] == "soc"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_investigation_preserves_closed_status_with_egress(monkeypatch):
+    from interfaces.api.app import create_app
+
+    engagement = Engagement(
+        id="inv-closed",
+        tenant_id="default",
+        goal="done goal",
+        status=EngagementStatus.CLOSED,
+        mode=EngagementMode.ASYNC,
+        completed_personas=["consultant"],
+        planner_plan=["consultant"],
+    )
+    eng_store = SimpleNamespace(
+        get=lambda tenant_id, investigation_id: engagement if investigation_id == "inv-closed" else None,
+        list_recent=lambda tenant_id, limit=20: [],
+    )
+    egress = SimpleNamespace(
+        snapshot=lambda *_a, **_k: [{"phase": "job_finished", "payload": {"persona": "consultant"}}],
+    )
+    _patch_container(
+        monkeypatch,
+        SimpleNamespace(
+            get_engagement_state_store=lambda: eng_store,
+            get_engagement_egress=lambda: egress,
+        ),
+    )
+
+    app = create_app(ingress=_fake_ingress())
+    from httpx import ASGITransport, AsyncClient
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/investigations/inv-closed")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "closed"
+        assert body["latest_phase"] == "job_finished"

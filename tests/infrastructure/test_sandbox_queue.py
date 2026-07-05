@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from cys_core.domain.workers.models import WorkerJob
 from cys_core.infrastructure.bus_transport import InMemoryBusTransport
 from cys_core.infrastructure.queue import InMemoryJobQueue
 from cys_core.infrastructure.sandbox import LocalSandboxConnector
@@ -20,9 +21,10 @@ def test_local_sandbox_lifecycle():
 @pytest.mark.unit
 def test_in_memory_job_queue():
     q = InMemoryJobQueue()
-    q.enqueue({"job_id": "j1", "persona": "soc"})
+    q.enqueue(WorkerJob(job_id="j1", event_id="e-1", persona="soc"))
     job = q.dequeue()
-    assert job["job_id"] == "j1"
+    assert job is not None
+    assert job.job_id == "j1"
     assert q.dequeue() is None
 
 

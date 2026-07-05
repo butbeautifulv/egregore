@@ -12,7 +12,7 @@ from cys_core.domain.catalog.models import (
     StagingStatus,
     SkillCatalogEntry,
 )
-from cys_core.domain.events.plans import load_plan_routing
+from cys_core.application.plans.plan_loader import load_plan_routing
 from cys_core.registry.product_context import default_agents_root
 from cys_core.registry.skill_registry import SkillRegistry, compute_skill_hash, _parse_skill_md
 

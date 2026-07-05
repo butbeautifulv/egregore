@@ -11,6 +11,9 @@ RAG_INGEST_STAGING_TOPIC = "interfaces.rag.ingest.staging"
 AWAITING_APPROVAL_TOPIC = "security.events.awaiting_approval"
 ESCALATION_EVENTS_TOPIC = "security.events.escalation"
 
+WORKER_JOBS_TOPIC = "worker.jobs"
 
-def worker_job_topic(persona: str) -> str:
-    return f"worker.jobs.{persona}"
+
+def worker_job_topic(_persona: str) -> str:
+    """Deprecated: per-persona topics replaced by WORKER_JOBS_TOPIC."""
+    return WORKER_JOBS_TOPIC
