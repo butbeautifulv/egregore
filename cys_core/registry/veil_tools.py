@@ -11,14 +11,18 @@ _VEIL_TOOL_DESCRIPTIONS: dict[str, str] = {
     "ti_list_categories": "List Veil graph product categories (vuln, ti, mitre, playbook, …).",
     "ti_list_kinds_in_category": "List Neo4j node labels within a Veil category with counts.",
     "ti_nodes_by_category": "List graph nodes for a category + kind label.",
-    "ti_search_in_category": "Search Veil knowledge graph within a category (optional kind).",
-    "ti_get_node": "Fetch one Veil graph node by element id.",
-    "ti_neighbors": "Fetch k-hop subgraph around a Veil graph node.",
+    "ti_search_in_category": (
+        "Use FIRST for IOC/CVE/actor lookup in Veil knowledge graph within a category (optional kind)."
+    ),
+    "ti_get_node": "Fetch one Veil graph node by element id after ti_search_in_category.",
+    "ti_neighbors": "Fetch k-hop subgraph around a Veil graph node for relationship context.",
     "ti_health": "Veil graph API and Neo4j connectivity health check.",
-    "playbook_search": "Search Veil cybersecurity procedure playbooks by keywords and optional subdomain.",
+    "playbook_search": (
+        "Use FIRST when you need a cybersecurity procedure playbook by keywords and optional subdomain."
+    ),
     "playbook_get": "Fetch full playbook markdown for a skill id from playbook_search.",
     "playbook_procedure": "Structured procedure steps for a playbook skill id.",
-    "playbook_for_technique": "List playbooks linked to a MITRE ATT&CK technique id.",
+    "playbook_for_technique": "Use when MITRE ATT&CK technique ID is known — list playbooks linked to it.",
     "playbook_framework": "Read Veil MITRE Navigator layer, coverage summary, or mapping docs.",
     "playbook_subdomains": "List Anthropic skill subdomain counts from Veil playbook index.",
     "playbook_ontology_subdomains": "Veil subdomain registry with category mapping and priority tier.",
@@ -37,6 +41,10 @@ def make_veil_tool(name: str, description: str) -> BaseTool:
 
 def _description_for_veil_tool(name: str, profile_id: str = "cybersec-soc") -> str:
     try:
+        from cys_core.application.runtime_config import get_use_dynamic_catalog
+
+        if not get_use_dynamic_catalog():
+            raise RuntimeError("catalog not configured")
         from cys_core.infrastructure.catalog.registry_factory import get_tool_catalog
 
         entry = get_tool_catalog().get_tool(name, profile_id=profile_id)

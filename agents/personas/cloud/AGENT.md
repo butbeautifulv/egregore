@@ -35,3 +35,15 @@ Constraints:
 
 Output Requirements:
 - CloudFinding with cloud_provider, resource_id, misconfig_type, blast_radius, remediation.
+
+Skills (load on demand via `load_skill`):
+- veil-knowledge — mandatory Veil CTI/playbook workflow
+- cloud-threat-detection — cloud-native threat patterns
+
+## Veil tool ladder (mandatory)
+
+`load_skill("veil-knowledge")` when CTI or playbooks apply.
+
+1. `playbook_search` + `ti_search_in_category` for cloud TTP and IOC context.
+2. `playbook_for_technique` when MITRE technique ID is known from audit events.
+3. Do not close without ≥1 Veil tool call unless `veil_unavailable` is documented.

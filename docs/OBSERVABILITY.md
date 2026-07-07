@@ -10,8 +10,7 @@
 | `ingress.kafka.consume` | interfaces | router consumer |
 | `engagement.plan` | application | meta-LLM planner |
 | `engagement.start` | application | start engagement |
-| `worker.dequeue` | interfaces | worker orchestrator |
-| `worker.process_job` | application | RunWorkerJob |
+| `worker.process_job` | application | RunWorkerJob (orchestrator dequeue is not traced — idle polls every 2s) |
 | `worker.sandbox.create` / `worker.sandbox.destroy` | application | RunWorkerJob |
 | `worker.agent.run` | application | RunWorkerJob |
 | `tool.invoke` | application | InvokeTool |
@@ -62,7 +61,9 @@ Copy the matching `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` into `projects/e
 use the same project as the Langfuse UI. Mismatched keys (e.g. `pk-lf-egregore-dev-local` vs bootstrap `pk-lf-dev-public`)
 produce empty trace lists.
 
-Worker traces group by **session** = `engagement_id` (`langfuse_session_id` on worker spans and LLM CallbackHandler metadata).
+Worker traces group by **session** = `engagement_id` (`langfuse_session_id` on worker spans and LLM CallbackHandler metadata). LLM traces also carry tag `engagement:{engagement_id}`.
+
+**k3s offline UI:** Langfuse project is `egregore-dev` (not `default`). Open traces via ui-minimal «Open in Langfuse» or filter `engagement:{id}` at `https://{node}:30001`.
 
 ## Tool tracing checklist
 
@@ -75,3 +76,27 @@ Worker traces group by **session** = `engagement_id` (`langfuse_session_id` on w
 
 - Grafana datasources use `*.cxado-obs.svc.cluster.local`
 - Deploy gates: `scripts/k8s/e2e-verify-egregore.sh`, `deploy_logs/trace_audit_*.md`
+
+## Worker job timeout runbook (5 min)
+
+When a persona shows `worker_job_timeout` in UI or `job_finished` events:
+
+1. **Engagement API** — `GET /v1/engagements/{id}` → `failed_personas`; `GET /v1/engagements/{id}/events` → `error=worker_job_timeout`.
+2. **Langfuse** — session = `engagement_id`; open `worker.process_job` / `worker.agent.run` for the failed persona. Check duration (~360s offline) and count of `tool.invoke` children.
+3. **Worker logs** — filter `correlation_id={engagement_id}` and events `worker job timed out`, `worker_siem_finding_nudge`, `tool_ladder_veil_blocked`, `worker_timeout_salvaged`.
+4. **Prometheus** — `cys_worker_job_timeout_total{persona="soc|intel"}`; `cys_worker_job_duration_seconds` (buckets include 420s, 600s); `cys_tool_invocations_total` by tool name.
+5. **Mitigations in code** — triage personas use `TRIAGE_RECURSION_LIMIT=22`, `max_tool_calls=8`, tool ladder middleware, and partial salvage from cached tool previews (timeout or recursion limit).
+
+If Prometheus multiproc fails with `UnicodeDecodeError`, clear stale files on the node: `sudo rm /var/lib/cxado/prom-multiproc/*.db`.
+
+## Sparse SIEM vs hallucination runbook
+
+When SOC or consultant findings mention specific processes, pipes, or credential-dumping tools but SIEM/KATA telemetry is thin:
+
+1. **Finding fields** — check `telemetry_level` (`sparse` / `metadata_only`), `data_gaps[]`, and `evidence[].obs_id` on the SocFinding.
+2. **Worker logs** — `worker_grounding_rejected` with `ungrounded_claims` (structural gate, not token blacklist).
+3. **Tool output** — `investigate_incident` returns `evidence_manifest` with `required_external_sources` (e.g. `kata_taa_console`) and `max_confidence`.
+4. **Expected behavior** — sparse KATA TAA alerts: host + rule + gaps, confidence ≤ 0.5, remediation pointing to KATA console — not invented cmdline/PID/pipe names.
+5. **Critic** — `critic_verdict` log includes `issues_detected` when structural validation fails post-publish.
+
+Distinguish from timeout issues: grounding failures raise `ungrounded_finding:*` before publish; timeouts use `worker_job_timeout` runbook above.

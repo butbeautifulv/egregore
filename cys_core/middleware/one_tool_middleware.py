@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import threading
 from collections.abc import Callable
 from typing import Any, Awaitable
 
@@ -16,6 +17,7 @@ class OneToolPerTurnMiddleware(AgentMiddleware):
     def __init__(self) -> None:
         super().__init__()
         self._tool_calls_this_turn = 0
+        self._lock = threading.Lock()
 
     def wrap_model_call(
         self,
@@ -36,18 +38,25 @@ class OneToolPerTurnMiddleware(AgentMiddleware):
             return await result
         return result
 
+    def _guard_tool_call(self, request: ToolCallRequest) -> ToolMessage | None:
+        with self._lock:
+            self._tool_calls_this_turn += 1
+            if self._tool_calls_this_turn > 1:
+                return ToolMessage(
+                    content="Only one tool call per turn is allowed. Complete this step before invoking another tool.",
+                    tool_call_id=request.tool_call.get("id", ""),
+                    status="error",
+                )
+        return None
+
     def wrap_tool_call(
         self,
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
     ) -> ToolMessage | Command[Any]:
-        self._tool_calls_this_turn += 1
-        if self._tool_calls_this_turn > 1:
-            return ToolMessage(
-                content="Only one tool call per turn is allowed. Complete this step before invoking another tool.",
-                tool_call_id=request.tool_call.get("id", ""),
-                status="error",
-            )
+        blocked = self._guard_tool_call(request)
+        if blocked is not None:
+            return blocked
         return handler(request)
 
     async def awrap_tool_call(
@@ -55,13 +64,9 @@ class OneToolPerTurnMiddleware(AgentMiddleware):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]] | ToolMessage | Command[Any]],
     ) -> ToolMessage | Command[Any]:
-        self._tool_calls_this_turn += 1
-        if self._tool_calls_this_turn > 1:
-            return ToolMessage(
-                content="Only one tool call per turn is allowed. Complete this step before invoking another tool.",
-                tool_call_id=request.tool_call.get("id", ""),
-                status="error",
-            )
+        blocked = self._guard_tool_call(request)
+        if blocked is not None:
+            return blocked
         result = handler(request)
         if inspect.isawaitable(result):
             return await result

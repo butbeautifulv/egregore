@@ -1,13 +1,43 @@
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
-from cys_core.registry.agents import get_agent_registry
+import pytest
+import yaml
+
+from cys_core.integrations.siem_mcp_client import FALLBACK_SIEM_TOOL_NAMES
+from cys_core.registry.product_context import default_agents_root
+from cys_core.registry.tools import tool_registry
+
+_SOC_YAML = default_agents_root() / "personas" / "soc" / "agent.yaml"
 
 
 @pytest.mark.unit
-def test_soc_agent_includes_query_siem_readonly():
-    soc = get_agent_registry().get("soc")
-    assert "query_siem_readonly" in soc.tools
-    assert "rag_query" in soc.tools
-    assert "dedup_alerts" in soc.tools
+def test_soc_agent_includes_siem_mcp_tools():
+    data = yaml.safe_load(_SOC_YAML.read_text(encoding="utf-8"))
+    tools = data["tools"]
+    skills = data["skills"]
+    assert "query_siem_readonly" in tools
+    assert "investigate_incident" in tools
+    assert "list_incidents" in tools
+    assert "search_events" in tools
+    assert "get_event_by_uuid" in tools
+    assert "siem-investigation" in skills
+    assert "rag_query" in tools
+    assert "dedup_alerts" in tools
+
+
+@pytest.mark.unit
+def test_siem_tools_registered_in_registry():
+    names = set(tool_registry.names())
+    for tool_name in FALLBACK_SIEM_TOOL_NAMES:
+        assert tool_name in names
+
+
+@pytest.mark.unit
+def test_siem_investigation_skill_exists():
+    skill_path = default_agents_root() / "skills" / "siem-investigation" / "SKILL.md"
+    assert skill_path.is_file()
+    text = skill_path.read_text(encoding="utf-8")
+    assert "investigate_incident" in text
+    assert "list_incidents" in text

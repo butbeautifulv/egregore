@@ -84,9 +84,16 @@ def enrich_ioc(ioc: str) -> str:
     from cys_core.integrations.veil_mcp_client import call_veil_mcp_tool, veil_mcp_enabled
 
     if veil_mcp_enabled():
-        result = call_veil_mcp_tool("ti_search_in_category", {"query": ioc, "category": "ioc", "limit": 5})
+        result = call_veil_mcp_tool("ti_search_in_category", {"query": ioc, "category": "ti", "limit": 5})
         if result.get("success"):
-            return json.dumps({"ioc": ioc, "source": "veil-ti", "enrichment": result.get("result")}, ensure_ascii=False)
+            return json.dumps(
+                {"ioc": ioc, "source": "veil-mcp", "enrichment": result.get("content")},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {"ioc": ioc, "source": "veil-mcp", "error": result.get("error", "Veil enrichment failed")},
+            ensure_ascii=False,
+        )
     return json.dumps({"ioc": ioc, "reputation": "suspicious", "tags": ["stub"], "source": "stub"}, ensure_ascii=False)
 
 
@@ -272,7 +279,7 @@ def reasoning_check(goal: str, trace_json: str) -> str:
 
 
 @tool
-def extract_structured_output(goal: str, agent_summary: str, schema_type: str = "") -> str:
+async def extract_structured_output(goal: str, agent_summary: str, schema_type: str = "") -> str:
     """Extract structured deliverable with confidence and weaknesses."""
     from cys_core.application.runtime_config import get_self_consistency_n
     from cys_core.application.use_cases.extract_structured_output import (
@@ -301,7 +308,7 @@ def extract_structured_output(goal: str, agent_summary: str, schema_type: str = 
     n = max(1, get_self_consistency_n() or 1)
     candidates: list[dict] = []
     for _ in range(n):
-        response = model.invoke(prompt)
+        response = await model.ainvoke(prompt)
         text = str(getattr(response, "content", response))
         candidates.append(parse_structured_output(text))
     if n == 1:
@@ -521,6 +528,14 @@ from cys_core.registry.veil_tools import build_veil_tools
 
 _ALL_TOOLS.extend(build_veil_tools())
 
+from cys_core.registry.siem_tools import build_siem_tools
+
+_ALL_TOOLS.extend(build_siem_tools())
+
+from cys_core.registry.nessus_tools import build_nessus_tools
+
+_ALL_TOOLS.extend(build_nessus_tools())
+
 
 def list_tools(*, profile_id: str = DEFAULT_PROFILE_ID, enabled_only: bool = True) -> list[str]:
     from cys_core.infrastructure.policy.profile_policy_adapter import filter_tools_for_profile_live
@@ -552,6 +567,8 @@ class ToolRegistry:
     def reload(self) -> None:
         self._tools = {t.name: t for t in _ALL_TOOLS}
         self._tools.update({t.name: t for t in build_veil_tools()})
+        self._tools.update({t.name: t for t in build_siem_tools()})
+        self._tools.update({t.name: t for t in build_nessus_tools()})
         self._load_catalog_overrides()
 
     def get(self, name: str) -> BaseTool:

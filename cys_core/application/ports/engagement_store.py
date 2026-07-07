@@ -18,6 +18,10 @@ class EngagementStateStore(Protocol):
 
     def append_finding(self, tenant_id: str, engagement_id: str, finding: dict[str, Any]) -> None: ...
 
+    def set_final_report(self, tenant_id: str, engagement_id: str, report: dict[str, Any]) -> None: ...
+
+    def mark_synthesis_running(self, tenant_id: str, engagement_id: str, job_id: str) -> None: ...
+
     def update_planner_state(
         self,
         tenant_id: str,
@@ -28,6 +32,10 @@ class EngagementStateStore(Protocol):
         planner_rationale: str = "",
         planner_error: str = "",
         goal: str | None = None,
+        execution_mode: str | None = None,
+        synthesis_persona: str | None = None,
     ) -> None: ...
 
     def fail_engagement(self, tenant_id: str, engagement_id: str, *, reason: str) -> None: ...
+
+    def fail_synthesis(self, tenant_id: str, engagement_id: str, *, reason: str) -> None: ...

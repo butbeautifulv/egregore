@@ -1,6 +1,6 @@
 ---
 name: ai-agent-security
-description: Secure AI agent architectures: tool boundaries, prompt injection surfaces, and agent-to-agent trust.
+description: "Secure AI agent architectures: tool boundaries, prompt injection surfaces, and agent-to-agent trust."
 version: "1.0.0"
 author: cys-agi
 ---

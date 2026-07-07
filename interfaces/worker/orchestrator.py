@@ -11,6 +11,10 @@ from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID, resolve_profi
 from cys_core.domain.security.agent_bus import AgentTrustLevel, SecureAgentBus
 from cys_core.domain.security.factory import get_input_sanitizer
 from cys_core.infrastructure.policy.budget_adapter import enrich_job_budget
+from cys_core.application.workers.tool_execution_tracker import (
+    clear_tool_execution_count,
+    get_tool_execution_count,
+)
 from cys_core.domain.workers.job_budget import JobBudgetTracker
 from cys_core.domain.workers.models import RunResult, WorkerJob
 from cys_core.infrastructure.bus_transport import get_bus_transport
@@ -71,7 +75,6 @@ class WorkerOrchestrator:
         self.transport = transport or get_bus_transport()
         self.sanitizer = sanitizer or get_input_sanitizer()
         self._metrics = container.get_metrics_port()
-        self._tracing = container.get_worker_tracing_port()
         self.job_store = container.get_job_store()
         self._run_worker_job = container.get_run_worker_job(
             persona=persona,
@@ -139,14 +142,38 @@ class WorkerOrchestrator:
                     timeout=job_timeout,
                 )
         except TimeoutError:
+            tool_count = get_tool_execution_count(job.job_id)
+            salvaged: RunResult | None = None
+            try:
+                salvaged = await self._run_worker_job.try_salvage_timeout(
+                    job, session_id, {"status": "success"}
+                )
+            except Exception as exc:
+                logger.warning(
+                    "worker_timeout_salvage_failed",
+                    job_id=job.job_id,
+                    persona=job.persona,
+                    error=str(exc),
+                )
+            if salvaged is not None:
+                logger.warning(
+                    "worker job timed out but salvaged",
+                    job_id=job.job_id,
+                    persona=job.persona,
+                    tool_count=tool_count,
+                    salvaged=True,
+                )
+                return salvaged
             logger.error(
                 "worker job timed out",
                 job_id=job.job_id,
                 persona=job.persona,
                 timeout_s=container.settings.worker_job_timeout,
+                tool_count=tool_count,
+                salvaged=False,
             )
-            self.job_store.mark_failed(job.job_id)
-            self._run_worker_job._mark_persona_completed(job)
+            self._metrics.record_worker_job_timeout(job.persona)
+            await self._run_worker_job.mark_job_timeout(job)
             return RunResult(
                 job_id=job.job_id,
                 persona=job.persona,
@@ -162,13 +189,13 @@ class WorkerOrchestrator:
                     cost_usd=state.cost_usd,
                 )
             JobBudgetTracker.clear(session_id)
+            clear_tool_execution_count(job.job_id)
             get_container().get_tool_chain_policy().clear(job.job_id)
             reset_correlation_id(cid_token)
             structlog.contextvars.unbind_contextvars("persona", "job_id", "correlation_id")
 
     async def process_next(self) -> RunResult | None:
-        with self._tracing.span("worker.dequeue", persona=self.persona or ""):
-            job = await self.queue.adequeue(timeout=2.0)
+        job = await self.queue.adequeue(timeout=2.0)
         if job is None:
             return None
         return await self.run_job(job)

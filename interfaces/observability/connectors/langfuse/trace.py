@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from functools import lru_cache
+import time
 from typing import Any
 
 from bootstrap.settings import settings
@@ -11,31 +11,58 @@ logger = logging.getLogger(__name__)
 
 _active_spans: dict[str, Any] = {}
 _spans_lock = threading.Lock()
+_langfuse_init_ok: bool | None = None
+_langfuse_init_lock = threading.Lock()
 
 
-@lru_cache
 def _ensure_langfuse_client() -> bool:
+    global _langfuse_init_ok
     if not settings.langfuse_enabled:
         return False
-    try:
-        from langfuse import Langfuse
+    with _langfuse_init_lock:
+        if _langfuse_init_ok is True:
+            return True
+        if _langfuse_init_ok is False:
+            return False
+        try:
+            from langfuse import Langfuse
 
-        Langfuse(
-            public_key=settings.resolved_langfuse_public_key,
-            secret_key=settings.langfuse_secret_key,
-            host=settings.resolved_langfuse_host,
-        )
+            Langfuse(
+                public_key=settings.resolved_langfuse_public_key,
+                secret_key=settings.langfuse_secret_key,
+                host=settings.resolved_langfuse_host,
+            )
+            _langfuse_init_ok = True
+            return True
+        except Exception:
+            logger.warning("Failed to initialize Langfuse client", exc_info=True)
+            _langfuse_init_ok = False
+            return False
+
+
+def reset_langfuse_client_cache() -> None:
+    """Allow retry after transient Langfuse startup failures."""
+    global _langfuse_init_ok
+    with _langfuse_init_lock:
+        _langfuse_init_ok = None
+
+
+def _ensure_langfuse_client_with_retry(*, attempts: int = 3, delay_s: float = 0.5) -> bool:
+    if _ensure_langfuse_client():
         return True
-    except Exception:
-        logger.warning("Failed to initialize Langfuse client", exc_info=True)
-        return False
+    for _ in range(max(0, attempts - 1)):
+        reset_langfuse_client_cache()
+        time.sleep(delay_s)
+        if _ensure_langfuse_client():
+            return True
+    return False
 
 
 class LangfuseTraceBackend:
     """Trace backend — single owner of Langfuse SDK lifecycle."""
 
     def get_callback_handler(self) -> Any | None:
-        if not _ensure_langfuse_client():
+        if not _ensure_langfuse_client_with_retry():
             return None
         try:
             from langfuse.langchain import CallbackHandler

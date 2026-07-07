@@ -2,6 +2,12 @@
 
 Auto-generated from `ToolProviderPort` metadata. Regenerate: `scripts/generate_tool_matrix.py`.
 
+## Offline-disabled builtin stubs
+
+These tools return canned JSON and are removed from persona `tools:` lists in offline deployments:
+
+`dedup_alerts`, `build_timeline`, `correlate_findings`, `parse_netflow`, `correlate_dns`, `check_control`, `map_framework`, `audit_evidence`, `query_siem_readonly` (use SIEM MCP instead), `web_search`, `search_archived_webpage`.
+
 ## Profile: `cybersec-soc`
 
 | Tool | Module | Status | Datasource | Description |
@@ -17,21 +23,7 @@ Auto-generated from `ToolProviderPort` metadata. Regenerate: `scripts/generate_t
 | `map_framework` | builtin | real | — | Map observation to compliance framework controls. |
 | `parse_netflow` | builtin | real | — | Parse NetFlow summary text into structured indicators. |
 | `parse_sast_report` | builtin | real | — | Parse SAST report JSON and extract high-signal findings. |
-| `playbook_for_technique` | builtin | real | — | List playbooks linked to a MITRE ATT&CK technique id. |
-| `playbook_framework` | builtin | real | — | Read Veil MITRE Navigator layer, coverage summary, or mapping docs. |
-| `playbook_get` | builtin | real | — | Fetch full playbook markdown for a skill id from playbook_search. |
-| `playbook_ontology_subdomains` | builtin | real | — | Veil subdomain registry with category mapping and priority tier. |
-| `playbook_procedure` | builtin | real | — | Structured procedure steps for a playbook skill id. |
-| `playbook_search` | builtin | real | — | Search Veil cybersecurity procedure playbooks by keywords and optional subdomain. |
-| `playbook_subdomains` | builtin | real | — | List Anthropic skill subdomain counts from Veil playbook index. |
 | `read_repo_metadata` | builtin | real | — | Read repository metadata (languages, branches, recent commits). Stub for authorized scope. |
-| `ti_get_node` | builtin | real | — | Fetch one Veil graph node by element id. |
-| `ti_health` | builtin | real | — | Veil graph API and Neo4j connectivity health check. |
-| `ti_list_categories` | builtin | real | — | List Veil graph product categories (vuln, ti, mitre, playbook, …). |
-| `ti_list_kinds_in_category` | builtin | real | — | List Neo4j node labels within a Veil category with counts. |
-| `ti_neighbors` | builtin | real | — | Fetch k-hop subgraph around a Veil graph node. |
-| `ti_nodes_by_category` | builtin | real | — | List graph nodes for a category + kind label. |
-| `ti_search_in_category` | builtin | real | — | Search Veil knowledge graph within a category (optional kind). |
 | `search_personas` | discovery | real | — | Search registered agent personas by keyword. |
 | `search_skills` | discovery | real | — | Search product skills by keyword. |
 | `search_tools` | discovery | real | — | Search available tools filtered by interaction mode policy. |
@@ -50,6 +42,29 @@ Auto-generated from `ToolProviderPort` metadata. Regenerate: `scripts/generate_t
 | `python_sandbox` | sandbox | stub | — | Execute Python code in a restricted local subprocess. Requires HITL approval. |
 | `run_active_scan` | sandbox | stub | — | Run active security scan on authorized target. Requires HITL approval. |
 | `query_siem_readonly` | siem | real | siem-readonly | Execute read-only SIEM search. Worker runs route via MCP Tool Gateway. |
+| `export_table_list` | siem-mcp | real | siem-mcp | Export tabular IOC/list data from SIEM table lists for lookup during triage. |
+| `get_event_by_uuid` | siem-mcp | real | siem-mcp | Fetch one SIEM event by UUID for drill-down after investigate_incident or search_events. |
+| `investigate_incident` | siem-mcp | real | siem-mcp | Use FIRST when triaging a SIEM incident by ID. Returns incident summary, correlated events, and optional asset/IOC context. Do NOT use siem_request if this tool applies. |
+| `list_aggregated_events` | siem-mcp | real | siem-mcp | List aggregated SIEM events for timeline visualization around an incident window. |
+| `list_incidents` | siem-mcp | real | siem-mcp | List SIEM incidents (New/InProgress queue). Use before investigate_incident when no incident ID is known. |
+| `lookup_assets_by_ip` | siem-mcp | real | siem-mcp | Enrich investigation targets: resolve assets by IP from SIEM asset inventory. |
+| `search_api_docs` | siem-mcp | real | siem-mcp | Escape hatch: search local MaxPatrol SIEM API docs when typed tools are insufficient. |
+| `search_events` | siem-mcp | real | siem-mcp | Search SIEM events by PDQL where clause for correlation and timeline enrichment. Use after investigate_incident when you need additional predicates. |
+| `search_user_actions` | siem-mcp | real | siem-mcp | Audit who changed an incident or SIEM object (user action log). |
+| `playbook_for_technique` | veil-mcp | real | veil-mcp | Use when MITRE ATT&CK technique ID is known — list playbooks linked to it. |
+| `playbook_framework` | veil-mcp | real | veil-mcp | Read Veil MITRE Navigator layer, coverage summary, or mapping docs. |
+| `playbook_get` | veil-mcp | real | veil-mcp | Fetch full playbook markdown for a skill id from playbook_search. |
+| `playbook_ontology_subdomains` | veil-mcp | real | veil-mcp | Veil subdomain registry with category mapping and priority tier. |
+| `playbook_procedure` | veil-mcp | real | veil-mcp | Structured procedure steps for a playbook skill id. |
+| `playbook_search` | veil-mcp | real | veil-mcp | Use FIRST when you need a cybersecurity procedure playbook by keywords and optional subdomain. |
+| `playbook_subdomains` | veil-mcp | real | veil-mcp | List Anthropic skill subdomain counts from Veil playbook index. |
+| `ti_get_node` | veil-mcp | real | veil-mcp | Fetch one Veil graph node by element id after ti_search_in_category. |
+| `ti_health` | veil-mcp | real | veil-mcp | Veil graph API and Neo4j connectivity health check. |
+| `ti_list_categories` | veil-mcp | real | veil-mcp | List Veil graph product categories (vuln, ti, mitre, playbook, …). |
+| `ti_list_kinds_in_category` | veil-mcp | real | veil-mcp | List Neo4j node labels within a Veil category with counts. |
+| `ti_neighbors` | veil-mcp | real | veil-mcp | Fetch k-hop subgraph around a Veil graph node for relationship context. |
+| `ti_nodes_by_category` | veil-mcp | real | veil-mcp | List graph nodes for a category + kind label. |
+| `ti_search_in_category` | veil-mcp | real | veil-mcp | Use FIRST for IOC/CVE/actor lookup in Veil knowledge graph within a category (optional kind). |
 | `read_document` | web | real | — | Read a local document attachment (txt, md, json, csv, pdf stub). |
 | `search_archived_webpage` | web | real | — | Retrieve historical webpage content via Wayback Machine. |
 | `transcribe_audio` | web | real | — | Transcribe audio attachment (stub — wire STT provider in production). |
@@ -71,21 +86,7 @@ Auto-generated from `ToolProviderPort` metadata. Regenerate: `scripts/generate_t
 | `map_framework` | builtin | real | — | Map observation to compliance framework controls. |
 | `parse_netflow` | builtin | real | — | Parse NetFlow summary text into structured indicators. |
 | `parse_sast_report` | builtin | real | — | Parse SAST report JSON and extract high-signal findings. |
-| `playbook_for_technique` | builtin | real | — | List playbooks linked to a MITRE ATT&CK technique id. |
-| `playbook_framework` | builtin | real | — | Read Veil MITRE Navigator layer, coverage summary, or mapping docs. |
-| `playbook_get` | builtin | real | — | Fetch full playbook markdown for a skill id from playbook_search. |
-| `playbook_ontology_subdomains` | builtin | real | — | Veil subdomain registry with category mapping and priority tier. |
-| `playbook_procedure` | builtin | real | — | Structured procedure steps for a playbook skill id. |
-| `playbook_search` | builtin | real | — | Search Veil cybersecurity procedure playbooks by keywords and optional subdomain. |
-| `playbook_subdomains` | builtin | real | — | List Anthropic skill subdomain counts from Veil playbook index. |
 | `read_repo_metadata` | builtin | real | — | Read repository metadata (languages, branches, recent commits). Stub for authorized scope. |
-| `ti_get_node` | builtin | real | — | Fetch one Veil graph node by element id. |
-| `ti_health` | builtin | real | — | Veil graph API and Neo4j connectivity health check. |
-| `ti_list_categories` | builtin | real | — | List Veil graph product categories (vuln, ti, mitre, playbook, …). |
-| `ti_list_kinds_in_category` | builtin | real | — | List Neo4j node labels within a Veil category with counts. |
-| `ti_neighbors` | builtin | real | — | Fetch k-hop subgraph around a Veil graph node. |
-| `ti_nodes_by_category` | builtin | real | — | List graph nodes for a category + kind label. |
-| `ti_search_in_category` | builtin | real | — | Search Veil knowledge graph within a category (optional kind). |
 | `search_personas` | discovery | real | — | Search registered agent personas by keyword. |
 | `search_skills` | discovery | real | — | Search product skills by keyword. |
 | `search_tools` | discovery | real | — | Search available tools filtered by interaction mode policy. |
@@ -104,6 +105,29 @@ Auto-generated from `ToolProviderPort` metadata. Regenerate: `scripts/generate_t
 | `python_sandbox` | sandbox | stub | — | Execute Python code in a restricted local subprocess. Requires HITL approval. |
 | `run_active_scan` | sandbox | stub | — | Run active security scan on authorized target. Requires HITL approval. |
 | `query_siem_readonly` | siem | real | siem-readonly | Execute read-only SIEM search. Worker runs route via MCP Tool Gateway. |
+| `export_table_list` | siem-mcp | real | siem-mcp | Export tabular IOC/list data from SIEM table lists for lookup during triage. |
+| `get_event_by_uuid` | siem-mcp | real | siem-mcp | Fetch one SIEM event by UUID for drill-down after investigate_incident or search_events. |
+| `investigate_incident` | siem-mcp | real | siem-mcp | Use FIRST when triaging a SIEM incident by ID. Returns incident summary, correlated events, and optional asset/IOC context. Do NOT use siem_request if this tool applies. |
+| `list_aggregated_events` | siem-mcp | real | siem-mcp | List aggregated SIEM events for timeline visualization around an incident window. |
+| `list_incidents` | siem-mcp | real | siem-mcp | List SIEM incidents (New/InProgress queue). Use before investigate_incident when no incident ID is known. |
+| `lookup_assets_by_ip` | siem-mcp | real | siem-mcp | Enrich investigation targets: resolve assets by IP from SIEM asset inventory. |
+| `search_api_docs` | siem-mcp | real | siem-mcp | Escape hatch: search local MaxPatrol SIEM API docs when typed tools are insufficient. |
+| `search_events` | siem-mcp | real | siem-mcp | Search SIEM events by PDQL where clause for correlation and timeline enrichment. Use after investigate_incident when you need additional predicates. |
+| `search_user_actions` | siem-mcp | real | siem-mcp | Audit who changed an incident or SIEM object (user action log). |
+| `playbook_for_technique` | veil-mcp | real | veil-mcp | Use when MITRE ATT&CK technique ID is known — list playbooks linked to it. |
+| `playbook_framework` | veil-mcp | real | veil-mcp | Read Veil MITRE Navigator layer, coverage summary, or mapping docs. |
+| `playbook_get` | veil-mcp | real | veil-mcp | Fetch full playbook markdown for a skill id from playbook_search. |
+| `playbook_ontology_subdomains` | veil-mcp | real | veil-mcp | Veil subdomain registry with category mapping and priority tier. |
+| `playbook_procedure` | veil-mcp | real | veil-mcp | Structured procedure steps for a playbook skill id. |
+| `playbook_search` | veil-mcp | real | veil-mcp | Use FIRST when you need a cybersecurity procedure playbook by keywords and optional subdomain. |
+| `playbook_subdomains` | veil-mcp | real | veil-mcp | List Anthropic skill subdomain counts from Veil playbook index. |
+| `ti_get_node` | veil-mcp | real | veil-mcp | Fetch one Veil graph node by element id after ti_search_in_category. |
+| `ti_health` | veil-mcp | real | veil-mcp | Veil graph API and Neo4j connectivity health check. |
+| `ti_list_categories` | veil-mcp | real | veil-mcp | List Veil graph product categories (vuln, ti, mitre, playbook, …). |
+| `ti_list_kinds_in_category` | veil-mcp | real | veil-mcp | List Neo4j node labels within a Veil category with counts. |
+| `ti_neighbors` | veil-mcp | real | veil-mcp | Fetch k-hop subgraph around a Veil graph node for relationship context. |
+| `ti_nodes_by_category` | veil-mcp | real | veil-mcp | List graph nodes for a category + kind label. |
+| `ti_search_in_category` | veil-mcp | real | veil-mcp | Use FIRST for IOC/CVE/actor lookup in Veil knowledge graph within a category (optional kind). |
 | `read_document` | web | real | — | Read a local document attachment (txt, md, json, csv, pdf stub). |
 | `search_archived_webpage` | web | real | — | Retrieve historical webpage content via Wayback Machine. |
 | `transcribe_audio` | web | real | — | Transcribe audio attachment (stub — wire STT provider in production). |
@@ -125,21 +149,7 @@ Auto-generated from `ToolProviderPort` metadata. Regenerate: `scripts/generate_t
 | `map_framework` | builtin | real | — | Map observation to compliance framework controls. |
 | `parse_netflow` | builtin | real | — | Parse NetFlow summary text into structured indicators. |
 | `parse_sast_report` | builtin | real | — | Parse SAST report JSON and extract high-signal findings. |
-| `playbook_for_technique` | builtin | real | — | List playbooks linked to a MITRE ATT&CK technique id. |
-| `playbook_framework` | builtin | real | — | Read Veil MITRE Navigator layer, coverage summary, or mapping docs. |
-| `playbook_get` | builtin | real | — | Fetch full playbook markdown for a skill id from playbook_search. |
-| `playbook_ontology_subdomains` | builtin | real | — | Veil subdomain registry with category mapping and priority tier. |
-| `playbook_procedure` | builtin | real | — | Structured procedure steps for a playbook skill id. |
-| `playbook_search` | builtin | real | — | Search Veil cybersecurity procedure playbooks by keywords and optional subdomain. |
-| `playbook_subdomains` | builtin | real | — | List Anthropic skill subdomain counts from Veil playbook index. |
 | `read_repo_metadata` | builtin | real | — | Read repository metadata (languages, branches, recent commits). Stub for authorized scope. |
-| `ti_get_node` | builtin | real | — | Fetch one Veil graph node by element id. |
-| `ti_health` | builtin | real | — | Veil graph API and Neo4j connectivity health check. |
-| `ti_list_categories` | builtin | real | — | List Veil graph product categories (vuln, ti, mitre, playbook, …). |
-| `ti_list_kinds_in_category` | builtin | real | — | List Neo4j node labels within a Veil category with counts. |
-| `ti_neighbors` | builtin | real | — | Fetch k-hop subgraph around a Veil graph node. |
-| `ti_nodes_by_category` | builtin | real | — | List graph nodes for a category + kind label. |
-| `ti_search_in_category` | builtin | real | — | Search Veil knowledge graph within a category (optional kind). |
 | `search_personas` | discovery | real | — | Search registered agent personas by keyword. |
 | `search_skills` | discovery | real | — | Search product skills by keyword. |
 | `search_tools` | discovery | real | — | Search available tools filtered by interaction mode policy. |
@@ -158,6 +168,29 @@ Auto-generated from `ToolProviderPort` metadata. Regenerate: `scripts/generate_t
 | `python_sandbox` | sandbox | stub | — | Execute Python code in a restricted local subprocess. Requires HITL approval. |
 | `run_active_scan` | sandbox | stub | — | Run active security scan on authorized target. Requires HITL approval. |
 | `query_siem_readonly` | siem | real | siem-readonly | Execute read-only SIEM search. Worker runs route via MCP Tool Gateway. |
+| `export_table_list` | siem-mcp | real | siem-mcp | Export tabular IOC/list data from SIEM table lists for lookup during triage. |
+| `get_event_by_uuid` | siem-mcp | real | siem-mcp | Fetch one SIEM event by UUID for drill-down after investigate_incident or search_events. |
+| `investigate_incident` | siem-mcp | real | siem-mcp | Use FIRST when triaging a SIEM incident by ID. Returns incident summary, correlated events, and optional asset/IOC context. Do NOT use siem_request if this tool applies. |
+| `list_aggregated_events` | siem-mcp | real | siem-mcp | List aggregated SIEM events for timeline visualization around an incident window. |
+| `list_incidents` | siem-mcp | real | siem-mcp | List SIEM incidents (New/InProgress queue). Use before investigate_incident when no incident ID is known. |
+| `lookup_assets_by_ip` | siem-mcp | real | siem-mcp | Enrich investigation targets: resolve assets by IP from SIEM asset inventory. |
+| `search_api_docs` | siem-mcp | real | siem-mcp | Escape hatch: search local MaxPatrol SIEM API docs when typed tools are insufficient. |
+| `search_events` | siem-mcp | real | siem-mcp | Search SIEM events by PDQL where clause for correlation and timeline enrichment. Use after investigate_incident when you need additional predicates. |
+| `search_user_actions` | siem-mcp | real | siem-mcp | Audit who changed an incident or SIEM object (user action log). |
+| `playbook_for_technique` | veil-mcp | real | veil-mcp | Use when MITRE ATT&CK technique ID is known — list playbooks linked to it. |
+| `playbook_framework` | veil-mcp | real | veil-mcp | Read Veil MITRE Navigator layer, coverage summary, or mapping docs. |
+| `playbook_get` | veil-mcp | real | veil-mcp | Fetch full playbook markdown for a skill id from playbook_search. |
+| `playbook_ontology_subdomains` | veil-mcp | real | veil-mcp | Veil subdomain registry with category mapping and priority tier. |
+| `playbook_procedure` | veil-mcp | real | veil-mcp | Structured procedure steps for a playbook skill id. |
+| `playbook_search` | veil-mcp | real | veil-mcp | Use FIRST when you need a cybersecurity procedure playbook by keywords and optional subdomain. |
+| `playbook_subdomains` | veil-mcp | real | veil-mcp | List Anthropic skill subdomain counts from Veil playbook index. |
+| `ti_get_node` | veil-mcp | real | veil-mcp | Fetch one Veil graph node by element id after ti_search_in_category. |
+| `ti_health` | veil-mcp | real | veil-mcp | Veil graph API and Neo4j connectivity health check. |
+| `ti_list_categories` | veil-mcp | real | veil-mcp | List Veil graph product categories (vuln, ti, mitre, playbook, …). |
+| `ti_list_kinds_in_category` | veil-mcp | real | veil-mcp | List Neo4j node labels within a Veil category with counts. |
+| `ti_neighbors` | veil-mcp | real | veil-mcp | Fetch k-hop subgraph around a Veil graph node for relationship context. |
+| `ti_nodes_by_category` | veil-mcp | real | veil-mcp | List graph nodes for a category + kind label. |
+| `ti_search_in_category` | veil-mcp | real | veil-mcp | Use FIRST for IOC/CVE/actor lookup in Veil knowledge graph within a category (optional kind). |
 | `read_document` | web | real | — | Read a local document attachment (txt, md, json, csv, pdf stub). |
 | `search_archived_webpage` | web | real | — | Retrieve historical webpage content via Wayback Machine. |
 | `transcribe_audio` | web | real | — | Transcribe audio attachment (stub — wire STT provider in production). |

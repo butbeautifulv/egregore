@@ -8,6 +8,7 @@ tools:
   - playbook_for_technique
   - ti_search_in_category
 skills:
+  - veil-knowledge
   - cloud-threat-detection
 hitl_tools: {}
 trust_level: internal

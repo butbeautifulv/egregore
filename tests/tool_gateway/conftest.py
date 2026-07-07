@@ -71,9 +71,14 @@ def _clear_auth_verifier_cache() -> None:
         fn.cache_clear()
 
 
+def _reset_container() -> None:
+    import bootstrap.container as container_mod
+
+    container_mod._container = None
+
+
 @pytest.fixture(autouse=True)
 def _reset_tool_gateway_container(monkeypatch):
-    from bootstrap.container import get_container
     from bootstrap.settings import get_settings
     from cys_core.infrastructure.tools.gateway_factory import reset_tool_execution_gateway_cache
 
@@ -81,10 +86,10 @@ def _reset_tool_gateway_container(monkeypatch):
     monkeypatch.delenv("RBAC_ENABLED", raising=False)
     get_settings.cache_clear()
     _clear_auth_verifier_cache()
-    get_container.cache_clear()
+    _reset_container()
     reset_tool_execution_gateway_cache()
     yield
     get_settings.cache_clear()
     _clear_auth_verifier_cache()
-    get_container.cache_clear()
+    _reset_container()
     reset_tool_execution_gateway_cache()

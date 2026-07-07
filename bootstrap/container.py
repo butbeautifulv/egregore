@@ -825,7 +825,32 @@ def get_container() -> Container:
     container.wire_bus_reload()
     container.wire_engagement_egress()
     _ensure_dev_catalog_seeded(container)
+    _ensure_tool_catalog_seeded(container)
     return container
+
+
+def _ensure_tool_catalog_seeded(container: Container) -> None:
+    """Seed tool_catalog when Postgres table is empty (prod and dev)."""
+    import structlog
+
+    settings = container.settings
+    if not settings.use_dynamic_catalog or settings.use_memory_fallback:
+        return
+    tool_catalog = container.get_tool_catalog()
+    try:
+        if tool_catalog.list_tools(enabled_only=False):
+            return
+    except Exception:
+        return
+    try:
+        from cys_core.infrastructure.catalog.tool_catalog_seed import load_tools_for_seed
+
+        tools = load_tools_for_seed()
+        tool_catalog.seed(tools)
+        container.reload_catalog()
+        structlog.get_logger(__name__).info("tool_catalog_auto_seeded", count=len(tools))
+    except Exception as exc:
+        structlog.get_logger(__name__).warning("tool_catalog_auto_seed_failed", error=str(exc))
 
 
 def _ensure_dev_catalog_seeded(container: Container) -> None:

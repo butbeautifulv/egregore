@@ -10,6 +10,9 @@ const CHAT_THROTTLE_MS = 50;
 const $ = (sel) => document.querySelector(sel);
 
 function apiBase() {
+  if (window.location.port === "30300") {
+    return window.location.origin;
+  }
   return ($("#api-base").value || DEFAULT_API).replace(/\/$/, "");
 }
 
@@ -210,6 +213,14 @@ function egressSummary(event) {
   if (payload.planner_error) parts.push(payload.planner_error);
   if (payload.tool_name) parts.push(payload.tool_name);
   if (payload.skill_name) parts.push(`skill:${payload.skill_name}`);
+  if (event.type === "assistant_delta" && payload.delta) {
+    const snippet = String(payload.delta);
+    parts.push(`"${snippet.slice(0, 40)}${snippet.length > 40 ? "…" : ""}"`);
+    if (payload.seq != null) parts.push(`seq:${payload.seq}`);
+  }
+  if (event.type === "reasoning_delta" && payload.current_situation) {
+    parts.push(String(payload.current_situation).slice(0, 48));
+  }
   const verdict = payload.verdict;
   if (verdict && typeof verdict === "object") {
     if (typeof verdict.passed === "boolean") parts.push(verdict.passed ? "passed" : "failed");
@@ -287,12 +298,22 @@ function asStringList(value) {
 function formatEvidenceItem(item) {
   if (typeof item === "string") return item;
   if (item && typeof item === "object") {
+    if (item.obs_id) {
+      const excerpt = item.excerpt ? `: ${item.excerpt}` : "";
+      return `${item.obs_id}${excerpt}`;
+    }
     const source = item.source ? `[${item.source}] ` : "";
     const desc = item.description || item.summary || JSON.stringify(item);
     const ref = item.reference ? ` (${item.reference})` : "";
     return `${source}${desc}${ref}`;
   }
   return String(item);
+}
+
+function telemetryBadge(level) {
+  if (!level || level === "rich") return "";
+  const label = level === "sparse" ? "Low telemetry" : "Metadata only";
+  return `<span class="badge badge-warn">${escapeHtml(label)}</span>`;
 }
 
 function formatFindingHtml(finding) {
@@ -323,17 +344,25 @@ function formatFindingHtml(finding) {
   const mitreTechniques = asStringList(data.mitre_techniques);
   const references = asStringList(data.references);
   const evidence = Array.isArray(data.evidence) ? data.evidence : [];
+  const dataGaps = Array.isArray(data.data_gaps) ? data.data_gaps : [];
+  const telemetryLevel = data.telemetry_level || "";
   const affectedAssets = Array.isArray(data.affected_assets) ? data.affected_assets : asStringList(data.affected_assets);
 
   if (topic) sections.push(`<div class="finding-section"><h4>Topic</h4><p>${escapeHtml(topic)}</p></div>`);
   if (summary) {
     sections.push(`<div class="finding-section"><h4>Summary</h4><p class="finding-summary">${escapeHtml(summary)}</p></div>`);
   }
-  if (risk || confidence !== null) {
-    const meta = [risk ? `Risk: ${risk}` : "", confidence !== null ? `Confidence: ${(confidence * 100).toFixed(0)}%` : ""]
+  if (risk || confidence !== null || telemetryLevel) {
+    const meta = [
+      risk ? `Risk: ${risk}` : "",
+      confidence !== null ? `Confidence: ${(confidence * 100).toFixed(0)}%` : "",
+      telemetryLevel ? `Telemetry: ${telemetryLevel}` : "",
+    ]
       .filter(Boolean)
       .join(" · ");
-    sections.push(`<div class="finding-section finding-meta">${escapeHtml(meta)}</div>`);
+    sections.push(
+      `<div class="finding-section finding-meta">${telemetryBadge(telemetryLevel)} ${escapeHtml(meta)}</div>`,
+    );
   }
   if (mitreTactics.length || mitreTechniques.length) {
     const lines = [];
@@ -349,6 +378,18 @@ function formatFindingHtml(finding) {
   if (evidence.length) {
     sections.push(
       `<div class="finding-section"><h4>Evidence</h4><ul>${evidence.map((e) => `<li>${escapeHtml(formatEvidenceItem(e))}</li>`).join("")}</ul></div>`,
+    );
+  }
+  if (dataGaps.length) {
+    sections.push(
+      `<div class="finding-section"><h4>Data gaps</h4><ul>${dataGaps
+        .map((gap) => {
+          if (typeof gap === "string") return `<li>${escapeHtml(gap)}</li>`;
+          const field = gap.field || "unknown";
+          const remediation = gap.remediation ? ` — ${gap.remediation}` : "";
+          return `<li><code>${escapeHtml(field)}</code>${escapeHtml(remediation)}</li>`;
+        })
+        .join("")}</ul></div>`,
     );
   }
   if (affectedAssets.length) {
@@ -420,10 +461,16 @@ function deriveEngagementView(eng, jobs) {
   return { displayStatus, completedPersonas };
 }
 
+function langfuseProject() {
+  const defaults = window.EGREGORE_DEFAULTS || {};
+  return defaults.langfuseProject || "egregore-dev";
+}
+
 function langfuseEngagementUrl(engagementId) {
   const host = langfuseHost();
-  const q = encodeURIComponent(engagementId);
-  return `${host}/project/default/traces?search=${q}`;
+  const project = langfuseProject();
+  const q = encodeURIComponent(`engagement:${engagementId}`);
+  return `${host}/project/${encodeURIComponent(project)}/traces?search=${q}`;
 }
 
 function formatStatusLabel(status) {
@@ -464,6 +511,7 @@ function setTab(name) {
 }
 
 let currentDetailId = null;
+let currentEngagement = null;
 let detailEvents = [];
 let detailFindings = [];
 let detailJobs = [];
@@ -494,8 +542,34 @@ function updateStreamBadge() {
 
 function eventDedupeKey(event) {
   const payload = event.payload || {};
+  const type = event.type || "";
+  if (type === "assistant_delta") {
+    return [type, payload.job_id || "", payload.seq ?? "", payload.delta || ""].join("|");
+  }
+  if (type === "reasoning_delta") {
+    return [
+      type,
+      payload.job_id || "",
+      payload.plan_status || "",
+      (payload.reasoning_steps || []).join(","),
+    ].join("|");
+  }
+  if (type === "assistant_snapshot") {
+    return [type, payload.job_id || "", payload.text || ""].join("|");
+  }
+  if (type === "tool_start" || type === "tool_done" || type === "tool_error") {
+    const preview = payload.output_preview ? String(payload.output_preview).slice(0, 64) : "";
+    return [
+      type,
+      payload.job_id || "",
+      payload.tool_name || "",
+      payload.tool_call_id || "",
+      preview,
+      payload.error || "",
+    ].join("|");
+  }
   return [
-    event.type || "",
+    type,
     event.phase || "",
     payload.job_id || "",
     payload.persona || "",
@@ -520,10 +594,11 @@ function renderDetailEventsLog() {
 
 function appendDetailEvent(event) {
   const key = eventDedupeKey(event);
-  if (seenEventKeys.has(key)) return;
+  if (seenEventKeys.has(key)) return false;
   seenEventKeys.add(key);
   detailEvents = [...detailEvents.slice(-199), event];
   renderDetailEventsLog();
+  return true;
 }
 
 function escapeHtml(text) {
@@ -558,6 +633,9 @@ function shouldRefreshOnEvent(event) {
   const type = event.type || "";
   const phase = event.phase || "";
   if (["assistant_done", "job_finished", "job_started", "error", "control", "report"].includes(type)) {
+    return true;
+  }
+  if (type === "status" && phase === "final_report") {
     return true;
   }
   if (
@@ -599,18 +677,237 @@ function hydrateTranscriptFromDetail(eng, jobs) {
   }
 }
 
+function collectEngagementErrors(eng, events) {
+  const rows = [];
+  const seen = new Set();
+  const failed = new Set(eng?.failed_personas || []);
+  for (const persona of failed) {
+    const key = `persona:${persona}`;
+    if (!seen.has(key)) {
+      rows.push({ persona, error: "failed", job_id: "", tool: "" });
+      seen.add(key);
+    }
+  }
+  for (const event of events || []) {
+    const type = event.type || event.phase || "";
+    const payload = eventPayload(event);
+    if (type === "status" && event.phase === "job_finished" && payload.success === false) {
+      const key = `job:${payload.job_id}:${payload.error}`;
+      if (!seen.has(key)) {
+        rows.push({
+          persona: payload.persona || personaFromJobId(payload.job_id || ""),
+          error: payload.error || "failed",
+          job_id: payload.job_id || "",
+          tool: "",
+        });
+        seen.add(key);
+      }
+    }
+    if (type === "tool_done" && payload.ok === false) {
+      const key = `tool:${payload.job_id}:${payload.tool_name}`;
+      if (!seen.has(key)) {
+        rows.push({
+          persona: payload.persona || personaFromJobId(payload.job_id || ""),
+          error: payload.output_preview || "tool failed",
+          job_id: payload.job_id || "",
+          tool: payload.tool_name || "",
+        });
+        seen.add(key);
+      }
+    }
+  }
+  return rows;
+}
+
+function renderErrorsPanel(eng) {
+  const panel = $("#detail-errors-panel");
+  const banner = $("#detail-errors-banner");
+  if (!panel || !banner) return;
+  if (!eng) {
+    panel.classList.add("hidden");
+    banner.classList.add("hidden");
+    return;
+  }
+  const plan = eng.planner_plan || [];
+  const failed = eng.failed_personas || [];
+  const completed = eng.completed_personas || [];
+  const specialistCount = plan.length || failed.length + completed.length;
+  const failedCount = failed.length;
+  const errors = collectEngagementErrors(eng, detailEvents);
+
+  if (specialistCount > 0 && failedCount > 0) {
+    banner.textContent = `${failedCount}/${specialistCount} specialists failed — pipeline may still close with consultant synth`;
+    banner.classList.remove("hidden");
+    banner.classList.toggle("err", failedCount === specialistCount);
+    banner.classList.toggle("warn", failedCount < specialistCount);
+  } else if (errors.length) {
+    banner.textContent = `${errors.length} error(s) recorded`;
+    banner.classList.remove("hidden");
+    banner.classList.add("warn");
+  } else {
+    banner.classList.add("hidden");
+  }
+
+  if (!errors.length) {
+    panel.classList.add("hidden");
+    panel.innerHTML = "";
+    return;
+  }
+  panel.classList.remove("hidden");
+  panel.innerHTML = `
+    <h3 class="detail-subheading">Errors &amp; status</h3>
+    <table class="errors-table">
+      <thead><tr><th>Persona</th><th>Error</th><th>Job</th><th>Tool</th></tr></thead>
+      <tbody>
+        ${errors
+          .map(
+            (row) => `<tr>
+          <td>${escapeHtml(row.persona || "—")}</td>
+          <td class="err-cell">${escapeHtml(String(row.error || "").slice(0, 200))}</td>
+          <td><code>${escapeHtml(row.job_id || "—")}</code></td>
+          <td>${escapeHtml(row.tool || "—")}</td>
+        </tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>`;
+}
+
+function sortChatEntries(entries, eng) {
+  const order = [];
+  if (eng && currentDetailId) {
+    order.push(plannerJobId(currentDetailId));
+  }
+  for (const persona of eng?.planner_plan || []) {
+    const jobId = (eng?.job_ids || []).find((id) => id.startsWith(`${persona}-`));
+    if (jobId) order.push(jobId);
+  }
+  for (const jobId of eng?.job_ids || []) {
+    if (!order.includes(jobId)) order.push(jobId);
+  }
+  const rank = new Map(order.map((id, idx) => [id, idx]));
+  return [...entries].sort((a, b) => {
+    const ra = rank.has(a[0]) ? rank.get(a[0]) : 999;
+    const rb = rank.has(b[0]) ? rank.get(b[0]) : 999;
+    return ra - rb;
+  });
+}
+
+function jobStatusForChat(jobId, eng) {
+  const persona = personaFromJobId(jobId);
+  if ((eng?.completed_personas || []).includes(persona)) return "completed";
+  if ((eng?.failed_personas || []).includes(persona)) return "failed";
+  const job = detailJobs.find((j) => j.job_id === jobId);
+  if (job?.status) return job.status;
+  return "running";
+}
+
 function ensureChatEntry(jobId, persona) {
   if (!chatState.has(jobId)) {
     chatState.set(jobId, {
       persona: persona || "—",
       buffer: "",
+      turns: [],
       tools: [],
+      toolsExpanded: [],
+      agentExpanded: true,
+      reasoning: null,
       streaming: false,
+      jobError: "",
       flushTimer: null,
     });
   }
   return chatState.get(jobId);
 }
+
+function matchToolRow(tools, toolName, toolCallId) {
+  if (!toolName) return null;
+  if (toolCallId) {
+    const byId = [...tools].reverse().find((row) => row.tool_call_id === toolCallId);
+    if (byId) return byId;
+  }
+  return [...tools].reverse().find(
+    (row) => row.name === toolName || row.name.startsWith(`${toolName} →`),
+  );
+}
+
+function renderReasoningBlock(reasoning) {
+  if (!reasoning) return "";
+  const steps = reasoning.reasoning_steps || [];
+  if (!reasoning.current_situation && !steps.length && !reasoning.plan_status) {
+    return "";
+  }
+  const stepItems = steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+  const status = reasoning.plan_status
+    ? `<div class="chat-reasoning-status">${escapeHtml(reasoning.plan_status)}</div>`
+    : "";
+  return `
+    <details class="chat-reasoning">
+      <summary>Reasoning</summary>
+      ${status}
+      ${reasoning.current_situation ? `<div class="chat-reasoning-situation">${escapeHtml(reasoning.current_situation)}</div>` : ""}
+      ${stepItems ? `<ol class="chat-reasoning-steps">${stepItems}</ol>` : ""}
+    </details>`;
+}
+
+function renderToolRows(tools, toolsExpanded) {
+  return tools
+    .map((tool, idx) => {
+      const cls = tool.status === "done" ? "ok" : tool.status === "error" ? "err" : "";
+      const preview = tool.output_preview
+        ? `<pre class="chat-tool-preview">${escapeHtml(tool.output_preview)}</pre>`
+        : "";
+      const defaultOpen =
+        toolsExpanded[idx] ?? (tool.status === "error" || tool.status === "started");
+      const openAttr = defaultOpen ? " open" : "";
+      return `<details class="chat-tool ${cls}" data-tool-idx="${idx}"${openAttr}>
+        <summary class="chat-tool-row ${cls}">${escapeHtml(tool.name)} — ${escapeHtml(tool.status)}</summary>
+        ${preview}
+      </details>`;
+    })
+    .join("");
+}
+
+function renderAgentOutcome(jobId, state, eng) {
+  const status = jobStatusForChat(jobId, eng);
+  if (status === "failed" && state.jobError) {
+    return `<div class="chat-agent-error">${escapeHtml(state.jobError)}</div>`;
+  }
+  const findingHtml = findingHtmlForJob(jobId);
+  if (findingHtml && status === "completed") {
+    return `<div class="chat-agent-finding">${findingHtml}</div>`;
+  }
+  return "";
+}
+
+function formatBubbleText(text) {
+  if (!text) return "";
+  let html = escapeHtml(text);
+  html = html.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  return html.replace(/\n/g, "<br>");
+}
+
+function renderTurnBubbles(state) {
+  const parts = (state.turns || []).map(
+    (turn) => `<div class="chat-bubble chat-bubble-turn">${formatBubbleText(turn)}</div>`,
+  );
+  const liveCls = state.streaming
+    ? "chat-bubble streaming"
+    : state.isControlError
+      ? "chat-bubble control-error"
+      : "chat-bubble";
+  if (state.buffer) {
+    parts.push(`<div class="${liveCls}">${formatBubbleText(state.buffer)}</div>`);
+  } else if (!parts.length) {
+    parts.push(
+      `<div class="${liveCls}"><span class="muted">No live tokens — open Finding tab or refresh after job completes.</span></div>`,
+    );
+  }
+  return parts.join("");
+}
+
+let currentEngagementGoal = "";
 
 function scheduleChatRender() {
   const el = $("#detail-response");
@@ -625,41 +922,73 @@ function scheduleChatRender() {
 function renderResponseThread() {
   const el = $("#detail-response");
   if (!el) return;
-  const entries = [...chatState.entries()];
+  const entries = sortChatEntries([...chatState.entries()], currentEngagement);
   if (!entries.length) {
     el.innerHTML = '<span class="muted">Waiting for agent stream…</span>';
     return;
   }
-  el.innerHTML = entries
-    .map(([jobId, state]) => {
-      const toolRows = state.tools
-        .map((t) => {
-          const cls = t.status === "done" ? "ok" : t.status === "error" ? "err" : "";
-          return `<div class="chat-tool-row ${cls}">${escapeHtml(t.name)} — ${escapeHtml(t.status)}</div>`;
-        })
-        .join("");
-      const bubbleCls = state.streaming
-        ? "chat-bubble streaming"
-        : state.isControlError
-          ? "chat-bubble control-error"
-          : "chat-bubble";
-      const viewBtn = features.streamAgentOutput
-        ? ` <button type="button" class="btn-link btn-view-job" data-job="${escapeHtml(jobId)}">details</button>`
-        : "";
-      return `
-        <div data-chat-job="${escapeHtml(jobId)}">
-          <div class="muted" style="font-size:0.75rem;margin-bottom:0.2rem">${escapeHtml(state.persona)} · <code>${escapeHtml(jobId)}</code>${viewBtn}</div>
-          ${toolRows}
-          <div class="${bubbleCls}">${transcriptPlaceholder(state, jobId)}</div>
-        </div>`;
-    })
-    .join("");
+  const goalBlock = currentEngagementGoal
+    ? `<div class="chat-user-goal"><span class="muted">Goal</span><div class="chat-bubble chat-bubble-user">${formatBubbleText(currentEngagementGoal)}</div></div>`
+    : "";
+  el.innerHTML =
+    goalBlock +
+    entries
+      .map(([jobId, state]) => {
+        const status = jobStatusForChat(jobId, currentEngagement);
+        const toolRows = renderToolRows(state.tools, state.toolsExpanded || []);
+        const reasoningBlock = renderReasoningBlock(state.reasoning);
+        const viewBtn = features.streamAgentOutput
+          ? ` <button type="button" class="btn-link btn-view-job" data-job="${escapeHtml(jobId)}">details</button>`
+          : "";
+        const bubbleHtml = renderTurnBubbles(state);
+        const outcomeHtml = renderAgentOutcome(jobId, state, currentEngagement);
+        const sectionOpen = state.agentExpanded !== false && (state.streaming || status === "running");
+        const summaryErr = state.jobError ? ` — ${String(state.jobError).slice(0, 80)}` : "";
+        return `
+        <section class="chat-agent-section" data-chat-job="${escapeHtml(jobId)}">
+          <details class="chat-agent-collapse"${sectionOpen ? " open" : ""}>
+            <summary class="chat-agent-header">
+              <span class="badge ${statusBadgeClass(status)}">${escapeHtml(formatStatusLabel(status))}</span>
+              <strong>${escapeHtml(state.persona)}</strong>
+              <code>${escapeHtml(jobId)}</code>${viewBtn}
+              <span class="chat-agent-summary muted">${escapeHtml(summaryErr)}</span>
+            </summary>
+            <div class="chat-agent-body">
+              ${reasoningBlock}
+              ${toolRows ? `<details class="chat-tools-group" open><summary>Tools (${state.tools.length})</summary>${toolRows}</details>` : ""}
+              ${bubbleHtml}
+              ${outcomeHtml}
+            </div>
+          </details>
+        </section>`;
+      })
+      .join("");
   el.querySelectorAll(".btn-view-job").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       openJobDetail(btn.dataset.job);
     });
   });
+  el.querySelectorAll(".chat-tool").forEach((detailsEl) => {
+    detailsEl.addEventListener("toggle", () => {
+      const section = detailsEl.closest("[data-chat-job]");
+      if (!section) return;
+      const jobId = section.dataset.chatJob;
+      const state = chatState.get(jobId);
+      if (!state) return;
+      const idx = Number(detailsEl.dataset.toolIdx);
+      if (!state.toolsExpanded) state.toolsExpanded = [];
+      state.toolsExpanded[idx] = detailsEl.open;
+    });
+  });
+  el.querySelectorAll(".chat-agent-collapse").forEach((detailsEl) => {
+    detailsEl.addEventListener("toggle", () => {
+      const jobId = detailsEl.closest("[data-chat-job]")?.dataset.chatJob;
+      const state = jobId ? chatState.get(jobId) : null;
+      if (state) state.agentExpanded = detailsEl.open;
+    });
+  });
+  el.scrollTop = el.scrollHeight;
 }
 
 function resolveControlJobId(type, payload) {
@@ -701,6 +1030,18 @@ function handleChatEvent(event) {
     return;
   }
 
+  if (type === "reasoning_delta") {
+    state.reasoning = {
+      current_situation: payload.current_situation || "",
+      plan_status: payload.plan_status || "",
+      reasoning_steps: Array.isArray(payload.reasoning_steps) ? payload.reasoning_steps : [],
+      task_completed: Boolean(payload.task_completed),
+    };
+    scheduleChatRender();
+    if (openDrawerJobId === jobId) renderDrawerContent();
+    return;
+  }
+
   if (type === "assistant_delta") {
     state.buffer += payload.delta || "";
     state.streaming = true;
@@ -709,8 +1050,13 @@ function handleChatEvent(event) {
     return;
   }
   if (type === "assistant_snapshot") {
-    if (!state.buffer && payload.text) {
-      state.buffer = payload.text;
+    const text = payload.text || "";
+    if (text && state.buffer === text) {
+      state.streaming = false;
+      return;
+    }
+    if (!state.buffer && text) {
+      state.buffer = text;
     }
     state.streaming = false;
     scheduleChatRender();
@@ -718,15 +1064,50 @@ function handleChatEvent(event) {
     return;
   }
   if (type === "assistant_done") {
+    if (state.buffer) {
+      if (!state.turns) state.turns = [];
+      state.turns.push(state.buffer);
+      state.buffer = "";
+    }
     state.streaming = false;
     scheduleChatRender();
     if (openDrawerJobId === jobId) renderDrawerContent();
     return;
   }
+  if (type === "status" && event.phase === "job_finished") {
+    const err = payload.error || "unknown";
+    if (payload.success === false) {
+      state.jobError = err;
+      if (!state.buffer) {
+        if (err.startsWith("tools_not_executed:")) {
+          state.buffer = `Tools were planned in JSON but never executed. ${err.slice("tools_not_executed:".length)}`;
+        } else if (err.startsWith("empty_finding:")) {
+          const gaps = err.slice("empty_finding:".length).replace(/,/g, ", ");
+          state.buffer = `Agent finished without a valid finding (missing: ${gaps}).`;
+        } else if (err === "empty_finding") {
+          state.buffer =
+            "Agent finished without a valid finding (model may have refused or returned invalid JSON).";
+        } else if (err.startsWith("model_refusal:")) {
+          state.buffer = `Model refused: ${err.slice("model_refusal:".length)}`;
+        } else {
+          state.buffer = `Job failed: ${err}`;
+        }
+      }
+      state.agentExpanded = false;
+    } else {
+      state.jobError = "";
+    }
+    state.streaming = false;
+    scheduleChatRender();
+    renderErrorsPanel(currentEngagement);
+    if (openDrawerJobId === jobId) renderDrawerContent();
+    return;
+  }
   if (type === "tool_start" && features.streamAgentTools) {
     const toolName = payload.tool_name || "tool";
+    const toolCallId = payload.tool_call_id || "";
     const label = payload.skill_name ? `${toolName} → ${payload.skill_name}` : toolName;
-    state.tools.push({ name: label, status: "started" });
+    state.tools.push({ name: label, status: "started", tool_call_id: toolCallId });
     scheduleChatRender();
     if (openDrawerJobId === jobId) renderDrawerContent();
     return;
@@ -739,25 +1120,49 @@ function handleChatEvent(event) {
     return;
   }
   if (type === "tool_done" && features.streamAgentTools) {
-    const row = [...state.tools].reverse().find((t) => t.name === payload.tool_name && t.status === "started");
-    if (row) row.status = "done";
-    else state.tools.push({ name: payload.tool_name || "tool", status: "done" });
+    const ok = payload.ok !== false;
+    const toolCallId = payload.tool_call_id || "";
+    const row = matchToolRow(state.tools, payload.tool_name, toolCallId);
+    if (row) {
+      row.status = ok ? "done" : "error";
+      if (payload.output_preview) row.output_preview = payload.output_preview;
+      if (toolCallId) row.tool_call_id = toolCallId;
+    } else {
+      state.tools.push({
+        name: payload.tool_name || "tool",
+        status: ok ? "done" : "error",
+        output_preview: payload.output_preview || "",
+        tool_call_id: toolCallId,
+      });
+    }
+    if (!ok) renderErrorsPanel(currentEngagement);
     scheduleChatRender();
     if (openDrawerJobId === jobId) renderDrawerContent();
     return;
   }
   if (type === "tool_error" && features.streamAgentTools) {
-    const row = [...state.tools].reverse().find((t) => t.name === payload.tool_name && t.status === "started");
-    if (row) row.status = "error";
-    else state.tools.push({ name: payload.tool_name || "tool", status: "error" });
+    const toolCallId = payload.tool_call_id || "";
+    const row = matchToolRow(state.tools, payload.tool_name, toolCallId);
+    if (row) {
+      row.status = "error";
+      if (payload.error) row.output_preview = String(payload.error);
+      if (toolCallId) row.tool_call_id = toolCallId;
+    } else {
+      state.tools.push({
+        name: payload.tool_name || "tool",
+        status: "error",
+        output_preview: payload.error ? String(payload.error) : "",
+        tool_call_id: toolCallId,
+      });
+    }
     scheduleChatRender();
     if (openDrawerJobId === jobId) renderDrawerContent();
   }
 }
 
 function handleStreamEvent(parsed) {
-  appendDetailEvent(parsed);
-  if (features.streamAgentOutput) {
+  const isNew = appendDetailEvent(parsed);
+  if (isNew && features.streamAgentOutput) {
     handleChatEvent(parsed);
   }
   if (shouldRefreshOnEvent(parsed)) {
@@ -831,6 +1236,35 @@ function connectEngagementStream(engagementId) {
   void connect();
 }
 
+function planPersonasLabel(eng) {
+  const plan = eng.planner_plan || [];
+  if (!plan.length) return "";
+  const mode = (eng.execution_mode || "").toLowerCase();
+  const sep = mode === "staged" ? " → " : " + ";
+  let label = plan.join(sep);
+  if (eng.synthesis_persona && plan.length > 1) {
+    label += `${mode === "staged" ? " → " : " → "}${eng.synthesis_persona} (synthesis)`;
+  }
+  return label;
+}
+
+function renderFinalReport(eng) {
+  const heading = $("#detail-final-report-heading");
+  const el = $("#detail-final-report");
+  const report = eng.final_report;
+  if (!report || typeof report !== "object") {
+    heading?.classList.add("hidden");
+    el?.classList.add("hidden");
+    if (el) el.innerHTML = "";
+    return;
+  }
+  heading?.classList.remove("hidden");
+  el?.classList.remove("hidden");
+  if (el) {
+    el.innerHTML = `<div class="finding-card card finding-final"><div class="finding-body">${formatFindingHtml(report)}</div></div>`;
+  }
+}
+
 function renderFindings(findings) {
   detailFindings = findings || [];
   const list = $("#detail-findings");
@@ -867,14 +1301,20 @@ function renderPlanner(eng) {
     blocks.push(`<div class="planner-block"><strong>Status:</strong> ${escapeHtml(eng.planner_status)}</div>`);
   }
   if (eng.planner_plan?.length) {
+    const mode = (eng.execution_mode || "parallel").toLowerCase();
     blocks.push(
-      `<div class="planner-block"><strong>Plan:</strong> ${escapeHtml(eng.planner_plan.join(" → "))}</div>`,
+      `<div class="planner-block"><strong>Plan (${escapeHtml(mode)}):</strong> ${escapeHtml(planPersonasLabel(eng))}</div>`,
     );
     if (hasOperatorToken()) {
       blocks.push(
         `<div class="planner-block"><button type="button" class="secondary" id="btn-promote-plan">Save plan to catalog</button></div>`,
       );
     }
+  }
+  if (eng.synthesis_status && eng.synthesis_status !== "skipped") {
+    blocks.push(
+      `<div class="planner-block"><strong>Synthesis:</strong> ${escapeHtml(eng.synthesis_persona || "—")} (${escapeHtml(eng.synthesis_status)})</div>`,
+    );
   }
   if (eng.planner_rationale) {
     blocks.push(`<div class="planner-block"><strong>Rationale:</strong> ${escapeHtml(eng.planner_rationale)}</div>`);
@@ -1716,8 +2156,7 @@ async function hydrateDetailEvents(engagementId) {
     const events = await getEngagementEvents(engagementId);
     if (!Array.isArray(events) || !events.length) return;
     for (const event of events.slice(-200)) {
-      appendDetailEvent(event);
-      if (features.streamAgentOutput) {
+      if (appendDetailEvent(event) && features.streamAgentOutput) {
         handleChatEvent(event);
       }
     }
@@ -1749,6 +2188,7 @@ async function refreshDetail() {
       getInvestigationJobs(currentDetailId),
       fetchInfraHealth(),
     ]);
+    currentEngagement = eng;
     const jobs = jobsData.jobs || [];
     detailJobs = jobs;
     const { displayStatus, completedPersonas } = deriveEngagementView(eng, jobs);
@@ -1760,13 +2200,16 @@ async function refreshDetail() {
       phaseEl.classList.toggle("hidden", !eng.latest_phase);
     }
     $("#detail-goal").textContent = eng.goal ? `Goal: ${eng.goal}` : "";
+    currentEngagementGoal = eng.goal || "";
     $("#detail-personas").textContent = `Completed: ${completedPersonas.join(", ") || "—"}`;
     const running = ["enqueued", "running", "planning"].includes((displayStatus || "").toLowerCase());
     detailPollMs = running ? 3000 : 15000;
     renderPlanner(eng);
+    renderFinalReport(eng);
     renderFindings(eng.findings_summary || []);
     renderJobsTable(jobs, eng);
     hydrateTranscriptFromDetail(eng, jobs);
+    renderErrorsPanel(eng);
     renderResponseThread();
     if (openDrawerJobId) renderDrawerContent();
     const jobsHint = $("#detail-jobs-hint");
@@ -1782,7 +2225,9 @@ async function refreshDetail() {
 }
 
 function persistConfig() {
-  localStorage.setItem(STORAGE_API, $("#api-base").value);
+  const api = normalizeApiBase($("#api-base").value.trim());
+  $("#api-base").value = api;
+  localStorage.setItem(STORAGE_API, api);
   localStorage.setItem(STORAGE_TOKEN, $("#api-token").value);
   localStorage.setItem(STORAGE_LANGFUSE, $("#langfuse-host").value);
   if (currentDetailId) {
@@ -1792,10 +2237,54 @@ function persistConfig() {
   void loadFeatures();
 }
 
+function resolveGatewayUrl(port) {
+  const host = window.location.hostname || "127.0.0.1";
+  const proto = window.location.protocol === "http:" ? "http" : "https";
+  return `${proto}://${host}:${port}`;
+}
+
+function normalizeApiBase(url) {
+  if (!url) return url;
+  return url.replace(/:30990(\/|$)/, ":30880$1");
+}
+
+function migrateApiBase(stored, fallback) {
+  if (!stored) return fallback;
+  try {
+    const u = new URL(stored);
+    const here = window.location;
+    if (here.port === "30300" && u.port === "30880") {
+      return here.origin;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return stored;
+}
+
+function resolveApiBase() {
+  const here = window.location;
+  // TLS gateway serves API on the same port as ui-minimal — never call :30880 from browser.
+  if (here.port === "30300") {
+    return here.origin;
+  }
+  const defaults = window.EGREGORE_DEFAULTS || {};
+  const stored = migrateApiBase(
+    normalizeApiBase(localStorage.getItem(STORAGE_API)),
+    defaults.api || resolveGatewayUrl(30880),
+  );
+  return stored || defaults.api || resolveGatewayUrl(30880);
+}
+
 function loadConfig() {
-  $("#api-base").value = localStorage.getItem(STORAGE_API) || DEFAULT_API;
+  const defaults = window.EGREGORE_DEFAULTS || {};
+  const fallbackLangfuse = defaults.langfuse || resolveGatewayUrl(30001);
+  const api = resolveApiBase();
+  $("#api-base").value = api;
+  localStorage.setItem(STORAGE_API, api);
   $("#api-token").value = localStorage.getItem(STORAGE_TOKEN) || "";
-  $("#langfuse-host").value = localStorage.getItem(STORAGE_LANGFUSE) || DEFAULT_LANGFUSE;
+  $("#langfuse-host").value =
+    localStorage.getItem(STORAGE_LANGFUSE) || defaults.langfuse || fallbackLangfuse;
 }
 
 function parseHash() {

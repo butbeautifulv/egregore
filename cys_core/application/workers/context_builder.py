@@ -55,6 +55,32 @@ class WorkerContextBuilder:
         return context
 
     def job_input(self, job: WorkerJob) -> str:
+        if job.payload.get("phase") == "synthesis":
+            evidence_manifests = job.payload.get("evidence_manifests") or {}
+            if not evidence_manifests and self._engagement_store is not None:
+                engagement = self._engagement_store.get(job.tenant_id, self.investigation_id(job))
+                if engagement is not None:
+                    evidence_manifests = engagement.evidence_manifests
+            return json.dumps(
+                {
+                    "phase": "synthesis",
+                    "original_goal": str(job.payload.get("goal", "")),
+                    "specialist_findings": job.payload.get("findings_summary", []),
+                    "specialist_outcomes": job.payload.get("specialist_outcomes", []),
+                    "failed_personas": job.payload.get("failed_personas", []),
+                    "planner_rationale": job.payload.get("planner_rationale", ""),
+                    "evidence_manifests": evidence_manifests,
+                    "instruction": (
+                        "Собери единый ответ оператору: выводы, рекомендации, пробелы. "
+                        "Пересказывай только утверждения, подтверждённые evidence[].obs_id "
+                        "из specialist findings. При telemetry_level=sparse начни с неопределённости "
+                        "и укажи data_gaps.remediation. Учти failed personas."
+                    ),
+                    "investigation_context": self.build(job),
+                },
+                ensure_ascii=False,
+            )
+
         sub_goals = job.payload.get("sub_goals", {})
         if not isinstance(sub_goals, dict):
             sub_goals = {}
@@ -66,12 +92,24 @@ class WorkerContextBuilder:
         goal = str(job.payload.get("goal", job.payload.get("message", "")))
         if engagement is not None and engagement.goal:
             goal = engagement.goal
+        if job.persona == "consultant":
+            return json.dumps(
+                {
+                    "question": goal,
+                    "sub_goal": str(sub_goals.get(job.persona, "")),
+                    "planner_sub_goals": sub_goals,
+                    "phase": job.payload.get("phase", "specialist"),
+                    "investigation_context": self.build(job),
+                },
+                ensure_ascii=False,
+            )
         return json.dumps(
             {
                 "persona": job.persona,
                 "goal": goal,
                 "sub_goal": str(sub_goals.get(job.persona, "")),
                 "planner_plan": job.payload.get("planner_plan", []),
+                "phase": job.payload.get("phase", "specialist"),
                 "event_id": job.event_id,
                 "playbook_id": job.playbook_id,
                 "payload": job.payload,

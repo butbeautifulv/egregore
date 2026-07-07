@@ -1,176 +1,157 @@
 from __future__ import annotations
 
-import json
-from typing import Any, Protocol
+import structlog
+from typing import Any
 
-from cys_core.application.persona_quality_hooks import record_critic_verdict
-from cys_core.application.ports.profile_policy import ProfilePolicyPort
 from cys_core.application.ports.schema_registry import SchemaRegistryPort
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
+from cys_core.application.ports.tracing_ports import ApplicationTracingPort
+from cys_core.application.workers.evidence_gate import soc_evidence_gaps
 from cys_core.application.workers.noop_finding import is_noop_finding
+from cys_core.application.workers.tool_execution_tracker import get_persona_manifests
+from cys_core.domain.evidence.models import EvidenceManifest
+
+logger = structlog.get_logger(__name__)
 
 
-class CriticRuntimePort(Protocol):
-    async def arun(
-        self,
-        name: str,
-        user_input: str,
-        *,
-        session_id: str | None = None,
-        tenant_id: str | None = None,
-        investigation_id: str | None = None,
-    ) -> dict[str, Any]: ...
+def record_critic_verdict(
+    *,
+    persona: str,
+    investigation_id: str,
+    tenant_id: str,
+    passed: bool,
+    trust_score: float,
+    issues: list[str] | None = None,
+) -> None:
+    logger.info(
+        "critic_verdict",
+        persona=persona,
+        investigation_id=investigation_id,
+        tenant_id=tenant_id,
+        passed=passed,
+        trust_score=trust_score,
+        issues_detected=issues or [],
+    )
 
 
 class ProcessFindingCritic:
-    """Finding critic — optional LLM CriticResult or trust-score gate."""
+    """Validate specialist findings before downstream propagation."""
 
     def __init__(
         self,
         *,
-        policy_port: ProfilePolicyPort,
-        trust_threshold: float | None = None,
+        policy_port: Any,
         application_tracing: ApplicationTracingPort | None = None,
-        runtime: CriticRuntimePort | None = None,
+        runtime: Any | None = None,
         use_llm_judge: bool = False,
         schema_registry: SchemaRegistryPort | None = None,
+        trust_threshold: float = 0.5,
     ) -> None:
-        self.policy_port = policy_port
-        self.trust_threshold = trust_threshold
-        self._tracing = application_tracing or NOOP_APPLICATION_TRACING
+        self._policy_port = policy_port
+        self._application_tracing = application_tracing
         self._runtime = runtime
         self._use_llm_judge = use_llm_judge
         self._schema_registry = schema_registry
+        self.trust_threshold = trust_threshold
 
-    def _auto_pass_suppressed(self, finding: dict[str, Any]) -> dict[str, Any] | None:
-        if not isinstance(finding, dict):
-            return None
+    def _resolve_trust_score(self, finding: dict[str, Any], persona: str, investigation_id: str | None) -> float:
+        try:
+            confidence = float(finding.get("confidence", finding.get("trust_score", 0.5)))
+        except (TypeError, ValueError):
+            confidence = 0.5
+        if persona == "soc" and investigation_id:
+            manifests = get_persona_manifests(investigation_id)
+            manifest = manifests.get(persona)
+            if manifest is not None:
+                return min(confidence, manifest.max_confidence)
+        return confidence
+
+    def _structural_issues(self, persona: str, finding: dict[str, Any], investigation_id: str | None) -> list[str]:
+        if persona != "soc" or not investigation_id:
+            return []
+        manifests = get_persona_manifests(investigation_id)
+        manifest = manifests.get(persona)
+        if manifest is None:
+            return []
+        return soc_evidence_gaps(finding, manifest)
+
+    def execute(
+        self,
+        *,
+        persona: str,
+        finding: dict[str, Any],
+        investigation_id: str | None = None,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         if is_noop_finding(finding):
-            return {
-                "passed": True,
-                "trust_score": 1.0,
-                "auto_passed": True,
-                "reason": "suppressed_noop_finding",
-            }
-        if finding.get("suppressed") is True and str(finding.get("severity", "")).lower() == "informational":
-            return {
-                "passed": True,
-                "trust_score": 1.0,
-                "auto_passed": True,
-                "reason": "informational_suppressed",
-            }
-        return None
+            return {"passed": True, "auto_passed": True, "trust_score": 1.0, "issues_detected": []}
 
-    def execute(self, *, persona: str, finding: dict[str, Any], profile_id: str = "cybersec-soc") -> dict[str, Any]:
-        auto = self._auto_pass_suppressed(finding)
-        if auto is not None:
-            record_critic_verdict(persona, passed=True, trust_score=auto["trust_score"])
-            return auto
-        investigation_id = str(finding.get("correlation_id", finding.get("investigation_id", "")))
-        with self._tracing.span(
-            "control.critic.process",
-            persona=persona,
-            engagement_id=investigation_id,
-            tenant_id=str(finding.get("tenant_id", "default")),
-        ):
-            return self._trust_gate_verdict(persona=persona, finding=finding, profile_id=profile_id)
+        issues = self._structural_issues(persona, finding, investigation_id)
+        trust_score = self._resolve_trust_score(finding, persona, investigation_id)
+        passed = trust_score >= self.trust_threshold and not issues
+        result = {
+            "passed": passed,
+            "trust_score": trust_score,
+            "issues_detected": issues,
+            "validated_claims": [] if issues else ["finding_structure_ok"],
+            "rejected_claims": issues,
+            "recommended_disposition": "accept" if passed else "revise",
+        }
+        if investigation_id:
+            record_critic_verdict(
+                persona=persona,
+                investigation_id=investigation_id,
+                tenant_id=tenant_id or "default",
+                passed=passed,
+                trust_score=trust_score,
+                issues=issues,
+            )
+        return result
 
     async def execute_async(
         self,
         *,
         persona: str,
         finding: dict[str, Any],
-        investigation_id: str = "",
-        tenant_id: str = "default",
-        profile_id: str = "cybersec-soc",
+        investigation_id: str | None = None,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
-        auto = self._auto_pass_suppressed(finding)
-        if auto is not None:
-            record_critic_verdict(persona, passed=True, trust_score=auto["trust_score"])
-            return auto
-        with self._tracing.span(
-            "control.critic.process",
-            persona=persona,
-            engagement_id=investigation_id,
-            tenant_id=tenant_id,
-        ):
-            if self._use_llm_judge and self._runtime is not None and investigation_id:
-                try:
-                    return await self._llm_verdict(
-                        persona=persona,
-                        finding=finding,
-                        investigation_id=investigation_id,
-                        tenant_id=tenant_id,
-                        profile_id=profile_id,
-                    )
-                except Exception:
-                    pass
-            return self._trust_gate_verdict(persona=persona, finding=finding, profile_id=profile_id)
+        if is_noop_finding(finding):
+            return {"passed": True, "auto_passed": True, "trust_score": 1.0, "issues_detected": []}
 
-    async def _llm_verdict(
-        self,
-        *,
-        persona: str,
-        finding: dict[str, Any],
-        investigation_id: str,
-        tenant_id: str,
-        profile_id: str,
-    ) -> dict[str, Any]:
-        threshold = self._resolve_threshold(profile_id)
-        prompt = json.dumps(
-            {
+        if self._use_llm_judge and self._runtime is not None:
+            prompt = {
                 "persona": persona,
                 "finding": finding,
                 "investigation_id": investigation_id,
-                "instructions": (
-                    "Evaluate the worker finding. Return structured CriticResult: trust_score, "
-                    "issues_detected, validated_claims, rejected_claims, reasoning_notes, "
-                    "recommended_disposition."
-                ),
-            },
-            ensure_ascii=False,
-        )
-        raw = await self._runtime.arun(  # type: ignore[union-attr]
-            "critic",
-            prompt,
-            session_id=f"critic:{investigation_id}",
-            tenant_id=tenant_id,
+            }
+            verdict = await self._runtime.arun(prompt)
+            if isinstance(verdict, dict):
+                trust_score = float(verdict.get("trust_score", 0.5))
+                issues = list(verdict.get("issues_detected") or [])
+                passed = trust_score >= self.trust_threshold and not issues
+                result = {
+                    "passed": passed,
+                    "trust_score": trust_score,
+                    "issues_detected": issues,
+                    "validated_claims": list(verdict.get("validated_claims") or []),
+                    "rejected_claims": list(verdict.get("rejected_claims") or []),
+                    "reasoning_notes": list(verdict.get("reasoning_notes") or []),
+                    "recommended_disposition": verdict.get("recommended_disposition", "revise"),
+                }
+                if investigation_id:
+                    record_critic_verdict(
+                        persona=persona,
+                        investigation_id=investigation_id,
+                        tenant_id=tenant_id or "default",
+                        passed=passed,
+                        trust_score=trust_score,
+                        issues=issues,
+                    )
+                return result
+
+        return self.execute(
+            persona=persona,
+            finding=finding,
             investigation_id=investigation_id,
+            tenant_id=tenant_id,
         )
-        if not isinstance(raw, dict):
-            raise ValueError("critic_llm_invalid_response")
-        if self._schema_registry is None:
-            return None
-        schema = self._schema_registry.get("CriticResult")
-        if schema is not None:
-            parsed = schema.model_validate(raw).model_dump()
-        else:
-            parsed = dict(raw)
-        trust_score = float(parsed.get("trust_score", 0.0))
-        issues = parsed.get("issues_detected") or []
-        disposition = str(parsed.get("recommended_disposition", "")).lower()
-        passed = (
-            "error" not in finding
-            and trust_score >= threshold
-            and not issues
-            and disposition not in {"reject", "rejected", "fail", "failed"}
-        )
-        record_critic_verdict(persona, passed=passed, trust_score=trust_score)
-        return {
-            "passed": passed,
-            "trust_score": trust_score,
-            "threshold": threshold,
-            **parsed,
-        }
-
-    def _resolve_threshold(self, profile_id: str) -> float:
-        if self.trust_threshold is not None:
-            return self.trust_threshold
-        return self.policy_port.get_trust_floor(profile_id)
-
-    def _trust_gate_verdict(self, *, persona: str, finding: dict[str, Any], profile_id: str) -> dict[str, Any]:
-        threshold = self._resolve_threshold(profile_id)
-        trust_score = float(finding.get("trust_score", 0.75))
-        passed = "error" not in finding and trust_score >= threshold
-        record_critic_verdict(persona, passed=passed, trust_score=trust_score)
-        return {"passed": passed, "trust_score": trust_score, "threshold": threshold}

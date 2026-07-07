@@ -3,7 +3,10 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from cys_core.domain.engagement.models import ExecutionMode
+from pydantic import BaseModel, Field, model_validator
 
 
 class TodoStatus(str, Enum):
@@ -57,11 +60,28 @@ class InvestigationPlanStep(BaseModel):
 class EngagementPlannerOutput(BaseModel):
     """Structured meta-LLM planner response for engagement.start."""
 
-    personas: list[str] = Field(default_factory=list, max_length=3)
+    personas: list[str] = Field(default_factory=list)
     sub_goals: dict[str, str] = Field(default_factory=dict)
     rationale: str = ""
-    reasoning_steps: list[str] = Field(default_factory=list, max_length=3)
+    reasoning_steps: list[str] = Field(default_factory=list)
     plan_status: str = ""
+    execution_mode: ExecutionMode | None = None
+    synthesis_persona: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_sub_goals(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        sub_goals = data.get("sub_goals")
+        if not isinstance(sub_goals, list):
+            return data
+        personas = data.get("personas") or []
+        if personas and len(personas) == len(sub_goals):
+            data["sub_goals"] = dict(zip(personas, sub_goals, strict=False))
+        else:
+            data["sub_goals"] = {f"goal_{i}": goal for i, goal in enumerate(sub_goals)}
+        return data
 
 
 class GeneratePlanPayload(BaseModel):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 from uuid import UUID
 
@@ -11,9 +12,46 @@ from langchain_core.outputs import ChatGeneration, ChatResult, LLMResult
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.stream_context import StreamContext
 from cys_core.application.runtime_config import get_stream_agent_output, get_stream_agent_tools
+from cys_core.application.workers.tool_execution_tracker import record_tool_execution
 from cys_core.infrastructure.engagement.factory import get_engagement_egress
 
 _BATCH_SECONDS = 0.05
+_OUTPUT_PREVIEW_MAX = 800
+
+
+def _tool_output_preview(output: Any) -> str:
+    text = output if isinstance(output, str) else str(output or "")
+    text = text.strip()
+    if not text:
+        return ""
+    if len(text) <= _OUTPUT_PREVIEW_MAX:
+        return text
+    return f"{text[:_OUTPUT_PREVIEW_MAX]}…"
+
+
+def _parse_reasoning_inputs(inputs: dict[str, Any] | None, input_str: str) -> dict[str, Any] | None:
+    payload: dict[str, Any] = {}
+    if isinstance(inputs, dict):
+        payload.update(inputs)
+    if not payload and input_str.strip().startswith("{"):
+        try:
+            parsed = json.loads(input_str)
+            if isinstance(parsed, dict):
+                payload = parsed
+        except json.JSONDecodeError:
+            return None
+    if not payload:
+        return None
+    steps = payload.get("reasoning_steps")
+    if not isinstance(steps, list):
+        steps = []
+    return {
+        "current_situation": str(payload.get("current_situation", "")),
+        "plan_status": str(payload.get("plan_status", "")),
+        "reasoning_steps": [str(step) for step in steps if str(step).strip()],
+        "task_completed": bool(payload.get("task_completed", False)),
+        "enough_data": bool(payload.get("enough_data", False)),
+    }
 
 
 def _message_content_text(content: Any) -> str:
@@ -173,10 +211,16 @@ class EgressStreamingCallback(AsyncCallbackHandler):
         inputs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        if not get_stream_agent_tools():
-            return
         tool_name = str(serialized.get("name") or serialized.get("id") or "tool")
         self._tool_names[run_id] = tool_name
+        record_tool_execution(self._context.job_id)
+        if tool_name == "reasoning_step":
+            reasoning = _parse_reasoning_inputs(inputs, input_str)
+            if reasoning and get_stream_agent_output():
+                self._publish("reasoning_delta", {**self._base_payload(), **reasoning})
+            return
+        if not get_stream_agent_tools():
+            return
         payload = {**self._base_payload(), "tool_name": tool_name}
         if tool_name == "load_skill":
             from cys_core.registry.skills_tool import _parse_skill_name_from_inputs
@@ -190,7 +234,11 @@ class EgressStreamingCallback(AsyncCallbackHandler):
         if not get_stream_agent_tools():
             return
         tool_name = self._tool_names.pop(run_id, "tool")
-        self._publish("tool_done", {**self._base_payload(), "tool_name": tool_name, "ok": True})
+        payload: dict[str, Any] = {**self._base_payload(), "tool_name": tool_name, "ok": True}
+        preview = _tool_output_preview(output)
+        if preview:
+            payload["output_preview"] = preview
+        self._publish("tool_done", payload)
 
     async def on_tool_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
         if not get_stream_agent_tools():

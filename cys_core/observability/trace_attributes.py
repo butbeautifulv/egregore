@@ -29,12 +29,13 @@ def build_job_trace_metadata(
     """Vendor-neutral trace tags and metadata for worker/agent runs."""
     cid = correlation_id or get_correlation_id() or event_id or job_id
     inv_id = investigation_id or cid
-    trace_session = session_id or inv_id or cid or job_id
+    trace_session = inv_id or cid or session_id or job_id
     tags = [f"persona:{persona}"]
     if cid:
         tags.append(f"correlation:{cid}")
     if inv_id:
         tags.append(f"investigation:{inv_id}")
+        tags.append(f"engagement:{inv_id}")
     if job_id:
         tags.append(f"job:{job_id}")
 

@@ -174,14 +174,8 @@ def cmd_adversarial_test(_args: argparse.Namespace) -> int:
 
 
 def cmd_catalog_seed(_args: argparse.Namespace) -> int:
-    from bootstrap.catalog_loader import load_profile_pack
-    from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog, reload_agent_registry
-
-    profile, entries = load_profile_pack()
-    catalog = get_agent_catalog()
-    catalog.seed(entries, profile)
-    reload_agent_registry()
-    print(json.dumps({"profile": profile.model_dump(), "seeded": len(entries)}, indent=2, ensure_ascii=False))
+    result = get_container().get_seed_catalog().execute()
+    print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
 

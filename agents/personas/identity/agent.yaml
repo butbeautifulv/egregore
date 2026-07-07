@@ -6,8 +6,8 @@ tools:
   - query_siem_readonly
   - playbook_for_technique
   - ti_search_in_category
-  - correlate_findings
 skills:
+  - veil-knowledge
   - identity-attacks
 hitl_tools: {}
 trust_level: internal

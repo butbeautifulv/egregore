@@ -1,9 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: egregore-ui
+  labels:
+    {{- include "egregore.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: egregore-ui
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: egregore-ui
   labels:
     app: egregore-ui
+    {{- include "egregore.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.ui.replicas }}
   selector:
@@ -17,22 +31,14 @@ spec:
       enableServiceLinks: false
       containers:
         - name: ui
-          image: "{{ .Values.ui.image.repository }}:{{ .Values.ui.image.tag }}"
+          image: {{ include "egregore.uiImage" . | quote }}
           imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
           env:
-            # NEXT_PUBLIC_LANGFUSE_HOST is baked at UI image build time (see ui/Dockerfile).
             - name: EGREGORE_API_UPSTREAM
               value: "http://egregore-api:8080"
           ports:
             - containerPort: 3000
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: egregore-ui
-spec:
-  selector:
-    app: egregore-ui
-  ports:
-    - port: 3000
-      targetPort: 3000
+          {{- with .Values.resources.ui }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

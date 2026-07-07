@@ -6,10 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from cys_core.application.workers.finding_quality import (
+    consultant_finding_gaps,
     finding_meets_minimum,
+    has_planned_tool_calls,
     normalize_consultant_lists,
     normalize_list_field,
 )
+from cys_core.application.workers.tool_execution_tracker import record_tool_execution
 from cys_core.domain.workers.models import WorkerJob
 from cys_core.registry.schemas import schema_registry
 from tests.application.workers.factory import build_run_worker_job_for_tests
@@ -91,6 +94,117 @@ def test_consultant_valid_finding_passes_gate() -> None:
         },
         schema_name="ConsultantFinding",
     ) is True
+
+
+@pytest.mark.unit
+def test_consultant_finding_gaps_lists_missing_fields() -> None:
+    gaps = consultant_finding_gaps({"summary": "only summary", "recommendations": ["one"]})
+    assert "missing_topic" in gaps
+    assert "missing_recommendations" in gaps
+    assert "missing_confidence" in gaps
+
+
+@pytest.mark.unit
+def test_has_planned_tool_calls_detects_json_plan() -> None:
+    assert has_planned_tool_calls({"tool_calls": [{"tool_name": "playbook_search"}]}) is True
+    assert has_planned_tool_calls(
+        {"tool_calls": [{"name": "load_skill", "arguments": {"skill_name": "veil-knowledge"}}]}
+    ) is True
+    assert has_planned_tool_calls({"topic": "x", "summary": "y"}) is False
+
+
+@pytest.mark.unit
+def test_preserve_planned_tool_calls_keeps_tool_list_after_validation_shape() -> None:
+    from cys_core.application.workers.finding_quality import preserve_planned_tool_calls
+
+    source = {"tool_calls": [{"name": "load_skill", "arguments": {"skill_name": "veil-knowledge"}}]}
+    out = preserve_planned_tool_calls(source, {"topic": "", "summary": ""})
+    assert out["tool_calls"] == source["tool_calls"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_planned_tool_calls_without_execution_fails_job() -> None:
+    runtime = SimpleNamespace(
+        arun=AsyncMock(
+            return_value={
+                "tool_calls": [{"tool_name": "playbook_search", "tool_arguments": {}}],
+            }
+        )
+    )
+    registry = SimpleNamespace(
+        get=lambda _name: SimpleNamespace(
+            schema_name="ConsultantFinding",
+            tools=[],
+            skills=[],
+            bus_recipients=[],
+        )
+    )
+    job_store = MagicMock()
+    runner = build_run_worker_job_for_tests(
+        runtime=runtime,
+        registry=registry,
+        job_store=job_store,
+    )
+    runner._result_validator._schema_registry = SimpleNamespace(
+        get=lambda name: schema_registry.get("ConsultantFinding")
+    )
+    job = WorkerJob(
+        job_id="consultant-evt-3-ccc",
+        event_id="evt-3",
+        persona="consultant",
+        correlation_id="inv-3",
+    )
+
+    result = await runner.execute(job, job, "worker:consultant:consultant-evt-3-ccc", {})
+
+    assert result.success is False
+    assert result.error is not None
+    assert result.error.startswith("tools_not_executed:")
+    job_store.mark_failed.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_planned_tool_calls_with_name_field_fails_as_tools_not_executed() -> None:
+    runtime = SimpleNamespace(
+        arun=AsyncMock(
+            return_value={
+                "tool_calls": [
+                    {"name": "load_skill", "arguments": {"skill_name": "veil-knowledge"}},
+                ],
+            }
+        )
+    )
+    registry = SimpleNamespace(
+        get=lambda _name: SimpleNamespace(
+            schema_name="ConsultantFinding",
+            tools=[],
+            skills=[],
+            bus_recipients=[],
+        )
+    )
+    job_store = MagicMock()
+    runner = build_run_worker_job_for_tests(
+        runtime=runtime,
+        registry=registry,
+        job_store=job_store,
+    )
+    runner._result_validator._schema_registry = SimpleNamespace(
+        get=lambda name: schema_registry.get("ConsultantFinding")
+    )
+    job = WorkerJob(
+        job_id="consultant-evt-3b-ccc",
+        event_id="evt-3b",
+        persona="consultant",
+        correlation_id="inv-3b",
+    )
+
+    result = await runner.execute(job, job, "worker:consultant:consultant-evt-3b-ccc", {})
+
+    assert result.success is False
+    assert result.error is not None
+    assert result.error.startswith("tools_not_executed:")
 
 
 @pytest.mark.unit

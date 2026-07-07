@@ -72,6 +72,17 @@ async def test_kafka_queue_enqueue_falls_back_when_broker_unavailable() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_kafka_queue_enqueue_front_publishes_to_broker() -> None:
+    queue = KafkaJobQueue(persona="consultant", bootstrap_servers="localhost:19092")
+    job = _job(job_id="j-front", persona="soc")
+    with patch.object(queue, "aenqueue", new_callable=AsyncMock, return_value="j-front") as mock_enqueue:
+        job_id = await queue.aenqueue_front(job)
+    mock_enqueue.assert_awaited_once_with(job)
+    assert job_id == "j-front"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_kafka_queue_persona_filter_requeues_other_persona_jobs() -> None:
     queue = KafkaJobQueue(persona="consultant", bootstrap_servers="localhost:19092")
     calls = iter(

@@ -4,7 +4,9 @@ from cys_core.domain.engagement.models import (
     EngagementPlan,
     EngagementRequest,
     EngagementStatus,
+    ExecutionMode,
     PlanStrategy,
+    SynthesisStatus,
 )
 
 __all__ = [
@@ -13,5 +15,7 @@ __all__ = [
     "EngagementPlan",
     "EngagementRequest",
     "EngagementStatus",
+    "ExecutionMode",
     "PlanStrategy",
+    "SynthesisStatus",
 ]

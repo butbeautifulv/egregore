@@ -20,7 +20,7 @@ class CysMetrics:
             "cys_worker_job_duration_seconds",
             "Worker job execution time",
             ["persona", "status"],
-            buckets=(0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300),
+            buckets=(0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 420, 600),
         )
         self.tool_invocations = Counter(
             "cys_tool_invocations_total",
@@ -117,6 +117,11 @@ class CysMetrics:
             "Skills loaded by workers via load_skill",
             ["skill", "persona"],
         )
+        self.worker_job_timeouts = Counter(
+            "cys_worker_job_timeout_total",
+            "Worker jobs that hit wall-clock timeout without salvage",
+            ["persona"],
+        )
 
     def record_event_ingested(self, event_type: str) -> None:
         self.events_ingested.labels(event_type=event_type).inc()
@@ -170,6 +175,9 @@ class CysMetrics:
 
     def record_skill_load(self, skill_name: str, persona: str) -> None:
         self.skill_loads.labels(skill=skill_name, persona=persona).inc()
+
+    def record_worker_job_timeout(self, persona: str) -> None:
+        self.worker_job_timeouts.labels(persona=persona).inc()
 
     @contextmanager
     def track_worker_job(self, persona: str) -> Iterator[dict[str, str]]:

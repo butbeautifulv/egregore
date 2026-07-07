@@ -13,13 +13,12 @@ from cys_core.application.ports.persona_ranking import PersonaRankingPort
 from cys_core.application.ports.resource_source import ResourceSourcePort
 from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
 from cys_core.application.ports.stream_context import StreamContext
-from cys_core.domain.engagement.models import Engagement, EngagementPlan, EngagementStatus
+from cys_core.application.runtime_config import get_max_planner_personas, get_planner_default_execution_mode
+from cys_core.domain.engagement.models import Engagement, EngagementPlan, EngagementStatus, ExecutionMode
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.domain.parsing.json_text import parse_json_text
 
 logger = logging.getLogger(__name__)
-
-MAX_PLANNER_PERSONAS = 3
 
 
 class PlannerRuntime(Protocol):
@@ -72,10 +71,66 @@ class PlanInvestigation:
     def _goal_from_event(self, event: SecurityEvent) -> str:
         return str(event.payload.get("goal", event.payload.get("message", "Investigate security incident")))
 
+    @staticmethod
+    def _has_known_incident(event: SecurityEvent, goal: str) -> bool:
+        payload = event.payload or {}
+        if str(payload.get("incident_id", "")).strip():
+            return True
+        if str(payload.get("incident_key", "")).strip():
+            return True
+        blob = f"{goal} {payload.get('message', '')} {payload.get('goal', '')}"
+        return "INC-" in blob.upper()
+
+    def _max_personas(self) -> int:
+        return max(1, get_max_planner_personas())
+
     def _cap_personas(self, personas: list[str]) -> list[str]:
-        if len(personas) <= MAX_PLANNER_PERSONAS:
+        limit = self._max_personas()
+        if len(personas) <= limit:
             return list(personas)
-        return list(personas[:MAX_PLANNER_PERSONAS])
+        return list(personas[:limit])
+
+    @staticmethod
+    def _parse_execution_mode(raw: Any) -> ExecutionMode | None:
+        if raw is None or raw == "":
+            return None
+        value = str(raw).strip().lower()
+        if value == ExecutionMode.PARALLEL:
+            return ExecutionMode.PARALLEL
+        if value == ExecutionMode.STAGED:
+            return ExecutionMode.STAGED
+        return None
+
+    def _ensure_soc_intel_for_incident(self, plan: EngagementPlan, goal: str) -> EngagementPlan:
+        """Safety net: staged soc→intel for SIEM incidents when planner returns soc-only."""
+        if "INC-" not in goal.upper():
+            return plan
+        if plan.personas != ["soc"]:
+            return plan
+        if "intel" not in set(self._available_personas()):
+            return plan
+        plan.personas = ["soc", "intel"]
+        plan.execution_mode = ExecutionMode.STAGED
+        if "intel" not in plan.sub_goals:
+            plan.sub_goals["intel"] = plan.sub_goals.get("soc", goal)
+        return plan
+
+    def _finalize_plan(self, plan: EngagementPlan) -> EngagementPlan:
+        if len(plan.personas) == 1:
+            plan.execution_mode = ExecutionMode.PARALLEL
+            if plan.personas[0] == "consultant":
+                plan.synthesis_persona = None
+            else:
+                plan.synthesis_persona = plan.synthesis_persona or "consultant"
+            return plan
+        if plan.execution_mode is None:
+            default_mode = get_planner_default_execution_mode().strip().lower()
+            plan.execution_mode = (
+                ExecutionMode.STAGED if default_mode == ExecutionMode.STAGED else ExecutionMode.PARALLEL
+            )
+        if not plan.synthesis_persona:
+            plan.synthesis_persona = "consultant"
+        return plan
 
     @staticmethod
     def _raw_snippet(result: dict[str, Any]) -> str:
@@ -108,12 +163,16 @@ class PlanInvestigation:
                 sub_goals = {}
             if not sub_goals and personas:
                 sub_goals = {persona: goal for persona in personas}
+            synthesis_raw = result.get("synthesis_persona")
+            synthesis_persona = str(synthesis_raw).strip() if synthesis_raw else None
             return EngagementPlan(
                 personas=personas,
                 sub_goals={str(k): str(v) for k, v in sub_goals.items()},
                 rationale=str(result.get("rationale", "")),
                 reasoning_steps=[str(s) for s in result.get("reasoning_steps", []) if s],
                 plan_status=str(result.get("plan_status", "")),
+                execution_mode=self._parse_execution_mode(result.get("execution_mode")),
+                synthesis_persona=synthesis_persona or None,
             )
 
         raw = result.get("raw_response", "")
@@ -162,6 +221,8 @@ class PlanInvestigation:
             planner_rationale=plan.rationale,
             planner_error=error,
             goal=engagement.goal or None,
+            execution_mode=plan.execution_mode.value if plan.execution_mode else None,
+            synthesis_persona=plan.synthesis_persona,
         )
 
     def _apply_planning_error(self, engagement: Engagement, message: str) -> None:
@@ -193,13 +254,28 @@ class PlanInvestigation:
             self.engagement_store.upsert(engagement)
 
         available = self._available_personas()
+        max_personas = self._max_personas()
         prompt = (
             f"Goal: {goal}\n"
             f"Event type: {event.type}\n"
             f"Severity: {event.severity}\n"
             f"Available personas: {', '.join(available)}\n"
-            "Select up to 3 personas. Use consultant alone for general IB advisory or consultation. "
-            "Use network (+ optional compliance) for LAN hardening and segmentation questions."
+            f"Select 1 to {max_personas} personas (minimal set). "
+            "For SIEM incident triage (INC-*, investigate incident, alerts) prefer soc alone or soc+intel only. "
+        )
+        if self._has_known_incident(event, goal):
+            prompt += (
+                "A known SIEM incident ID is present — prefer **staged soc then intel** "
+                "(soc SIEM triage → intel MITRE/playbook enrichment). "
+                "Use soc only if the goal explicitly requests no CTI/threat-intel enrichment. "
+            )
+        prompt += (
+            "Use consultant alone for general IB advisory or consultation. "
+            "Use network (+ optional compliance) for LAN hardening and segmentation. "
+            "For independent specialists use execution_mode parallel; use staged when order matters. "
+            "Specialist personas run first; consultant synthesis follows automatically after they finish "
+            "(do not add consultant to the personas list). "
+            "For multi-persona plans you may set synthesis_persona to purple for kill-chain scope."
         )
         try:
             result = await self.runtime.arun(
@@ -231,14 +307,17 @@ class PlanInvestigation:
                 )
 
             ranked = self.persona_ranking.rank(plan.personas, profile_id=self.profile_id)
-            if len(ranked) > MAX_PLANNER_PERSONAS:
+            limit = self._max_personas()
+            if len(ranked) > limit:
                 logger.warning(
                     "Planner personas truncated from %d to %d for %s",
                     len(ranked),
-                    MAX_PLANNER_PERSONAS,
+                    limit,
                     engagement_id,
                 )
             plan.personas = self._cap_personas(ranked)
+            plan = self._ensure_soc_intel_for_incident(plan, goal)
+            plan = self._finalize_plan(plan)
             self._apply_plan_to_engagement(engagement, plan, status="ok")
             if self._engagement_egress is not None:
                 publish_assistant_snapshot(
@@ -253,15 +332,19 @@ class PlanInvestigation:
                             "sub_goals": plan.sub_goals,
                             "rationale": plan.rationale,
                             "depends_on": plan.depends_on,
+                            "execution_mode": plan.execution_mode.value if plan.execution_mode else None,
+                            "synthesis_persona": plan.synthesis_persona,
                         },
                         indent=2,
                         ensure_ascii=False,
                     ),
                 )
             logger.info(
-                "planner succeeded for %s: personas=%s rationale=%s",
+                "planner succeeded for %s: personas=%s mode=%s synthesis=%s rationale=%s",
                 engagement_id,
                 plan.personas,
+                plan.execution_mode,
+                plan.synthesis_persona,
                 plan.rationale,
             )
             return plan
@@ -274,9 +357,13 @@ class PlanInvestigation:
             raise PlanningFailedError(engagement_id, str(exc)) from exc
 
     def to_worker_jobs_payload(self, plan: EngagementPlan) -> dict[str, Any]:
+        mode = plan.effective_execution_mode()
         return {
             "planner_plan": plan.personas,
             "sub_goals": plan.sub_goals,
             "rationale": plan.rationale,
             "depends_on": plan.depends_on,
+            "execution_mode": mode.value,
+            "synthesis_persona": plan.synthesis_persona,
+            "phase": "specialist",
         }

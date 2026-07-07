@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import structlog
+
 from cys_core.application.catalog_mutation_service import CatalogMutationService
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.metrics import MetricsPort
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
 from cys_core.domain.catalog.quality_events import PersonaQualityEvent, PersonaQualityEventKind
 from cys_core.domain.catalog.trust import declared_trust_score
+from cys_core.domain.catalog.validation import CatalogValidationError
+
+logger = structlog.get_logger(__name__)
 
 
 def _ema(previous: float, sample: float, *, alpha: float) -> float:
@@ -60,7 +65,14 @@ class UpdatePersonaQuality:
 
         entry.quality = quality
         if self._mutation is not None:
-            self._mutation.upsert_agent(entry, actor="quality")
+            try:
+                self._mutation.upsert_agent(entry, actor="quality")
+            except CatalogValidationError as exc:
+                logger.warning(
+                    "persona_quality_catalog_skip",
+                    persona=event.persona,
+                    error=str(exc),
+                )
         else:
             self._catalog.upsert_agent(entry)
         if self._metrics is not None:

@@ -20,3 +20,6 @@ class AgentTransportConnector(Protocol):
 
     async def publish(self, channel: str, message: dict[str, Any]) -> None:
         """Publish message to bus channel."""
+
+    async def publish_delivery(self, message: dict[str, Any]) -> None:
+        """Publish signed bus envelope for BusIngressRouter delivery."""

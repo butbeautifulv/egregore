@@ -95,6 +95,9 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 - Tool allowlist per agent (`agent.yaml`)
 - HITL на dangerous tools (`run_active_scan`)
 - Sandbox-scoped MCP tools (`mcp_tools.py`)
+- **Veil MCP** (`VEIL_MCP_*`): graph + playbooks — [docs/integration/egregore-veil-mcp.md](../../docs/integration/egregore-veil-mcp.md)
+- **MaxPatrol SIEM MCP** (`SIEM_MCP_*`): SOC incidents/events — [docs/integration/egregore-siem-mcp.md](../../docs/integration/egregore-siem-mcp.md); `make cxado-up-siem-mcp`
+- **Nessus MCP** (`NESSUS_MCP_*`): vulnerability inventory — [docs/integration/egregore-tenable-mcp.md](../../docs/integration/egregore-tenable-mcp.md); `make cxado-up-tenable-mcp`
 - SecureAgentBus с trust levels
 - **Keycloak OIDC** (optional): JWT Bearer на Ingress API (`interfaces/api/`) и MCP Tool Gateway (`interfaces/gateways/tool/`). Env: `AUTH_ENABLED`, `KEYCLOAK_ISSUER`, RBAC roles — см. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#keycloak-oidc-ingress--tool-gateway).
 

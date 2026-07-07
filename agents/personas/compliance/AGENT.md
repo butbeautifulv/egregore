@@ -27,3 +27,14 @@ Rules:
 - Prefer measurable controls.
 - Flag ambiguous ownership.
 - Track auditability.
+
+Skills (load on demand via `load_skill`):
+- veil-knowledge — mandatory Veil framework/playbook workflow
+
+## Veil tool ladder (mandatory)
+
+`load_skill("veil-knowledge")` at audit start.
+
+1. `playbook_framework` for MITRE/coverage mapping against controls.
+2. `playbook_search` for procedure evidence and control implementation guides.
+3. Do not assert framework coverage without ≥1 Veil tool call unless `veil_unavailable`.

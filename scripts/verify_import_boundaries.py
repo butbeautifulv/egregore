@@ -40,6 +40,7 @@ ALLOWLIST_BOOTSTRAP_INTERFACES: frozenset[str] = frozenset(
         "cys_core/infrastructure/bootstrap/policy_defaults_adapter.py",
         "cys_core/infrastructure/bootstrap/product_pack_adapter.py",
         "cys_core/infrastructure/bus_transport.py",
+        "cys_core/infrastructure/engagement/factory.py",
         "cys_core/infrastructure/catalog/catalog_registry.py",
         "cys_core/infrastructure/job_store/factory.py",
         "cys_core/infrastructure/k8s_sandbox.py",
@@ -69,6 +70,7 @@ ALLOWLIST_BOOTSTRAP_INTERFACES: frozenset[str] = frozenset(
         "cys_core/registry/skills_tool.py",
         "cys_core/registry/tools.py",
         "cys_core/registry/veil_tools.py",
+        "cys_core/registry/siem_tools.py",
         "cys_core/security/rate_limit.py",
     }
 )

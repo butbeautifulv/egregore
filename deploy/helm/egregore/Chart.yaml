@@ -1,6 +1,6 @@
 apiVersion: v2
 name: egregore
-description: cxado egregore API, workers, and operator UI
+description: Egregore API, workers, and optional UI for cxado offline k3s
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

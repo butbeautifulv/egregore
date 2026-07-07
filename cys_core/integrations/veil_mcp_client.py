@@ -4,7 +4,14 @@ import json
 from typing import Any
 
 import httpx
+import structlog
 
+from cys_core.application.runs.tool_coercion import (
+    normalize_veil_tool_args,
+    veil_playbook_id_hint,
+    veil_technique_id_hint,
+    veil_ti_category_hint,
+)
 from cys_core.application.runtime_config import (
     get_veil_mcp_timeout,
     get_veil_mcp_url,
@@ -13,6 +20,8 @@ from cys_core.application.runtime_config import (
 from cys_core.infrastructure.http_client import sync_http_client
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
+
+logger = structlog.get_logger(__name__)
 
 # Read-only Veil knowledge graph + playbook tools exposed to egregore agents.
 FALLBACK_VEIL_TOOL_NAMES: frozenset[str] = frozenset(
@@ -69,11 +78,13 @@ def call_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
     if tool_name not in get_veil_allowed_tools():
         return {"success": False, "error": f"Veil tool not allowlisted: {tool_name}", "source": "veil-mcp"}
 
+    normalized_arguments = normalize_veil_tool_args(tool_name, arguments or {})
+
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
         "method": "tools/call",
-        "params": {"name": tool_name, "arguments": arguments or {}},
+        "params": {"name": tool_name, "arguments": normalized_arguments},
     }
     headers = inject_correlation_headers(
         {"Content-Type": "application/json", "Accept": "application/json"},
@@ -87,16 +98,27 @@ def call_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
             body = response.json()
     except httpx.HTTPError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
+        logger.warning("veil_mcp_http_error", tool=tool_name, source="veil-mcp", error=str(exc))
         return {"success": False, "error": f"Veil MCP HTTP error: {exc}", "source": "veil-mcp", "tool": tool_name}
     except json.JSONDecodeError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
+        logger.warning("veil_mcp_invalid_json", tool=tool_name, source="veil-mcp", error=str(exc))
         return {"success": False, "error": f"Veil MCP invalid JSON: {exc}", "source": "veil-mcp", "tool": tool_name}
 
     if "error" in body:
         err = body["error"]
         message = err.get("message", str(err)) if isinstance(err, dict) else str(err)
         metrics.record_tool_invocation(tool_name, success=False)
-        return {"success": False, "error": message, "source": "veil-mcp", "tool": tool_name}
+        logger.warning("veil_mcp_rpc_error", tool=tool_name, source="veil-mcp", error=message)
+        return {
+            "success": False,
+            "error": message
+            + veil_playbook_id_hint(tool_name, message)
+            + veil_technique_id_hint(tool_name, message)
+            + veil_ti_category_hint(tool_name, message),
+            "source": "veil-mcp",
+            "tool": tool_name,
+        }
 
     result = body.get("result") or {}
     text_blocks = [
@@ -113,6 +135,7 @@ def call_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
             parsed = combined
 
     metrics.record_tool_invocation(tool_name, success=True)
+    logger.info("veil_mcp_tool_ok", tool=tool_name, source="veil-mcp")
     return {
         "success": True,
         "source": "veil-mcp",

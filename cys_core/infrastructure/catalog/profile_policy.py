@@ -9,6 +9,27 @@ from cys_core.domain.policy.defaults import DEFAULT_BUS_POLICY, ESCALATION_ONLY_
 _DEFAULT_POLICY = default_profile_policy_payload()
 
 
+def _coerce_profile_policy(policy: object) -> ProfilePolicyPayload:
+    if isinstance(policy, ProfilePolicyPayload):
+        return policy
+    if isinstance(policy, str):
+        try:
+            import json
+
+            parsed = json.loads(policy)
+            if isinstance(parsed, dict):
+                return ProfilePolicyPayload.model_validate(parsed)
+        except (json.JSONDecodeError, ValueError):
+            return _DEFAULT_POLICY
+        return _DEFAULT_POLICY
+    if isinstance(policy, dict):
+        try:
+            return ProfilePolicyPayload.model_validate(policy)
+        except ValueError:
+            return _DEFAULT_POLICY
+    return _DEFAULT_POLICY
+
+
 class ProfilePolicyLoader:
     """Implements ProfilePolicyPort — loads policy from agent catalog."""
 
@@ -19,7 +40,7 @@ class ProfilePolicyLoader:
         catalog = self._catalog_getter()
         for profile in catalog.list_profiles():
             if profile.id == profile_id:
-                return profile.policy or _DEFAULT_POLICY
+                return _coerce_profile_policy(profile.policy) if profile.policy else _DEFAULT_POLICY
         return _DEFAULT_POLICY
 
     def get_trust_floor(self, profile_id: str = DEFAULT_PROFILE_ID) -> float:

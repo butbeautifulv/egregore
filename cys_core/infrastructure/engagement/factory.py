@@ -7,7 +7,11 @@ from cys_core.infrastructure.engagement.redis_egress import RedisEngagementEgres
 _engagement_egress: EngagementEgressPort | None = None
 
 
-def get_engagement_egress(settings) -> EngagementEgressPort:
+def get_engagement_egress(settings=None) -> EngagementEgressPort:
+    if settings is None:
+        from bootstrap.settings import get_settings
+
+        settings = get_settings()
     global _engagement_egress
     if _engagement_egress is not None:
         return _engagement_egress

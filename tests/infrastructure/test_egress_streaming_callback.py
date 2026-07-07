@@ -92,8 +92,40 @@ async def test_egress_streaming_callback_tool_events_name_only(monkeypatch: pyte
     types = [e[1] for e in egress.events]
     assert types == ["tool_start", "tool_done"]
     assert egress.events[0][2]["tool_name"] == "query_siem_readonly"
-    assert "result" not in egress.events[1][2]
+    assert egress.events[1][2].get("output_preview") == "result body"
     assert egress.events[1][2]["ok"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_egress_streaming_callback_reasoning_delta(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "cys_core.infrastructure.observability.egress_streaming_callback.get_stream_agent_output",
+        lambda: True,
+    )
+    egress = _RecordingEgress()
+    ctx = StreamContext(engagement_id="eng-r", job_id="job-r", persona="soc")
+    callback = EgressStreamingCallback(ctx, egress=egress)
+    run_id = uuid4()
+
+    await callback.on_tool_start(
+        {"name": "reasoning_step"},
+        "",
+        run_id=run_id,
+        inputs={
+            "reasoning_steps": ["Check SIEM context", "Plan triage"],
+            "current_situation": "Incident ID known",
+            "plan_status": "in_progress",
+            "task_completed": False,
+        },
+    )
+
+    types = [e[1] for e in egress.events]
+    assert types == ["reasoning_delta"]
+    payload = egress.events[0][2]
+    assert payload["current_situation"] == "Incident ID known"
+    assert payload["reasoning_steps"] == ["Check SIEM context", "Plan triage"]
+    assert "tool_start" not in types
 
 
 @pytest.mark.unit

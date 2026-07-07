@@ -1,6 +1,6 @@
 ---
 name: ci-cd-threats
-description: CI/CD pipeline threat modeling: secrets in logs, poisoned dependencies, and build integrity.
+description: "CI/CD pipeline threat modeling: secrets in logs, poisoned dependencies, and build integrity."
 version: "1.0.0"
 author: cys-agi
 ---

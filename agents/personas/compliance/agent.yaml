@@ -3,11 +3,10 @@ description: Compliance and control auditing
 role: worker
 output_schema: ComplianceFinding
 tools:
-  - check_control
-  - map_framework
-  - audit_evidence
   - playbook_framework
   - playbook_search
+skills:
+  - veil-knowledge
 hitl_tools: {}
 trust_level: internal
 bus_recipients:

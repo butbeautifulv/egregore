@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import threading
 from collections.abc import Callable
 from typing import Any, Awaitable
 
@@ -19,6 +20,18 @@ class SgrOneToolMiddleware(AgentMiddleware):
     def __init__(self, session: SgrSessionState) -> None:
         super().__init__()
         self._session = session
+        self._lock = threading.Lock()
+
+    def _guard_action_tool(self, request: ToolCallRequest) -> ToolMessage | None:
+        with self._lock:
+            if self._session.action_tools_this_turn >= 1:
+                return ToolMessage(
+                    content="Only one action tool per turn is allowed after reasoning_step.",
+                    tool_call_id=request.tool_call.get("id", ""),
+                    status="error",
+                )
+            self._session.action_tools_this_turn += 1
+        return None
 
     def wrap_tool_call(
         self,
@@ -28,13 +41,9 @@ class SgrOneToolMiddleware(AgentMiddleware):
         tool_name = request.tool_call.get("name", "")
         if tool_name == REASONING_STEP_TOOL:
             return handler(request)
-        if self._session.action_tools_this_turn >= 1:
-            return ToolMessage(
-                content="Only one action tool per turn is allowed after reasoning_step.",
-                tool_call_id=request.tool_call.get("id", ""),
-                status="error",
-            )
-        self._session.action_tools_this_turn += 1
+        blocked = self._guard_action_tool(request)
+        if blocked is not None:
+            return blocked
         return handler(request)
 
     async def awrap_tool_call(
@@ -48,13 +57,9 @@ class SgrOneToolMiddleware(AgentMiddleware):
             if inspect.isawaitable(result):
                 return await result
             return result
-        if self._session.action_tools_this_turn >= 1:
-            return ToolMessage(
-                content="Only one action tool per turn is allowed after reasoning_step.",
-                tool_call_id=request.tool_call.get("id", ""),
-                status="error",
-            )
-        self._session.action_tools_this_turn += 1
+        blocked = self._guard_action_tool(request)
+        if blocked is not None:
+            return blocked
         result = handler(request)
         if inspect.isawaitable(result):
             return await result

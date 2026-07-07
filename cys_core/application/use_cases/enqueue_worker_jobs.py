@@ -6,6 +6,7 @@ from typing import Any
 import structlog
 
 from cys_core.application.bus_engagement import extract_engagement_id
+from cys_core.application.bus_fingerprint import envelope_fingerprint
 from cys_core.application.engagement_bus_guard import EngagementBusGuard, get_engagement_bus_guard
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector

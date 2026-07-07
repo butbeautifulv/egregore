@@ -40,5 +40,14 @@ Output Requirements:
 - attack_phase typically "installation" or "c2" when persistence/C2 hunting.
 
 Skills (load on demand via `load_skill`):
+- veil-knowledge — mandatory Veil hunt playbook workflow
 - endpoint-hunting — persistence and evasion hunt playbooks
 - threat-intel-osint — adversary TTP and IOC context for hypotheses
+
+## Veil tool ladder (mandatory)
+
+`load_skill("veil-knowledge")` when forming hunt hypotheses.
+
+1. `playbook_for_technique` + `playbook_search` for ATT&CK-aligned hunts.
+2. `ti_search_in_category` for adversary IOC/TTP context.
+3. Do not finalize hunt without ≥1 Veil tool call unless `veil_unavailable`.

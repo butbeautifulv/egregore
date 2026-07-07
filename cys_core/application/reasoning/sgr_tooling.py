@@ -48,6 +48,8 @@ def scope_allowed_tools(defn: AgentDefinition, profile_id: str) -> list[str]:
     """Scope middleware allowlist — must include injected SGR tools."""
     sgr = resolve_sgr_for_agent(defn, profile_id)
     allowed = list(defn.allowed_tools or defn.tools)
+    if defn.skills and "load_skill" not in allowed:
+        allowed.append("load_skill")
     if sgr.enabled and REASONING_STEP_TOOL not in allowed:
         allowed = [REASONING_STEP_TOOL, *allowed]
     return allowed

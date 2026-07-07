@@ -16,6 +16,7 @@ _use_dynamic_catalog: bool = False
 _use_memory_fallback: bool = False
 _postgres_url: str = "postgresql://postgres:password@localhost:5432/cys_agi"
 _default_job_recursion_limit: int = 25
+_triage_recursion_limit: int = 22
 _llm_model: str = "anthropic/claude-sonnet-4"
 _llm_api_key: str = ""
 _llm_base_url: str | None = None
@@ -24,14 +25,24 @@ _llm_request_timeout: float = 120.0
 _veil_mcp_url: str = "http://localhost:8091/mcp"
 _veil_mcp_enabled: bool = True
 _veil_mcp_timeout: float = 30.0
+_siem_mcp_url: str = "http://localhost:8094/mcp"
+_siem_mcp_enabled: bool = False
+_siem_mcp_timeout: float = 60.0
+_nessus_mcp_url: str = "http://localhost:8095/mcp"
+_nessus_mcp_enabled: bool = False
+_nessus_mcp_timeout: float = 180.0
 _veneno_mcp_url: str = "http://localhost:8093/mcp"
 _veneno_mcp_enabled: bool = False
 _veneno_mcp_timeout: float = 60.0
 _planner_fallback_personas: str = "consultant"
+_max_planner_personas: int = 6
+_planner_default_execution_mode: str = "parallel"
 _egregore_one_tool_per_turn: bool = True
+_egregore_json_tool_call_fallback: bool = True
 _egregore_strict_plan: bool = False
 _stream_agent_output: bool = False
 _stream_agent_tools: bool = True
+_stream_agent_token_streaming: bool = False
 _keep_tool_results: int = 3
 _search_judge_llm: bool = False
 _self_consistency_n: int = 0
@@ -64,20 +75,25 @@ _budget_use_api_usage: bool = True
 def configure_from_settings(settings: Any) -> None:
     global _stage, _engagement_async_planning, _use_conductor_for_events
     global _max_spawn_depth, _use_dynamic_catalog, _use_memory_fallback
-    global _postgres_url, _default_job_recursion_limit
+    global _postgres_url, _default_job_recursion_limit, _triage_recursion_limit
     global _llm_model, _llm_api_key, _llm_base_url, _llm_temperature, _llm_request_timeout
     global _veil_mcp_url, _veil_mcp_enabled, _veil_mcp_timeout
+    global _siem_mcp_url, _siem_mcp_enabled, _siem_mcp_timeout
+    global _nessus_mcp_url, _nessus_mcp_enabled, _nessus_mcp_timeout
     global _veneno_mcp_url, _veneno_mcp_enabled, _veneno_mcp_timeout, _planner_fallback_personas
-    global _egregore_one_tool_per_turn, _trace_critic_enabled, _trace_critic_threshold
+    global _max_planner_personas, _planner_default_execution_mode
+    global _egregore_one_tool_per_turn, _egregore_json_tool_call_fallback
+    global _trace_critic_enabled, _trace_critic_threshold
     global _trace_critic_every_n_steps, _context_summary_max_messages, _task_hints_enabled
     global _web_search_provider, _serper_api_key, _run_attachments_dir
     global _context_summary_enabled, _trace_critic_rerun_max, _trace_critic_hitl_on_exhausted
     global _reasoning_model, _reasoning_temperature, _e2b_api_key, _python_sandbox_timeout
     global _egregore_strict_plan, _keep_tool_results, _search_judge_llm, _self_consistency_n
-    global _stream_agent_output, _stream_agent_tools
+    global _stream_agent_output, _stream_agent_tools, _stream_agent_token_streaming
     global _self_refine_max, _browser_enabled, _perplexity_api_key, _jina_api_key, _delegate_budget_fraction
     global _trace_critic_use_reasoning
     global _use_sgr_reasoning, _sgr_default_mode, _sgr_iron_max_retries, _use_run_kernel, _budget_use_api_usage
+    prev_use_postgres = _use_dynamic_catalog and not _use_memory_fallback
     _stage = settings.stage
     _engagement_async_planning = settings.engagement_async_planning
     _use_conductor_for_events = settings.use_conductor_for_events
@@ -86,6 +102,7 @@ def configure_from_settings(settings: Any) -> None:
     _use_memory_fallback = settings.use_memory_fallback
     _postgres_url = settings.postgres_url
     _default_job_recursion_limit = settings.default_job_recursion_limit
+    _triage_recursion_limit = settings.triage_recursion_limit
     _llm_model = settings.llm_model
     _llm_api_key = settings.llm_api_key
     _llm_base_url = settings.llm_base_url
@@ -94,14 +111,24 @@ def configure_from_settings(settings: Any) -> None:
     _veil_mcp_url = settings.veil_mcp_url
     _veil_mcp_enabled = settings.veil_mcp_enabled
     _veil_mcp_timeout = settings.veil_mcp_timeout
+    _siem_mcp_url = settings.siem_mcp_url
+    _siem_mcp_enabled = settings.siem_mcp_enabled
+    _siem_mcp_timeout = settings.siem_mcp_timeout
+    _nessus_mcp_url = settings.nessus_mcp_url
+    _nessus_mcp_enabled = settings.nessus_mcp_enabled
+    _nessus_mcp_timeout = settings.nessus_mcp_timeout
     _veneno_mcp_url = settings.veneno_mcp_url
     _veneno_mcp_enabled = settings.veneno_mcp_enabled
     _veneno_mcp_timeout = settings.veneno_mcp_timeout
     _planner_fallback_personas = settings.planner_fallback_personas
+    _max_planner_personas = settings.max_planner_personas
+    _planner_default_execution_mode = settings.planner_default_execution_mode
     _egregore_one_tool_per_turn = settings.egregore_one_tool_per_turn
+    _egregore_json_tool_call_fallback = settings.egregore_json_tool_call_fallback
     _egregore_strict_plan = settings.egregore_strict_plan
     _stream_agent_output = settings.stream_agent_output
     _stream_agent_tools = settings.stream_agent_tools
+    _stream_agent_token_streaming = settings.stream_agent_token_streaming
     _keep_tool_results = settings.keep_tool_results
     _search_judge_llm = settings.search_judge_llm
     _self_consistency_n = settings.self_consistency_n
@@ -134,6 +161,27 @@ def configure_from_settings(settings: Any) -> None:
     _sgr_iron_max_retries = settings.sgr_iron_max_retries
     _use_run_kernel = getattr(settings, "use_run_kernel", False)
     _budget_use_api_usage = settings.budget_use_api_usage
+    _rebind_catalog_singletons_if_needed(
+        prev_use_postgres=prev_use_postgres,
+        new_use_postgres=_use_dynamic_catalog and not _use_memory_fallback,
+    )
+
+
+def _rebind_catalog_singletons_if_needed(*, prev_use_postgres: bool, new_use_postgres: bool) -> None:
+    """Drop catalog singletons when backend mode changes (import may pin in-memory too early)."""
+    if prev_use_postgres == new_use_postgres:
+        return
+    from cys_core.infrastructure.catalog.catalog_singletons import CatalogSingletons
+
+    CatalogSingletons.reset(
+        "agent_catalog",
+        "tool_catalog",
+        "skill_catalog",
+        "plan_catalog",
+        "mcp_catalog",
+        "catalog_audit",
+        "catalog_write_gate",
+    )
 
 
 def get_stage() -> str:
@@ -173,6 +221,19 @@ def get_default_job_recursion_limit() -> int:
     return _default_job_recursion_limit
 
 
+def get_triage_recursion_limit() -> int:
+    return _triage_recursion_limit
+
+
+_TRIAGE_PERSONAS = frozenset({"soc", "intel"})
+
+
+def get_recursion_limit_for_persona(persona: str) -> int:
+    if persona in _TRIAGE_PERSONAS:
+        return _triage_recursion_limit
+    return _default_job_recursion_limit
+
+
 def get_llm_settings() -> dict[str, object]:
     return {
         "model": _llm_model,
@@ -195,6 +256,30 @@ def get_veil_mcp_timeout() -> float:
     return _veil_mcp_timeout
 
 
+def siem_mcp_enabled() -> bool:
+    return _siem_mcp_enabled
+
+
+def get_siem_mcp_url() -> str:
+    return _siem_mcp_url
+
+
+def get_siem_mcp_timeout() -> float:
+    return _siem_mcp_timeout
+
+
+def nessus_mcp_enabled() -> bool:
+    return _nessus_mcp_enabled
+
+
+def get_nessus_mcp_url() -> str:
+    return _nessus_mcp_url
+
+
+def get_nessus_mcp_timeout() -> float:
+    return _nessus_mcp_timeout
+
+
 def veneno_mcp_enabled() -> bool:
     return _veneno_mcp_enabled
 
@@ -212,8 +297,20 @@ def get_planner_fallback_personas() -> str:
     return _planner_fallback_personas
 
 
+def get_max_planner_personas() -> int:
+    return _max_planner_personas
+
+
+def get_planner_default_execution_mode() -> str:
+    return _planner_default_execution_mode
+
+
 def get_egregore_one_tool_per_turn() -> bool:
     return _egregore_one_tool_per_turn
+
+
+def get_egregore_json_tool_call_fallback() -> bool:
+    return _egregore_json_tool_call_fallback
 
 
 def get_use_sgr_reasoning() -> bool:
@@ -317,6 +414,10 @@ def get_stream_agent_output() -> bool:
 
 def get_stream_agent_tools() -> bool:
     return _stream_agent_output and _stream_agent_tools
+
+
+def get_stream_agent_token_streaming() -> bool:
+    return _stream_agent_output and _stream_agent_token_streaming
 
 
 def get_keep_tool_results() -> int:

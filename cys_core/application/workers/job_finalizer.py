@@ -9,8 +9,10 @@ from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.use_cases.enqueue_next_planned_persona import EnqueueNextPlannedPersona
+from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
 from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.security.agent_bus import SecureAgentBus
+from cys_core.domain.engagement.models import EngagementStatus
 from cys_core.domain.workers.models import WorkerJob, WorkerJobStatus
 
 
@@ -25,6 +27,7 @@ class WorkerJobFinalizer:
         engagement_store: EngagementStateStore | None = None,
         engagement_egress: EngagementEgressPort | None = None,
         enqueue_next_planned_persona: EnqueueNextPlannedPersona | None = None,
+        enqueue_synthesis_job: EnqueueSynthesisJob | None = None,
         record_sanitizer_block: Callable[[str, str], None] | None = None,
     ) -> None:
         self._job_store = job_store
@@ -34,6 +37,7 @@ class WorkerJobFinalizer:
         self._engagement_store = engagement_store
         self._engagement_egress = engagement_egress
         self._enqueue_next_planned_persona = enqueue_next_planned_persona
+        self._enqueue_synthesis_job = enqueue_synthesis_job
         self._record_sanitizer_block = record_sanitizer_block or (lambda _where, _mode: None)
 
     def mark_running(self, job: WorkerJob, session_id: str) -> None:
@@ -67,6 +71,9 @@ class WorkerJobFinalizer:
             )
         if self._enqueue_next_planned_persona is not None:
             await self._enqueue_next_planned_persona.execute(job)
+        if self._enqueue_synthesis_job is not None:
+            await self._enqueue_synthesis_job.execute(job)
+        self._maybe_close_playbook_engagement(job)
         try:
             from cys_core.application.persona_quality_hooks import record_job_completed
 
@@ -78,11 +85,14 @@ class WorkerJobFinalizer:
             pass
 
     async def _enqueue_pipeline_next(self, job: WorkerJob) -> None:
-        if self._enqueue_next_planned_persona is None:
-            return
-        await self._enqueue_next_planned_persona.execute(job)
+        if self._enqueue_next_planned_persona is not None:
+            await self._enqueue_next_planned_persona.execute(job)
+        if self._enqueue_synthesis_job is not None:
+            await self._enqueue_synthesis_job.execute(job)
 
     def mark_persona_completed(self, job: WorkerJob) -> None:
+        if job.payload.get("phase") == "synthesis":
+            return
         if self._engagement_store is None:
             return
         engagement_id = job.correlation_id or job.event_id
@@ -90,6 +100,8 @@ class WorkerJobFinalizer:
         self._notify_engagement_update(job)
 
     def mark_persona_failed(self, job: WorkerJob) -> None:
+        if job.payload.get("phase") == "synthesis":
+            return
         if self._engagement_store is None:
             return
         engagement_id = job.correlation_id or job.event_id
@@ -114,6 +126,40 @@ class WorkerJobFinalizer:
                 "planner_status": engagement.planner_status,
             },
         )
+
+    def _maybe_close_playbook_engagement(self, job: WorkerJob) -> None:
+        if self._engagement_store is None:
+            return
+        engagement_id = job.correlation_id or job.event_id
+        engagement = self._engagement_store.get(job.tenant_id, engagement_id)
+        if engagement is None or engagement.planner_plan:
+            return
+        job_ids = [jid for jid in engagement.job_ids if not jid.endswith("-synth")]
+        if not job_ids:
+            return
+        terminal = {WorkerJobStatus.COMPLETED, WorkerJobStatus.FAILED}
+        for job_id in job_ids:
+            record = self._job_store.get(job_id)
+            if record is not None:
+                if record.status not in terminal:
+                    return
+                continue
+            persona = job_id.split("-", 1)[0]
+            if persona not in engagement._terminal_personas():
+                return
+        engagement.status = EngagementStatus.CLOSED
+        self._engagement_store.upsert(engagement)
+        if self._engagement_egress is not None:
+            self._engagement_egress.publish_status(
+                engagement_id,
+                engagement.status.value,
+                {
+                    "tenant_id": job.tenant_id,
+                    "job_ids": list(engagement.job_ids),
+                    "completed_personas": list(engagement.completed_personas),
+                    "failed_personas": list(engagement.failed_personas),
+                },
+            )
 
     def mark_budget_failure(self, job: WorkerJob) -> None:
         job.transition_to(WorkerJobStatus.FAILED)
@@ -158,8 +204,13 @@ class WorkerJobFinalizer:
             pass
         job.transition_to(WorkerJobStatus.FAILED)
         self._job_store.mark_failed(job.job_id)
-        self.mark_persona_failed(job)
-        await self._enqueue_pipeline_next(job)
+        if job.payload.get("phase") == "synthesis":
+            if self._engagement_store is not None:
+                engagement_id = job.correlation_id or job.event_id
+                self._engagement_store.fail_synthesis(job.tenant_id, engagement_id, reason=error)
+        else:
+            self.mark_persona_failed(job)
+            await self._enqueue_pipeline_next(job)
         if self._engagement_egress is not None:
             investigation_id = job.correlation_id or job.event_id
             self._engagement_egress.publish_status(
@@ -176,3 +227,4 @@ class WorkerJobFinalizer:
         send_dlq = getattr(self._queue, "send_to_dlq", None)
         if send_dlq is not None:
             await send_dlq(job, error)
+        self._maybe_close_playbook_engagement(job)

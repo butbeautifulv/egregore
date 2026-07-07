@@ -1,6 +1,6 @@
 ---
 name: identity-attacks
-description: Identity attack patterns: credential abuse, MFA bypass, and privilege escalation.
+description: "Identity attack patterns: credential abuse, MFA bypass, and privilege escalation."
 version: "1.0.0"
 author: cys-agi
 ---

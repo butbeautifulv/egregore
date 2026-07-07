@@ -462,6 +462,157 @@ tr.clickable:hover td {
   color: #fca5a5;
 }
 
+.chat-reasoning {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(59, 130, 246, 0.06);
+  font-size: 0.8rem;
+}
+
+.chat-reasoning summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.chat-reasoning-status {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.chat-reasoning-situation {
+  margin-bottom: 0.35rem;
+  white-space: pre-wrap;
+}
+
+.chat-reasoning-steps {
+  margin: 0.25rem 0 0 1.1rem;
+  padding: 0;
+}
+
+.chat-tool-preview {
+  margin: 0.35rem 0 0;
+  padding: 0.35rem 0.5rem;
+  max-height: 12rem;
+  overflow: auto;
+  font-size: 0.7rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius);
+}
+
+.chat-tool {
+  margin: 0.2rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.15rem 0.4rem;
+}
+
+.chat-tool summary.chat-tool-row {
+  cursor: pointer;
+  list-style: none;
+}
+
+.chat-tools-group {
+  margin: 0.35rem 0;
+  font-size: 0.8rem;
+}
+
+.chat-tools-group > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.chat-agent-section {
+  margin: 0.75rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.chat-agent-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.chat-agent-body {
+  padding: 0.35rem 0.6rem 0.6rem;
+}
+
+.chat-agent-error {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  font-size: 0.8rem;
+}
+
+.chat-agent-finding {
+  margin-top: 0.5rem;
+}
+
+.detail-subheading {
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0.35rem;
+}
+
+.errors-table {
+  width: 100%;
+  font-size: 0.78rem;
+  border-collapse: collapse;
+}
+
+.errors-table th,
+.errors-table td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.errors-table .err-cell {
+  color: #fca5a5;
+  max-width: 28rem;
+  word-break: break-word;
+}
+
+.alert.warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.chat-user-goal {
+  margin-bottom: 0.75rem;
+}
+
+.chat-bubble-user {
+  margin-top: 0.25rem;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.chat-bubble-turn {
+  margin-bottom: 0.45rem;
+}
+
+.chat-bubble code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+}
+
 .job-drawer-backdrop {
   position: fixed;
   inset: 0;

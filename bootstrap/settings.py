@@ -60,6 +60,16 @@ class Settings(BaseSettings):
         validation_alias="PLANNER_FALLBACK_PERSONAS",
         description="Comma-separated worker personas when LLM planner fails or returns unparseable JSON.",
     )
+    max_planner_personas: int = Field(
+        default=6,
+        validation_alias="MAX_PLANNER_PERSONAS",
+        description="Maximum specialist personas in a meta-LLM engagement plan.",
+    )
+    planner_default_execution_mode: str = Field(
+        default="parallel",
+        validation_alias="PLANNER_DEFAULT_EXECUTION_MODE",
+        description="Default execution mode for multi-persona plans: parallel or staged.",
+    )
 
     stage: str = Field(default="dev", validation_alias="STAGE")
 
@@ -138,6 +148,10 @@ class Settings(BaseSettings):
     critic_use_llm_judge: bool = Field(default=False, validation_alias="CRITIC_USE_LLM_JUDGE")
     use_conductor_for_events: bool = Field(default=False, validation_alias="USE_CONDUCTOR_FOR_EVENTS")
     max_spawn_depth: int = Field(default=5, validation_alias="MAX_SPAWN_DEPTH")
+    egregore_json_tool_call_fallback: bool = Field(
+        default=True,
+        validation_alias="EGREGORE_JSON_TOOL_CALL_FALLBACK",
+    )
     egregore_one_tool_per_turn: bool = Field(
         default=True,
         validation_alias="EGREGORE_ONE_TOOL_PER_TURN",
@@ -146,6 +160,10 @@ class Settings(BaseSettings):
     egregore_strict_plan: bool = Field(default=False, validation_alias="EGREGORE_STRICT_PLAN")
     stream_agent_output: bool = Field(default=False, validation_alias="STREAM_AGENT_OUTPUT")
     stream_agent_tools: bool = Field(default=True, validation_alias="STREAM_AGENT_TOOLS")
+    stream_agent_token_streaming: bool = Field(
+        default=False,
+        validation_alias="STREAM_AGENT_TOKEN_STREAMING",
+    )
     keep_tool_results: int = Field(default=3, validation_alias="KEEP_TOOL_RESULTS")
     search_judge_llm: bool = Field(default=False, validation_alias="SEARCH_JUDGE_LLM")
     self_consistency_n: int = Field(default=0, validation_alias="SELF_CONSISTENCY_N")
@@ -205,6 +223,20 @@ class Settings(BaseSettings):
     veil_mcp_enabled: bool = Field(default=True, validation_alias="VEIL_MCP_ENABLED")
     veil_mcp_timeout: float = Field(default=30.0, validation_alias="VEIL_MCP_TIMEOUT")
 
+    siem_mcp_url: str = Field(
+        default="http://localhost:8094/mcp",
+        validation_alias="SIEM_MCP_URL",
+    )
+    siem_mcp_enabled: bool = Field(default=False, validation_alias="SIEM_MCP_ENABLED")
+    siem_mcp_timeout: float = Field(default=180.0, validation_alias="SIEM_MCP_TIMEOUT")
+
+    nessus_mcp_url: str = Field(
+        default="http://localhost:8095/mcp",
+        validation_alias="NESSUS_MCP_URL",
+    )
+    nessus_mcp_enabled: bool = Field(default=False, validation_alias="NESSUS_MCP_ENABLED")
+    nessus_mcp_timeout: float = Field(default=180.0, validation_alias="NESSUS_MCP_TIMEOUT")
+
     veneno_mcp_url: str = Field(
         default="http://localhost:8093/mcp",
         validation_alias="VENENO_MCP_URL",
@@ -223,6 +255,11 @@ class Settings(BaseSettings):
     default_job_recursion_limit: int = Field(
         default=25,
         validation_alias="DEFAULT_JOB_RECURSION_LIMIT",
+    )
+    triage_recursion_limit: int = Field(
+        default=22,
+        validation_alias="TRIAGE_RECURSION_LIMIT",
+        description="Lower LangGraph recursion cap for soc/intel triage personas.",
     )
 
     sandbox_connector: str = Field(default="local", validation_alias="SANDBOX_CONNECTOR")

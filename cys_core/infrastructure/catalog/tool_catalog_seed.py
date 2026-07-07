@@ -1,35 +1,38 @@
 from __future__ import annotations
 
+from cys_core.application.tools.providers import ALL_PROVIDER_DEFINITIONS
 from cys_core.domain.catalog.models import CatalogSource, ToolCatalogEntry
 from cys_core.domain.security.risk import ACTION_RISK_MAPPING
-from cys_core.registry.tools import _BUILTIN_TOOL_NAMES
-from cys_core.registry.veil_tools import _VEIL_TOOL_DESCRIPTIONS
+
+_HANDLER_BY_MODULE: dict[str, str] = {
+    "builtin": "builtin",
+    "discovery": "builtin",
+    "orchestration": "builtin",
+    "rag": "rag",
+    "sandbox": "sandbox",
+    "siem": "siem",
+    "siem-mcp": "siem_mcp",
+    "veil-mcp": "veil",
+    "web": "web",
+}
 
 
 def load_tools_for_seed(profile_id: str = "cybersec-soc") -> list[ToolCatalogEntry]:
     entries: list[ToolCatalogEntry] = []
-    for name in _BUILTIN_TOOL_NAMES:
-        risk = ACTION_RISK_MAPPING.get(name)
+    seen: set[str] = set()
+    for defn in ALL_PROVIDER_DEFINITIONS:
+        if defn.name in seen:
+            continue
+        seen.add(defn.name)
+        risk = ACTION_RISK_MAPPING.get(defn.name)
         entries.append(
             ToolCatalogEntry(
-                id=name,
+                id=defn.name,
                 profile_id=profile_id,
-                name=name,
-                description="",
+                name=defn.name,
+                description=defn.description,
                 risk_tier=risk or "medium",
-                handler="builtin",
-                source=CatalogSource.SEED,
-            )
-        )
-    for name, description in _VEIL_TOOL_DESCRIPTIONS.items():
-        entries.append(
-            ToolCatalogEntry(
-                id=name,
-                profile_id=profile_id,
-                name=name,
-                description=description,
-                risk_tier="low",
-                handler="veil",
+                handler=_HANDLER_BY_MODULE.get(defn.module, defn.module),
                 source=CatalogSource.SEED,
             )
         )

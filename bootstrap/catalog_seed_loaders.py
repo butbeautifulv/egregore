@@ -65,6 +65,8 @@ def load_plans_for_seed(profile_id: str = "cybersec-soc") -> list[PlanCatalogEnt
 
 
 def load_mcp_servers_for_seed(profile_id: str = "cybersec-soc") -> list[McpServerEntry]:
+    from cys_core.integrations.nessus_mcp_client import FALLBACK_NESSUS_TOOL_NAMES
+    from cys_core.integrations.siem_mcp_client import FALLBACK_SIEM_TOOL_NAMES
     from cys_core.integrations.veil_mcp_client import FALLBACK_VEIL_TOOL_NAMES
 
     settings = get_settings()
@@ -78,6 +80,28 @@ def load_mcp_servers_for_seed(profile_id: str = "cybersec-soc") -> list[McpServe
                 profile_id=profile_id,
                 health_status="unknown",
                 allowed_tools=sorted(FALLBACK_VEIL_TOOL_NAMES),
+            )
+        )
+    if settings.siem_mcp_enabled and settings.siem_mcp_url:
+        servers.append(
+            McpServerEntry(
+                id="siem",
+                url=settings.siem_mcp_url,
+                trust_tier="internal",
+                profile_id=profile_id,
+                health_status="unknown",
+                allowed_tools=sorted(FALLBACK_SIEM_TOOL_NAMES),
+            )
+        )
+    if settings.nessus_mcp_enabled and settings.nessus_mcp_url:
+        servers.append(
+            McpServerEntry(
+                id="nessus",
+                url=settings.nessus_mcp_url,
+                trust_tier="internal",
+                profile_id=profile_id,
+                health_status="unknown",
+                allowed_tools=sorted(FALLBACK_NESSUS_TOOL_NAMES),
             )
         )
     if settings.veneno_mcp_enabled and settings.veneno_mcp_url:

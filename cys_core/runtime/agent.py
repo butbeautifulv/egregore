@@ -10,13 +10,16 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
 from pydantic import BaseModel
 
+from cys_core.application.workers.finding_quality import normalize_finding_payload, preserve_planned_tool_calls
 from cys_core.application.runtime_config import (
     get_budget_use_api_usage,
     get_context_summary_enabled,
+    get_egregore_json_tool_call_fallback,
     get_egregore_one_tool_per_turn,
     get_keep_tool_results,
     get_sgr_iron_max_retries,
     get_stage,
+    get_stream_agent_token_streaming,
     get_use_sgr_reasoning,
 )
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
@@ -26,7 +29,7 @@ from cys_core.application.reasoning.sgr_tooling import (
     resolve_sgr_for_agent,
     scope_allowed_tools,
 )
-from cys_core.llm import get_default_recursion_limit, get_model_connector
+from cys_core.llm import get_model_connector, get_persona_recursion_limit
 from cys_core.application.ports import ModelConnector, PersistenceContext
 from cys_core.domain.agents.policies import build_interrupt_on
 from cys_core.domain.memory.services import MemoryReadService
@@ -47,6 +50,7 @@ from cys_core.middleware.prompt_context_middleware import PromptContextMiddlewar
 from cys_core.middleware.scope_middleware import ScopeMiddleware
 from cys_core.middleware.security_middleware import SecurityMiddleware
 from cys_core.middleware.tool_coercion_middleware import ToolCoercionMiddleware
+from cys_core.middleware.tool_ladder_middleware import ToolLadderMiddleware
 from cys_core.observability.trace_attributes import build_sgr_trace_metadata, merge_langchain_config
 from cys_core.observability.metrics import metrics
 from cys_core.registry.agents import AgentDefinition, AgentRegistry, get_agent_registry
@@ -173,6 +177,7 @@ class AgentRuntime:
             [
                 ScopeMiddleware(allowed_tools=scope_allowed_tools(defn, profile_id)),
                 ToolCoercionMiddleware(),
+                ToolLadderMiddleware(persona=defn.name),
                 SecurityMiddleware(agent_id=defn.name, session_id=session_id, profile_id=profile_id),
             ]
         )
@@ -186,6 +191,10 @@ class AgentRuntime:
             middleware.append(SgrOneToolMiddleware(session=session))
         elif get_egregore_one_tool_per_turn():
             middleware.append(OneToolPerTurnMiddleware())
+        if get_egregore_json_tool_call_fallback():
+            from cys_core.middleware.json_tool_call_middleware import JsonToolCallMiddleware
+
+            middleware.append(JsonToolCallMiddleware())
         return middleware
 
     def create(
@@ -514,7 +523,7 @@ class AgentRuntime:
             {
                 "configurable": {"thread_id": session_id},
                 "callbacks": callbacks,
-                "recursion_limit": recursion_limit or get_default_recursion_limit(),
+                "recursion_limit": recursion_limit or get_persona_recursion_limit(agent_id),
                 "metadata": dict(sgr_metadata or {}),
             },
             persona=agent_id or session_id,
@@ -528,10 +537,19 @@ class AgentRuntime:
             memory_entries_loaded=memory_entries_loaded,
         )
         try:
-            result = await agent.ainvoke(
-                {"messages": [{"role": "user", "content": sanitized}]},
-                config=config,
-            )
+            input_payload = {"messages": [{"role": "user", "content": sanitized}]}
+            if stream_context is not None and get_stream_agent_token_streaming():
+                result = None
+                async for chunk in agent.astream(
+                    input_payload,
+                    config=config,
+                    stream_mode="values",
+                ):
+                    result = chunk
+                if result is None:
+                    result = await agent.ainvoke(input_payload, config=config)
+            else:
+                result = await agent.ainvoke(input_payload, config=config)
         except JobBudgetExceeded as exc:
             return {"error": str(exc)}
         coerced = self._coerce_result(result, schema=schema)
@@ -554,10 +572,11 @@ class AgentRuntime:
         structured = result.get("structured_response")
         if structured is not None:
             data = structured.model_dump() if isinstance(structured, BaseModel) else dict(structured)
+            data = normalize_finding_payload(data)
             if _structured_has_content(data):
                 if schema:
                     validated = self.guardrails.validate_schema(data, schema)
-                    return validated.model_dump()
+                    return preserve_planned_tool_calls(data, validated.model_dump())
                 return data
 
         messages = result.get("messages", [])
@@ -568,10 +587,12 @@ class AgentRuntime:
         if data is None:
             return {"raw_response": text}
 
+        data = normalize_finding_payload(data)
+
         if schema:
             try:
                 validated = self.guardrails.validate_schema(data, schema)
-                return validated.model_dump()
+                return preserve_planned_tool_calls(data, validated.model_dump())
             except SecurityViolation:
                 if get_stage() == "dev":
                     return data

@@ -5,9 +5,9 @@ output_schema: PurpleFinding
 tools:
   - playbook_for_technique
   - playbook_framework
-  - correlate_findings
   - playbook_search
 skills:
+  - veil-knowledge
   - kill-chain-purple
 hitl_tools: {}
 trust_level: internal

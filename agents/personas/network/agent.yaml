@@ -4,12 +4,17 @@ role: worker
 reasoning_mode: sgr_hybrid
 output_schema: NetworkFinding
 tools:
-  - parse_netflow
   - enrich_ioc
-  - correlate_dns
+  - list_scans
+  - sync_scan_inventory
+  - lookup_asset_by_ip
+  - list_high_risk_assets
   - playbook_search
   - playbook_get
   - ti_search_in_category
+skills:
+  - veil-knowledge
+  - vulnerability-inventory
 hitl_tools: {}
 trust_level: internal
 bus_recipients:

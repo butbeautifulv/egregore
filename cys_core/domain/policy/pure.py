@@ -20,6 +20,8 @@ _MUTATING_TOOL_PREFIXES = ("run_", "write_", "spawn_", "execute_")
 def classify_tool_risk_pure(tool_name: str, policy: ProfilePolicyPayload | None = None):
     from cys_core.domain.security.risk_level import RiskLevel
 
+    if policy is not None and not isinstance(policy, ProfilePolicyPayload):
+        policy = None
     if policy and policy.tool_risk.get(tool_name):
         return RiskLevel(policy.tool_risk[tool_name])
     raw = ACTION_RISK_MAPPING.get(tool_name, RiskLevel.HIGH.value)

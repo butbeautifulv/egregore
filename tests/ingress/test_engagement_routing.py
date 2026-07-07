@@ -37,3 +37,34 @@ def test_engagement_start_mapper():
     assert req.goal == "smoke"
     assert req.correlation_id == "c1"
     assert req.plan_strategy == PlanStrategy.META_LLM
+
+
+def test_full_assessment_requires_high_severity():
+    plans_dir = default_agents_root() / "plans"
+    plans = load_plans_from_dir(plans_dir)
+    router = EventRouter(plans, policy_port=FakePolicyPort(ProfilePolicyPayload()))
+    low_event = SecurityEvent(
+        id="eng-low",
+        type="engagement.start",
+        payload={"goal": "test"},
+        severity="low",
+        source="test",
+        tenant_id="default",
+    )
+    decision = router.route(low_event)
+    assert "conductor" in decision.personas
+    assert "soc" not in decision.personas
+    assert len(decision.personas) == 1
+
+    high_event = SecurityEvent(
+        id="eng-high",
+        type="engagement.start",
+        payload={"goal": "test"},
+        severity="high",
+        source="test",
+        tenant_id="default",
+    )
+    high_decision = router.route(high_event)
+    assert "conductor" in high_decision.personas
+    assert "soc" in high_decision.personas
+    assert len(high_decision.personas) > 1

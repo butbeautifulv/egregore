@@ -4,18 +4,20 @@ role: worker
 reasoning_mode: sgr_hybrid
 output_schema: SocFinding
 tools:
-  - dedup_alerts
-  - build_timeline
-  - correlate_findings
-  - query_siem_readonly
+  - investigate_incident
+  - list_incidents
+  - search_events
+  - get_event_by_uuid
   - rag_query
   - playbook_search
   - playbook_get
-  - playbook_for_technique
   - ti_search_in_category
 skills:
+  - siem-investigation
+  - veil-knowledge
   - network-beaconing
   - threat-intel-osint
+  - digital-forensics
   - prompt-injection-defense
 hitl_tools: {}
 trust_level: internal

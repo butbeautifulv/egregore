@@ -4,6 +4,7 @@ metadata:
   name: egregore-worker
   labels:
     app: egregore-worker
+    {{- include "egregore.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.worker.replicas }}
   selector:
@@ -17,7 +18,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: worker
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "egregore.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - /app/.venv/bin/egregore
@@ -27,14 +28,18 @@ spec:
             - {{ .Values.worker.idleTimeout | quote }}
           envFrom:
             - configMapRef:
-                name: {{ include "egregore.fullname" . }}-env
+                name: egregore-env
             - secretRef:
-                name: {{ include "egregore.fullname" . }}-secrets
+                name: egregore-secrets
           env:
             - name: PROMETHEUS_MULTIPROC_DIR
               value: /tmp/prom-multiproc
             - name: OTEL_SERVICE_NAME
               value: egregore-worker
+          {{- with .Values.resources.worker }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: prom-multiproc
               mountPath: /tmp/prom-multiproc

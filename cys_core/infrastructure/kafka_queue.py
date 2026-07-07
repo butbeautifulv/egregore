@@ -147,8 +147,8 @@ class KafkaJobQueue:
         return run_sync_from_sync_context(lambda: self.aenqueue_front(job))
 
     async def aenqueue_front(self, job: WorkerJob) -> str:
-        self._front_buffer.appendleft(job)
-        return job.job_id
+        # Priority must be visible to worker pods — local buffer is single-process only.
+        return await self.aenqueue(job)
 
     @property
     def active_backend(self) -> str:

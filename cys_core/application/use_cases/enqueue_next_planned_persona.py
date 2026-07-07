@@ -3,6 +3,7 @@ from __future__ import annotations
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
+from cys_core.domain.engagement.models import ExecutionMode
 from cys_core.domain.workers.models import WorkerJob
 
 
@@ -24,6 +25,12 @@ class EnqueueNextPlannedPersona:
         investigation_id = job.correlation_id or job.event_id
         engagement = self._engagement_store.get(job.tenant_id, investigation_id)
         if engagement is None or not engagement.planner_plan or len(engagement.planner_plan) <= 1:
+            return None
+
+        mode = str(job.payload.get("execution_mode", "")).strip().lower()
+        if mode == ExecutionMode.PARALLEL:
+            return None
+        if engagement.execution_mode == ExecutionMode.PARALLEL:
             return None
 
         next_persona = next(

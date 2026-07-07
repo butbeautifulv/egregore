@@ -35,3 +35,15 @@ Constraints:
 
 Output Requirements:
 - DfirFinding with artifacts, timeline, containment_status, eradication_steps, forensic_confidence.
+
+Skills (load on demand via `load_skill`):
+- veil-knowledge — mandatory Veil forensic playbook workflow
+- digital-forensics — evidence preservation and chain-of-custody
+
+## Veil tool ladder (mandatory)
+
+`load_skill("veil-knowledge")` at investigation start.
+
+1. `playbook_search` → `playbook_procedure` for forensic workflows.
+2. `ti_search_in_category` for IOC/artifact enrichment.
+3. Do not close without ≥1 Veil tool call unless `veil_unavailable`.

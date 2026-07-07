@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from cys_core.domain.evidence.models import DataGap, EvidenceRef
+
 AttackPhase = Literal[
     "recon",
     "weaponization",
@@ -70,7 +72,40 @@ class SocFinding(KillChainFields):
     timeline: list[str] = Field(default_factory=list)
     related_findings: list[str] = Field(default_factory=list)
     recommended_actions: list[str] = Field(default_factory=list)
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+    data_gaps: list[DataGap] = Field(default_factory=list)
+    telemetry_level: Literal["rich", "sparse", "metadata_only"] = "metadata_only"
     ttl: str = ""
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _coerce_evidence(cls, value: Any) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            out: list[Any] = []
+            for item in value:
+                if isinstance(item, str) and item.strip():
+                    out.append({"obs_id": item.strip(), "excerpt": item.strip()})
+                elif isinstance(item, dict):
+                    out.append(item)
+            return out
+        return []
+
+    @field_validator("data_gaps", mode="before")
+    @classmethod
+    def _coerce_data_gaps(cls, value: Any) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            out: list[Any] = []
+            for item in value:
+                if isinstance(item, str) and item.strip():
+                    out.append({"field": item.strip(), "reason": "not_in_siem", "remediation": ""})
+                elif isinstance(item, dict):
+                    out.append(item)
+            return out
+        return []
 
 
 class ComplianceFinding(KillChainFields):

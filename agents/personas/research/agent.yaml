@@ -6,13 +6,12 @@ capabilities:
   - capability:web
   - capability:documents
 tools:
-  - web_search
   - read_document
   - vision_analyze
-  - search_archived_webpage
   - rag_query
   - ti_search_in_category
 skills:
+  - veil-knowledge
   - threat-intel-osint
 hitl_tools: {}
 trust_level: internal

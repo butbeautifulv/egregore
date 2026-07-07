@@ -17,6 +17,11 @@ api:
 worker:
   replicas: 2
   idleTimeout: 0
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilization: 70
 
 migrate:
   enabled: false
@@ -33,6 +38,11 @@ env:
   logFormat: "json"
   litellmLocalModelCostMap: "false"
   traceCriticEnabled: "true"
+  uiCorsOrigins: ""
+  streamAgentOutput: "false"
+  streamAgentTools: "true"
+  streamAgentTokenStreaming: "false"
+  controlMode: ""
 
 obs:
   traceBackend: "composite"
@@ -57,6 +67,17 @@ qdrant:
 
 veil:
   mcpUrl: ""
+  mcpEnabled: "true"
+
+siem:
+  mcpUrl: ""
+  mcpEnabled: "false"
+  mcpTimeout: "180"
+
+nessus:
+  mcpUrl: ""
+  mcpEnabled: "false"
+  mcpTimeout: "180"
 
 otel:
   endpoint: ""
@@ -70,6 +91,8 @@ langfuse:
   publicKey: ""
   secretKey: ""
 
+busSigningKey: ""
+
 llm:
   provider: litellm
   model: ""
@@ -79,6 +102,24 @@ llm:
   reasoningTemperature: "0.0"
 
 resources:
-  api: {}
-  worker: {}
-  ui: {}
+  api:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  worker:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1536Mi
+  ui:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi

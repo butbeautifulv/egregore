@@ -7,9 +7,10 @@ tools:
   - ti_search_in_category
   - playbook_search
   - playbook_get
+  - playbook_for_technique
   - enrich_ioc
-  - rag_query
 skills:
+  - veil-knowledge
   - threat-intel-osint
   - ai-agent-security
 hitl_tools: {}

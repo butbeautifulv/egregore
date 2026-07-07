@@ -1,6 +1,6 @@
 ---
 name: digital-forensics
-description: DFIR triage: timeline reconstruction, artifact preservation, and evidence chain.
+description: "DFIR triage: timeline reconstruction, artifact preservation, and evidence chain."
 version: "1.0.0"
 author: cys-agi
 ---

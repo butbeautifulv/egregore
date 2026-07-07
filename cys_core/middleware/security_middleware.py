@@ -11,7 +11,8 @@ from langgraph.types import Command, interrupt
 
 from bootstrap.settings import Settings, get_settings
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
-from cys_core.domain.security.risk import classify_tool_risk, parse_threshold
+from cys_core.domain.security.risk import parse_threshold
+from cys_core.infrastructure.policy.profile_policy_adapter import classify_tool_risk_for_profile
 from cys_core.domain.workers.job_budget import JobBudgetExceeded, JobBudgetTracker
 from cys_core.middleware.hitl_pause import (
     build_hitl_preview,
@@ -48,7 +49,7 @@ class SecurityMiddleware(AgentMiddleware):
 
     def _await_hitl_if_needed(self, request: ToolCallRequest) -> ToolMessage | None:
         tool_name = request.tool_call.get("name", "")
-        risk = classify_tool_risk(tool_name, self.profile_id)
+        risk = classify_tool_risk_for_profile(tool_name, self.profile_id)
         if risk <= self.auto_approve_threshold:
             return None
         if self.stage == "dev":

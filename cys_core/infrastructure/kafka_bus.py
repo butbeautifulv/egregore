@@ -9,11 +9,12 @@ import structlog
 
 from bootstrap.settings import Settings, get_settings
 from cys_core.infrastructure.async_boundary import run_sync_from_sync_context
-from cys_core.infrastructure.bus_transport import InMemoryBusTransport
+from cys_core.infrastructure.bus_transport import DELIVERY_TOPIC, InMemoryBusTransport
 from cys_core.infrastructure.kafka_errors import KafkaBrokerUnavailableError, KafkaPublishError
 from cys_core.infrastructure.kafka_topics import BUS_FINDINGS_TOPIC
 from cys_core.observability.metrics import metrics
-from cys_core.observability.tracing import get_correlation_id
+from cys_core.observability.tracing import get_correlation_id, trace_carrier
+from cys_core.observability.worker_spans import observability_span
 
 logger = structlog.get_logger(__name__)
 
@@ -98,6 +99,14 @@ class KafkaBusTransport:
         except KafkaBrokerUnavailableError:
             metrics.record_infrastructure_fallback("kafka_bus", reason="publish_fallback")
         await self._fallback.publish(channel, enriched)
+
+    async def publish_delivery(self, message: dict[str, Any]) -> None:
+        stamped = {**message, "_trace_carrier": trace_carrier()}
+        with observability_span("bus.publish", channel=DELIVERY_TOPIC):
+            try:
+                await self.publish(DELIVERY_TOPIC, stamped)
+            except (KafkaBrokerUnavailableError, KafkaPublishError):
+                await self._fallback.publish_delivery(stamped)
 
     async def aclose(self) -> None:
         producer = self._producer

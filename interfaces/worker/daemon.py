@@ -74,6 +74,9 @@ class WorkerDaemon:
         finally:
             if hasattr(queue, "aclose"):
                 await queue.aclose()
+            flush_langfuse()
+            get_container().get_trace_backend().flush()
+            get_container().get_trace_backend().shutdown()
         return processed
 
 

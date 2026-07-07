@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from cys_core.integrations.siem_mcp_client import call_siem_mcp_tool, siem_mcp_enabled
 from cys_core.infrastructure.http_client import request_json
 from bootstrap.settings import get_settings
 
@@ -59,15 +60,41 @@ def _http_search(*, query: str, time_range: str, limit: int, base_url: str) -> d
     }
 
 
+def _mcp_search(*, query: str, time_range: str, limit: int) -> dict[str, Any]:
+    capped = max(1, min(limit, 100))
+    result = call_siem_mcp_tool("search_events", {"where": query, "limit": capped})
+    if not result.get("success"):
+        return {
+            "query": query,
+            "time_range": time_range,
+            "limit": capped,
+            "readonly": True,
+            "adapter": "siem-mcp",
+            "source": "siem-mcp",
+            "error": result.get("error", "SIEM MCP search failed"),
+        }
+    return {
+        "query": query,
+        "time_range": time_range,
+        "limit": capped,
+        "readonly": True,
+        "adapter": "siem-mcp",
+        "source": "siem-mcp",
+        "results": result.get("content"),
+    }
+
+
 def query_siem_readonly_search(
     *,
     query: str,
     time_range: str = "24h",
     limit: int = 50,
 ) -> dict[str, Any]:
-    """Read-only SIEM search — mock by default, HTTP when SIEM_ADAPTER=http."""
+    """Read-only SIEM search — MCP when SIEM_MCP_ENABLED, else mock or legacy HTTP."""
     settings = get_settings()
     capped = max(1, min(limit, 100))
+    if settings.siem_mcp_enabled and siem_mcp_enabled():
+        return _mcp_search(query=query, time_range=time_range, limit=capped)
     if settings.siem_adapter.lower() == "http" and settings.siem_base_url:
         return _http_search(query=query, time_range=time_range, limit=capped, base_url=settings.siem_base_url)
     return _mock_search(query=query, time_range=time_range, limit=capped)

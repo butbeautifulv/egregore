@@ -3,11 +3,13 @@ description: Digital forensics and incident response
 role: worker
 output_schema: DfirFinding
 tools:
-  - build_timeline
-  - playbook_procedure
+  - playbook_search
   - playbook_get
+  - playbook_for_technique
+  - ti_search_in_category
   - rag_query
 skills:
+  - veil-knowledge
   - digital-forensics
 hitl_tools: {}
 trust_level: privileged

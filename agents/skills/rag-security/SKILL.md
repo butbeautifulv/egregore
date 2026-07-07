@@ -1,6 +1,6 @@
 ---
 name: rag-security
-description: Secure RAG pipelines: document poisoning, retrieval boundaries, and citation integrity.
+description: "Secure RAG pipelines: document poisoning, retrieval boundaries, and citation integrity."
 version: "1.0.0"
 author: cys-agi
 ---

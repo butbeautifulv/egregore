@@ -30,8 +30,32 @@ data:
   {{- if .Values.env.workerJobTimeout }}
   WORKER_JOB_TIMEOUT: {{ .Values.env.workerJobTimeout | quote }}
   {{- end }}
+  {{- if .Values.env.defaultJobRecursionLimit }}
+  DEFAULT_JOB_RECURSION_LIMIT: {{ .Values.env.defaultJobRecursionLimit | quote }}
+  {{- end }}
+  {{- if .Values.env.triageRecursionLimit }}
+  TRIAGE_RECURSION_LIMIT: {{ .Values.env.triageRecursionLimit | quote }}
+  {{- end }}
+  {{- if .Values.env.maxPlannerPersonas }}
+  MAX_PLANNER_PERSONAS: {{ .Values.env.maxPlannerPersonas | quote }}
+  {{- end }}
   {{- if .Values.env.manualInvestigationAsync }}
   MANUAL_INVESTIGATION_ASYNC: {{ .Values.env.manualInvestigationAsync | quote }}
+  {{- end }}
+  {{- if .Values.env.uiCorsOrigins }}
+  UI_CORS_ORIGINS: {{ .Values.env.uiCorsOrigins | quote }}
+  {{- end }}
+  {{- if .Values.env.streamAgentOutput }}
+  STREAM_AGENT_OUTPUT: {{ .Values.env.streamAgentOutput | quote }}
+  {{- end }}
+  {{- if .Values.env.streamAgentTools }}
+  STREAM_AGENT_TOOLS: {{ .Values.env.streamAgentTools | quote }}
+  {{- end }}
+  {{- if .Values.env.streamAgentTokenStreaming }}
+  STREAM_AGENT_TOKEN_STREAMING: {{ .Values.env.streamAgentTokenStreaming | quote }}
+  {{- end }}
+  {{- if .Values.env.controlMode }}
+  CONTROL_MODE: {{ .Values.env.controlMode | quote }}
   {{- end }}
   {{- if .Values.env.useKafka }}
   USE_KAFKA: {{ .Values.env.useKafka | quote }}
@@ -48,6 +72,30 @@ data:
   REDIS_PORT: {{ .Values.redis.port | quote }}
   QDRANT_URL: {{ .Values.qdrant.url | quote }}
   VEIL_MCP_URL: {{ .Values.veil.mcpUrl | quote }}
+  {{- if .Values.veil.mcpEnabled }}
+  VEIL_MCP_ENABLED: {{ .Values.veil.mcpEnabled | quote }}
+  {{- end }}
+  {{- if .Values.siem.mcpUrl }}
+  SIEM_MCP_URL: {{ .Values.siem.mcpUrl | quote }}
+  {{- end }}
+  {{- if .Values.siem.mcpEnabled }}
+  SIEM_MCP_ENABLED: {{ .Values.siem.mcpEnabled | quote }}
+  {{- end }}
+  {{- if .Values.siem.mcpTimeout }}
+  SIEM_MCP_TIMEOUT: {{ .Values.siem.mcpTimeout | quote }}
+  {{- end }}
+  {{- if .Values.nessus.mcpUrl }}
+  NESSUS_MCP_URL: {{ .Values.nessus.mcpUrl | quote }}
+  {{- end }}
+  {{- if .Values.nessus.mcpEnabled }}
+  NESSUS_MCP_ENABLED: {{ .Values.nessus.mcpEnabled | quote }}
+  {{- end }}
+  {{- if .Values.nessus.mcpTimeout }}
+  NESSUS_MCP_TIMEOUT: {{ .Values.nessus.mcpTimeout | quote }}
+  {{- end }}
+  {{- if .Values.env.jsonToolCallFallback }}
+  EGREGORE_JSON_TOOL_CALL_FALLBACK: {{ .Values.env.jsonToolCallFallback | quote }}
+  {{- end }}
   OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.otel.endpoint | quote }}
   {{- if .Values.otel.resourceAttributes }}
   OTEL_RESOURCE_ATTRIBUTES: {{ .Values.otel.resourceAttributes | quote }}
@@ -92,6 +140,9 @@ type: Opaque
 stringData:
   POSTGRES_PASSWORD: {{ .Values.postgres.password | quote }}
   REDIS_PASSWORD: {{ .Values.redis.password | quote }}
+  {{- if .Values.busSigningKey }}
+  BUS_SIGNING_KEY: {{ .Values.busSigningKey | quote }}
+  {{- end }}
   {{- if and .Values.langfuse.enabled .Values.langfuse.secretKey }}
   LANGFUSE_SECRET_KEY: {{ .Values.langfuse.secretKey | quote }}
   {{- end }}

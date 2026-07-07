@@ -35,3 +35,15 @@ Constraints:
 
 Output Requirements:
 - IdentityFinding with identity_asset, attack_path, credential_indicators, lateral_movement_stage.
+
+Skills (load on demand via `load_skill`):
+- veil-knowledge — mandatory Veil identity/ATT&CK workflow
+- identity-attacks — AD/IAM attack patterns
+
+## Veil tool ladder (mandatory)
+
+`load_skill("veil-knowledge")` for identity attack analysis.
+
+1. `ti_search_in_category` for credential/actor IOC context.
+2. `playbook_for_technique` for identity-focused MITRE techniques (T1003, T1558, …).
+3. Do not close without ≥1 Veil tool call unless `veil_unavailable`.

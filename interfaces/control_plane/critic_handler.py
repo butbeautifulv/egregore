@@ -30,7 +30,6 @@ class CriticHandler:
                         "tenant_id": tenant_id,
                     },
                 )
-            raise
         finally:
             if token is not None:
                 reset_correlation_id(token)

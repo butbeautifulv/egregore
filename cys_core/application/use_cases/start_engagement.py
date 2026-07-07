@@ -8,8 +8,10 @@ from cys_core.application.ports.tracing_ports import ApplicationTracingPort, Cor
 from cys_core.domain.engagement.models import (
     Engagement,
     EngagementMode,
+    EngagementPlan,
     EngagementRequest,
     EngagementStatus,
+    ExecutionMode,
     PlanStrategy,
 )
 
@@ -40,6 +42,10 @@ def engagement_request_to_security_event(request: EngagementRequest, engagement_
         correlation_id=request.correlation_id or engagement_id,
         tenant_id=request.tenant_id,
     )
+
+
+def _pipeline_staged(plan: EngagementPlan) -> bool:
+    return plan.effective_execution_mode() == ExecutionMode.STAGED and len(plan.personas) > 1
 
 
 class StartEngagement:
@@ -136,7 +142,7 @@ class StartEngagement:
                 correlation_id=engagement.correlation_id,
                 tenant_id=request.tenant_id,
                 sequential=False,
-                pipeline_staged=len(plan.personas) > 1,
+                pipeline_staged=_pipeline_staged(plan),
             )
             meta_planner_sync = True
         else:
@@ -184,7 +190,7 @@ class StartEngagement:
                     correlation_id=engagement_id,
                     tenant_id=event.tenant_id,
                     sequential=False,
-                    pipeline_staged=len(plan.personas) > 1,
+                    pipeline_staged=_pipeline_staged(plan),
                 )
                 engagement = self.engagement_store.get(event.tenant_id, engagement_id)
                 if engagement is not None:

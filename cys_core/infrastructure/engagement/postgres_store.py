@@ -5,7 +5,7 @@ from typing import Any
 
 import psycopg
 
-from cys_core.domain.engagement.models import Engagement, EngagementStatus
+from cys_core.domain.engagement.models import Engagement, EngagementStatus, ExecutionMode, SynthesisStatus
 
 _ENGAGEMENT_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS engagements (
@@ -99,6 +99,22 @@ class PostgresEngagementStateStore:
         engagement.findings_summary.append(finding)
         self.upsert(engagement)
 
+    def set_final_report(self, tenant_id: str, engagement_id: str, report: dict[str, Any]) -> None:
+        engagement = self.get(tenant_id, engagement_id)
+        if engagement is None:
+            return
+        engagement.complete_synthesis(report)
+        self.upsert(engagement)
+
+    def mark_synthesis_running(self, tenant_id: str, engagement_id: str, job_id: str) -> None:
+        engagement = self.get(tenant_id, engagement_id)
+        if engagement is None:
+            return
+        engagement.synthesis_status = SynthesisStatus.RUNNING
+        if job_id not in engagement.job_ids:
+            engagement.job_ids.append(job_id)
+        self.upsert(engagement)
+
     def update_planner_state(
         self,
         tenant_id: str,
@@ -109,10 +125,13 @@ class PostgresEngagementStateStore:
         planner_rationale: str = "",
         planner_error: str = "",
         goal: str | None = None,
+        execution_mode: str | None = None,
+        synthesis_persona: str | None = None,
     ) -> None:
         engagement = self.get(tenant_id, engagement_id)
         if engagement is None:
             return
+        mode = ExecutionMode(execution_mode) if execution_mode else None
         if planner_plan is not None:
             engagement.apply_planner_result(
                 planner_plan,
@@ -120,6 +139,8 @@ class PostgresEngagementStateStore:
                 rationale=planner_rationale,
                 error=planner_error,
                 goal=goal,
+                execution_mode=mode,
+                synthesis_persona=synthesis_persona,
             )
         else:
             if planner_status is not None:
@@ -130,6 +151,10 @@ class PostgresEngagementStateStore:
                 engagement.planner_error = planner_error
             if goal is not None:
                 engagement.goal = goal
+            if execution_mode is not None:
+                engagement.execution_mode = mode
+            if synthesis_persona is not None:
+                engagement.synthesis_persona = synthesis_persona
             if engagement.status == EngagementStatus.CREATED:
                 engagement.begin_planning(goal=goal)
         self.upsert(engagement)
@@ -139,4 +164,11 @@ class PostgresEngagementStateStore:
         if engagement is None:
             return
         engagement.fail_guardrail(reason)
+        self.upsert(engagement)
+
+    def fail_synthesis(self, tenant_id: str, engagement_id: str, *, reason: str) -> None:
+        engagement = self.get(tenant_id, engagement_id)
+        if engagement is None:
+            return
+        engagement.fail_synthesis(reason)
         self.upsert(engagement)

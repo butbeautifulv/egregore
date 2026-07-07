@@ -35,3 +35,15 @@ Constraints:
 
 Output Requirements:
 - PurpleFinding with kill_chain_phases_completed, attack_coverage_map, detection_gaps, recommended_atomic_tests, d3fend_controls.
+
+Skills (load on demand via `load_skill`):
+- veil-knowledge — mandatory Veil coverage/playbook workflow
+- kill-chain-purple — kill chain mapping patterns
+
+## Veil tool ladder (mandatory)
+
+`load_skill("veil-knowledge")` for coverage synthesis.
+
+1. `playbook_for_technique` + `playbook_framework` for ATT&CK coverage maps.
+2. `playbook_search` for detection gap remediation playbooks.
+3. Do not produce coverage map without ≥1 Veil tool call unless `veil_unavailable`.

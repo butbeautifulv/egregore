@@ -56,6 +56,10 @@ def _engagement_out(
         planner_rationale=engagement.planner_rationale,
         planner_error=engagement.planner_error,
         findings_summary=engagement.findings_summary,
+        execution_mode=engagement.execution_mode.value if engagement.execution_mode else None,
+        synthesis_persona=engagement.synthesis_persona,
+        synthesis_status=engagement.synthesis_status.value if engagement.synthesis_status else None,
+        final_report=engagement.final_report,
     )
 
 

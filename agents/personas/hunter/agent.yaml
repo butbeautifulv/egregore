@@ -5,13 +5,26 @@ reasoning_mode: sgr_hybrid
 output_schema: HunterFinding
 tools:
   - query_siem_readonly
+  - list_scans
+  - list_scan_templates
+  - create_scan
+  - launch_scan
+  - get_scan_status
+  - wait_for_scan
+  - sync_scan_inventory
+  - lookup_asset_by_ip
+  - search_inventory
+  - get_asset_vuln_summary
+  - get_asset_findings
+  - list_high_risk_assets
   - playbook_for_technique
   - playbook_search
-  - correlate_findings
-  - build_timeline
+  - ti_search_in_category
 skills:
+  - veil-knowledge
   - endpoint-hunting
   - threat-intel-osint
+  - vulnerability-inventory
 hitl_tools: {}
 trust_level: internal
 bus_recipients:

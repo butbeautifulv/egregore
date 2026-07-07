@@ -40,6 +40,9 @@ class ObservabilityMetricsAdapter:
     def track_worker_job(self, persona: str) -> AbstractContextManager[dict[str, str]]:
         return _metrics.track_worker_job(persona)
 
+    def record_worker_job_timeout(self, persona: str) -> None:
+        _metrics.record_worker_job_timeout(persona)
+
 
 def build_metrics_port() -> MetricsPort:
     return ObservabilityMetricsAdapter()

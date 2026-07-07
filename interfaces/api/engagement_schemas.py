@@ -12,7 +12,7 @@ class EngagementCreateIn(BaseModel):
     domain_id: str = ""
     goal: str
     mode: EngagementMode = EngagementMode.ASYNC
-    plan_strategy: PlanStrategy = PlanStrategy.DECLARATIVE
+    plan_strategy: PlanStrategy = PlanStrategy.META_LLM
     input: dict[str, Any] = Field(default_factory=dict)
     tenant_id: str = "default"
     correlation_id: str = ""
@@ -38,6 +38,10 @@ class EngagementOut(BaseModel):
     planner_rationale: str = ""
     planner_error: str = ""
     findings_summary: list[dict[str, Any]] = Field(default_factory=list)
+    execution_mode: str | None = None
+    synthesis_persona: str | None = None
+    synthesis_status: str | None = None
+    final_report: dict[str, Any] | None = None
 
 
 class EngagementListOut(BaseModel):

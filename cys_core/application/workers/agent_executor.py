@@ -7,8 +7,9 @@ from cys_core.application.ports.agent_runner import AgentRunner
 from cys_core.application.ports.stream_context import StreamContext
 from cys_core.application.runs.agent_run_kernel import AgentRunKernel
 from cys_core.application.runs.kernel_mappers import worker_job_to_kernel_request
-from cys_core.domain.parsing.json_text import parse_json_text
+from cys_core.application.workers.finding_quality import normalize_finding_payload
 from cys_core.domain.workers.models import WorkerJob
+from cys_core.llm import get_persona_recursion_limit
 
 
 class WorkerAgentExecutor:
@@ -61,6 +62,7 @@ class WorkerAgentExecutor:
                 sanitized,
                 session_id=session_id,
                 sandbox_tools=sandbox_tools or None,
+                recursion_limit=get_persona_recursion_limit(job.persona),
                 job_id=job.job_id,
                 event_id=job.event_id,
                 correlation_id=job.correlation_id,
@@ -71,9 +73,13 @@ class WorkerAgentExecutor:
             )
 
         if isinstance(result, dict) and "raw_response" in result and "error" not in result:
+            from cys_core.domain.parsing.json_text import parse_json_text
+
             parsed = parse_json_text(str(result["raw_response"]))
             if parsed:
-                result = parsed
+                result = normalize_finding_payload(parsed)
+        elif isinstance(result, dict) and "error" not in result:
+            result = normalize_finding_payload(result)
         return result if isinstance(result, dict) else {"raw": result}
 
     async def self_refine(
