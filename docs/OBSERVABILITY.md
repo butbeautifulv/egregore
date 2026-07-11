@@ -67,7 +67,7 @@ produce empty trace lists.
 
 Worker traces group by **session** = `engagement_id` (`langfuse_session_id` on worker spans and LLM CallbackHandler metadata). LLM traces also carry tag `engagement:{engagement_id}`.
 
-**k3s offline UI:** Langfuse project is `egregore-dev` (not `default`). Open traces via ui-minimal «Open in Langfuse» or filter `engagement:{id}` at `https://{node}:30001`.
+**k3s offline UI:** Langfuse project is `egregore-dev` (not `default`). Open traces from the Operator UI «Open in Langfuse» link or filter `engagement:{id}` at `https://{node}:30001`.
 
 ## Tool tracing checklist
 

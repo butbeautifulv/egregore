@@ -1,6 +1,6 @@
 # GUI vendor sync
 
-Egregore UI copies a minimal subset of [`shared/gui`](../../../../shared/gui) into `vendor/gui/`. We do **not** use `file:../../shared/gui` as an npm dependency.
+Egregore UI copies a minimal subset of [`shared/gui`](../../../../shared/gui) into `vendor/gui/`. We do **not** use `file:../../shared/gui` as a bun `file:` dependency.
 
 ## Why vendor-copy
 

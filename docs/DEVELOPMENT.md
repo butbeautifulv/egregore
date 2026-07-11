@@ -173,7 +173,7 @@ HTTP spans export to Tempo on `localhost:4317`. Explore in Grafana → Tempo. LL
 | No Langfuse traces | Both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` required |
 | Jobs never run | Workers must be running (`make dev`); postgres + redis healthy (`docker compose ps`) |
 | Port 3000 in use | Operator UI uses **3000**; Langfuse uses **3001** |
-| UI dev `ENOSPC` | `cd ui && npx next dev --webpack` or `npm run build && npm run start` |
+| UI dev `ENOSPC` | `cd ui && bunx next dev --webpack` or `bun run build && bun run start` |
 
 ### Langfuse trace diagnosis
 

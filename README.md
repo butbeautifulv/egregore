@@ -54,23 +54,11 @@ make dev-infra                    # or: docker compose up -d
 uv run egregore serve --port 8080 # or: make dev-api
 uv run egregore worker --daemon # optional: make dev-worker
 
-cd ui && cp .env.local.example .env.local && npm install && npm run dev
+cd ui && cp .env.local.example .env.local && bun install && bun run dev
 # or from repo root: make dev-ui
 ```
 
 Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8080/status](http://localhost:8080/status).
-
-### Minimal console (no Node)
-
-Lightweight static UI for smoke tests — start investigation, jobs, HITL approvals:
-
-```bash
-uv run egregore serve --port 8080
-uv run egregore worker --daemon   # when testing worker pipeline
-make -C projects/egregore dev-console
-```
-
-Open [http://localhost:5173](http://localhost:5173). See [`ui-minimal/README.md`](ui-minimal/README.md).
 
 **Smoke (consultant advisory):** goal «Как защититься от вирусов?» → Response shows consultant JSON, critic verdict (`critic:{engagement_id}`), coordinator narrative (`coordinator:{engagement_id}`). Enable `STREAM_AGENT_OUTPUT=true` and `CRITIC_USE_LLM_JUDGE=true` in local env. If consultant findings are summary-only, re-seed catalog: `uv run egregore catalog seed` (ensures `ConsultantFinding` schema).
 

@@ -1,4 +1,4 @@
-.PHONY: verify-architecture domain-gate dev-console run
+.PHONY: verify-architecture domain-gate run
 
 verify-architecture:
 	uv run python scripts/verify_import_boundaries.py
@@ -8,9 +8,6 @@ verify-architecture:
 
 domain-gate:
 	USE_MEMORY_FALLBACK=true STAGE=test ./scripts/pytest_batches.sh tests/domain --cov --domain-gate
-
-dev-console:
-	cd ui-minimal && python3 -m http.server 5173
 
 run:
 	cd tui && $(MAKE) run

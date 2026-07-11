@@ -81,7 +81,7 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 - Не создавать `agents/*.py` Python-модули для personas
 - Не коммитить `.env`, ключи, `.agents/`, `ui/node_modules/`, `ui/.next/`
 - Не редактировать `.cursor/plans/` без явного запроса
-- Не подключать `shared/gui` как npm `file:` dependency в `ui/` — только vendor-copy ([`ui/docs/GUI_VENDOR.md`](ui/docs/GUI_VENDOR.md))
+- Не подключать `shared/gui` как `file:` dependency в `ui/` — только vendor-copy ([`ui/docs/GUI_VENDOR.md`](ui/docs/GUI_VENDOR.md))
 
 ### Operator UI (`ui/`)
 

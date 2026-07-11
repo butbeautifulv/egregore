@@ -42,7 +42,7 @@ def test_worker_finding_visible_via_shared_postgres_store(monkeypatch: pytest.Mo
     worker_store = get_engagement_state_store()
     api_store = get_engagement_state_store()
 
-    # Prefix eng-test-shared- avoids polluting manual ui-minimal smoke (eng-smoke-*).
+    # Prefix eng-test-shared- avoids polluting manual UI smoke (eng-smoke-*).
     engagement_id = f"eng-test-shared-{uuid.uuid4().hex[:12]}"
     tenant_id = "default"
     worker_store.upsert(

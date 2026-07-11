@@ -363,7 +363,7 @@ class Settings(BaseSettings):
     use_auth_broker: bool = Field(default=False, validation_alias="USE_AUTH_BROKER")
 
     ui_cors_origins_raw: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173",
+        default="http://localhost:3000,http://127.0.0.1:3000",
         validation_alias="UI_CORS_ORIGINS",
     )
 
