@@ -8,6 +8,7 @@ from langchain.agents.middleware.types import AgentMiddleware, ModelRequest, Mod
 from langchain_core.messages import AIMessage
 
 from cys_core.llm.tool_call_parsing import tool_calls_from_content
+from cys_core.middleware._framework_casts import cast_model_response
 
 
 def _lift_tool_calls_from_content(message: AIMessage) -> AIMessage:
@@ -63,5 +64,5 @@ class JsonToolCallMiddleware(AgentMiddleware):
     ) -> ModelResponse | AIMessage:
         result = handler(request)
         if inspect.isawaitable(result):
-            result = await result
-        return _process_model_response(result)
+            return _process_model_response(cast_model_response(await result))
+        return _process_model_response(cast_model_response(result))

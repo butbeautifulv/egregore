@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from cys_core.application.plans_as_hints import load_plan_hints
 from cys_core.application.ports.catalog import AgentCatalogPort
@@ -17,7 +17,7 @@ from cys_core.application.runs.plan_strict import has_failed_todos, merge_plan_d
 from cys_core.application.runs.run_budget import run_session_budget
 from cys_core.application.skills.catalog import list_skill_metadata
 from cys_core.application.spawn_broker import SubagentSpawnBroker
-from cys_core.application.use_cases.analyze_task_hints import AnalyzeTaskHints
+from cys_core.application.use_cases.analyze_task_hints import AnalyzeTaskHints, TaskHintsModel
 from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
 from cys_core.application.use_cases.evaluate_trace_critic import EvaluateTraceCritic
 from cys_core.application.use_cases.extract_structured_output import enrich_conductor_result
@@ -29,7 +29,7 @@ from cys_core.application.runtime_config import (
     get_trace_critic_hitl_on_exhausted,
     get_use_run_kernel,
 )
-from cys_core.application.runs.agent_run_kernel import AgentRunKernel
+from cys_core.application.runs.agent_run_kernel import AgentRunKernel, KernelRuntime
 from cys_core.application.runs.kernel_mappers import run_state_to_kernel_request
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.runs.checkpoint import checkpoint_key
@@ -46,7 +46,7 @@ def _default_task_hints() -> AnalyzeTaskHints:
             return AnalyzeTaskHints()
         from cys_core.llm.reasoning import get_reasoning_model_connector
 
-        return AnalyzeTaskHints(model=get_reasoning_model_connector().create_model())
+        return AnalyzeTaskHints(model=cast(TaskHintsModel, get_reasoning_model_connector().create_model()))
     except Exception:
         return AnalyzeTaskHints()
 
@@ -226,7 +226,7 @@ class RunStep:
         mode: InteractionMode,
     ) -> tuple[dict[str, Any], list[WorkTodo]]:
         if get_use_run_kernel() and persona == "conductor":
-            kernel = AgentRunKernel(self.runtime)
+            kernel = AgentRunKernel(cast(KernelRuntime, self.runtime))
             request = run_state_to_kernel_request(
                 state=state,
                 ctx=ctx,

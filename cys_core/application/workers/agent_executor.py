@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from cys_core.application.ports.agent_runner import AgentRunner
 from cys_core.application.ports.stream_context import StreamContext
-from cys_core.application.runs.agent_run_kernel import AgentRunKernel
+from cys_core.application.runs.agent_run_kernel import AgentRunKernel, KernelRuntime
 from cys_core.application.runs.kernel_mappers import worker_job_to_kernel_request
 from cys_core.application.workers.finding_quality import normalize_finding_payload
 from cys_core.domain.workers.models import WorkerJob
@@ -37,7 +37,7 @@ class WorkerAgentExecutor:
         prior_findings_count: int,
     ) -> dict[str, Any]:
         if self._use_run_kernel and job.persona == "consultant":
-            kernel = AgentRunKernel(self._runtime)
+            kernel = AgentRunKernel(cast(KernelRuntime, self._runtime))
             request = worker_job_to_kernel_request(
                 job,
                 prompt=sanitized,

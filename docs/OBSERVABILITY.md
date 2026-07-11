@@ -19,6 +19,10 @@
 | `bus.consume` / `bus.publish` | infrastructure | agent bus |
 | `run.step` | application | RunStep |
 | `run.trace_critic` | application | EvaluateTraceCritic |
+| `follow_up.enqueue` | application | EnqueueFollowUp |
+| `follow_up.plan` | application | PlanFollowUpRunner |
+| `planning.catalog` | application | CatalogPlannerStrategy |
+| `worker.result_validate` | application | WorkerResultValidator |
 
 ## Trace backends matrix
 
@@ -76,6 +80,8 @@ Worker traces group by **session** = `engagement_id` (`langfuse_session_id` on w
 
 - Grafana datasources use `*.cxado-obs.svc.cluster.local`
 - Deploy gates: `scripts/k8s/e2e-verify-egregore.sh`, `deploy_logs/trace_audit_*.md`
+- **Worker metrics (Phase 1):** each `egregore-worker` pod exposes `http://<pod-ip>:8081/metrics` and `/health`. Prometheus job `egregore-worker` uses kubernetes pod SD (see [egregore-worker-metrics-adr.md](../../../docs/observability/egregore-worker-metrics-adr.md)). Worker job/tool/token panels in Grafana filter `job="egregore-worker"`; API ingress gauges use `job="egregore-api"`.
+- Verify: `./scripts/k8s/smoke-test-egregore-obs.sh` checks worker annotations, `/health`, and `up{job="egregore-worker"}`.
 
 ## Worker job timeout runbook (5 min)
 
@@ -85,7 +91,7 @@ When a persona shows `worker_job_timeout` in UI or `job_finished` events:
 2. **Langfuse** — session = `engagement_id`; open `worker.process_job` / `worker.agent.run` for the failed persona. Check duration (~360s offline) and count of `tool.invoke` children.
 3. **Worker logs** — filter `correlation_id={engagement_id}` and events `worker job timed out`, `worker_siem_finding_nudge`, `tool_ladder_veil_blocked`, `worker_timeout_salvaged`.
 4. **Prometheus** — `cys_worker_job_timeout_total{persona="soc|intel"}`; `cys_worker_job_duration_seconds` (buckets include 420s, 600s); `cys_tool_invocations_total` by tool name.
-5. **Mitigations in code** — triage personas use `TRIAGE_RECURSION_LIMIT=22`, `max_tool_calls=8`, tool ladder middleware, and partial salvage from cached tool previews (timeout or recursion limit).
+5. **Mitigations in code** — triage personas use `TRIAGE_RECURSION_LIMIT=22`, `max_tool_calls=6`, tool dedup middleware, tool ladder, soft timeout salvage at 90% wall clock, and partial salvage from cached tool previews (timeout, budget, or recursion limit).
 
 If Prometheus multiproc fails with `UnicodeDecodeError`, clear stale files on the node: `sudo rm /var/lib/cxado/prom-multiproc/*.db`.
 
@@ -100,3 +106,35 @@ When SOC or consultant findings mention specific processes, pipes, or credential
 5. **Critic** — `critic_verdict` log includes `issues_detected` when structural validation fails post-publish.
 
 Distinguish from timeout issues: grounding failures raise `ungrounded_finding:*` before publish; timeouts use `worker_job_timeout` runbook above.
+
+## Worker failure taxonomy (Phase 3)
+
+Terminal worker failures emit structured logs and metrics:
+
+- **Metric:** `cys_worker_job_failures_total{persona,reason}` on `job="egregore-worker"`
+- **Log:** `worker_job_failed` with fields `correlation_id`, `engagement_id`, `persona`, `job_id`, `reason`, `error_class`, `error`
+- **Egress:** `job_finished` includes `reason` (UI may still parse legacy `error` prefixes)
+
+Primary drill-down:
+
+```promql
+topk(10, sum(increase(cys_worker_job_failures_total{job="egregore-worker"}[1h])) by (reason))
+```
+
+Full mapping and runbooks: [worker-failure-taxonomy.md](../../../docs/observability/worker-failure-taxonomy.md).
+
+## Operator smoke (work orders)
+
+```bash
+BASE="http://127.0.0.1:8080"
+curl -sf "$BASE/health"
+curl -sf -X POST "$BASE/v1/work-orders" \
+  -H 'Content-Type: application/json' \
+  -d '{"goal":"Smoke test","tenant_id":"default"}'
+# closed WO follow-up:
+curl -sf -X POST "$BASE/v1/work-orders/{id}/follow-ups" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"What was the main finding?","tenant_id":"default"}'
+```
+
+SSE: `GET /v1/work-orders/{id}/events?tenant_id=default` — watch for `follow_up_*` events during follow-up flows.

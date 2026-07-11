@@ -16,9 +16,11 @@ from cys_core.application.workers.tool_execution_tracker import (
     get_veil_tool_count,
     is_siem_telemetry_sparse,
     siem_drilldown_budget_exhausted,
+    siem_investigate_done,
     tool_succeeded,
 )
 from cys_core.infrastructure.tools.adapters.veil_mcp import is_veil_tool
+from cys_core.middleware._framework_casts import cast_tool_result
 
 logger = structlog.get_logger(__name__)
 
@@ -52,6 +54,17 @@ class ToolLadderMiddleware(AgentMiddleware):
         job_id = structlog.contextvars.get_contextvars().get("job_id")
         return job_id if isinstance(job_id, str) else ""
 
+    def _investigation_id(self) -> str:
+        ctx = structlog.contextvars.get_contextvars()
+        for key in ("correlation_id", "investigation_id"):
+            value = ctx.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return ""
+
+    def _siem_investigate_done(self, job_id: str) -> bool:
+        return siem_investigate_done(job_id, self._investigation_id(), persona=self.persona)
+
     def _blocked(self, request: ToolCallRequest, message: str) -> ToolMessage:
         return ToolMessage(
             content=message,
@@ -68,7 +81,7 @@ class ToolLadderMiddleware(AgentMiddleware):
         job_id = self._job_id()
 
         if self.persona == "soc" and tool_name in SIEM_TOOL_NAMES:
-            if tool_succeeded(job_id, "investigate_incident"):
+            if self._siem_investigate_done(job_id):
                 if tool_name == "investigate_incident":
                     logger.info(
                         "tool_ladder_siem_repeat_blocked",
@@ -124,7 +137,7 @@ class ToolLadderMiddleware(AgentMiddleware):
         if (
             self.persona == "soc"
             and tool_name == "load_skill"
-            and tool_succeeded(job_id, "investigate_incident")
+            and self._siem_investigate_done(job_id)
             and (
                 get_veil_tool_count(job_id) >= _MAX_VEIL_TOOLS
                 or siem_drilldown_budget_exhausted(job_id)
@@ -170,5 +183,5 @@ class ToolLadderMiddleware(AgentMiddleware):
             return blocked
         result = handler(request)
         if inspect.isawaitable(result):
-            return await result
-        return result
+            return cast_tool_result(await result)
+        return cast_tool_result(result)

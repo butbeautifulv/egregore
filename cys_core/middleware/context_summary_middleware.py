@@ -8,6 +8,7 @@ from langchain.agents.middleware.types import AgentMiddleware, ModelRequest, Mod
 from langchain_core.messages import AIMessage, AnyMessage
 
 from cys_core.application.ports.context_summarizer import ContextSummarizerPort
+from cys_core.middleware._framework_casts import cast_model_response
 from cys_core.application.runs.message_trim import heal_orphaned_tool_messages
 from cys_core.application.runs.message_trim import trim_tool_results
 from cys_core.application.runtime_config import get_context_summary_max_messages, get_keep_tool_results
@@ -75,5 +76,5 @@ class ContextSummaryMiddleware(AgentMiddleware):
         updated = request.override(messages=self._maybe_summarize(list(request.messages)))
         result = handler(updated)
         if inspect.isawaitable(result):
-            return await result
-        return result
+            return cast_model_response(await result)
+        return cast_model_response(result)

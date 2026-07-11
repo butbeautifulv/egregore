@@ -14,8 +14,8 @@ from cys_core.domain.policy.defaults import PERSONA_BUDGETS
 
 @pytest.mark.unit
 def test_persona_budget_max_tool_calls_soc_intel() -> None:
-    assert PERSONA_BUDGETS["soc"].max_tool_calls == 8
-    assert PERSONA_BUDGETS["intel"].max_tool_calls == 8
+    assert PERSONA_BUDGETS["soc"].max_tool_calls == 6
+    assert PERSONA_BUDGETS["intel"].max_tool_calls == 6
 
 
 @pytest.mark.unit

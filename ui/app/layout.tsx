@@ -1,8 +1,8 @@
 import { Geist_Mono, Inter } from "next/font/google"
 
 import "./globals.css"
-import { AppShellLayout } from "@/components/app-shell-layout"
 import { ThemeProvider } from "@/components/theme-provider"
+import { THEME_BLOCKING_SCRIPT } from "@/vendor/gui/theme/blocking-script"
 import { Toaster } from "@/vendor/gui/ui/sonner"
 import { cn } from "@/vendor/gui/utils"
 
@@ -25,9 +25,15 @@ export default function RootLayout({
       suppressHydrationWarning
       className={cn("antialiased", fontMono.variable, "font-sans", inter.variable)}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: THEME_BLOCKING_SCRIPT }}
+          suppressHydrationWarning
+        />
+      </head>
       <body>
         <ThemeProvider>
-          <AppShellLayout>{children}</AppShellLayout>
+          {children}
           <Toaster />
         </ThemeProvider>
       </body>

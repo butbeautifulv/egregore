@@ -15,4 +15,5 @@ class ChatModelProvider(Protocol):
         api_key: str,
         base_url: str | None,
         temperature: float,
+        request_timeout: float,
     ) -> BaseChatModel: ...

@@ -17,7 +17,7 @@ class BackgroundTaskSupervisor:
 
     def spawn(
         self,
-        coro: Coroutine[Any, Any, Any] | Awaitable[Any],
+        coro: Coroutine[Any, Any, Any],
         *,
         name: str | None = None,
     ) -> asyncio.Task[Any]:

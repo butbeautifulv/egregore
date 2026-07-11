@@ -4,6 +4,7 @@ from typing import Any
 
 import structlog
 
+from cys_core.application.bus_planner_gate import planner_personas_terminal
 from cys_core.application.engagement_bus_guard import EngagementBusGuard, GuardCounters, TripReason
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.engagement_store import EngagementStateStore
@@ -107,12 +108,33 @@ def maybe_trip_engagement(
     if not engagement_id or bus_guard is None:
         return None
     engagement = engagement_store.get(tenant_id, engagement_id)
-    if engagement is not None and engagement.status in (EngagementStatus.CLOSED, EngagementStatus.FAILED):
+    if engagement is not None and isinstance(engagement.status, EngagementStatus) and engagement.status.is_terminal():
         return None
 
     reason = bus_guard.should_trip(engagement_id)
     if reason is None:
         return None
+
+    if (
+        reason == TripReason.PINGPONG
+        and engagement is not None
+        and engagement.planner_plan
+        and planner_personas_terminal(
+            list(engagement.planner_plan),
+            list(engagement.completed_personas),
+            list(engagement.failed_personas),
+        )
+    ):
+        if bus_guard.trip(engagement_id, reason):
+            logger.warning(
+                "engagement_guardrail_soft_trip",
+                engagement_id=engagement_id,
+                tenant_id=tenant_id,
+                reason=reason.value,
+                counters=bus_guard.counters(engagement_id).__dict__,
+                planner_plan=list(engagement.planner_plan),
+            )
+        return reason
 
     FailEngagementGuardrail(
         engagement_store=engagement_store,

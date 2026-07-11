@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import psycopg
 
@@ -30,8 +31,8 @@ def apply_migrations(postgres_url: str, migrations_dir: Path | None = None) -> l
             if path.name in existing:
                 continue
             sql = path.read_text(encoding="utf-8")
-            conn.execute(sql)
-            conn.execute("INSERT INTO schema_migrations (name) VALUES (%s)", (path.name,))
+            conn.execute(cast(Any, sql))
+            conn.execute(cast(Any, "INSERT INTO schema_migrations (name) VALUES (%s)"), (path.name,))
             conn.commit()
             applied.append(path.name)
     return applied

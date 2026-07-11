@@ -20,7 +20,9 @@ Secure event-driven multi-agent cybersecurity platform with ephemeral sandbox wo
 - Secure RAG (`rag_query`), Skill Gateway (`load_skill`), K8s sandbox connector
 - Prometheus metrics, Grafana dashboard, CI adversarial gates
 - FastAPI: `POST /events`, `GET /status`, investigations API, SSE stream, HITL resume API, `GET /metrics`
-- Operator UI (`ui/`): investigations list, persona stepper, approvals, live timeline
+- Operator UI (`ui/`): work orders list, live chat, follow-ups, structured intake, persona stepper, approvals, live timeline
+- Operator follow-ups on closed work orders: Q&A, orchestrate, catalog re-plan (`POST /v1/work-orders/{id}/follow-ups`)
+- Work order API (`/v1/work-orders`) as preferred operator surface over legacy `/v1/engagements`
 - Продуктовый слой `agents/` — personas, rules, routing plans, skills
 - 100% unit test coverage gate on `cys_core/domain`
 
@@ -120,7 +122,7 @@ uv run egregore serve --port 8080
 | `coordinator` | Coordinator bus consumer |
 | `status` | Snapshot control plane (findings, narratives) |
 | `serve [--port 8080]` | FastAPI event/status server |
-| `session -g "..."` | Start engagement (`POST /v1/engagements` / `engagement.start`) |
+| `session -g "..."` | Start engagement (`POST /v1/work-orders` preferred; legacy `POST /v1/engagements`) |
 | `migrate` | Apply SQL migrations to Postgres |
 | `agent <worker>` | Debug: один worker без очереди |
 | `adversarial-test` | `pytest tests/` |
@@ -156,7 +158,8 @@ egregore/
 ├── bootstrap/              # settings, DI container, product_loader
 ├── connectors/             # SIEM poll → ingress API
 ├── interfaces/             # Delivery: api, ingress, worker, control_plane, gateways, rag, cli
-├── ui/                     # Operator console (Next.js) — investigations, approvals, SSE
+├── ui/                     # Operator console (Next.js) — work orders, follow-ups, approvals, SSE
+├── tui/                    # Operator TUI (Go Bubble Tea) — same contract as ui/
 ├── deploy/k8s/             # Worker Job + NetworkPolicy
 ├── deploy/grafana/         # SOC dashboards
 ├── cys_core/
@@ -194,6 +197,11 @@ egregore/
 | `TRUST_SCORE_THRESHOLD` | `0.5` | Critic trust threshold |
 | `PERSISTENCE_CONNECTOR` | `auto` | `auto`, `memory`, `postgres` |
 | `UI_CORS_ORIGINS` | `http://localhost:3000,...` | Allowed origins for Operator UI (`ui/`) |
+| `EGREGORE_FOLLOW_UP_ENABLED` | `true` | Enable operator follow-ups on closed work orders |
+| `EGREGORE_FOLLOW_UP_PLAN_ENABLED` | `true` | Enable catalog re-plan follow-up mode |
+| `EGREGORE_MAX_FOLLOW_UPS` | `10` | Max follow-up messages per engagement |
+| `EGREGORE_MAX_FOLLOW_UP_PLANS` | `3` | Max plan-mode follow-ups per engagement |
+| `PLANNER_TIMEOUT_SECONDS` | `120` | Fallback when async meta-planner stays in planning |
 
 Полный список: [`.env.example`](.env.example)
 
@@ -209,7 +217,8 @@ egregore/
 |------|------------|
 | [docs/REFACTOR_COMPLETE.md](docs/REFACTOR_COMPLETE.md) | DDD refactor checklist |
 | [AGENTS.md](AGENTS.md) | Правила для AI-ассистентов |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Event-driven architecture |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Event-driven architecture, work orders, follow-ups |
+| [docs/operator-console-contract.md](docs/operator-console-contract.md) | Operator API/SSE contract (UI + TUI) |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Разработка и отладка |
 | [docs/SECURE_DEPLOYMENT.md](docs/SECURE_DEPLOYMENT.md) | Secure deployment |
 | [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATFORM.md) | Production roadmap (Kafka, MCP gateway, RAG, skills) |

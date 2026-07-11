@@ -66,6 +66,33 @@ def test_middleware_blocks_fake_system_message_in_history():
 
 
 @pytest.mark.unit
+def test_digest_matches_truncated_catalog_prefix():
+    from cys_core.domain.security.prompt_context import compute_system_digest, digest_matches
+
+    text = "SYSTEM_INSTRUCTIONS:\nYou are a test agent."
+    full = compute_system_digest(text)
+    assert digest_matches(full[:16], full)
+
+
+@pytest.mark.unit
+def test_middleware_accepts_truncated_catalog_digest():
+    ctx = build_trusted_system_context("You are a test agent.", "")
+    middleware = PromptContextMiddleware(
+        agent_id="network",
+        system_prompt_digest=ctx.digest[:16],
+        session_id="sess-trunc",
+    )
+    request = _request(
+        system_text=ctx.text,
+        messages=[HumanMessage(content="hello")],
+        digest=ctx.digest[:16],
+    )
+
+    response = middleware.wrap_model_call(request, lambda _: ModelResponse(result=[AIMessage(content="ok")]))
+    assert isinstance(response, ModelResponse)
+
+
+@pytest.mark.unit
 def test_middleware_blocks_digest_mismatch():
     ctx = build_trusted_system_context("You are a test agent.", "")
     middleware = PromptContextMiddleware(

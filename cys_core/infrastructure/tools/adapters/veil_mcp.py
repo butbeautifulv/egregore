@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cys_core.integrations.veil_mcp_client import VEIL_MCP_TOOL_NAMES, call_veil_mcp_tool
+from cys_core.integrations.veil_mcp_client import VEIL_MCP_TOOL_NAMES, acall_veil_mcp_tool, call_veil_mcp_tool
 
 
 def is_veil_tool(tool_name: str) -> bool:
@@ -12,3 +12,8 @@ def is_veil_tool(tool_name: str) -> bool:
 def call_veil_tool(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
     """Gateway adapter entrypoint for Veil knowledge MCP tools."""
     return call_veil_mcp_tool(tool_name, args)
+
+
+async def acall_veil_tool(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Async gateway adapter for Veil MCP tools."""
+    return await acall_veil_mcp_tool(tool_name, args)

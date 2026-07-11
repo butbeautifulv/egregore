@@ -1,4 +1,6 @@
-const DEFAULT_UPSTREAM = "http://egregore-api:8080"
+const DEFAULT_UPSTREAM =
+  process.env.NODE_ENV === "development" ? "http://127.0.0.1:8080" : "http://egregore-api:8080"
+const DEFAULT_PROXY_TIMEOUT_MS = 25_000
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -13,6 +15,23 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 export function upstreamBase(): string {
   return process.env.EGREGORE_API_UPSTREAM ?? DEFAULT_UPSTREAM
+}
+
+function proxyTimeoutMs(): number {
+  const raw = process.env.EGREGORE_API_PROXY_TIMEOUT_MS
+  if (!raw) {
+    return DEFAULT_PROXY_TIMEOUT_MS
+  }
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_PROXY_TIMEOUT_MS
+  }
+  return parsed
+}
+
+function isEventStreamRequest(request: Request): boolean {
+  const accept = request.headers.get("accept") ?? ""
+  return accept.includes("text/event-stream")
 }
 
 function buildUpstreamUrl(pathSegments: string[], search: string): string {
@@ -54,14 +73,24 @@ export async function proxyToEgregoreApi(request: Request, pathSegments: string[
   const targetUrl = buildUpstreamUrl(pathSegments, url.search)
   const method = request.method.toUpperCase()
   const hasBody = method !== "GET" && method !== "HEAD"
+  const streamRequest = isEventStreamRequest(request)
 
-  const upstream = await fetch(targetUrl, {
-    method,
-    headers: forwardRequestHeaders(request),
-    body: hasBody ? await request.arrayBuffer() : undefined,
-    cache: "no-store",
-    duplex: hasBody ? "half" : undefined,
-  } as RequestInit)
+  let upstream: Response
+  try {
+    upstream = await fetch(targetUrl, {
+      method,
+      headers: forwardRequestHeaders(request),
+      body: hasBody ? await request.arrayBuffer() : undefined,
+      cache: "no-store",
+      duplex: hasBody ? "half" : undefined,
+      signal: streamRequest ? undefined : AbortSignal.timeout(proxyTimeoutMs()),
+    } as RequestInit)
+  } catch (exc) {
+    if (exc instanceof DOMException && (exc.name === "TimeoutError" || exc.name === "AbortError")) {
+      return new Response("Upstream API request timed out", { status: 504 })
+    }
+    throw exc
+  }
 
   return new Response(upstream.body, {
     status: upstream.status,

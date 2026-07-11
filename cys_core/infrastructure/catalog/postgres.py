@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
 import psycopg
 
@@ -37,7 +38,7 @@ class PostgresAgentCatalog:
             clauses.append("enabled = TRUE")
         sql = f"SELECT payload FROM agent_catalog WHERE {' AND '.join(clauses)} ORDER BY name"
         with self._connect() as conn:
-            rows = conn.execute(sql, params).fetchall()
+            rows = conn.execute(cast(Any, sql), params).fetchall()
         return [AgentCatalogEntry.model_validate(row[0]) for row in rows]
 
     def get_agent(self, name: str) -> AgentCatalogEntry | None:
@@ -108,7 +109,10 @@ class PostgresAgentCatalog:
                 """,
                 (profile_id,),
             ).fetchone()
-        return CatalogVersion(profile_id=profile_id, version=int(row[0] or 0), agent_count=int(row[1] or 0))
+        if row is None:
+            return CatalogVersion(profile_id=profile_id, version=0, agent_count=0)
+        version, agent_count = row
+        return CatalogVersion(profile_id=profile_id, version=int(version or 0), agent_count=int(agent_count or 0))
 
     def seed(
         self,

@@ -97,8 +97,10 @@ def test_authz_matrix(
         source_id = "siem-readonly"
     elif policy and policy.datasource_capability_grants.get(profile_id):
         source_id = next(iter(policy.datasource_capability_grants[profile_id]))
-    elif expected_allowed and policy and policy.datasource_allowlist.get(profile_id):
-        source_id = policy.datasource_allowlist[profile_id][0]
+    elif expected_allowed and policy:
+        allowlist = policy.datasource_allowlist.get(profile_id)
+        if allowlist:
+            source_id = allowlist[0]
     source = DataSource(
         id=source_id,
         type="test",

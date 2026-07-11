@@ -1,20 +1,7 @@
-from __future__ import annotations
+from cys_core.domain.engagement.ids import (  # noqa: F401
+    ENGAGEMENT_ID_RE,
+    extract_engagement_id,
+    normalize_correlation_id,
+)
 
-import re
-from typing import Any
-
-_ENGAGEMENT_ID_RE = re.compile(r"eng-[a-f0-9]{12}")
-
-
-def extract_engagement_id(*, correlation_id: str = "", payload: dict[str, Any] | None = None) -> str:
-    payload = payload or {}
-    candidates: list[str] = [correlation_id, str(payload.get("correlation_id", ""))]
-    data = payload.get("data")
-    if isinstance(data, dict):
-        candidates.append(str(data.get("correlation_id", "")))
-        candidates.append(str(data.get("incident_id", "")))
-    for candidate in candidates:
-        match = _ENGAGEMENT_ID_RE.search(candidate)
-        if match:
-            return match.group(0)
-    return ""
+__all__ = ["ENGAGEMENT_ID_RE", "extract_engagement_id", "normalize_correlation_id"]

@@ -6,6 +6,33 @@ import pytest
 
 from cys_core.infrastructure.observability.tracing_adapter import build_correlation_id_port
 from cys_core.infrastructure.observability.worker_tracing_adapter import build_worker_tracing_port
+from cys_core.observability import tracing
+
+
+@pytest.mark.unit
+def test_inject_correlation_headers_normalizes_wrapped_id():
+    wrapped = (
+        'USER_DATA_TO_PROCESS [source=agent_bus]:\n'
+        '<untrusted_data source="agent_bus">\n'
+        "eng-cafebabef00d\n"
+        "</untrusted_data>"
+    )
+    token = tracing.bind_correlation_id(wrapped)
+    try:
+        headers = tracing.inject_correlation_headers({})
+        assert headers.get("x-correlation-id") == "eng-cafebabef00d"
+    finally:
+        tracing.reset_correlation_id(token)
+
+
+@pytest.mark.unit
+def test_inject_correlation_headers_omits_unsafe_newlines():
+    token = tracing.bind_correlation_id("bad\nid")
+    try:
+        headers = tracing.inject_correlation_headers({})
+        assert "x-correlation-id" not in headers
+    finally:
+        tracing.reset_correlation_id(token)
 
 
 @pytest.mark.unit

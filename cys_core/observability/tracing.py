@@ -18,10 +18,19 @@ def reset_correlation_id(token: Token[str]) -> None:
     correlation_id_var.reset(token)
 
 
+def _header_safe_correlation_id(raw: str) -> str:
+    from cys_core.application.bus_engagement import normalize_correlation_id
+
+    cid = normalize_correlation_id(raw)
+    if not cid or "\n" in cid or "\r" in cid:
+        return ""
+    return cid
+
+
 def inject_correlation_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
     """Propagate correlation_id via HTTP headers and optional OTel trace context."""
     out = dict(headers or {})
-    cid = get_correlation_id()
+    cid = _header_safe_correlation_id(get_correlation_id())
     if cid:
         out["x-correlation-id"] = cid
     return _inject_otel_context(out)

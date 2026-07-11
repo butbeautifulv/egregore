@@ -63,6 +63,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         configure_logging("egregore-api")
         setup_otel(service_name="egregore-api")
         from bootstrap.bus_lifecycle import wire_async_bus
+        from cys_core.observability.catalog_drift import verify_critic_intel_recipient
 
         await wire_async_bus()
         supervisor = BackgroundTaskSupervisor()
@@ -77,12 +78,24 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
                 )
                 await asyncio.sleep(30)
 
+        async def _reconcile_engagements_loop() -> None:
+            container = get_container()
+            reconciler = container.get_reconcile_stuck_engagements()
+            while True:
+                try:
+                    await reconciler.execute()
+                except Exception:
+                    logger.exception("engagement_reconcile_loop_failed")
+                await asyncio.sleep(300)
+
         container = get_container()
+        verify_critic_intel_recipient(container.get_agent_catalog())
         refresh_platform_gauges(
             engagement_store=container.get_engagement_state_store(),
             job_store=container.get_job_store(),
         )
         supervisor.spawn(_refresh_gauges_loop(), name="refresh-platform-gauges")
+        supervisor.spawn(_reconcile_engagements_loop(), name="reconcile-stuck-engagements")
         try:
             yield
         finally:
@@ -111,21 +124,25 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     from interfaces.api.catalog import router as catalog_router
     from interfaces.api.runs import router as runs_router
     from interfaces.api.engagements import router as engagements_router
+    from interfaces.api.follow_ups import router as follow_ups_router
+    from interfaces.api.work_orders import router as work_orders_router
 
     app.include_router(catalog_router)
     app.include_router(runs_router)
+    app.include_router(work_orders_router)
     app.include_router(engagements_router)
+    app.include_router(follow_ups_router)
 
     event_ingress = ingress or get_event_ingress()
     store = get_status_store()
     job_store = get_container().get_job_store()
 
-    @app.post("/events")
+    @app.post("/events", response_model=None)
     async def post_event(
         event_in: EventIn,
         request: Request,
         _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)],
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | JSONResponse:
         if get_settings().control_mode != "daemon":
             from interfaces.control_plane.coordinator_service import get_coordinator_service
             from interfaces.control_plane.critic_service import get_critic_service
@@ -311,6 +328,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
                     correlation_id=job.correlation_id,
                     event_id=job.event_id,
                     created_at=job.created_at,
+                    follow_up_id=job.follow_up_id,
                 )
                 for job in jobs
             ]

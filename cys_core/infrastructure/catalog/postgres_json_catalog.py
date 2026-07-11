@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 import psycopg
 from pydantic import BaseModel
@@ -47,13 +47,13 @@ class PostgresJsonCatalog(Generic[T]):
             clauses.append("enabled = TRUE")
         sql = f"SELECT payload FROM {self._table} WHERE {' AND '.join(clauses)} ORDER BY {self._order_by}"
         with self._connect() as conn:
-            rows = conn.execute(sql, params).fetchall()
+            rows = conn.execute(cast(Any, sql), params).fetchall()
         return [self._model_class.model_validate(row[0]) for row in rows]
 
     def get_item(self, item_id: str, *, profile_id: str = DEFAULT_PROFILE_ID) -> T | None:
         with self._connect() as conn:
             row = conn.execute(
-                f"SELECT payload FROM {self._table} WHERE id = %s AND profile_id = %s",
+                cast(Any, f"SELECT payload FROM {self._table} WHERE id = %s AND profile_id = %s"),
                 (item_id, profile_id),
             ).fetchone()
         if row is None:
@@ -99,6 +99,6 @@ class PostgresJsonCatalog(Generic[T]):
             ON CONFLICT (id, profile_id) DO UPDATE SET {conflict_updates}
         """
         with self._connect() as conn:
-            conn.execute(sql, values)
+            conn.execute(cast(Any, sql), cast(Any, values))
             conn.commit()
         return entry

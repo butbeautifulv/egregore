@@ -22,7 +22,10 @@ async def consume_bus_finding(timeout: float = 1.0, *, group_id: str = "bus-find
         )
         await consumer.start()
         record = await asyncio.wait_for(consumer.getone(), timeout=timeout)
-        return json.loads(record.value.decode())
+        raw = record.value
+        if raw is None:
+            return None
+        return json.loads(raw.decode())
     except (TimeoutError, Exception):
         return None
     finally:

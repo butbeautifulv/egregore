@@ -1,30 +1,21 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 
 import structlog
 
 from cys_core.application.bus_guard_config import BusGuardConfig
+from cys_core.domain.engagement.bus_guard import (
+    BusGuardLimits,
+    GuardCounters,
+    TripReason,
+    should_trip,
+)
 
 logger = structlog.get_logger(__name__)
 
-
-class TripReason(StrEnum):
-    TOTAL_JOBS = "total_jobs"
-    DEDUP_HITS = "dedup_hits"
-    PINGPONG = "pingpong"
-    NOOP_CHURN = "noop_churn"
-
-
-@dataclass(frozen=True)
-class GuardCounters:
-    total_jobs: int = 0
-    dedup_hits: int = 0
-    pingpong_cycles: int = 0
-    noop_publishes: int = 0
+__all__ = ["EngagementBusGuard", "GuardCounters", "TripReason", "configure_engagement_bus_guard", "get_engagement_bus_guard", "reset_engagement_bus_guard"]
 
 
 class EngagementBusGuard:
@@ -37,6 +28,15 @@ class EngagementBusGuard:
         self._window = config.guard_window_seconds
         self._redis: Any = None
         self._memory: dict[str, dict[str, Any]] = {}
+
+    def _limits(self) -> BusGuardLimits:
+        cfg = self._config
+        return BusGuardLimits(
+            max_total_jobs_window=cfg.max_total_jobs_window,
+            dedup_trip_threshold=cfg.dedup_trip_threshold,
+            pingpong_trip_threshold=cfg.pingpong_trip_threshold,
+            noop_churn_threshold=cfg.noop_churn_threshold,
+        )
 
     def _ensure_redis(self) -> bool:
         if self._redis is not None:
@@ -135,17 +135,7 @@ class EngagementBusGuard:
     def should_trip(self, engagement_id: str) -> TripReason | None:
         if not engagement_id or self.is_tripped(engagement_id):
             return None
-        cfg = self._config
-        counts = self.counters(engagement_id)
-        if counts.total_jobs >= cfg.max_total_jobs_window:
-            return TripReason.TOTAL_JOBS
-        if counts.dedup_hits >= cfg.dedup_trip_threshold:
-            return TripReason.DEDUP_HITS
-        if counts.pingpong_cycles >= cfg.pingpong_trip_threshold:
-            return TripReason.PINGPONG
-        if counts.noop_publishes >= cfg.noop_churn_threshold:
-            return TripReason.NOOP_CHURN
-        return None
+        return should_trip(self.counters(engagement_id), self._limits())
 
     def record_enqueue(self, engagement_id: str, recipient: str, fingerprint: str = "") -> None:
         if not engagement_id:
@@ -165,6 +155,24 @@ class EngagementBusGuard:
             return
         self._incr(engagement_id, "noop")
         logger.debug("engagement_noop_churn", engagement_id=engagement_id, persona=persona)
+
+    def _revision_suffix(self, persona: str) -> str:
+        return f"revision:{persona}"
+
+    def revision_count(self, engagement_id: str, persona: str) -> int:
+        if not engagement_id or not persona:
+            return 0
+        return self._get_count(engagement_id, self._revision_suffix(persona))
+
+    def record_revision(self, engagement_id: str, persona: str) -> int:
+        if not engagement_id or not persona:
+            return 0
+        return self._incr(engagement_id, self._revision_suffix(persona))
+
+    def revision_cap_exceeded(self, engagement_id: str, persona: str, *, max_revisions: int) -> bool:
+        if max_revisions <= 0:
+            return False
+        return self.revision_count(engagement_id, persona) >= max_revisions
 
     def _track_pingpong(self, engagement_id: str, recipient: str) -> None:
         if not recipient:

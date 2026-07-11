@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.infrastructure.engagement.memory_egress import MemoryEngagementEgress
 from cys_core.infrastructure.engagement.redis_egress import RedisEngagementEgress
@@ -16,10 +18,13 @@ def get_engagement_egress(settings=None) -> EngagementEgressPort:
     if _engagement_egress is not None:
         return _engagement_egress
     if settings.stage == "test":
-        _engagement_egress = MemoryEngagementEgress()
+        _engagement_egress = cast(EngagementEgressPort, MemoryEngagementEgress())
         return _engagement_egress
     redis_egress = RedisEngagementEgress(settings=settings)
-    _engagement_egress = redis_egress if redis_egress.active_backend == "redis" else MemoryEngagementEgress()
+    _engagement_egress = cast(
+        EngagementEgressPort,
+        redis_egress if redis_egress.active_backend == "redis" else MemoryEngagementEgress(),
+    )
     return _engagement_egress
 
 

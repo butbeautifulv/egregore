@@ -66,15 +66,19 @@ class EnqueueSynthesisJob:
                 "planner_plan": list(engagement.planner_plan),
                 "planner_rationale": engagement.planner_rationale,
                 "findings_summary": list(engagement.findings_summary),
-                "evidence_manifests": dict(engagement.evidence_manifests),
+                "evidence_manifests": {
+                    persona: manifest
+                    for persona in engagement.planner_plan
+                    if (manifest := engagement.evidence_manifests.get(persona)) is not None
+                },
                 "specialist_outcomes": specialist_outcomes,
                 "failed_personas": list(engagement.failed_personas),
             },
             correlation_id=job.correlation_id,
             tenant_id=job.tenant_id,
         )
-        self._engagement_store.mark_synthesis_running(job.tenant_id, investigation_id, job_id)
         await self._queue.aenqueue(synth_job)
+        self._engagement_store.mark_synthesis_running(job.tenant_id, investigation_id, job_id)
         if self._engagement_egress is not None:
             self._engagement_egress.publish_status(
                 investigation_id,

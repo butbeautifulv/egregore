@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 
-import { apiAuthHeaders, statusStreamUrl } from "@/lib/api-client"
+import { apiAuthHeaders, createApiConnectTimeout, mergeAbortSignals, statusStreamUrl } from "@/lib/api-client"
 import type { StatusStreamEvent } from "@/lib/types"
 
 const INITIAL_BACKOFF_MS = 1000
@@ -39,6 +39,7 @@ export function useStatusStream(onEvent?: (event: StatusStreamEvent) => void) {
       }
       abortController?.abort()
       abortController = new AbortController()
+      const connectTimeout = createApiConnectTimeout()
       setStatus("connecting")
 
       try {
@@ -48,8 +49,9 @@ export function useStatusStream(onEvent?: (event: StatusStreamEvent) => void) {
             ...apiAuthHeaders(),
           },
           cache: "no-store",
-          signal: abortController.signal,
+          signal: mergeAbortSignals([abortController.signal, connectTimeout.signal]),
         })
+        connectTimeout.clear()
 
         if (!response.ok || !response.body) {
           throw new Error(`SSE HTTP ${response.status}`)
@@ -94,6 +96,7 @@ export function useStatusStream(onEvent?: (event: StatusStreamEvent) => void) {
           }, backoff)
         }
       } catch (exc) {
+        connectTimeout.clear()
         if (cancelled || (exc instanceof DOMException && exc.name === "AbortError")) {
           return
         }

@@ -34,6 +34,11 @@ class WorkerDaemon:
     async def run(self) -> int:
         configure_logging("egregore-worker")
         setup_otel(service_name="egregore-worker")
+        from cys_core.observability.http import ensure_worker_metrics_server
+
+        metrics_port = ensure_worker_metrics_server()
+        if metrics_port is not None:
+            logger.info("worker metrics server listening", port=metrics_port)
         from bootstrap.bus_lifecycle import wire_async_bus
 
         await wire_async_bus()

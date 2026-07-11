@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import List
+
 from cys_core.domain.datasources.models import DataSource
 from cys_core.domain.datasources.validation import validate_datasource
 
@@ -12,7 +14,7 @@ class InMemoryDataSourceCatalog:
     def __init__(self) -> None:
         self._sources: dict[str, DataSource] = {}
 
-    def list(self, *, tenant_id: str | None = None, enabled_only: bool = True) -> list[DataSource]:
+    def list(self, *, tenant_id: str | None = None, enabled_only: bool = True) -> List[DataSource]:
         items = list(self._sources.values())
         if tenant_id is not None:
             items = [s for s in items if s.tenant_id == tenant_id]
@@ -28,7 +30,7 @@ class InMemoryDataSourceCatalog:
         self._sources[source.id] = source
         return source
 
-    def seed(self, sources: list[DataSource]) -> int:
+    def seed(self, sources: List[DataSource]) -> int:
         for source in sources:
             self.upsert(source)
         return len(sources)

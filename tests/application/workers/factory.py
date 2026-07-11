@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 from cys_core.application.use_cases.run_worker_job import RunWorkerJob
@@ -9,13 +9,75 @@ from cys_core.application.workers.context_builder import WorkerContextBuilder
 from cys_core.application.workers.finding_publisher import WorkerFindingPublisher
 from cys_core.application.workers.job_finalizer import WorkerJobFinalizer
 from cys_core.application.workers.result_validator import WorkerResultValidator
+from cys_core.domain.agents.models import AgentDefinition
 from cys_core.domain.security.guardrails import OutputGuardrails
 from cys_core.domain.security.sanitizer import InputSanitizer
-from tests.application.port_fakes import fake_worker_tracing_port
+from cys_core.registry.agents import AgentRegistry
+from cys_core.runtime.agent import AgentRuntime
+from interfaces.worker.orchestrator import WorkerOrchestrator, build_agent_bus
+from tests.application.port_fakes import FakeSchemaRegistry, fake_agent_catalog, fake_worker_tracing_port
+
+
+def _agent_definition(
+    name: str = "soc",
+    *,
+    schema_name: str | None = "SocFinding",
+    bus_recipients: list[str] | None = None,
+) -> AgentDefinition:
+    return AgentDefinition(
+        name=name,
+        description="",
+        role="worker",
+        system_prompt="",
+        trust_level="internal",
+        bus_recipients=bus_recipients or ["critic"],
+        schema_name=schema_name,
+    )
+
+
+def fake_agent_registry(
+    *,
+    name: str = "soc",
+    schema_name: str | None = "SocFinding",
+    bus_recipients: list[str] | None = None,
+) -> AgentRegistry:
+    defn = _agent_definition(name=name, schema_name=schema_name, bus_recipients=bus_recipients)
+    return AgentRegistry({name: defn})
+
+
+class FakeAgentRuntime:
+    def __init__(
+        self,
+        *,
+        return_value: dict[str, Any] | None = None,
+        side_effect: BaseException | None = None,
+    ) -> None:
+        self.arun = AsyncMock(return_value=return_value, side_effect=side_effect)
+
+
+def build_test_orchestrator(
+    *,
+    registry: AgentRegistry | None = None,
+    runtime: FakeAgentRuntime | None = None,
+    bus: Any = None,
+    sanitizer: Any = None,
+    persona: str | None = None,
+) -> WorkerOrchestrator:
+    reg = registry or fake_agent_registry()
+    rt = runtime or FakeAgentRuntime(return_value={"summary": "ok"})
+    return WorkerOrchestrator(
+        persona=persona,
+        runtime=cast(AgentRuntime, rt),
+        registry=reg,
+        bus=bus or build_agent_bus(reg),
+        sanitizer=sanitizer,
+    )
 
 
 def build_run_worker_job_for_tests(**overrides) -> RunWorkerJob:
     """Build RunWorkerJob with in-memory fakes for unit/integration tests."""
+    from types import SimpleNamespace
+
     bus = overrides.pop(
         "bus",
         SimpleNamespace(
@@ -57,7 +119,7 @@ def build_run_worker_job_for_tests(**overrides) -> RunWorkerJob:
     engagement_egress = overrides.pop("engagement_egress", None)
     memory_reader = overrides.pop("memory_reader", None)
     memory_writer = overrides.pop("memory_writer", None)
-    agent_catalog = overrides.pop("agent_catalog", SimpleNamespace(get_agent=lambda name: None))
+    agent_catalog = overrides.pop("agent_catalog", fake_agent_catalog())
 
     context_builder = WorkerContextBuilder(
         engagement_store=engagement_store,
@@ -65,7 +127,7 @@ def build_run_worker_job_for_tests(**overrides) -> RunWorkerJob:
     )
     agent_executor = WorkerAgentExecutor(runtime=runtime)
     result_validator = WorkerResultValidator(
-        schema_registry=SimpleNamespace(get=lambda name: object()),
+        schema_registry=overrides.pop("schema_registry", FakeSchemaRegistry()),
         guardrails=OutputGuardrails(),
     )
     finding_publisher = WorkerFindingPublisher(

@@ -1,0 +1,14 @@
+Preset
+  code         b3Rq8QejA
+  version      b
+  style        lyra
+  baseColor    neutral
+  theme        lime
+  chartColor   lime
+  iconLibrary  lucide
+  font         inter
+  fontHeading  inherit
+  radius       default
+  menuAccent   subtle
+  menuColor    default
+  url          https://ui.shadcn.com/create?preset=b3Rq8QejA

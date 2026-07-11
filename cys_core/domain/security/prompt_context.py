@@ -4,7 +4,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Literal
 
-UntrustedSource = Literal["user", "tool", "agent_bus", "external"]
+UntrustedSource = Literal["user", "tool", "agent_bus", "external", "catalog", "skill", "reflexion"]
 
 REFUSAL_MESSAGE = "I cannot process requests that conflict with my operational guidelines."
 
@@ -45,6 +45,17 @@ class UntrustedData:
 
 def compute_system_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def digest_matches(expected: str, actual: str) -> bool:
+    """Match full or catalog-truncated (16-char) prompt digests."""
+    if not expected:
+        return True
+    if actual == expected:
+        return True
+    if len(expected) < len(actual) and actual.startswith(expected):
+        return True
+    return False
 
 
 def format_system_prompt(persona: str, global_rules: str, security_rules: str) -> str:

@@ -43,6 +43,27 @@ class ObservabilityMetricsAdapter:
     def record_worker_job_timeout(self, persona: str) -> None:
         _metrics.record_worker_job_timeout(persona)
 
+    def record_worker_job_failure(self, persona: str, reason: str) -> None:
+        _metrics.record_worker_job_failure(persona, reason)
+
+    def record_bus_enqueue_rejected_off_plan(self, reason: str) -> None:
+        _metrics.record_bus_enqueue_rejected_off_plan(reason)
+
+    def record_bus_revision_rejected(self, reason: str) -> None:
+        _metrics.record_bus_revision_rejected(reason)
+
+    def record_planner_stuck_fallback(self) -> None:
+        _metrics.record_planner_stuck_fallback()
+
+    def record_follow_up_queued(self, work_kind: str) -> None:
+        _metrics.record_follow_up_queued(work_kind)
+
+    def record_follow_up_completed(self, work_kind: str) -> None:
+        _metrics.record_follow_up_completed(work_kind)
+
+    def record_follow_up_failed(self, work_kind: str) -> None:
+        _metrics.record_follow_up_failed(work_kind)
+
 
 def build_metrics_port() -> MetricsPort:
     return ObservabilityMetricsAdapter()

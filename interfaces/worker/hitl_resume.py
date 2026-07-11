@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from bootstrap.container import get_container
+from cys_core.application.ports.agent_runner import AgentRunner
 from cys_core.application.use_cases.resume_hitl_job import ResumeHitlJob, ResumeHitlJobError
 from cys_core.domain.workers.models import JobResumeRequest
 from cys_core.observability.metrics import metrics
@@ -15,7 +16,7 @@ HitlResumeError = ResumeHitlJobError
 async def resume_worker_job(job_id: str, request: JobResumeRequest) -> dict[str, Any]:
     use_case = ResumeHitlJob(
         job_store=get_container().get_job_store(),
-        runtime=get_runtime(),
+        runtime=cast(AgentRunner, get_runtime()),
         record_hitl_approval=record_hitl_approval,
         params_hash=params_hash,
         record_approval_bypass=metrics.record_approval_bypass,

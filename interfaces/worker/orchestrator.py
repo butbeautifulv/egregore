@@ -7,6 +7,7 @@ import structlog
 
 from bootstrap.container import get_container
 from bootstrap.settings import settings
+from cys_core.application.bus_engagement import normalize_correlation_id
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID, resolve_profile_id
 from cys_core.domain.security.agent_bus import AgentTrustLevel, SecureAgentBus
 from cys_core.domain.security.factory import get_input_sanitizer
@@ -52,6 +53,9 @@ def build_agent_bus(
     return bus
 
 
+_MAX_DEPENDENCY_DEFERRALS = 10
+
+
 class WorkerOrchestrator:
     """Dequeue → budget → worker pipeline execution."""
 
@@ -90,10 +94,31 @@ class WorkerOrchestrator:
     async def run_job(self, job: WorkerJob) -> RunResult:
         container = get_container()
         if job.depends_on_persona:
-            investigation_id = job.correlation_id or job.event_id
+            investigation_id = normalize_correlation_id(
+                job.correlation_id or job.event_id,
+                job.payload,
+            )
             state = container.get_engagement_state_store().get(job.tenant_id, investigation_id)
             completed = state.completed_personas if state is not None else []
-            if job.depends_on_persona not in completed:
+            failed = state.failed_personas if state is not None else []
+            if (
+                job.depends_on_persona not in completed
+                and job.depends_on_persona not in failed
+            ):
+                deferrals = int(job.payload.get("dependency_deferrals", 0))
+                if deferrals >= _MAX_DEPENDENCY_DEFERRALS:
+                    await self._run_worker_job.mark_runtime_failure(
+                        job,
+                        "dependency_timeout",
+                        exc=TimeoutError("dependency_timeout"),
+                    )
+                    return RunResult(
+                        job_id=job.job_id,
+                        persona=job.persona,
+                        success=False,
+                        error="dependency_timeout",
+                    )
+                job.payload["dependency_deferrals"] = deferrals + 1
                 enqueue_front = getattr(self.queue, "aenqueue_front", None)
                 if enqueue_front is not None:
                     await enqueue_front(job)
@@ -109,12 +134,13 @@ class WorkerOrchestrator:
         budgeted = enrich_job_budget(job)
         run_id = job.job_id
         session_id = f"worker:{job.persona}:{run_id}"
-        investigation_id = job.correlation_id or job.event_id
+        investigation_id = normalize_correlation_id(job.correlation_id or job.event_id, job.payload)
         cid_token = bind_correlation_id(investigation_id)
         structlog.contextvars.bind_contextvars(
             persona=job.persona,
             job_id=job.job_id,
             correlation_id=investigation_id,
+            work_kind=str(job.payload.get("work_kind", "")),
         )
         catalog_entry = container.get_agent_catalog().get_agent(budgeted.persona)
         profile_id = resolve_profile_id(
@@ -136,50 +162,59 @@ class WorkerOrchestrator:
         )
         try:
             with self._metrics.track_worker_job(job.persona) as job_state:
-                job_timeout = container.settings.worker_job_timeout
-                return await asyncio.wait_for(
-                    self._run_worker_job.execute(job, budgeted, session_id, job_state),
-                    timeout=job_timeout,
-                )
-        except TimeoutError:
-            tool_count = get_tool_execution_count(job.job_id)
-            salvaged: RunResult | None = None
-            try:
-                salvaged = await self._run_worker_job.try_salvage_timeout(
-                    job, session_id, {"status": "success"}
-                )
-            except Exception as exc:
-                logger.warning(
-                    "worker_timeout_salvage_failed",
-                    job_id=job.job_id,
+                job_timeout = container.settings.resolve_worker_job_timeout(
                     persona=job.persona,
-                    error=str(exc),
+                    phase=str(job.payload.get("phase") or ""),
                 )
-            if salvaged is not None:
-                logger.warning(
-                    "worker job timed out but salvaged",
-                    job_id=job.job_id,
-                    persona=job.persona,
-                    tool_count=tool_count,
-                    salvaged=True,
-                )
-                return salvaged
-            logger.error(
-                "worker job timed out",
-                job_id=job.job_id,
-                persona=job.persona,
-                timeout_s=container.settings.worker_job_timeout,
-                tool_count=tool_count,
-                salvaged=False,
-            )
-            self._metrics.record_worker_job_timeout(job.persona)
-            await self._run_worker_job.mark_job_timeout(job)
-            return RunResult(
-                job_id=job.job_id,
-                persona=job.persona,
-                success=False,
-                error="worker_job_timeout",
-            )
+                soft_timeout = job_timeout * 0.9
+                try:
+                    return await asyncio.wait_for(
+                        self._run_worker_job.execute(job, budgeted, session_id, job_state),
+                        timeout=soft_timeout,
+                    )
+                except TimeoutError:
+                    tool_count = get_tool_execution_count(job.job_id)
+                    salvaged: RunResult | None = None
+                    try:
+                        salvaged = await self._run_worker_job.try_salvage_partial(
+                            job,
+                            session_id,
+                            job_state,
+                            reason="soft_timeout",
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "worker_soft_timeout_salvage_failed",
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            error=str(exc),
+                        )
+                    if salvaged is not None:
+                        logger.warning(
+                            "worker job soft-timeout salvaged",
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            tool_count=tool_count,
+                            salvaged=True,
+                        )
+                        return salvaged
+                    logger.error(
+                        "worker job timed out",
+                        job_id=job.job_id,
+                        persona=job.persona,
+                        timeout_s=job_timeout,
+                        soft_timeout_s=soft_timeout,
+                        tool_count=tool_count,
+                        salvaged=False,
+                    )
+                    self._metrics.record_worker_job_timeout(job.persona)
+                    await self._run_worker_job.mark_job_timeout(job)
+                    return RunResult(
+                        job_id=job.job_id,
+                        persona=job.persona,
+                        success=False,
+                        error="worker_job_timeout",
+                    )
         finally:
             state = JobBudgetTracker.get(session_id)
             if state is not None:
@@ -192,7 +227,7 @@ class WorkerOrchestrator:
             clear_tool_execution_count(job.job_id)
             get_container().get_tool_chain_policy().clear(job.job_id)
             reset_correlation_id(cid_token)
-            structlog.contextvars.unbind_contextvars("persona", "job_id", "correlation_id")
+            structlog.contextvars.unbind_contextvars("persona", "job_id", "correlation_id", "work_kind")
 
     async def process_next(self) -> RunResult | None:
         job = await self.queue.adequeue(timeout=2.0)

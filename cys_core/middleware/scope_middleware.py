@@ -10,6 +10,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from cys_core.domain.security.scope import ScopePolicy
+from cys_core.middleware._framework_casts import cast_tool_result
 
 
 class ScopeMiddleware(AgentMiddleware):
@@ -17,11 +18,11 @@ class ScopeMiddleware(AgentMiddleware):
 
     def __init__(
         self,
-        allowed_tools: set[str],
+        allowed_tools: set[str] | list[str],
         blocked_path_patterns: list[str] | None = None,
     ) -> None:
         super().__init__()
-        self.policy = ScopePolicy.from_tools(allowed_tools, blocked_path_patterns)
+        self.policy = ScopePolicy.from_tools(set(allowed_tools), blocked_path_patterns)
 
     def wrap_tool_call(
         self,
@@ -43,8 +44,8 @@ class ScopeMiddleware(AgentMiddleware):
             return violation
         result = handler(request)
         if inspect.isawaitable(result):
-            return await result
-        return result
+            return cast_tool_result(await result)
+        return cast_tool_result(result)
 
     def _check_scope(self, request: ToolCallRequest) -> ToolMessage | None:
         tool_name = request.tool_call.get("name", "")

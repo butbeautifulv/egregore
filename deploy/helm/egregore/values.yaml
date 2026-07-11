@@ -17,11 +17,20 @@ api:
 worker:
   replicas: 2
   idleTimeout: 0
+  metricsPort: 8081
   hpa:
     enabled: true
     minReplicas: 1
     maxReplicas: 4
     targetCPUUtilization: 70
+
+rollout:
+  api:
+    maxSurge: 1
+    maxUnavailable: 0
+  worker:
+    maxSurge: 1
+    maxUnavailable: 0
 
 migrate:
   enabled: false

@@ -26,7 +26,7 @@ class ResumeHitlJob:
         *,
         job_store: HitlJobStore,
         runtime: AgentRunner,
-        record_hitl_approval: Callable[..., None],
+        record_hitl_approval: Callable[..., Any],
         params_hash: Callable[[dict[str, Any]], str],
         record_approval_bypass: Callable[[str], None] | None = None,
     ) -> None:

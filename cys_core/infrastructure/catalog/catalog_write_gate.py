@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import threading
-from typing import Callable
+from typing import Callable, cast
 
+from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.catalog_audit import CatalogAuditPort
 from cys_core.application.ports.registry_catalogs import (
     McpServerCatalogPort,
@@ -26,7 +27,7 @@ class CatalogWriteGate:
     def __init__(
         self,
         *,
-        agent_catalog,
+        agent_catalog: AgentCatalogPort,
         skill_catalog: SkillCatalogPort,
         plan_catalog: PlanCatalogPort,
         mcp_catalog: McpServerCatalogPort,

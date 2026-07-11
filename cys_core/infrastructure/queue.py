@@ -7,6 +7,8 @@ from typing import Any
 import structlog
 
 from bootstrap.settings import Settings
+from cys_core.application.ports.job_queue import JobQueueConnector
+from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.domain.workers.models import WorkerJob
 from cys_core.infrastructure.redis_client import ResilientRedisClient
 from cys_core.observability.metrics import metrics
@@ -43,6 +45,9 @@ class InMemoryJobQueue:
 
     async def adequeue(self, timeout: float = 0.0) -> WorkerJob | None:
         return self.dequeue(timeout)
+
+    async def aclose(self) -> None:
+        return None
 
     def queue_depth(self) -> int:
         return len(self._queue)
@@ -189,6 +194,9 @@ class RedisJobQueue:
             return self.dequeue(timeout)
         return await asyncio.to_thread(self.dequeue, timeout)
 
+    async def aclose(self) -> None:
+        return None
+
     def queue_depth(self) -> int | None:
         if not self._ensure_redis():
             return self._fallback.queue_depth()
@@ -226,21 +234,21 @@ class RedisJobQueue:
             return self._fallback.purge_engagement_jobs(engagement_id)
 
 
-_queues: dict[str | None, RedisJobQueue | InMemoryJobQueue] = {}
+_queues: dict[str | None, JobQueueConnector] = {}
 
 
 def get_job_queue(
     persona: str | None = None,
     *,
     settings: Settings,
-) -> RedisJobQueue | InMemoryJobQueue:
+) -> JobQueueConnector:
     """Return job queue connector; Kafka when USE_KAFKA=true."""
     if persona in _queues:
         return _queues[persona]
     if settings.use_kafka:
         from cys_core.infrastructure.kafka_queue import KafkaJobQueue
 
-        queue: RedisJobQueue | InMemoryJobQueue = KafkaJobQueue(persona=persona, settings=settings)
+        queue: JobQueueConnector = KafkaJobQueue(persona=persona, settings=settings)
     else:
         queue = RedisJobQueue(settings=settings)
     _queues[persona] = queue

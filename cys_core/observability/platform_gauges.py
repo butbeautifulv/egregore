@@ -10,7 +10,7 @@ def refresh_platform_gauges(*, tenant_id: str = "default", engagement_store=None
 
         job_store = get_container().get_job_store()
     try:
-        pending = pending_store.list_pending_approvals()
+        pending = job_store.list_pending_approvals()
         metrics.refresh_hitl_pending(len(pending))
     except Exception:
         pass
@@ -26,7 +26,7 @@ def refresh_platform_gauges(*, tenant_id: str = "default", engagement_store=None
         active = sum(
             1
             for state in states
-            if state.status not in (EngagementStatus.CLOSED, EngagementStatus.FAILED)
+            if not state.status.is_terminal()
         )
         metrics.refresh_investigations_active(active)
     except Exception:

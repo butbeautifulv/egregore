@@ -8,6 +8,20 @@ import psycopg
 from cys_core.application.ports.job_store import JobRecord, JobRecordSummary
 from cys_core.domain.workers.models import PendingHitlAction, WorkerJobStatus
 
+
+def _follow_up_id_from_payload(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+    value = str(payload.get("follow_up_id") or "").strip()
+    return value or None
+
+
 _JOB_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS worker_jobs (
     job_id TEXT PRIMARY KEY,
@@ -250,7 +264,7 @@ class PostgresJobStore:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id, created_at
+                SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id, created_at, payload_json
                 FROM worker_jobs
                 WHERE tenant_id = %s AND correlation_id = %s
                 ORDER BY created_at ASC
@@ -267,6 +281,7 @@ class PostgresJobStore:
                 tenant_id=row[5] or "default",
                 event_id=row[6] or "",
                 created_at=row[7].isoformat() if row[7] is not None else "",
+                follow_up_id=_follow_up_id_from_payload(row[8]),
             )
             for row in rows
         ]

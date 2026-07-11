@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from cys_core.domain.evidence.incident_mitre import infer_suggested_mitre_techniques
+from cys_core.domain.evidence.observation_ids import build_obs_id
 from cys_core.domain.evidence.models import (
     DataGap,
     EvidenceManifest,
     FieldAvailability,
+    FieldSource,
     Observation,
+    ObservationKind,
 )
 
-_FORENSIC_FIELD_PATHS: tuple[tuple[str, str], ...] = (
+_FORENSIC_FIELD_PATHS: tuple[tuple[str, ObservationKind], ...] = (
     ("subject.process.cmdline", "process"),
     ("object.process.cmdline", "process"),
     ("subject.process.name", "process"),
@@ -29,20 +31,6 @@ _KATA_TAA_MARKERS = (
     "malicious_pipe_created",
     "hacktoolsdetection",
 )
-
-_CREDENTIAL_TECHNIQUE_PREFIXES = ("T1003",)
-
-
-def _slug(value: str) -> str:
-    cleaned = re.sub(r"[^\w.\-]+", "_", value.strip().lower())
-    return cleaned[:80] or "unknown"
-
-
-def _obs_id(kind: str, value: str, event_uuid: str | None = None) -> str:
-    if event_uuid:
-        return f"obs:evt:{event_uuid}:{kind}:{_slug(value)}"
-    return f"obs:{kind}:{_slug(value)}"
-
 
 def _get_nested(data: dict[str, Any], path: str) -> Any:
     current: Any = data
@@ -68,7 +56,7 @@ def _walk_events(body: Any) -> list[dict[str, Any]]:
 def _add_observation(
     observations: dict[str, Observation],
     *,
-    kind: str,
+    kind: ObservationKind,
     value: str,
     source_tool: str,
     source_path: str,
@@ -77,12 +65,12 @@ def _add_observation(
     text = str(value).strip()
     if not text:
         return
-    oid = _obs_id(kind, text, event_uuid)
+    oid = build_obs_id(kind, text, event_uuid)
     if oid in observations:
         return
     observations[oid] = Observation(
         obs_id=oid,
-        kind=kind,  # type: ignore[arg-type]
+        kind=kind,
         value=text,
         source_tool=source_tool,
         source_path=source_path,
@@ -94,7 +82,7 @@ def _scan_event_fields(
     event: dict[str, Any],
     *,
     source_tool: str,
-    source: str,
+    source: FieldSource,
     observations: dict[str, Observation],
     availability: dict[str, FieldAvailability],
 ) -> None:
@@ -108,7 +96,7 @@ def _scan_event_fields(
             continue
         fa = availability.get(field_path)
         if fa is None:
-            fa = FieldAvailability(field_path=field_path, present=False, source=source)  # type: ignore[arg-type]
+            fa = FieldAvailability(field_path=field_path, present=False, source=source)
             availability[field_path] = fa
         fa.present = True
         if event_uuid and event_uuid not in fa.event_uuids:

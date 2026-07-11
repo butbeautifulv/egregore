@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from typing import TypeVar
+from typing import TypeVar, cast, cast
 
 T = TypeVar("T")
 
@@ -16,7 +16,7 @@ class CatalogSingletons:
         with cls._lock:
             if name not in cls._instances:
                 cls._instances[name] = factory()
-            return cls._instances[name]  # type: ignore[return-value]
+            return cast(T, cls._instances[name])
 
     @classmethod
     def reset(cls, *names: str) -> None:

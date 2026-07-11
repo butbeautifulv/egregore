@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.language_models.chat_models import BaseChatModel
+
 from cys_core.application.ports.trace_callbacks import get_trace_callbacks
 from cys_core.application.ports import ModelConnector
 from cys_core.application.runtime_config import get_default_job_recursion_limit, get_recursion_limit_for_persona
@@ -25,7 +27,7 @@ def get_provider(name: str | None = None) -> ChatModelProvider:
     return _PROVIDERS[provider_name]
 
 
-def get_model():
+def get_model() -> BaseChatModel:
     """Return configured chat model via selected provider."""
     return get_model_connector().create_model()
 
@@ -41,7 +43,7 @@ class LLMConnector:
     def __init__(self, provider_name: str | None = None) -> None:
         self.name = provider_name or _PROVIDER_NAME
 
-    def create_model(self):
+    def create_model(self) -> BaseChatModel:
         from cys_core.application.runtime_config import get_llm_settings
 
         llm = get_llm_settings()

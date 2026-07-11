@@ -1,22 +1,14 @@
 "use client"
 
-import { BarChart3, ClipboardCheck, GitCompare, LayoutDashboard, Library, PlayCircle, Shield, Waypoints } from "lucide-react"
+import { ClipboardCheck, LayoutDashboard, Library, Shield } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 
 import { listPendingApprovals } from "@/lib/api-client"
+import { NavUser } from "@/components/nav-user"
 import { ShellSidebar } from "@/vendor/gui/shell/shell-sidebar"
+import { ShellNavMain } from "@/vendor/gui/shell/shell-nav-main"
 import { Badge } from "@/vendor/gui/ui/badge"
-
-const navItems = [
-  { title: "Investigations", href: "/", icon: LayoutDashboard },
-  { title: "Agent runs", href: "/runs", icon: PlayCircle },
-  { title: "Approvals", href: "/approvals", icon: ClipboardCheck },
-  { title: "Quality", href: "/catalog", icon: Library },
-  { title: "Eval runs", href: "/eval", icon: BarChart3 },
-  { title: "Traces", href: "/traces", icon: Waypoints },
-  { title: "Compare", href: "/compare", icon: GitCompare },
-]
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -44,25 +36,52 @@ export function AppSidebar() {
     }
   }, [])
 
+  const opsItems = [
+    {
+      title: "Work orders",
+      href: "/",
+      icon: LayoutDashboard,
+      isActive: pathname === "/" || pathname.startsWith("/work-orders"),
+    },
+    {
+      title: "Approvals",
+      href: "/approvals",
+      icon: ClipboardCheck,
+      isActive: pathname.startsWith("/approvals"),
+      badge:
+        pendingCount > 0 ? (
+          <Badge variant="destructive" className="ml-auto">
+            {pendingCount}
+          </Badge>
+        ) : undefined,
+    },
+  ]
+
+  const catalogItems = [
+    {
+      title: "Catalog",
+      href: "/catalog",
+      icon: Library,
+      isActive: pathname.startsWith("/catalog") || pathname.startsWith("/eval") || pathname.startsWith("/compare"),
+    },
+  ]
+
   return (
     <ShellSidebar
       brand={{
         href: "/",
         title: "Egregore",
-        subtitle: "SOC operator console",
+        subtitle: "Operator console",
         icon: Shield,
       }}
       groupLabel="Operations"
-      navItems={navItems.map((item) => ({
-        ...item,
-        isActive: item.href === "/" ? pathname === "/" : pathname.startsWith(item.href),
-        badge:
-          item.href === "/approvals" && pendingCount > 0 ? (
-            <Badge variant="destructive" className="ml-auto">
-              {pendingCount}
-            </Badge>
-          ) : undefined,
-      }))}
+      footer={<NavUser />}
+      navContent={
+        <>
+          <ShellNavMain groupLabel="Operations" items={opsItems} />
+          <ShellNavMain groupLabel="Catalog" items={catalogItems} />
+        </>
+      }
     />
   )
 }

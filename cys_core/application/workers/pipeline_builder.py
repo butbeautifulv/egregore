@@ -3,12 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.use_cases.enqueue_next_planned_persona import EnqueueNextPlannedPersona
 from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
 from cys_core.application.use_cases.run_worker_job import RunWorkerJob
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
 from cys_core.application.workers.finding_publisher import WorkerFindingPublisher
+from cys_core.application.workers.follow_up_aggregator import FollowUpAggregator
+from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher
 from cys_core.application.workers.job_finalizer import WorkerJobFinalizer
 from cys_core.application.workers.result_validator import WorkerResultValidator
 from cys_core.application.runtime_config import get_self_refine_max, get_use_run_kernel
@@ -39,6 +42,8 @@ class WorkerPipelineDeps:
     resolve_mcp_tools: Callable[..., Any]
     resolve_legacy_tools: Callable[[list[str]], Any]
     make_load_skill_tool: Callable[..., Any]
+    meta_planner: Any | None = None
+    dispatch: Any | None = None
 
 
 def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
@@ -66,6 +71,24 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         bus_guard=deps.bus_guard,
         record_memory_write=deps.metrics.record_memory_write,
     )
+    enqueue_follow_up = EnqueueFollowUp(
+        engagement_store=deps.engagement_store,
+        memory_writer=deps.memory_writer,
+        memory_reader=deps.memory_reader,
+        job_store=deps.job_store,
+        queue=deps.queue,
+        engagement_egress=deps.engagement_egress,
+        metrics=deps.metrics,
+    )
+    follow_up_publisher = FollowUpAnswerPublisher(
+        memory_writer=deps.memory_writer,
+        engagement_egress=deps.engagement_egress,
+        engagement_store=deps.engagement_store,
+        record_memory_write=deps.metrics.record_memory_write,
+        enqueue_follow_up=enqueue_follow_up,
+        record_follow_up_completed=deps.metrics.record_follow_up_completed,
+        record_follow_up_failed=deps.metrics.record_follow_up_failed,
+    )
     job_finalizer = WorkerJobFinalizer(
         job_store=deps.job_store,
         queue=deps.queue,
@@ -84,12 +107,29 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
             engagement_egress=deps.engagement_egress,
         ),
         record_sanitizer_block=deps.metrics.record_sanitizer_block,
+        record_worker_job_failure=deps.metrics.record_worker_job_failure,
+        follow_up_publisher=follow_up_publisher,
     )
+    follow_up_aggregator = FollowUpAggregator(
+        deps.job_store,
+        memory_reader=deps.memory_reader,
+        engagement_store=deps.engagement_store,
+    )
+    plan_follow_up_runner = None
+    if deps.meta_planner is not None and deps.dispatch is not None:
+        plan_follow_up_runner = PlanFollowUpRunner(
+            meta_planner=deps.meta_planner,
+            dispatch=deps.dispatch,
+            engagement_store=deps.engagement_store,
+            engagement_egress=deps.engagement_egress,
+        )
     return RunWorkerJob(
         context_builder=context_builder,
         agent_executor=agent_executor,
         result_validator=result_validator,
         finding_publisher=finding_publisher,
+        follow_up_publisher=follow_up_publisher,
+        follow_up_aggregator=follow_up_aggregator,
         job_finalizer=job_finalizer,
         registry=deps.agent_registry,
         sandbox=deps.sandbox,
@@ -99,4 +139,5 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         resolve_mcp_tools=deps.resolve_mcp_tools,
         resolve_legacy_tools=deps.resolve_legacy_tools,
         make_load_skill_tool=deps.make_load_skill_tool,
+        plan_follow_up_runner=plan_follow_up_runner,
     )

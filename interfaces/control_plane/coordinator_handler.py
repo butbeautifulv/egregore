@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from bootstrap.container import get_container
+from cys_core.application.bus_engagement import normalize_correlation_id
 from cys_core.observability.tracing import bind_correlation_id, reset_correlation_id
 from interfaces.control_plane.coordinator_service import get_coordinator_service
 
@@ -12,7 +13,12 @@ logger = structlog.get_logger(__name__)
 class CoordinatorHandler:
     async def handle(self, envelope: dict) -> None:
         payload = envelope.get("payload", {})
-        investigation_id = str(payload.get("correlation_id", payload.get("event_id", "")))
+        if not isinstance(payload, dict):
+            payload = {}
+        investigation_id = normalize_correlation_id(
+            str(payload.get("correlation_id", payload.get("event_id", ""))),
+            payload,
+        )
         tenant_id = str(payload.get("tenant_id", "default"))
         token = bind_correlation_id(investigation_id) if investigation_id else None
         try:

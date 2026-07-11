@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.context_summarizer import ContextSummarizerPort
@@ -10,22 +10,10 @@ from cys_core.application.ports.run_state import RunStateStorePort
 from cys_core.application.ports.work_todo import WorkTodoStorePort
 from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
 from cys_core.application.use_cases.analyze_task_hints import AnalyzeTaskHints
-from cys_core.application.use_cases.run_step import RunStep
+from cys_core.application.use_cases.run_step import RunRuntime, RunStep
 from cys_core.domain.runs.models import ContextKind, InteractionMode, RunContext
 from cys_core.domain.runs.plan_models import PlanApproval
 from cys_core.domain.runs.state_models import RunState, RunStatus
-
-
-class RunRuntime(Protocol):
-    async def arun(
-        self,
-        name: str,
-        user_input: str,
-        *,
-        session_id: str | None = None,
-        tenant_id: str = "default",
-        investigation_id: str = "",
-    ) -> dict[str, Any]: ...
 
 
 class ManageRun:

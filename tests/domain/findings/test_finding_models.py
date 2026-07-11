@@ -1,7 +1,9 @@
+from typing import cast
+
 import pytest
 from pydantic import ValidationError
 
-from cys_core.domain.findings.models import CriticResult, FindingEnvelope, RedTeamFinding
+from cys_core.domain.findings.models import CriticResult, FindingEnvelope, RedTeamFinding, WorkerAgentName
 
 
 @pytest.mark.unit
@@ -27,7 +29,7 @@ def test_finding_envelope_agent_literal():
     env_purple = FindingEnvelope(agent="purple", data={"summary": "coverage"})
     assert env_purple.agent == "purple"
     with pytest.raises(ValidationError):
-        FindingEnvelope(agent="unknown", data={})
+        FindingEnvelope(agent=cast(WorkerAgentName, "unknown"), data={})
 
 
 @pytest.mark.unit

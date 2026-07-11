@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from bootstrap.settings import settings
-from cys_core.domain.events.models import SecurityEvent
+from cys_core.domain.events.models import SecurityEvent, Severity
 from cys_core.infrastructure.kafka_events import publish_raw_event
 from cys_core.infrastructure.kafka_publisher import get_kafka_publisher
 from cys_core.infrastructure.kafka_topics import AWAITING_APPROVAL_TOPIC, ESCALATION_EVENTS_TOPIC
@@ -45,7 +45,7 @@ async def publish_escalation_event(
         id=event_id or f"esc-{uuid.uuid4().hex[:12]}",
         type="escalation",
         source=f"critic:{source_persona}",
-        severity=severity,  # type: ignore[arg-type]
+        severity=cast(Severity, severity),
         payload={**payload, "critic_approved": True, "source_persona": source_persona},
         correlation_id=correlation_id,
     )

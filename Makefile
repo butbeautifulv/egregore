@@ -1,4 +1,4 @@
-.PHONY: verify-architecture domain-gate dev-console
+.PHONY: verify-architecture domain-gate dev-console run
 
 verify-architecture:
 	uv run python scripts/verify_import_boundaries.py
@@ -11,3 +11,6 @@ domain-gate:
 
 dev-console:
 	cd ui-minimal && python3 -m http.server 5173
+
+run:
+	cd tui && $(MAKE) run

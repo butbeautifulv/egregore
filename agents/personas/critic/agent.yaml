@@ -10,5 +10,8 @@ bus_recipients:
   - soc
   - network
   - consultant
+  - intel
+  - hunter
+  - identity
 language: ru
 sample: samples/default.txt

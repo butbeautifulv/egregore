@@ -3,82 +3,108 @@
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
-import { postEvent } from "@/lib/api-client"
-import { formatApiError } from "@/lib/format-api-error"
-import { PageSection } from "@/components/page-section"
-import { Alert, AlertDescription, AlertTitle } from "@/vendor/gui/ui/alert"
+import { createWorkOrder, DEFAULT_PROFILE_ID } from "@/lib/api-client"
+import { ApiErrorAlert } from "@/components/api-error-alert"
 import { Button } from "@/vendor/gui/ui/button"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/vendor/gui/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/vendor/gui/ui/field"
-import { Input } from "@/vendor/gui/ui/input"
 import { Spinner } from "@/vendor/gui/ui/spinner"
+import { Textarea } from "@/vendor/gui/ui/textarea"
+import { cn } from "@/vendor/gui/utils"
 
-export function ChatPanel() {
+export function ChatPanel({ className }: { className?: string }) {
   const router = useRouter()
   const [goal, setGoal] = useState("")
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [loading, setLoading] = useState(false)
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault()
-    const trimmed = goal.trim()
-    if (!trimmed) {
+    const trimmedGoal = goal.trim()
+    if (!trimmedGoal) {
       return
     }
     setLoading(true)
     setError(null)
     try {
-      const correlationId = crypto.randomUUID()
-      const response = await postEvent({
-        event_type: "manual.investigation",
-        payload: { goal: trimmed },
-        correlation_id: correlationId,
+      const response = await createWorkOrder({
+        goal: trimmedGoal,
+        profile_id: DEFAULT_PROFILE_ID,
+        plan_strategy: "meta_llm",
+        mode: "async",
       })
-      const investigationId = response.event.correlation_id || correlationId
-      router.push(`/investigations/${investigationId}`)
+      const id = response.work_order_id ?? response.engagement_id
+      router.push(`/work-orders/${id}`)
     } catch (exc) {
-      setError(formatApiError(exc, "Failed to start investigation"))
+      setError(exc)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <PageSection>
+    <Card className={cn(className)}>
       <CardHeader>
-        <CardTitle>New investigation</CardTitle>
+        <CardTitle>Start work order</CardTitle>
         <CardDescription>
-          Describe the goal. Planning runs in the background — you are redirected while personas are assigned.
+          Describe what the agents should accomplish. The catalog planner assigns personas from the
+          active profile.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={onSubmit}>
-          <FieldGroup className="flex flex-col gap-3">
+        <form id="start-work-order-form" onSubmit={onSubmit}>
+          <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="investigation-goal">Goal</FieldLabel>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  id="investigation-goal"
-                  value={goal}
-                  onChange={(event) => setGoal(event.target.value)}
-                  placeholder="Investigate suspicious login from 203.0.113.4"
-                  disabled={loading}
-                />
-                <Button type="submit" disabled={loading || !goal.trim()}>
-                  {loading ? <Spinner data-icon="inline-start" /> : null}
-                  {loading ? "Starting…" : "Start"}
-                </Button>
-              </div>
+              <FieldLabel htmlFor="work-order-goal">Goal</FieldLabel>
+              <Textarea
+                id="work-order-goal"
+                value={goal}
+                onChange={(event) => setGoal(event.target.value)}
+                placeholder="Describe what the agents should accomplish…"
+                disabled={loading}
+                className="min-h-20 resize-none"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault()
+                    event.currentTarget.form?.requestSubmit()
+                  }
+                }}
+              />
             </Field>
           </FieldGroup>
         </form>
         {error ? (
-          <Alert variant="destructive" className="mt-3">
-            <AlertTitle>Could not start investigation</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <div className="mt-3">
+            <ApiErrorAlert
+              error={error}
+              title="Could not start work order"
+              fallback="Failed to start work order"
+              onRetry={() => {
+                const form = document.getElementById("start-work-order-form") as HTMLFormElement | null
+                form?.requestSubmit()
+              }}
+            />
+          </div>
         ) : null}
       </CardContent>
-    </PageSection>
+      <CardFooter>
+        <Button
+          type="submit"
+          form="start-work-order-form"
+          disabled={loading || !goal.trim()}
+          className="w-full"
+        >
+          {loading ? <Spinner data-icon="inline-start" /> : null}
+          {loading ? "Starting…" : "Start work order"}
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }

@@ -24,7 +24,9 @@ def test_guardrails_validation_edges():
     assert guardrails.detect_exfiltration({"tool_name": "webhook", "parameters": "abcdef"}) is True
     assert guardrails.detect_exfiltration({"response": "ok"}) is False
 
-    assert guardrails.validate_schema({"value": "ok"}, DemoSchema).value == "ok"
+    validated = guardrails.validate_schema({"value": "ok"}, DemoSchema)
+    assert isinstance(validated, DemoSchema)
+    assert validated.value == "ok"
     with pytest.raises(SecurityViolation, match="Schema validation failed"):
         guardrails.validate_schema({}, DemoSchema)
     with pytest.raises(SecurityViolation, match="exfiltration"):

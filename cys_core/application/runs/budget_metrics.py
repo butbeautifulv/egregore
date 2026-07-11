@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from cys_core.application.ports.metrics import MetricsPort
 
 _budget_metrics: MetricsPort | None = None
@@ -16,4 +18,4 @@ def configure_budget_metrics(port: MetricsPort | None) -> None:
 
 
 def _metrics() -> MetricsPort:
-    return _budget_metrics or _NoopBudgetMetrics()  # type: ignore[return-value]
+    return cast(MetricsPort, _budget_metrics or _NoopBudgetMetrics())

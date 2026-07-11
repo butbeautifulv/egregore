@@ -1,4 +1,4 @@
-from __future__ import annotations
+from collections.abc import Callable
 
 from cys_core.application.catalog_mutation_service import CatalogMutationService
 from cys_core.application.ports.engagement_store import EngagementStateStore
@@ -15,7 +15,7 @@ class PromoteEngagementPlanToCatalog:
         engagement_store: EngagementStateStore,
         mutation: CatalogMutationService,
         *,
-        activate_plan: callable | None = None,
+        activate_plan: Callable[..., PlanCatalogEntry | None] | None = None,
     ) -> None:
         self._engagement_store = engagement_store
         self._mutation = mutation

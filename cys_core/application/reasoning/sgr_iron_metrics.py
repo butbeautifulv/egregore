@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import cast
 
 from cys_core.application.ports.metrics import MetricsPort
-
-if TYPE_CHECKING:
-    pass
 
 _metrics_port: MetricsPort | None = None
 
@@ -21,4 +18,4 @@ def configure_sgr_iron_metrics(port: MetricsPort | None) -> None:
 
 
 def _metrics() -> MetricsPort:
-    return _metrics_port or _NoopMetrics()  # type: ignore[return-value]
+    return cast(MetricsPort, _metrics_port or _NoopMetrics())

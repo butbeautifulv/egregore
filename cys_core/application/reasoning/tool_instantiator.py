@@ -5,7 +5,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from cys_core.application.reasoning.json_extract import extract_json_dict
+from cys_core.domain.parsing.json_text import parse_json_text
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -27,7 +27,7 @@ class ToolInstantiator:
         return "\n".join(lines)
 
     def parse_once(self, text: str, model: type[T]) -> T:
-        data = extract_json_dict(text)
+        data = parse_json_text(text)
         if data is None:
             raise ValueError("no JSON object in model response")
         return model.model_validate(data)

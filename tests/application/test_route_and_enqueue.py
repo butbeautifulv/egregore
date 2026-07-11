@@ -1,13 +1,23 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
-from tests.application.port_fakes import fake_correlation_id_port
+from cys_core.application.routing.event_router import EventRouter
 from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
-from cys_core.domain.events.models import RoutingDecision
+from cys_core.domain.events.models import RoutingDecision, SecurityEvent
+from tests.application.port_fakes import fake_correlation_id_port
+
+
+class _StubRouter(EventRouter):
+    def route(self, event: SecurityEvent, *, profile_id: str | None = None) -> RoutingDecision:
+        return RoutingDecision(
+            event_id=event.id,
+            personas=["soc"],
+            playbook_id="triage",
+            reason="match",
+        )
 
 
 @pytest.mark.unit
@@ -16,18 +26,10 @@ def test_route_and_enqueue_sync(monkeypatch):
     from bootstrap.settings import get_settings
 
     get_settings.cache_clear()
-    router = SimpleNamespace(
-        route=lambda event: RoutingDecision(
-            event_id=event.id,
-            personas=["soc"],
-            playbook_id="triage",
-            reason="match",
-        ),
-    )
     enqueuer = MagicMock()
     enqueuer.enqueue_from_routing_sync.return_value = ["soc-evt-1"]
     use_case = RouteAndEnqueueEvent(
-        router=router,
+        router=_StubRouter(),
         enqueuer=enqueuer,
         correlation_id_port=fake_correlation_id_port(),
         use_kafka=False,

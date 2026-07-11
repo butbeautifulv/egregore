@@ -67,6 +67,8 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 - **Workers:** `interfaces/worker/orchestrator.py` → `WorkerOrchestrator`
 - **CLI:** `uv run egregore`
 - **Operator UI:** `ui/` — Next.js 16, HTTP client to FastAPI (`lib/api-client.ts`)
+- **Operator TUI:** `tui/` — Go Bubble Tea, порт того же контракта (`internal/api/`)
+- **Контракт UI+TUI:** [docs/operator-console-contract.md](docs/operator-console-contract.md)
 - **LLM:** `cys_core/llm` — LiteLLM only
 - **Продукт → runtime:** `bootstrap/product_loader.py` → `AgentDefinition`
 - **Агенты:** `AgentRegistry` + `AgentRuntime` (runtime не знает имён persona)
@@ -130,10 +132,21 @@ npx skills add langchain-ai/langchain-skills --skill '*' --yes
 ## Архитектура (кратко)
 
 ```
-Ingress → EventRouter → JobQueue → WorkerOrchestrator → Bus
+Operator API (/v1/work-orders, follow-ups)
+        ↓
+StartWorkOrder → StartEngagement → EventRouter → JobQueue
+        ↓                                    ↓
+  PlanFollowUpRunner              WorkerOrchestrator → RunWorkerJob
+  (application/planning/)              ↓
+                                 result_validator → finding_publisher
+                                              ↓
+                         Bus (workers only; control personas skip publish)
                                               ↓
                                     Critic + Coordinator (control)
 ```
+
+- **Operator SSOT:** [docs/operator-console-contract.md](docs/operator-console-contract.md) — work orders, follow-up SSE, chat routing.
+- **Bus policy:** control personas (`planner`, `critic`, `coordinator`) must not publish findings to `critic` via `WorkerFindingPublisher`; planner has empty `bus_recipients`.
 
 Подробнее: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 

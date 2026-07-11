@@ -1,6 +1,5 @@
 "use client"
 
-import * as React from "react"
 import { MoonIcon, SunIcon } from "lucide-react"
 import { useTheme } from "@/vendor/gui/theme/theme-provider"
 
@@ -13,25 +12,6 @@ import {
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
-  const mounted = React.useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  )
-
-  if (!mounted) {
-    return (
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled
-        aria-label="Переключить тему"
-      >
-        <MoonIcon />
-      </Button>
-    )
-  }
-
   const isDark = resolvedTheme === "dark"
   const label = isDark ? "Светлая тема" : "Тёмная тема"
 

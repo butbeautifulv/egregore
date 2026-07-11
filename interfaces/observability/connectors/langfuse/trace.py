@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Any
+from typing import Any, cast
 
 from bootstrap.settings import settings
 
@@ -80,7 +80,7 @@ class LangfuseTraceBackend:
 
             client = get_client()
             attrs = dict(ctx.attributes)
-            metadata = {k: str(v) for k, v in attrs.items() if v is not None and v != ""}
+            metadata: dict[str, Any] = {k: str(v) for k, v in attrs.items() if v is not None and v != ""}
             engagement_id = (
                 attrs.get("engagement_id")
                 or attrs.get("investigation_id")
@@ -104,8 +104,8 @@ class LangfuseTraceBackend:
             observation = client.start_observation(
                 name=ctx.span_name,
                 as_type="span",
-                metadata=metadata or None,
-                trace_context=trace_context,
+                metadata=cast(Any, metadata or None),
+                trace_context=cast(Any, trace_context),
             )
             span_id = str(getattr(observation, "id", ctx.span_name))
             with _spans_lock:

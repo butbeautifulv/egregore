@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
-
 import pytest
 
 from cys_core.domain.workers.models import WorkerJob, WorkerJobStatus
-from interfaces.worker.orchestrator import WorkerOrchestrator, build_agent_bus
+from cys_core.infrastructure.sandbox import LocalSandboxConnector
+from interfaces.worker.orchestrator import build_agent_bus
+from tests.application.workers.factory import FakeAgentRuntime, build_test_orchestrator, fake_agent_registry
 
 
 @pytest.mark.unit
 def test_build_agent_bus_registers_workers():
-    registry = SimpleNamespace(
-        all=lambda: [
-            SimpleNamespace(name="soc", trust_level="internal", bus_recipients=["critic"]),
-        ]
-    )
+    registry = fake_agent_registry()
     bus = build_agent_bus(registry)
     assert "soc" in bus.agent_registry
 
@@ -23,26 +18,18 @@ def test_build_agent_bus_registers_workers():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_orchestrator_run_job_publishes_finding(monkeypatch):
-    registry = SimpleNamespace(
-        all=lambda: [
-            SimpleNamespace(name="soc", trust_level="internal", bus_recipients=["critic"], schema_name="SocFinding"),
-        ],
-        get=lambda name: SimpleNamespace(
-            schema_name="SocFinding",
-            tools=[],
-            skills=[],
-            bus_recipients=["critic"],
-        ),
+    sandbox = LocalSandboxConnector()
+    monkeypatch.setattr("interfaces.worker.orchestrator.get_sandbox_connector", lambda **kwargs: sandbox)
+    registry = fake_agent_registry(schema_name="SocFinding")
+    runtime = FakeAgentRuntime(
+        return_value={"incident_id": "i1", "priority": "high", "confidence": 0.8, "summary": "ok"},
     )
-    runtime = SimpleNamespace(
-        arun=AsyncMock(return_value={"incident_id": "i1", "priority": "high", "confidence": 0.8, "summary": "ok"}),
-    )
-    orch = WorkerOrchestrator(runtime=runtime, registry=registry, bus=build_agent_bus(registry))
+    orch = build_test_orchestrator(registry=registry, runtime=runtime)
     job = WorkerJob(job_id="j1", event_id="e1", persona="soc", payload={"alert": "x"})
     result = await orch.run_job(job)
     assert result.success is True
     assert job.status == WorkerJobStatus.COMPLETED
-    assert not orch.sandbox.is_active("j1")
+    assert not sandbox.is_active("j1")
 
 
 @pytest.mark.unit

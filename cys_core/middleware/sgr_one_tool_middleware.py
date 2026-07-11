@@ -11,6 +11,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL
+from cys_core.middleware._framework_casts import cast_tool_result
 from cys_core.middleware.sgr_session import SgrSessionState
 
 
@@ -55,12 +56,12 @@ class SgrOneToolMiddleware(AgentMiddleware):
         if tool_name == REASONING_STEP_TOOL:
             result = handler(request)
             if inspect.isawaitable(result):
-                return await result
-            return result
+                return cast_tool_result(await result)
+            return cast_tool_result(result)
         blocked = self._guard_action_tool(request)
         if blocked is not None:
             return blocked
         result = handler(request)
         if inspect.isawaitable(result):
-            return await result
-        return result
+            return cast_tool_result(await result)
+        return cast_tool_result(result)

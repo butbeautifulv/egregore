@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from cys_core.application.workers.noop_signals import (
+from cys_core.domain.findings.noop import (  # noqa: F401
     NoopClass,
     classify_finding,
     is_noop_finding,

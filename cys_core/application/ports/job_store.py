@@ -29,6 +29,7 @@ class JobRecordSummary:
     tenant_id: str = "default"
     event_id: str = ""
     created_at: str = ""
+    follow_up_id: str | None = None
 
 
 class JobStorePort(Protocol):

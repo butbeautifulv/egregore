@@ -37,11 +37,14 @@ class EngagementOut(BaseModel):
     planner_status: str | None = None
     planner_rationale: str = ""
     planner_error: str = ""
+    planner_sub_goals: dict[str, str] = Field(default_factory=dict)
+    planner_depends_on: dict[str, list[str]] = Field(default_factory=dict)
     findings_summary: list[dict[str, Any]] = Field(default_factory=list)
     execution_mode: str | None = None
     synthesis_persona: str | None = None
     synthesis_status: str | None = None
     final_report: dict[str, Any] | None = None
+    updated_at: datetime | None = None
 
 
 class EngagementListOut(BaseModel):

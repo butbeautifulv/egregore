@@ -29,7 +29,11 @@ class K8sSandboxConnector:
 
     def _load_batch_api(self) -> Any:
         try:
-            from kubernetes import client, config
+            import importlib
+
+            k8s = importlib.import_module("kubernetes")
+            client = k8s.client
+            config = k8s.config
 
             try:
                 config.load_incluster_config()

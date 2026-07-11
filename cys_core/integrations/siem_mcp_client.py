@@ -12,26 +12,17 @@ from cys_core.application.runtime_config import (
     siem_mcp_enabled as _siem_mcp_enabled,
 )
 from cys_core.application.runs.tool_coercion import normalize_siem_tool_args
-from cys_core.infrastructure.http_client import sync_http_client
+from cys_core.domain.tools.catalog.siem import SIEM_TOOL_NAMES as FALLBACK_SIEM_TOOL_NAMES
+from cys_core.integrations.mcp_http import (
+    build_tools_call_payload,
+    finalize_mcp_result,
+    invoke_mcp_async,
+    invoke_mcp_sync,
+)
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
 
 logger = structlog.get_logger(__name__)
-
-# Curated read-only SIEM tools for SOC persona (not full 30+ MCP surface).
-FALLBACK_SIEM_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "investigate_incident",
-        "list_incidents",
-        "get_event_by_uuid",
-        "search_events",
-        "list_aggregated_events",
-        "lookup_assets_by_ip",
-        "export_table_list",
-        "search_user_actions",
-        "search_api_docs",
-    }
-)
 
 SIEM_MCP_TOOL_NAMES = FALLBACK_SIEM_TOOL_NAMES
 
@@ -91,34 +82,73 @@ def _siem_pdql_hint(tool_name: str, error: str) -> str:
     )
 
 
-def call_siem_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Invoke one MaxPatrol SIEM MCP tool via streamable HTTP (POST /mcp, tools/call)."""
-    if not siem_mcp_enabled():
-        return {"success": False, "error": "SIEM MCP disabled (SIEM_MCP_ENABLED=false)", "source": "siem-mcp"}
-    if tool_name not in get_siem_allowed_tools():
-        return {"success": False, "error": f"SIEM tool not allowlisted: {tool_name}", "source": "siem-mcp"}
+def _siem_mcp_request_payload(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    return build_tools_call_payload(tool_name, arguments)
 
-    normalized_arguments = normalize_siem_tool_args(tool_name, arguments or {})
 
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {"name": tool_name, "arguments": normalized_arguments},
-    }
-    headers = inject_correlation_headers(
+def _siem_mcp_headers() -> dict[str, str]:
+    return inject_correlation_headers(
         {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         },
     )
+
+
+def _finalize_siem_mcp_result(tool_name: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _on_success(name: str) -> None:
+        metrics.record_tool_invocation(name, success=True)
+        logger.info("siem_mcp_tool_ok", tool=name, source="siem-mcp")
+
+    def _on_failure(name: str) -> None:
+        metrics.record_tool_invocation(name, success=False)
+
+    def _validation(content: Any) -> str | None:
+        return _mcp_tool_error_message(content)
+
+    result = finalize_mcp_result(
+        tool_name,
+        body,
+        source="siem-mcp",
+        hint_fn=_siem_pdql_hint,
+        validation_fn=_validation,
+        on_success=_on_success,
+        on_failure=_on_failure,
+    )
+    if not result.get("success"):
+        logger.warning(
+            "siem_mcp_tool_failed",
+            tool=tool_name,
+            source="siem-mcp",
+            error=str(result.get("error", ""))[:500],
+        )
+    return result
+
+
+def _prepare_siem_call(tool_name: str, arguments: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not siem_mcp_enabled():
+        return {"success": False, "error": "SIEM MCP disabled (SIEM_MCP_ENABLED=false)", "source": "siem-mcp"}
+    if tool_name not in get_siem_allowed_tools():
+        return {"success": False, "error": f"SIEM tool not allowlisted: {tool_name}", "source": "siem-mcp"}
+    return {"arguments": normalize_siem_tool_args(tool_name, arguments or {})}
+
+
+def call_siem_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Invoke one MaxPatrol SIEM MCP tool via streamable HTTP (POST /mcp, tools/call)."""
+    prepared = _prepare_siem_call(tool_name, arguments)
+    if prepared is None or "arguments" not in prepared:
+        return prepared or {"success": False, "error": "invalid_args", "source": "siem-mcp"}
+
+    payload = _siem_mcp_request_payload(tool_name, prepared["arguments"])
     url = get_siem_mcp_url().rstrip("/")
 
     try:
-        with sync_http_client(timeout=get_siem_mcp_timeout(), headers=headers) as client:
-            response = client.post(url, json=payload)
-            response.raise_for_status()
-            body = response.json()
+        body = invoke_mcp_sync(
+            url=url,
+            payload=payload,
+            headers=_siem_mcp_headers(),
+            timeout=get_siem_mcp_timeout(),
+        )
     except httpx.HTTPError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
         logger.warning("siem_mcp_http_error", tool=tool_name, source="siem-mcp", error=str(exc))
@@ -128,53 +158,32 @@ def call_siem_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
         logger.warning("siem_mcp_invalid_json", tool=tool_name, source="siem-mcp", error=str(exc))
         return {"success": False, "error": f"SIEM MCP invalid JSON: {exc}", "source": "siem-mcp", "tool": tool_name}
 
-    if "error" in body:
-        err = body["error"]
-        message = err.get("message", str(err)) if isinstance(err, dict) else str(err)
-        metrics.record_tool_invocation(tool_name, success=False)
-        logger.warning("siem_mcp_rpc_error", tool=tool_name, source="siem-mcp", error=message)
-        return {"success": False, "error": message + _siem_pdql_hint(tool_name, message), "source": "siem-mcp", "tool": tool_name}
+    return _finalize_siem_mcp_result(tool_name, body)
 
-    result = body.get("result") or {}
-    text_blocks = [
-        block.get("text", "")
-        for block in result.get("content", [])
-        if isinstance(block, dict) and block.get("type") == "text"
-    ]
-    combined = "\n".join(t for t in text_blocks if t).strip()
-    parsed: Any = combined
-    if combined:
-        try:
-            parsed = json.loads(combined)
-        except json.JSONDecodeError:
-            parsed = combined
 
-    validation_error = _mcp_tool_error_message(parsed)
-    if validation_error is None and isinstance(parsed, dict):
-        nested = parsed.get("content")
-        validation_error = _mcp_tool_error_message(nested)
-    if validation_error is not None:
-        metrics.record_tool_invocation(tool_name, success=False)
-        logger.warning(
-            "siem_mcp_tool_validation_error",
-            tool=tool_name,
-            source="siem-mcp",
-            error=validation_error[:500],
+async def acall_siem_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Async SIEM MCP invocation for worker event-loop contexts."""
+    prepared = _prepare_siem_call(tool_name, arguments)
+    if prepared is None or "arguments" not in prepared:
+        return prepared or {"success": False, "error": "invalid_args", "source": "siem-mcp"}
+
+    payload = _siem_mcp_request_payload(tool_name, prepared["arguments"])
+    url = get_siem_mcp_url().rstrip("/")
+
+    try:
+        body = await invoke_mcp_async(
+            url=url,
+            payload=payload,
+            headers=_siem_mcp_headers(),
+            timeout=get_siem_mcp_timeout(),
         )
-        return {
-            "success": False,
-            "error": validation_error + _siem_pdql_hint(tool_name, validation_error),
-            "source": "siem-mcp",
-            "tool": tool_name,
-            "content": parsed,
-        }
+    except httpx.HTTPError as exc:
+        metrics.record_tool_invocation(tool_name, success=False)
+        logger.warning("siem_mcp_http_error", tool=tool_name, source="siem-mcp", error=str(exc))
+        return {"success": False, "error": f"SIEM MCP HTTP error: {exc}{_siem_pdql_hint(tool_name, str(exc))}", "source": "siem-mcp", "tool": tool_name}
+    except json.JSONDecodeError as exc:
+        metrics.record_tool_invocation(tool_name, success=False)
+        logger.warning("siem_mcp_invalid_json", tool=tool_name, source="siem-mcp", error=str(exc))
+        return {"success": False, "error": f"SIEM MCP invalid JSON: {exc}", "source": "siem-mcp", "tool": tool_name}
 
-    metrics.record_tool_invocation(tool_name, success=True)
-    logger.info("siem_mcp_tool_ok", tool=tool_name, source="siem-mcp")
-    return {
-        "success": True,
-        "source": "siem-mcp",
-        "tool": tool_name,
-        "content": parsed,
-        "readonly": True,
-    }
+    return _finalize_siem_mcp_result(tool_name, body)

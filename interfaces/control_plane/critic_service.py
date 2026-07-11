@@ -4,6 +4,8 @@ import json
 from typing import Any
 
 from bootstrap.container import get_container
+from cys_core.application.bus_engagement import extract_engagement_id, normalize_correlation_id
+from cys_core.application.engagement_bus_guard import get_engagement_bus_guard
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.domain.security.bus_messages import BusMessageType
@@ -29,15 +31,29 @@ class CriticService(ControlMessageHandler):
             schema_registry=container.get_schema_registry_port(),
         )
 
-    async def _enqueue_revision(self, envelope: dict[str, Any], feedback: str) -> None:
+    async def _enqueue_revision(self, envelope: dict[str, Any], feedback: str) -> bool:
         payload = dict(envelope.get("payload", {}))
         persona = str(envelope.get("sender", payload.get("agent", "soc")))
+        correlation_id = normalize_correlation_id(
+            str(payload.get("correlation_id", "")),
+            payload,
+        )
+        engagement_id = extract_engagement_id(correlation_id=correlation_id, payload=payload)
+        settings = get_container().settings
+        guard = get_engagement_bus_guard()
+        if engagement_id and guard.revision_cap_exceeded(
+            engagement_id,
+            persona,
+            max_revisions=settings.bus_max_revisions_per_persona,
+        ):
+            return False
 
         bus = build_agent_bus()
         revision_payload = {**payload, "feedback": feedback}
         revision_envelope = bus.send_message("critic", persona, BusMessageType.REVISION.value, revision_payload)
         revision_envelope["message_id"] = revision_envelope.get("signature", "")
         await self.transport.publish_delivery(revision_envelope)
+        return True
 
     async def handle_message(self, envelope: dict[str, Any]) -> dict[str, Any]:
         context = self.extract_context(envelope)
@@ -55,7 +71,30 @@ class CriticService(ControlMessageHandler):
             tenant_id=tenant_id,
         )
         if not result.get("passed", True) and not is_noop_finding(finding if isinstance(finding, dict) else {}):
-            await self._enqueue_revision(envelope, feedback="critic_revision_requested")
+            settings = get_container().settings
+            guard = get_engagement_bus_guard()
+            cap_exceeded = bool(
+                engagement_id
+                and guard.revision_cap_exceeded(
+                    engagement_id,
+                    persona,
+                    max_revisions=settings.bus_max_revisions_per_persona,
+                )
+            )
+            if cap_exceeded:
+                result = {
+                    **result,
+                    "passed": True,
+                    "auto_accepted_after_revision_cap": True,
+                }
+            elif await self._enqueue_revision(envelope, feedback="critic_revision_requested"):
+                pass
+            else:
+                result = {
+                    **result,
+                    "passed": True,
+                    "auto_accepted_after_revision_cap": True,
+                }
 
         if engagement_id:
             container = get_container()

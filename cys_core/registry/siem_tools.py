@@ -6,7 +6,6 @@ from typing import Any
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel
 
-from cys_core.application.runs.tool_coercion import normalize_siem_tool_args
 from cys_core.integrations.siem_mcp_client import get_siem_allowed_tools
 from cys_core.registry.siem_tool_schemas import (
     GenericSiemToolInput,
@@ -16,28 +15,7 @@ from cys_core.registry.siem_tool_schemas import (
     SearchEventsInput,
 )
 
-_SIEM_TOOL_DESCRIPTIONS: dict[str, str] = {
-    "investigate_incident": (
-        "Use FIRST when triaging a SIEM incident by ID. "
-        "Required arg: incident_id (UUID string, not 'id' or 'kwargs'). "
-        "Returns incident summary, correlated events, and optional asset/IOC context. "
-        "Do NOT use siem_request if this tool applies."
-    ),
-    "list_incidents": (
-        "List SIEM incidents (New/InProgress queue). "
-        "Use before investigate_incident when no incident ID is known."
-    ),
-    "get_event_by_uuid": "Fetch one SIEM event by UUID for drill-down after investigate_incident or search_events.",
-    "search_events": (
-        "Search SIEM events by PDQL where clause for correlation and timeline enrichment. "
-        "Use after investigate_incident when you need additional predicates."
-    ),
-    "list_aggregated_events": "List aggregated SIEM events for timeline visualization around an incident window.",
-    "lookup_assets_by_ip": "Enrich investigation targets: resolve assets by IP from SIEM asset inventory.",
-    "export_table_list": "Export tabular IOC/list data from SIEM table lists for lookup during triage.",
-    "search_user_actions": "Audit who changed an incident or SIEM object (user action log).",
-    "search_api_docs": "Escape hatch: search local MaxPatrol SIEM API docs when typed tools are insufficient.",
-}
+from cys_core.domain.tools.catalog.siem import SIEM_TOOL_DESCRIPTIONS as _SIEM_TOOL_DESCRIPTIONS
 
 _SIEM_TOOL_SCHEMAS: dict[str, type[BaseModel]] = {
     "investigate_incident": InvestigateIncidentInput,
@@ -50,8 +28,14 @@ _SIEM_TOOL_SCHEMAS: dict[str, type[BaseModel]] = {
 def _invoke_siem_tool(name: str, args: dict[str, Any]) -> str:
     from cys_core.infrastructure.tools.adapters.siem_mcp import call_siem_tool
 
-    normalized = normalize_siem_tool_args(name, args)
-    result = call_siem_tool(name, normalized)
+    result = call_siem_tool(name, args)
+    return json.dumps(result, ensure_ascii=False)
+
+
+async def _ainvoke_siem_tool(name: str, args: dict[str, Any]) -> str:
+    from cys_core.infrastructure.tools.adapters.siem_mcp import acall_siem_tool
+
+    result = await acall_siem_tool(name, args)
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -59,8 +43,12 @@ def _make_typed_siem_tool(name: str, description: str, schema: type[BaseModel]) 
     def _run(**kwargs: Any) -> str:
         return _invoke_siem_tool(name, kwargs)
 
+    async def _arun(**kwargs: Any) -> str:
+        return await _ainvoke_siem_tool(name, kwargs)
+
     return StructuredTool.from_function(
         func=_run,
+        coroutine=_arun,
         name=name,
         description=description,
         args_schema=schema,
@@ -75,8 +63,12 @@ def make_siem_tool(name: str, description: str) -> BaseTool:
     def _run(**kwargs: Any) -> str:
         return _invoke_siem_tool(name, kwargs)
 
+    async def _arun(**kwargs: Any) -> str:
+        return await _ainvoke_siem_tool(name, kwargs)
+
     return StructuredTool.from_function(
         func=_run,
+        coroutine=_arun,
         name=name,
         description=description,
         args_schema=GenericSiemToolInput,

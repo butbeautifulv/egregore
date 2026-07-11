@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from cys_core.application.bus_engagement import normalize_correlation_id
+
 
 class ControlMessageHandler:
     """Shared envelope parsing for coordinator/critic control-plane handlers."""
@@ -16,7 +18,10 @@ class ControlMessageHandler:
         payload = cls.extract_payload(envelope)
         event_id = str(payload.get("event_id", "n/a"))
         tenant_id = str(payload.get("tenant_id", "default"))
-        investigation_id = str(payload.get("correlation_id", payload.get("event_id", event_id)))
+        investigation_id = normalize_correlation_id(
+            str(payload.get("correlation_id", payload.get("event_id", event_id))),
+            payload,
+        )
         finding = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
         sender = str(envelope.get("sender", "unknown"))
         job_id = f"{sender}:{investigation_id}" if investigation_id else f"{sender}:unknown"

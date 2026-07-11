@@ -30,6 +30,12 @@ data:
   {{- if .Values.env.workerJobTimeout }}
   WORKER_JOB_TIMEOUT: {{ .Values.env.workerJobTimeout | quote }}
   {{- end }}
+  {{- if .Values.env.workerJobTimeoutIntel }}
+  WORKER_JOB_TIMEOUT_INTEL: {{ .Values.env.workerJobTimeoutIntel | quote }}
+  {{- end }}
+  {{- if .Values.env.workerJobTimeoutSynth }}
+  WORKER_JOB_TIMEOUT_SYNTH: {{ .Values.env.workerJobTimeoutSynth | quote }}
+  {{- end }}
   {{- if .Values.env.defaultJobRecursionLimit }}
   DEFAULT_JOB_RECURSION_LIMIT: {{ .Values.env.defaultJobRecursionLimit | quote }}
   {{- end }}

@@ -34,6 +34,8 @@ class EngagementStateStore(Protocol):
         goal: str | None = None,
         execution_mode: str | None = None,
         synthesis_persona: str | None = None,
+        planner_sub_goals: dict[str, str] | None = None,
+        planner_depends_on: dict[str, list[str]] | None = None,
     ) -> None: ...
 
     def fail_engagement(self, tenant_id: str, engagement_id: str, *, reason: str) -> None: ...

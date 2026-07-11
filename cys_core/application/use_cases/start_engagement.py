@@ -180,7 +180,10 @@ class StartEngagement:
             if self.egress is not None:
                 self.egress.publish_status(engagement_id, "planning", {"tenant_id": event.tenant_id})
             try:
-                plan = await self.meta_planner.execute(event)
+                plan = await self.meta_planner.execute(
+                    event,
+                    profile_id=str(payload.get("profile_id") or event.payload.get("profile_id") or ""),
+                )
                 enriched = {**payload, **self.meta_planner.to_worker_jobs_payload(plan)}
                 job_ids = await self.dispatch.enqueuer.enqueue_from_routing(
                     event.id,

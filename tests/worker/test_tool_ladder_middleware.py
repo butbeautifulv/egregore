@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 import structlog
@@ -9,9 +10,11 @@ from langchain_core.messages import ToolMessage
 from cys_core.application.workers.tool_execution_tracker import (
     clear_tool_execution_count,
     record_evidence_manifest,
+    record_persona_manifest,
     record_siem_drilldown,
     record_tool_success,
     record_veil_tool,
+    seed_job_from_persona_manifest,
 )
 from cys_core.domain.evidence.models import DataGap, EvidenceManifest, Observation
 from cys_core.middleware.tool_ladder_middleware import ToolLadderMiddleware
@@ -102,13 +105,71 @@ def test_tool_ladder_blocks_search_events_when_drilldown_exhausted() -> None:
     clear_tool_execution_count(job_id)
     record_tool_success(job_id, "investigate_incident")
     record_evidence_manifest(job_id, "investigate_incident", _sparse_manifest())
-    for _ in range(3):
+    for _ in range(2):
         record_siem_drilldown(job_id)
     middleware = ToolLadderMiddleware(persona="soc")
     blocked = middleware._check(_request("search_events", job_id=job_id))
     assert blocked is not None
     assert "SIEM ladder complete" in str(blocked.content)
     clear_tool_execution_count(job_id)
+
+
+@pytest.mark.unit
+def test_tool_ladder_blocks_repeat_investigate_from_persona_manifest() -> None:
+    job_id = "job-revision-bus"
+    investigation_id = "eng-revision-manifest"
+    clear_tool_execution_count(job_id)
+    record_persona_manifest(investigation_id, "soc", _sparse_manifest())
+    seed_job_from_persona_manifest(job_id, _sparse_manifest(), mark_siem_done=True)
+    middleware = ToolLadderMiddleware(persona="soc")
+    structlog.contextvars.bind_contextvars(job_id=job_id, correlation_id=investigation_id)
+    blocked = middleware._check(_request("investigate_incident", job_id=job_id))
+    assert blocked is not None
+    assert "already completed" in str(blocked.content)
+    allowed = middleware._check(_request("get_event_by_uuid", job_id=job_id))
+    assert allowed is None
+    clear_tool_execution_count(job_id)
+
+
+@pytest.mark.unit
+def test_security_middleware_skips_budget_on_blocked_tool_result() -> None:
+    from cys_core.domain.workers.job_budget import JobBudgetTracker
+    from cys_core.middleware.security_middleware import SecurityMiddleware
+
+    session_id = "sess-blocked-budget"
+    JobBudgetTracker.configure(session_id, max_tokens=10_000, max_cost_usd=1.0, max_tool_calls=3)
+    middleware = SecurityMiddleware(agent_id="soc", session_id=session_id)
+    request = SimpleNamespace(tool_call={"name": "search_events", "args": {}, "id": "call-1"})
+    blocked = ToolMessage(
+        content="SIEM ladder complete after investigate_incident. Emit SocFinding JSON.",
+        tool_call_id="call-1",
+        status="error",
+    )
+
+    middleware.wrap_tool_call(request, lambda _req: blocked)
+    state = JobBudgetTracker.get(session_id)
+    assert state is not None
+    assert state.tool_calls == 0
+    JobBudgetTracker.clear(session_id)
+
+
+@pytest.mark.unit
+def test_one_tool_middleware_allows_two_soc_tools_before_investigate() -> None:
+    from cys_core.middleware.one_tool_middleware import OneToolPerTurnMiddleware
+
+    structlog.contextvars.bind_contextvars(job_id="job-soc-two", correlation_id="eng-soc-two")
+    middleware = OneToolPerTurnMiddleware(persona="soc")
+    request = SimpleNamespace(tool_call={"name": "investigate_incident", "args": {}, "id": "call-1"})
+    handler = MagicMock(return_value=ToolMessage(content="ok", tool_call_id="call-1", status="success"))
+    first = middleware.wrap_tool_call(request, handler)
+    assert first.status != "error"
+    request2 = SimpleNamespace(tool_call={"name": "get_event_by_uuid", "args": {}, "id": "call-2"})
+    second = middleware.wrap_tool_call(request2, handler)
+    assert second.status != "error"
+    request3 = SimpleNamespace(tool_call={"name": "list_incident_events", "args": {}, "id": "call-3"})
+    third = middleware.wrap_tool_call(request3, handler)
+    assert isinstance(third, ToolMessage)
+    assert "Only one tool call per turn" in str(third.content)
 
 
 @pytest.mark.unit

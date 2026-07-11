@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from cys_core.application.ports.tracing_ports import ApplicationTracingPort, CorrelationIdPort, NOOP_APPLICATION_TRACING
 from cys_core.application.use_cases.dispatch_event import DispatchEvent
 from cys_core.application.use_cases.route_event import RouteEvent
 from cys_core.application.routing.event_router import EventRouter
-from cys_core.domain.events.models import RoutingDecision, SecurityEvent
+from cys_core.domain.events.models import EventType, RoutingDecision, SecurityEvent, Severity
 
 
 class RouteAndEnqueueEvent:
@@ -58,9 +58,9 @@ class RouteAndEnqueueEvent:
     ) -> SecurityEvent:
         return SecurityEvent(
             id=event_id or f"evt-{uuid.uuid4().hex[:12]}",
-            type=event_type,  # type: ignore[arg-type]
+            type=cast(EventType, event_type),
             source=source,
-            severity=severity,  # type: ignore[arg-type]
+            severity=cast(Severity, severity),
             payload=payload,
             tenant_id=tenant_id,
             correlation_id=correlation_id or "",

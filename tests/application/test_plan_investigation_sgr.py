@@ -23,3 +23,34 @@ def test_parse_plan_includes_reasoning_metadata():
     )
     assert plan.reasoning_steps == ["step1", "step2"]
     assert plan.plan_status == "initial"
+
+
+@pytest.mark.unit
+def test_parse_plan_loose_python_repr():
+    pi = PlanInvestigation(runtime=MagicMock(), engagement_store=MagicMock(), **plan_investigation_port_kwargs())
+    plan = pi._parse_plan(
+        {
+            "raw_response": (
+                "Returning structured response: personas=['consultant'] "
+                "sub_goals={'consultant': 'DevSecOps'} rationale='ok' "
+                "reasoning_steps=[] plan_status='' execution_mode=None synthesis_persona=None"
+            )
+        },
+        "Расскажи про DevSecOps",
+    )
+    assert plan.personas == ["consultant"]
+    assert plan.sub_goals["consultant"] == "DevSecOps"
+
+
+@pytest.mark.unit
+def test_advisory_consultant_fallback_on_empty_personas():
+    pi = PlanInvestigation(runtime=MagicMock(), engagement_store=MagicMock(), **plan_investigation_port_kwargs())
+    from cys_core.domain.engagement.models import EngagementPlan
+
+    plan = EngagementPlan(personas=[], sub_goals={}, rationale="")
+    out = pi._advisory_consultant_fallback(
+        plan,
+        "Расскажи мне про защиту CI/CD. DevSecOps. КАК?",
+        ["consultant", "soc"],
+    )
+    assert out.personas == ["consultant"]

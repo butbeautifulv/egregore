@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
-from langchain_core.tools import BaseTool, tool
+import structlog
+from langchain_core.tools import BaseTool, StructuredTool, tool
 
 from cys_core.application.ports.tool_backend import ToolBackend
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID, resolve_profile_id
@@ -357,16 +359,15 @@ def delegate_research(subtask: str, *, context_id: str = "", tenant_id: str = "d
     return json.dumps(payload, ensure_ascii=False)
 
 
-@tool
-def spawn_worker(
+def _resolve_spawn_worker_job(
     persona: str,
     sub_goal: str,
     *,
     context_id: str = "",
     tenant_id: str = "default",
     persona_overlay: str = "",
-) -> str:
-    """Enqueue a specialist worker spawned from the active conductor session."""
+) -> tuple[str | None, Any | None, Any | None]:
+    """Validate spawn request; return (error_json, worker_job, queue)."""
     from bootstrap.container import get_container
     from cys_core.application.spawn_broker import SubagentSpawnBroker
     from cys_core.domain.runs.models import ContextKind
@@ -375,7 +376,7 @@ def spawn_worker(
     from cys_core.infrastructure.runs.factory import get_run_state_store
 
     if not context_id:
-        return json.dumps({"error": "missing context_id"}, ensure_ascii=False)
+        return json.dumps({"error": "missing context_id"}, ensure_ascii=False), None, None
 
     store = get_run_state_store()
     state = None
@@ -384,7 +385,7 @@ def spawn_worker(
         if state is not None:
             break
     if state is None:
-        return json.dumps({"error": "run_context_not_found"}, ensure_ascii=False)
+        return json.dumps({"error": "run_context_not_found"}, ensure_ascii=False), None, None
 
     ctx = state.run_context
     broker = SubagentSpawnBroker(get_agent_catalog())
@@ -401,10 +402,37 @@ def spawn_worker(
         parent_persona="conductor",
     )
     if reason:
-        return json.dumps({"error": reason}, ensure_ascii=False)
+        return json.dumps({"error": reason}, ensure_ascii=False), None, None
 
     job = broker.to_worker_job(payload, event_id=context_id)
     container = get_container()
+    parent_job_id = structlog.contextvars.get_contextvars().get("job_id")
+    work_kind = structlog.contextvars.get_contextvars().get("work_kind")
+    if isinstance(parent_job_id, str) and work_kind == "follow_up_orchestrate":
+        from bootstrap.settings import get_settings
+
+        settings = get_settings()
+        engagement_store = container.get_engagement_state_store()
+        engagement = engagement_store.get(tenant_id, context_id)
+        if engagement is not None:
+            if engagement.follow_up_spawn_count >= settings.max_follow_up_spawns:
+                return json.dumps({"error": "max_follow_up_spawns_exceeded"}, ensure_ascii=False), None, None
+            engagement.follow_up_spawn_count += 1
+            engagement.reopen_for_follow_up()
+            spawned = list(engagement.follow_up_spawned_job_ids or [])
+            spawned.append(job.job_id)
+            engagement.follow_up_spawned_job_ids = spawned
+            engagement_store.upsert(engagement)
+        job.payload.update(
+            {
+                "phase": "follow_up",
+                "work_kind": "follow_up_child",
+                "orchestrator_job_id": parent_job_id,
+                "operator_message": sub_goal,
+                "context_id": context_id,
+                "spawned_job_ids": list(engagement.follow_up_spawned_job_ids or []) if engagement else [],
+            }
+        )
     job_store = container.get_job_store()
     queue = container.get_job_queue(persona=persona)
     job_store.upsert_pending(
@@ -414,11 +442,67 @@ def spawn_worker(
         tenant_id=job.tenant_id,
         event_id=job.event_id,
     )
-    queue.enqueue(job.model_dump())
+    return None, job, queue
+
+
+def _spawn_worker(
+    persona: str,
+    sub_goal: str,
+    *,
+    context_id: str = "",
+    tenant_id: str = "default",
+    persona_overlay: str = "",
+) -> str:
+    """Enqueue a specialist worker spawned from the active conductor session."""
+    error_json, job, queue = _resolve_spawn_worker_job(
+        persona,
+        sub_goal,
+        context_id=context_id,
+        tenant_id=tenant_id,
+        persona_overlay=persona_overlay,
+    )
+    if error_json is not None:
+        return error_json
+    assert job is not None and queue is not None
+    queue.enqueue(job)
     return json.dumps(
         {"job_id": job.job_id, "persona": persona, "status": "enqueued"},
         ensure_ascii=False,
     )
+
+
+async def _aspawn_worker(
+    persona: str,
+    sub_goal: str,
+    *,
+    context_id: str = "",
+    tenant_id: str = "default",
+    persona_overlay: str = "",
+) -> str:
+    """Async enqueue for worker event-loop contexts (conductor arun)."""
+    error_json, job, queue = _resolve_spawn_worker_job(
+        persona,
+        sub_goal,
+        context_id=context_id,
+        tenant_id=tenant_id,
+        persona_overlay=persona_overlay,
+    )
+    if error_json is not None:
+        return error_json
+    assert job is not None and queue is not None
+    await queue.aenqueue(job)
+    return json.dumps(
+        {"job_id": job.job_id, "persona": persona, "status": "enqueued"},
+        ensure_ascii=False,
+    )
+
+
+spawn_worker = StructuredTool.from_function(
+    func=_spawn_worker,
+    coroutine=_aspawn_worker,
+    name="spawn_worker",
+    description="Enqueue a specialist worker spawned from the active conductor session.",
+)
 
 
 @tool

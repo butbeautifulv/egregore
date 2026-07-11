@@ -54,7 +54,9 @@ export function AppShell({
       }
     >
       {sidebar}
-      <SidebarInset>{Provider ? <Provider>{body}</Provider> : body}</SidebarInset>
+      <SidebarInset className="md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-0">
+        {Provider ? <Provider>{body}</Provider> : body}
+      </SidebarInset>
     </SidebarProvider>
   )
 }

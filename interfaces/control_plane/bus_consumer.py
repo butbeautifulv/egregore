@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from cys_core.infrastructure.daemon_runner import run_poll_daemon
 from cys_core.infrastructure.kafka_bus_events import consume_bus_finding
@@ -39,7 +39,7 @@ class BusFindingsConsumer:
             return False
         result = self.handler(envelope)
         if hasattr(result, "__await__"):
-            await result
+            await cast(Awaitable[Any], result)
         return True
 
     async def run(self, *, idle_timeout: float = 30.0) -> int:

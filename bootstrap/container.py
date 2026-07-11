@@ -354,6 +354,8 @@ class Container:
                 resolve_mcp_tools=mcp_tool_registry.resolve,
                 resolve_legacy_tools=tool_registry.resolve,
                 make_load_skill_tool=make_load_skill_tool,
+                meta_planner=self.get_meta_planner(),
+                dispatch=self.get_dispatch_event(),
             )
         )
 
@@ -365,8 +367,10 @@ class Container:
             return self._meta_planner
         from cys_core.application.use_cases.meta_planner import MetaPlanner
 
+        from cys_core.runtime.agent import get_runtime
+
         self._meta_planner = MetaPlanner(
-            runtime=self.get_agent_runtime(),
+            runtime=get_runtime(),
             engagement_store=self.get_engagement_state_store(),
             resource_source=self.get_resource_source_port(),
             persona_ranking=self.get_persona_ranking_port(),
@@ -405,6 +409,27 @@ class Container:
         from cys_core.infrastructure.engagement.factory import get_engagement_egress
 
         return get_engagement_egress(self.settings)
+
+    def get_reconcile_stuck_engagements(self):
+        from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
+        from cys_core.application.use_cases.reconcile_stuck_engagements import ReconcileStuckEngagements
+
+        settings = self.settings
+        return ReconcileStuckEngagements(
+            engagement_store=self.get_engagement_state_store(),
+            job_store=self.get_job_store(),
+            enqueue_synthesis_job=EnqueueSynthesisJob(
+                engagement_store=self.get_engagement_state_store(),
+                queue=self.get_job_queue(),
+                engagement_egress=self.get_engagement_egress(),
+            ),
+            queue=self.get_job_queue(),
+            enqueue_worker_jobs=self.get_orchestration_port(),
+            metrics=self.get_metrics_port(),
+            default_job_timeout_s=settings.worker_job_timeout,
+            synth_job_timeout_s=settings.worker_job_timeout_synth or settings.worker_job_timeout,
+            planner_timeout_seconds=settings.planner_timeout_seconds,
+        )
 
     def get_bus_ingress_router(self):
         if self._bus_router is not None:
@@ -469,6 +494,7 @@ class Container:
             bus_guard=self.get_engagement_bus_guard(),
             metrics=self.get_metrics_port(),
             max_jobs_per_engagement=cfg.max_jobs_per_engagement,
+            max_revisions_per_persona=self.settings.bus_max_revisions_per_persona,
         )
         return self._orchestration
 
@@ -612,7 +638,10 @@ class Container:
             return self._resource_source_port
         from cys_core.infrastructure.registry.resource_source_adapter import build_resource_source_port
 
-        self._resource_source_port = build_resource_source_port(self.get_agent_registry_port())
+        self._resource_source_port = build_resource_source_port(
+            self.get_agent_registry_port(),
+            agent_catalog=self.get_agent_catalog(),
+        )
         return self._resource_source_port
 
     def get_agents_root_port(self):
@@ -719,9 +748,12 @@ class Container:
             def list_pending_approvals(self) -> list[Any]:
                 return store.list_pending_approvals()
 
+        def _publish_paused(record: dict[str, Any]) -> None:
+            publish_paused_job_sync(record)
+
         hitl_pause.configure(
             registry=_JobStoreHitlAdapter(),
-            publish_paused=publish_paused_job_sync,
+            publish_paused=_publish_paused,
             on_pause_count=lambda count: metrics.refresh_hitl_pending(count),
         )
 
@@ -742,12 +774,19 @@ class Container:
         configure_tool_backend(_GatewayToolBackend())
         configure_tool_audit(use_kafka=self.settings.use_kafka, settings=self.settings)
         configure_tool_execution_gateway(self.get_tool_execution_gateway())
+        from cys_core.application.runs.tool_coercion import configure_manifest_lookup
+        from cys_core.application.workers.tool_execution_tracker import get_manifest_port
+
+        configure_manifest_lookup(get_manifest_port())
 
     def wire_bus_reload(self) -> None:
         from cys_core.infrastructure.catalog.catalog_registry import register_bus_reload_callback
         from interfaces.worker.orchestrator import build_agent_bus
 
-        register_bus_reload_callback(build_agent_bus)
+        def _reload_bus(_registry: object) -> None:
+            build_agent_bus(signing_key=self.settings.bus_signing_key_bytes)
+
+        register_bus_reload_callback(_reload_bus)
 
     def wire_agent_definitions_loader(self) -> None:
         from bootstrap.agent_definitions_loader import get_default_agent_definitions_loader
@@ -818,14 +857,14 @@ def get_container() -> Container:
     container = Container()
     _container = container
     container.wire_agent_definitions_loader()
+    _ensure_dev_catalog_seeded(container)
+    _ensure_tool_catalog_seeded(container)
     container.wire_catalog_ports()
     container.wire_runtime()
     container.wire_hitl_pause()
     container.wire_tool_backend()
     container.wire_bus_reload()
     container.wire_engagement_egress()
-    _ensure_dev_catalog_seeded(container)
-    _ensure_tool_catalog_seeded(container)
     return container
 
 

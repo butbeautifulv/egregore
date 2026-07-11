@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
+from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.domain.catalog.models import ProfilePolicyPayload
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.policy.defaults import DEFAULT_BUS_POLICY, ESCALATION_ONLY_PATHS, default_profile_policy_payload
@@ -33,7 +34,7 @@ def _coerce_profile_policy(policy: object) -> ProfilePolicyPayload:
 class ProfilePolicyLoader:
     """Implements ProfilePolicyPort — loads policy from agent catalog."""
 
-    def __init__(self, catalog_getter: Callable[[], object]) -> None:
+    def __init__(self, catalog_getter: Callable[[], AgentCatalogPort]) -> None:
         self._catalog_getter = catalog_getter
 
     def get_policy(self, profile_id: str = DEFAULT_PROFILE_ID) -> ProfilePolicyPayload:
@@ -59,7 +60,7 @@ class ProfilePolicyLoader:
     def get_escalation_paths(self, profile_id: str = DEFAULT_PROFILE_ID) -> set[tuple[str, str]]:
         policy = self.get_policy(profile_id)
         if policy.escalation_paths:
-            return {tuple(pair) for pair in policy.escalation_paths if len(pair) == 2}
+            return {(str(pair[0]), str(pair[1])) for pair in policy.escalation_paths if len(pair) == 2}
         return set(ESCALATION_ONLY_PATHS)
 
     def get_hitl_threshold(self, profile_id: str = DEFAULT_PROFILE_ID) -> str:

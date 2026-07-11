@@ -24,8 +24,18 @@ wait_for_redis() {
   local attempts=30
   echo "[dev] waiting for Redis at ${host}:${port}..."
   for _ in $(seq 1 "$attempts"); do
-    if REDISCLI_AUTH="$password" redis-cli -h "$host" -p "$port" ping 2>/dev/null | grep -q PONG; then
-      echo "[dev] redis ok"
+    if command -v redis-cli >/dev/null 2>&1; then
+      if REDISCLI_AUTH="$password" redis-cli -h "$host" -p "$port" ping 2>/dev/null | grep -q PONG; then
+        echo "[dev] redis ok"
+        return 0
+      fi
+    elif docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'egregore-redis-1'; then
+      if docker exec egregore-redis-1 redis-cli -a "$password" ping 2>/dev/null | grep -q PONG; then
+        echo "[dev] redis ok (via docker)"
+        return 0
+      fi
+    elif python3 -c "import socket; s=socket.create_connection(('$host', $port), 1); s.close()" 2>/dev/null; then
+      echo "[dev] redis port open (skipping AUTH check)"
       return 0
     fi
     sleep 1
@@ -62,8 +72,13 @@ else
 fi
 
 echo "[dev] starting UI on :3000"
-(cd ui && npm run dev) &
+(cd ui && EGREGORE_API_UPSTREAM=http://127.0.0.1:8080 NEXT_PUBLIC_EGRESS_SSE=1 bun run dev) &
 PIDS+=($!)
+
+if command -v go >/dev/null && [[ -f tui/cmd/egregore-tui/main.go ]]; then
+  echo "[dev] starting TUI (run in this terminal — attach manually if needed)"
+  echo "[dev]   cd tui && make run"
+fi
 
 echo "[dev] API http://localhost:8080  UI http://localhost:3000  (Ctrl+C to stop)"
 wait

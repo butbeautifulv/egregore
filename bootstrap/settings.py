@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Self
 
 from pydantic import Field, SecretStr, computed_field, field_validator, model_validator
@@ -16,8 +17,26 @@ _DEFAULT_POSTGRES_PASSWORD = "password"
 _DEFAULT_BUS_SIGNING_KEY = "cys-agi-bus-key"
 
 
+def _settings_env_files() -> tuple[str, ...]:
+    """Load repo-local secrets after .env (same file sourced by scripts/dev.sh)."""
+    files: list[str] = [".env"]
+    override = (Path.cwd() / ".env").resolve()
+    if override.name == ".env" and override.is_file() and str(override) not in files:
+        files[0] = str(override)
+
+    repo_root = Path(__file__).resolve().parents[3]
+    local_secrets = repo_root / "deploy" / ".secrets" / "egregore-local.env"
+    if local_secrets.is_file():
+        files.append(str(local_secrets))
+    return tuple(files)
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_settings_env_files(),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     openrouter_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
@@ -39,6 +58,16 @@ class Settings(BaseSettings):
         default=180.0,
         validation_alias="WORKER_JOB_TIMEOUT",
         description="Hard wall-clock cap per worker job (sandbox + LLM + bus).",
+    )
+    worker_job_timeout_intel: float = Field(
+        default=0.0,
+        validation_alias="WORKER_JOB_TIMEOUT_INTEL",
+        description="Optional override for intel persona jobs (0 = use WORKER_JOB_TIMEOUT).",
+    )
+    worker_job_timeout_synth: float = Field(
+        default=0.0,
+        validation_alias="WORKER_JOB_TIMEOUT_SYNTH",
+        description="Optional override for synthesis phase jobs (0 = use WORKER_JOB_TIMEOUT).",
     )
     engagement_async_planning: bool = Field(
         default=True,
@@ -207,6 +236,33 @@ class Settings(BaseSettings):
     bus_pingpong_trip_threshold: int = Field(default=3, validation_alias="BUS_PINGPONG_TRIP_THRESHOLD")
     bus_noop_churn_threshold: int = Field(default=10, validation_alias="BUS_NOOP_CHURN_THRESHOLD")
     bus_guard_window_seconds: int = Field(default=600, validation_alias="BUS_GUARD_WINDOW_SECONDS")
+    bus_max_revisions_per_persona: int = Field(
+        default=1,
+        validation_alias="BUS_MAX_REVISIONS_PER_PERSONA",
+        description="Max critic revision bus jobs per persona per engagement window.",
+    )
+    follow_up_enabled: bool = Field(default=True, validation_alias="EGREGORE_FOLLOW_UP_ENABLED")
+    max_follow_ups_per_engagement: int = Field(
+        default=10,
+        validation_alias="EGREGORE_MAX_FOLLOW_UPS",
+    )
+    max_follow_up_spawns: int = Field(
+        default=2,
+        validation_alias="EGREGORE_MAX_FOLLOW_UP_SPAWNS",
+    )
+    follow_up_plan_enabled: bool = Field(
+        default=True,
+        validation_alias="EGREGORE_FOLLOW_UP_PLAN_ENABLED",
+    )
+    max_follow_up_plans_per_engagement: int = Field(
+        default=3,
+        validation_alias="EGREGORE_MAX_FOLLOW_UP_PLANS",
+    )
+    planner_timeout_seconds: int = Field(
+        default=120,
+        validation_alias="PLANNER_TIMEOUT_SECONDS",
+        description="Fallback staged plan when async meta-LLM planner stays in planning.",
+    )
     budget_use_api_usage: bool = Field(default=True, validation_alias="BUDGET_USE_API_USAGE")
 
     tool_gateway_url: str = Field(
@@ -370,6 +426,12 @@ class Settings(BaseSettings):
             raise ValueError("WORKER_JOB_TIMEOUT must be positive")
         if self.worker_job_timeout < self.llm_request_timeout:
             raise ValueError("WORKER_JOB_TIMEOUT must be >= LLM_REQUEST_TIMEOUT")
+        for name, value in (
+            ("WORKER_JOB_TIMEOUT_INTEL", self.worker_job_timeout_intel),
+            ("WORKER_JOB_TIMEOUT_SYNTH", self.worker_job_timeout_synth),
+        ):
+            if value > 0 and value < self.llm_request_timeout:
+                raise ValueError(f"{name} must be >= LLM_REQUEST_TIMEOUT when set")
 
         if self.use_kafka and not self.kafka_bootstrap_servers.strip():
             raise ValueError("KAFKA_BOOTSTRAP_SERVERS is required when USE_KAFKA=1")
@@ -394,6 +456,13 @@ class Settings(BaseSettings):
         if self.auth_enabled and not self.keycloak_issuer.strip():
             raise ValueError("KEYCLOAK_ISSUER is required when AUTH_ENABLED=1")
         return self
+
+    def resolve_worker_job_timeout(self, *, persona: str, phase: str | None = None) -> float:
+        if phase == "synthesis" and self.worker_job_timeout_synth > 0:
+            return self.worker_job_timeout_synth
+        if persona == "intel" and self.worker_job_timeout_intel > 0:
+            return self.worker_job_timeout_intel
+        return self.worker_job_timeout
 
     @computed_field
     @property

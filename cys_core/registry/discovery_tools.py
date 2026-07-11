@@ -69,8 +69,8 @@ def search_personas(
         return [
             {
                 "name": name,
-                "description": catalog.get_agent(name).description if catalog.get_agent(name) else "",
-                "capabilities": catalog.get_agent(name).capabilities if catalog.get_agent(name) else [],
+                "description": (entry.description if (entry := catalog.get_agent(name)) else ""),
+                "capabilities": (entry.capabilities if entry else []),
                 "empirical_trust": _persona_trust_score(name, catalog),
             }
             for name in hits[:limit]

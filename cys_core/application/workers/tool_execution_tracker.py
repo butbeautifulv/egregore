@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 import threading
 from typing import Any
 
 from cys_core.domain.evidence.manifest_builder import build_manifest_from_tool_output, merge_manifests
 from cys_core.domain.evidence.models import EvidenceManifest
+from cys_core.domain.parsing.json_text import parse_json_text
 
 _lock = threading.Lock()
 _counts: dict[str, int] = {}
@@ -19,7 +19,7 @@ _siem_drilldown_counts: dict[str, int] = {}
 
 _MAX_OUTPUT_PREVIEW = 16_384
 _MAX_STORED_OUTPUTS = 5
-_MAX_SIEM_DRILLDOWN = 3
+_MAX_SIEM_DRILLDOWN = 2
 
 
 def record_tool_execution(job_id: str) -> None:
@@ -46,6 +46,11 @@ def clear_tool_execution_count(job_id: str) -> None:
         _manifests.pop(job_id, None)
         _veil_counts.pop(job_id, None)
         _siem_drilldown_counts.pop(job_id, None)
+        from cys_core.application.workers.tool_result_cache import clear_tool_result_cache
+        from cys_core.middleware.tool_dedup_middleware import clear_tool_dedup
+
+        clear_tool_result_cache(job_id)
+        clear_tool_dedup(job_id)
 
 
 def record_tool_success(job_id: str, tool_name: str) -> None:
@@ -85,21 +90,30 @@ def get_tool_outputs(job_id: str) -> list[tuple[str, str]]:
 
 
 def _parse_tool_payload(preview: str) -> dict[str, Any] | None:
-    try:
-        payload = json.loads(preview)
-    except (json.JSONDecodeError, TypeError):
-        return None
+    payload = parse_json_text(preview)
     if not isinstance(payload, dict):
         return None
     content = payload.get("content", payload)
     if isinstance(content, str):
-        try:
-            content = json.loads(content)
-        except (json.JSONDecodeError, TypeError):
-            return None
+        parsed = parse_json_text(content)
+        content = parsed if isinstance(parsed, dict) else None
     if isinstance(content, dict):
         return content
     return None
+
+
+class TrackerManifestAdapter:
+    """In-memory EvidenceManifestPort backed by module-level tracker state."""
+
+    def get_merged_manifest(self, job_id: str) -> EvidenceManifest | None:
+        return get_merged_manifest(job_id)
+
+    def get_persona_manifests(self, investigation_id: str) -> dict[str, EvidenceManifest]:
+        return get_persona_manifests(investigation_id)
+
+
+def get_manifest_port() -> TrackerManifestAdapter:
+    return TrackerManifestAdapter()
 
 
 def record_evidence_manifest(job_id: str, tool_name: str, manifest: EvidenceManifest) -> None:
@@ -134,6 +148,46 @@ def get_persona_manifests(investigation_id: str) -> dict[str, EvidenceManifest]:
         return {}
     with _lock:
         return dict(_persona_manifests.get(investigation_id, {}))
+
+
+def hydrate_job_from_snapshot(job_id: str, snapshot) -> None:
+    """Seed in-memory tool/evidence state from a frozen snapshot."""
+    from cys_core.domain.evidence.snapshot import EvidenceSnapshot
+
+    if not job_id or snapshot is None:
+        return
+    model = snapshot if isinstance(snapshot, EvidenceSnapshot) else EvidenceSnapshot.model_validate(snapshot)
+    for persona, manifest in model.persona_manifests.items():
+        record_persona_manifest(model.investigation_id, persona, manifest)
+    primary = model.primary_manifest()
+    if primary is not None:
+        seed_job_from_persona_manifest(job_id, primary)
+
+
+def seed_job_from_persona_manifest(
+    job_id: str,
+    manifest: EvidenceManifest,
+    *,
+    mark_siem_done: bool = True,
+) -> None:
+    if not job_id or manifest is None:
+        return
+    record_evidence_manifest(job_id, "investigate_incident", manifest)
+    if mark_siem_done and (manifest.observations or manifest.telemetry_level != "metadata_only"):
+        record_tool_success(job_id, "investigate_incident")
+
+
+def siem_investigate_done(job_id: str, investigation_id: str = "", *, persona: str = "soc") -> bool:
+    if tool_succeeded(job_id, "investigate_incident"):
+        return True
+    if not investigation_id:
+        return False
+    manifests = get_persona_manifests(investigation_id)
+    if manifests.get(persona) is not None:
+        return True
+    if persona != "soc" and manifests.get("soc") is not None:
+        return True
+    return False
 
 
 def record_siem_drilldown(job_id: str) -> None:

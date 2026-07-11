@@ -4,7 +4,9 @@ import pytest
 import structlog
 
 from cys_core.application.runs.tool_coercion import (
+    normalize_technique_id,
     normalize_veil_tool_args,
+    prepare_veil_tool_invocation,
     veil_playbook_id_hint,
     veil_technique_id_hint,
     veil_ti_category_hint,
@@ -29,6 +31,55 @@ def test_normalize_veil_nested_kwargs() -> None:
         {"kwargs": {"playbook_id": "pb-1"}},
     )
     assert args["id"] == "pb-1"
+
+
+@pytest.mark.unit
+def test_normalize_veil_ti_query_and_category_aliases() -> None:
+    args = normalize_veil_tool_args("ti_search_in_category", {"q": "10.0.0.1", "cat": "ioc"})
+    assert args["query"] == "10.0.0.1"
+    assert args["category"] == "ti"
+
+
+@pytest.mark.unit
+def test_prepare_veil_ti_search_rejects_empty_query() -> None:
+    result = prepare_veil_tool_invocation("ti_search_in_category", {"category": "ti"})
+    assert result["success"] is False
+    assert result["reason"] == "invalid_args"
+    assert "query is required" in result["error"]
+
+
+@pytest.mark.unit
+def test_prepare_veil_ti_search_rejects_unknown_category() -> None:
+    result = prepare_veil_tool_invocation("ti_search_in_category", {"category": "not-a-real-cat", "query": "x"})
+    assert result["success"] is False
+    assert result["reason"] == "invalid_args"
+    assert "unknown category" in result["error"]
+
+
+@pytest.mark.unit
+def test_prepare_veil_playbook_get_rejects_missing_id() -> None:
+    result = prepare_veil_tool_invocation("playbook_get", {})
+    assert result["success"] is False
+    assert result["reason"] == "invalid_args"
+
+
+@pytest.mark.unit
+def test_prepare_veil_playbook_get_rejects_invalid_slug() -> None:
+    result = prepare_veil_tool_invocation("playbook_get", {"id": "Bad_Slug"})
+    assert result["success"] is False
+    assert "slug" in result["error"]
+
+
+@pytest.mark.unit
+def test_normalize_technique_id_adds_prefix() -> None:
+    assert normalize_technique_id("1059.001") == "T1059.001"
+    assert normalize_technique_id("t1046") == "T1046"
+
+
+@pytest.mark.unit
+def test_prepare_veil_technique_normalizes_numeric_id() -> None:
+    result = prepare_veil_tool_invocation("playbook_for_technique", {"technique_id": "1059.001"})
+    assert result["arguments"]["technique_id"] == "T1059.001"
 
 
 @pytest.mark.unit

@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from cys_core.application.bus_planner_gate import filter_bus_recipients_for_plan, filter_escalation_recipients
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.ports.bus import AgentTransportConnector
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
@@ -16,6 +17,15 @@ from cys_core.application.workers.tool_execution_tracker import (
 from cys_core.domain.memory.services import MemoryWriteService
 from cys_core.domain.security.agent_bus import SecureAgentBus
 from cys_core.domain.workers.models import WorkerJob
+
+_CONTROL_BUS_PERSONAS = frozenset({"planner", "critic", "coordinator"})
+
+
+def should_publish_finding_to_bus(*, persona: str, role: str | None = None) -> bool:
+    """Control-plane personas plan/orchestrate; they do not emit worker findings on the bus."""
+    if role == "control":
+        return False
+    return persona not in _CONTROL_BUS_PERSONAS
 
 
 class WorkerFindingPublisher:
@@ -68,7 +78,19 @@ class WorkerFindingPublisher:
             "data": result,
             "sandbox_id": sandbox_id,
         }
+        role = getattr(defn, "role", None)
+        if not should_publish_finding_to_bus(persona=job.persona, role=role):
+            return
         recipients = list(dict.fromkeys([*(getattr(defn, "bus_recipients", None) or []), "critic"]))
+        planner_plan: list[str] | None = None
+        if self._engagement_store is not None:
+            engagement = self._engagement_store.get(job.tenant_id, investigation_id)
+            if engagement is not None and engagement.planner_plan:
+                planner_plan = list(engagement.planner_plan)
+        if planner_plan is None:
+            planner_plan = list(job.payload.get("planner_plan") or [])
+        recipients = filter_bus_recipients_for_plan(recipients, planner_plan)
+        recipients = filter_escalation_recipients(job.persona, recipients, msg_type="finding")
         for recipient in recipients:
             envelope = self._bus.send_message(job.persona, recipient, "finding", finding_payload)
             self._bus.receive_message(recipient, envelope)

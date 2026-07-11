@@ -69,7 +69,8 @@ def flush_tracer_provider() -> None:
         from opentelemetry import trace
 
         provider = trace.get_tracer_provider()
-        if hasattr(provider, "force_flush"):
-            provider.force_flush()
+        force_flush = getattr(provider, "force_flush", None)
+        if callable(force_flush):
+            force_flush()
     except Exception:
         return

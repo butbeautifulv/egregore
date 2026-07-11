@@ -1,24 +1,25 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS deps
+FROM oven/bun:1-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
-FROM node:22-alpine AS build
+FROM oven/bun:1-alpine AS build
 WORKDIR /app
 ARG NEXT_PUBLIC_LANGFUSE_HOST=https://localhost:3001
+ARG NEXT_PUBLIC_EGRESS_SSE=1
 ENV NEXT_PUBLIC_LANGFUSE_HOST=${NEXT_PUBLIC_LANGFUSE_HOST}
-COPY package.json package-lock.json* ./
+ENV NEXT_PUBLIC_EGRESS_SSE=${NEXT_PUBLIC_EGRESS_SSE}
+COPY package.json bun.lock ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN bun run build
 
-FROM node:22-alpine AS runtime
+FROM oven/bun:1-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["bun", "server.js"]

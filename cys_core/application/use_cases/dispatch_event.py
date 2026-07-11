@@ -7,6 +7,7 @@ from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOO
 from cys_core.application.use_cases.route_event import RouteEvent
 from cys_core.application.routing.event_router import EventRouter
 from cys_core.application.runtime_config import get_use_conductor_for_events
+from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
 from cys_core.domain.runs.models import RunContext
 
@@ -65,7 +66,8 @@ class DispatchEvent:
             engagement_id=event.correlation_id or event.id,
             tenant_id=event.tenant_id,
         ):
-            decision = self._route_event.execute(event)
+            profile_id = resolve_profile_id(payload=payload)
+            decision = self._route_event.execute(event, profile_id=profile_id)
             job_ids: list[str] = []
             if decision.personas:
                 decision, enriched_payload = apply_conductor_routing(event, decision, payload)
@@ -87,7 +89,8 @@ class DispatchEvent:
             engagement_id=event.correlation_id or event.id,
             tenant_id=event.tenant_id,
         ):
-            decision = self._route_event.execute(event)
+            profile_id = resolve_profile_id(payload=payload)
+            decision = self._route_event.execute(event, profile_id=profile_id)
             job_ids: list[str] = []
             if decision.personas:
                 decision, enriched_payload = apply_conductor_routing(event, decision, payload)

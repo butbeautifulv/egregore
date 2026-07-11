@@ -28,6 +28,7 @@ class JobSummaryOut(BaseModel):
     correlation_id: str = ""
     event_id: str = ""
     created_at: str = ""
+    follow_up_id: str | None = None
 
 
 class InvestigationsListOut(BaseModel):

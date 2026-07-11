@@ -51,7 +51,7 @@ def configure_logging(service_name: str) -> None:
     level_name = settings.log_level.upper()
     level = getattr(logging, level_name, logging.INFO)
 
-    shared_processors: list[structlog.types.Processor] = [
+    shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,

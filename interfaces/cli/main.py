@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import cys_core.observability.prometheus_setup  # noqa: F401 — multiprocess atexit
 import argparse
 import asyncio
 import json
+import os
 import sys
+
+import cys_core.observability.prometheus_setup  # noqa: F401 — multiprocess atexit
 
 from bootstrap.settings import settings
 from bootstrap.container import get_container
@@ -44,6 +46,8 @@ def cmd_worker(args: argparse.Namespace) -> int:
     get_container()
     configure_logging("egregore-worker")
     setup_otel(service_name="egregore-worker")
+    if args.metrics_port is not None:
+        os.environ["EGREGORE_METRICS_PORT"] = str(args.metrics_port)
     idle_timeout = settings.worker_idle_timeout if args.idle_timeout is None else args.idle_timeout
     if args.daemon:
         from interfaces.worker.daemon import run_worker_daemon
@@ -249,6 +253,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="Exit after N seconds idle (daemon). Default: WORKER_IDLE_TIMEOUT (0=forever)",
+    )
+    worker.add_argument(
+        "--metrics-port",
+        type=int,
+        default=None,
+        help="Expose Prometheus /metrics on this port (daemon). Default: EGREGORE_METRICS_PORT env",
     )
     worker.set_defaults(func=cmd_worker)
 

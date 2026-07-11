@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from typing import Awaitable
+from typing import Awaitable, cast
 
 from langchain.agents.middleware.types import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -10,8 +10,14 @@ from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMes
 from cys_core.domain.messaging import extract_message_content
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.guardrails import OutputGuardrails
-from cys_core.domain.security.prompt_context import REFUSAL_MESSAGE, UntrustedSource, compute_system_digest
+from cys_core.domain.security.prompt_context import (
+    REFUSAL_MESSAGE,
+    UntrustedSource,
+    compute_system_digest,
+    digest_matches,
+)
 from cys_core.domain.security.sanitizer import InjectionVerdict, InputSanitizer
+from cys_core.middleware._framework_casts import cast_model_response
 from cys_core.security.monitor import AgentMonitor
 
 
@@ -89,14 +95,14 @@ class PromptContextMiddleware(AgentMiddleware):
         updated = request.override(messages=sanitized_messages)
         result = handler(updated)
         if inspect.isawaitable(result):
-            result = await result
-        return self._guard_response(result)
+            return self._guard_response(cast_model_response(await result))
+        return self._guard_response(cast_model_response(result))
 
     def _validate_system_context(self, request: ModelRequest) -> AIMessage | None:
         if not self.system_prompt_digest or request.system_message is None:
             return None
         actual = compute_system_digest(request.system_message.text)
-        if actual != self.system_prompt_digest:
+        if not digest_matches(self.system_prompt_digest, actual):
             self.monitor.record_injection_attempt(
                 self.session_id,
                 InjectionVerdict.HARD.value,
@@ -139,10 +145,21 @@ class PromptContextMiddleware(AgentMiddleware):
 
             source = _message_source(message)
             wrapped = self.sanitizer.sanitize(text, source=source)
-            sanitized.append(_with_content(message, wrapped))
+            sanitized.append(cast(AnyMessage, _with_content(message, wrapped)))
         return sanitized
 
-    def _guard_response(self, response: ModelResponse) -> ModelResponse | AIMessage:
+    def _guard_response(self, response: ModelResponse | AIMessage) -> ModelResponse | AIMessage:
+        if isinstance(response, AIMessage):
+            text = _message_text(response)
+            if self.guardrails.detect_prompt_leakage(text):
+                self.monitor.log_security_event(
+                    self.session_id,
+                    "prompt_leakage_blocked",
+                    "WARNING",
+                    {"agent_id": self.agent_id},
+                )
+                return AIMessage(content=REFUSAL_MESSAGE)
+            return response
         if not response.result:
             return response
         last = response.result[-1]

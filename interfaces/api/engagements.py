@@ -22,7 +22,7 @@ from interfaces.api.engagement_schemas import (
 )
 from interfaces.api.planner_tasks import spawn_engagement_planner
 
-router = APIRouter(prefix="/v1", tags=["engagements"])
+router = APIRouter(prefix="/v1", tags=["engagements"])  # deprecated: prefer /v1/work-orders
 
 
 def _latest_egress_phase(snapshot: list) -> str | None:
@@ -40,6 +40,7 @@ def _engagement_out(
     latest_phase: str | None = None,
     decision=None,
     job_ids=None,
+    updated_at=None,
 ) -> EngagementOut:
     return EngagementOut(
         engagement_id=engagement.id,
@@ -55,11 +56,14 @@ def _engagement_out(
         planner_status=engagement.planner_status,
         planner_rationale=engagement.planner_rationale,
         planner_error=engagement.planner_error,
+        planner_sub_goals=engagement.planner_sub_goals,
+        planner_depends_on=engagement.planner_depends_on,
         findings_summary=engagement.findings_summary,
         execution_mode=engagement.execution_mode.value if engagement.execution_mode else None,
         synthesis_persona=engagement.synthesis_persona,
         synthesis_status=engagement.synthesis_status.value if engagement.synthesis_status else None,
         final_report=engagement.final_report,
+        updated_at=updated_at,
     )
 
 
@@ -70,6 +74,13 @@ async def list_engagements(
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> EngagementListOut:
     store = get_container().get_engagement_state_store()
+    from cys_core.infrastructure.engagement.postgres_store import PostgresEngagementStateStore
+
+    if isinstance(store, PostgresEngagementStateStore):
+        pairs = store.list_recent_with_updated_at(tenant_id, limit=limit)
+        return EngagementListOut(
+            engagements=[_engagement_out(eng, updated_at=ts) for eng, ts in pairs],
+        )
     engagements = store.list_recent(tenant_id, limit=limit)
     return EngagementListOut(engagements=[_engagement_out(eng) for eng in engagements])
 
@@ -104,8 +115,8 @@ async def get_engagement(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> EngagementOut:
-    start = get_container().get_start_engagement()
-    engagement = start.get(engagement_id, tenant_id=tenant_id)
+    store = get_container().get_engagement_state_store()
+    engagement = store.get(tenant_id, engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
     egress = get_container().get_engagement_egress()
@@ -126,8 +137,8 @@ async def get_engagement_memory(
     limit: int = 50,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> EngagementMemoryOut:
-    start = get_container().get_start_engagement()
-    engagement = start.get(engagement_id, tenant_id=tenant_id)
+    store = get_container().get_engagement_state_store()
+    engagement = store.get(tenant_id, engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
@@ -226,8 +237,7 @@ async def list_engagement_events(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> list[dict]:
-    start = get_container().get_start_engagement()
-    engagement = start.get(engagement_id, tenant_id=tenant_id)
+    engagement = get_container().get_engagement_state_store().get(tenant_id, engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
     egress = get_container().get_engagement_egress()

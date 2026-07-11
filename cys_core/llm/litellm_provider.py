@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
-from typing import Any, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
+from typing import Any, cast
 
 import litellm
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
@@ -46,13 +47,15 @@ def _normalize_tool_choice(value: str | dict[str, Any] | None) -> str | dict[str
     return value
 
 
-def tools_to_openai_schema(tools: Sequence[dict[str, Any] | type | BaseTool]) -> list[dict[str, Any]]:
+def tools_to_openai_schema(
+    tools: Sequence[dict[str, Any] | type | Callable[..., Any] | BaseTool],
+) -> list[dict[str, Any]]:
     schemas: list[dict[str, Any]] = []
     for tool in tools:
         if isinstance(tool, dict):
-            schemas.append(tool)
+            schemas.append(cast(dict[str, Any], tool))
         else:
-            schemas.append(convert_to_openai_tool(tool))
+            schemas.append(convert_to_openai_tool(cast(Any, tool)))
     return schemas
 
 
@@ -155,11 +158,11 @@ class LiteLLMChatModel(BaseChatModel):
 
     def bind_tools(
         self,
-        tools: Sequence[dict[str, Any] | type | BaseTool],
+        tools: Sequence[dict[str, Any] | type | Callable[..., Any] | BaseTool],
         *,
         tool_choice: str | None = None,
         **kwargs: Any,
-    ) -> Runnable[Any, BaseMessage]:
+    ) -> Runnable[LanguageModelInput, AIMessage]:
         return self.model_copy(
             update={
                 "bound_tools": tools_to_openai_schema(tools),
@@ -277,6 +280,15 @@ class LiteLLMProvider:
         temperature: float,
         request_timeout: float | None = None,
     ) -> BaseChatModel:
+        import os
+
+        if api_key:
+            if model.startswith("deepseek/"):
+                os.environ.setdefault("DEEPSEEK_API_KEY", api_key)
+            elif model.startswith("openrouter/"):
+                os.environ.setdefault("OPENROUTER_API_KEY", api_key)
+            elif model.startswith("gemini/"):
+                os.environ.setdefault("GEMINI_API_KEY", api_key)
         return LiteLLMChatModel(
             model=model,
             api_key=api_key or None,

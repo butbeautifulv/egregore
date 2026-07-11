@@ -122,6 +122,55 @@ class CysMetrics:
             "Worker jobs that hit wall-clock timeout without salvage",
             ["persona"],
         )
+        self.worker_job_failures = Counter(
+            "cys_worker_job_failures_total",
+            "Terminal worker job failures by reason",
+            ["persona", "reason"],
+        )
+        self.worker_job_salvaged = Counter(
+            "cys_worker_job_salvaged_total",
+            "Worker jobs salvaged with partial findings",
+            ["persona", "reason"],
+        )
+        self.bus_enqueue_rejected_off_plan = Counter(
+            "cys_bus_enqueue_rejected_off_plan_total",
+            "Bus enqueue rejected because recipient is outside planner_plan",
+            ["reason"],
+        )
+        self.bus_revision_rejected = Counter(
+            "cys_bus_revision_rejected_total",
+            "Bus revision enqueue rejected (revision cap or guard)",
+            ["reason"],
+        )
+        self.planner_stuck_fallback = Counter(
+            "cys_planner_stuck_fallback_total",
+            "Engagements recovered with fallback plan after async planner timeout",
+        )
+        self.catalog_drift = Gauge(
+            "cys_catalog_drift",
+            "Catalog drift detected at startup (1=drift, 0=ok)",
+            ["agent", "field"],
+        )
+        self.follow_up_queued = Counter(
+            "cys_follow_up_queued_total",
+            "Operator follow-up jobs enqueued",
+            ["work_kind"],
+        )
+        self.follow_up_completed = Counter(
+            "cys_follow_up_completed_total",
+            "Operator follow-up jobs completed successfully",
+            ["work_kind"],
+        )
+        self.follow_up_failed = Counter(
+            "cys_follow_up_failed_total",
+            "Operator follow-up jobs failed",
+            ["work_kind"],
+        )
+        self.work_orders_created = Counter(
+            "cys_work_orders_created_total",
+            "Work orders created",
+            ["profile_id"],
+        )
 
     def record_event_ingested(self, event_type: str) -> None:
         self.events_ingested.labels(event_type=event_type).inc()
@@ -178,6 +227,36 @@ class CysMetrics:
 
     def record_worker_job_timeout(self, persona: str) -> None:
         self.worker_job_timeouts.labels(persona=persona).inc()
+
+    def record_worker_job_failure(self, persona: str, reason: str) -> None:
+        self.worker_job_failures.labels(persona=persona, reason=reason).inc()
+
+    def record_worker_job_salvaged(self, persona: str, reason: str) -> None:
+        self.worker_job_salvaged.labels(persona=persona, reason=reason).inc()
+
+    def record_bus_enqueue_rejected_off_plan(self, reason: str) -> None:
+        self.bus_enqueue_rejected_off_plan.labels(reason=reason).inc()
+
+    def record_bus_revision_rejected(self, reason: str) -> None:
+        self.bus_revision_rejected.labels(reason=reason).inc()
+
+    def record_planner_stuck_fallback(self) -> None:
+        self.planner_stuck_fallback.inc()
+
+    def set_catalog_drift(self, agent: str, field: str, *, drift: bool) -> None:
+        self.catalog_drift.labels(agent=agent, field=field).set(1.0 if drift else 0.0)
+
+    def record_follow_up_queued(self, work_kind: str) -> None:
+        self.follow_up_queued.labels(work_kind=work_kind or "unknown").inc()
+
+    def record_follow_up_completed(self, work_kind: str) -> None:
+        self.follow_up_completed.labels(work_kind=work_kind or "unknown").inc()
+
+    def record_follow_up_failed(self, work_kind: str) -> None:
+        self.follow_up_failed.labels(work_kind=work_kind or "unknown").inc()
+
+    def record_work_order_created(self, profile_id: str) -> None:
+        self.work_orders_created.labels(profile_id=profile_id or "unknown").inc()
 
     @contextmanager
     def track_worker_job(self, persona: str) -> Iterator[dict[str, str]]:

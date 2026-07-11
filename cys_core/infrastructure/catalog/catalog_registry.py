@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 
 import psycopg
 import structlog
+import threading
 
 from cys_core.application.runtime_config import (
     get_postgres_url,
@@ -21,11 +23,11 @@ logger = structlog.get_logger(__name__)
 
 _registry_cache: object | None = None
 _catalog_version: int = 0
-_bus_reload_callback: object | None = None
+_bus_reload_callback: Callable[..., None] | None = None
 _registry_lock = threading.Lock()
 
 
-def register_bus_reload_callback(callback) -> None:
+def register_bus_reload_callback(callback: Callable[..., None]) -> None:
     global _bus_reload_callback
     _bus_reload_callback = callback
 

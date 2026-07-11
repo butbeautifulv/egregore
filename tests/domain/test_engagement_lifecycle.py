@@ -34,3 +34,24 @@ def test_record_persona_completed_closes_when_plan_done() -> None:
     engagement.record_persona_completed("network")
     assert engagement.status == EngagementStatus.CLOSED
     assert engagement.completed_personas == ["soc", "network"]
+
+
+@pytest.mark.unit
+def test_fail_synthesis_degraded_closes_with_findings() -> None:
+    from cys_core.domain.engagement.models import SynthesisStatus
+
+    engagement = Engagement(
+        id="e1",
+        goal="g",
+        status=EngagementStatus.RUNNING,
+        planner_plan=["soc", "intel"],
+        synthesis_persona="consultant",
+        synthesis_status=SynthesisStatus.RUNNING,
+        findings_summary=[{"persona": "soc", "job_id": "soc-j1", "finding": {"summary": "ok"}}],
+        failed_personas=["soc"],
+    )
+    engagement.fail_synthesis("worker_job_timeout", degraded=True)
+    assert engagement.status == EngagementStatus.CLOSED
+    assert "soc" in engagement.completed_personas
+    assert engagement.final_report is not None
+    assert engagement.final_report.get("degraded") is True

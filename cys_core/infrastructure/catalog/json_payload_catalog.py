@@ -37,7 +37,7 @@ class JsonPayloadCatalog(Generic[T]):
             items = [item for item in items if item.profile_id == profile_id]
         if enabled_only:
             items = [item for item in items if item.enabled]
-        return sorted(items, key=self._sort_key)
+        return sorted(items, key=lambda item: str(self._sort_key(item)))
 
     def get_item(self, item_id: str, *, profile_id: str = DEFAULT_PROFILE_ID) -> T | None:
         with self._lock:

@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
-from cys_core.domain.memory.models import InvestigationState, MemoryEntry, MemoryScope
+from cys_core.domain.memory.models import InvestigationState, MemoryEntry, MemoryScope, MemoryType
 from cys_core.domain.memory.validator import MemoryEntryValidator
 
 
@@ -47,7 +47,7 @@ class MemoryWriteService:
         *,
         scope: MemoryScope,
         content: str,
-        memory_type: str,
+        memory_type: MemoryType,
         source_agent: str,
         source_job_id: str,
         trust_score: float = 1.0,
@@ -58,7 +58,7 @@ class MemoryWriteService:
         entry = MemoryEntry(
             scope=scope,
             content=validated.content,
-            memory_type=memory_type,  # type: ignore[arg-type]
+            memory_type=memory_type,
             source_agent=source_agent,
             source_job_id=source_job_id,
             trust_score=trust_score,
@@ -109,6 +109,53 @@ class MemoryWriteService:
             trust_score=trust_score,
         )
 
+    def append_conversation_turn(
+        self,
+        *,
+        tenant_id: str,
+        investigation_id: str,
+        role: str,
+        text: str,
+        follow_up_id: str,
+        job_id: str = "",
+        persona: str = "",
+        source_agent: str = "",
+        work_kind: str = "",
+        mode: str = "",
+        content_type: str = "",
+        finding: dict[str, Any] | None = None,
+        status: str = "completed",
+    ) -> MemoryEntry | None:
+        scope = MemoryScope(tenant_id=tenant_id, investigation_id=investigation_id)
+        payload: dict[str, Any] = {
+            "role": role,
+            "text": text,
+            "follow_up_id": follow_up_id,
+            "status": status,
+        }
+        if job_id:
+            payload["job_id"] = job_id
+        if persona:
+            payload["persona"] = persona
+        if work_kind:
+            payload["work_kind"] = work_kind
+        if mode:
+            payload["mode"] = mode
+        if content_type:
+            payload["content_type"] = content_type
+        if finding is not None:
+            payload["finding"] = finding
+        content = json.dumps(payload, ensure_ascii=False)
+        agent = source_agent or ("operator" if role == "operator" else persona or "assistant")
+        return self.append(
+            scope=scope,
+            content=content,
+            memory_type="conversation",
+            source_agent=agent,
+            source_job_id=job_id,
+            trust_score=1.0,
+        )
+
 
 class MemoryReadService:
     """Retrieve investigation-scoped episodic memory with tenant isolation."""
@@ -145,6 +192,35 @@ class MemoryReadService:
             valid.append(entry)
         valid.sort(key=lambda item: item.trust_score, reverse=True)
         return valid[:limit]
+
+    def query_conversation_turns(
+        self,
+        tenant_id: str,
+        investigation_id: str,
+        *,
+        limit: int = 50,
+        requesting_tenant_id: str | None = None,
+    ) -> list[MemoryEntry]:
+        if requesting_tenant_id is not None and requesting_tenant_id != tenant_id:
+            return []
+        scope = MemoryScope(tenant_id=tenant_id, investigation_id=investigation_id)
+        entries = self.store.query(scope, limit=max(limit * 4, 50))
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.MEMORY_TTL_HOURS)
+        validator = MemoryEntryValidator(
+            namespace_key=f"{tenant_id}:{investigation_id}",
+            signing_key=self._signing_key,
+        )
+        valid: list[MemoryEntry] = []
+        for entry in entries:
+            if entry.memory_type != "conversation":
+                continue
+            if entry.created_at < cutoff:
+                continue
+            if entry.checksum and not validator.verify_checksum(entry.content, entry.checksum):
+                continue
+            valid.append(entry)
+        valid.sort(key=lambda item: item.created_at)
+        return valid[-limit:]
 
     def list_by_tenant(
         self,

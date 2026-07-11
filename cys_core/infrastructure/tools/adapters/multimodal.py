@@ -14,7 +14,9 @@ from cys_core.application.runtime_config import get_e2b_api_key, get_python_sand
 
 def _e2b_execute(code: str) -> dict[str, Any]:
     try:
-        from e2b_code_interpreter import Sandbox
+        import importlib
+
+        Sandbox = importlib.import_module("e2b_code_interpreter").Sandbox
 
         with Sandbox(api_key=get_e2b_api_key()) as sandbox:
             execution = sandbox.run_code(code, timeout=int(get_python_sandbox_timeout()))

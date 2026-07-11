@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import threading
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any, cast
 
 import structlog
 
 from bootstrap.settings import Settings, get_settings
+from cys_core.application.ports.bus import AgentTransportConnector
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import bind_correlation_id, bind_from_carrier, reset_correlation_id, trace_carrier
 from cys_core.observability.worker_spans import observability_span
@@ -16,6 +17,8 @@ from cys_core.observability.worker_spans import observability_span
 logger = structlog.get_logger(__name__)
 
 DELIVERY_TOPIC = "bus.deliveries"
+
+BusHandler = Callable[[dict[str, Any]], Awaitable[None] | None]
 
 _bus_main_loop: Any = None
 
@@ -138,7 +141,7 @@ class RedisBusTransport:
         main_loop = get_bus_main_event_loop()
         if main_loop is not None:
             try:
-                future = asyncio.run_coroutine_threadsafe(coro, main_loop)
+                future = asyncio.run_coroutine_threadsafe(cast(Coroutine[Any, Any, None], coro), main_loop)
                 future.result(timeout=60)
             except Exception as exc:
                 metrics.record_infrastructure_fallback("redis_bus", reason="handler_failed")
@@ -152,7 +155,7 @@ class RedisBusTransport:
             asyncio.get_running_loop()
         except RuntimeError:
             try:
-                asyncio.run(coro)
+                asyncio.run(cast(Coroutine[Any, Any, None], coro))
             except Exception as exc:
                 metrics.record_infrastructure_fallback("redis_bus", reason="handler_failed")
                 logger.exception(
@@ -210,7 +213,10 @@ class RedisBusTransport:
         self._stop_event.clear()
 
         def _listen() -> None:
-            pubsub = self._redis.pubsub(ignore_subscribe_messages=True)
+            redis = self._redis
+            if redis is None:
+                return
+            pubsub = redis.pubsub(ignore_subscribe_messages=True)
             self._pubsub = pubsub
             for channel in self._subscriber_channels:
                 pubsub.subscribe(self._channel(channel))
@@ -249,22 +255,23 @@ class RedisBusTransport:
             self._redis = None
 
 
-_bus_transport: RedisBusTransport | InMemoryBusTransport | None = None
+_bus_transport: AgentTransportConnector | None = None
 
 
 def get_bus_transport(
     *,
     settings: Settings | None = None,
-) -> RedisBusTransport | InMemoryBusTransport:
+) -> AgentTransportConnector:
     """Return bus transport connector; Kafka when USE_KAFKA=true."""
     global _bus_transport
     cfg = settings or get_settings()
     if _bus_transport is not None and settings is None:
         return _bus_transport
+    transport: AgentTransportConnector
     if cfg.use_kafka:
         from cys_core.infrastructure.kafka_bus import KafkaBusTransport
 
-        transport: RedisBusTransport | InMemoryBusTransport = KafkaBusTransport(settings=cfg)
+        transport = KafkaBusTransport(settings=cfg)
     else:
         transport = RedisBusTransport(settings=cfg)
     if settings is None:

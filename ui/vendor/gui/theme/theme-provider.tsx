@@ -5,17 +5,15 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
-  useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react"
-import { useServerInsertedHTML } from "next/navigation"
+import { flushSync } from "react-dom"
 import { ThemeHotkey } from "@/vendor/gui/theme/theme-hotkey"
-import {
-  THEME_BLOCKING_SCRIPT,
-  THEME_STORAGE_KEY,
-} from "@/vendor/gui/theme/blocking-script"
+import { THEME_STORAGE_KEY } from "@/vendor/gui/theme/blocking-script"
 
 type Theme = "light" | "dark" | "system"
 type ResolvedTheme = "light" | "dark"
@@ -27,15 +25,6 @@ type ThemeContextValue = {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
-
-const themeListeners = new Set<() => void>()
-
-function subscribeTheme(onStoreChange: () => void) {
-  themeListeners.add(onStoreChange)
-  return () => {
-    themeListeners.delete(onStoreChange)
-  }
-}
 
 function subscribeSystemTheme(onStoreChange: () => void) {
   if (typeof window === "undefined") return () => {}
@@ -55,65 +44,96 @@ function getSystemResolvedTheme(): ResolvedTheme {
     : "light"
 }
 
-function notifyThemeListeners() {
-  themeListeners.forEach((listener) => listener())
-}
-
 function resolveTheme(theme: Theme): ResolvedTheme {
   if (theme === "system") return getSystemResolvedTheme()
   return theme
 }
 
-function applyThemeToDocument(theme: Theme) {
-  const resolved = resolveTheme(theme)
-  const root = document.documentElement
-  root.classList.toggle("dark", resolved === "dark")
-  root.style.colorScheme = resolved
+function withoutTransitions(apply: () => ResolvedTheme): ResolvedTheme {
+  if (typeof document === "undefined") {
+    return apply()
+  }
+
+  const style = document.createElement("style")
+  style.appendChild(
+    document.createTextNode(
+      "*,*::before,*::after{-webkit-transition:none!important;-moz-transition:none!important;-o-transition:none!important;-ms-transition:none!important;transition:none!important}",
+    ),
+  )
+  document.head.appendChild(style)
+
+  const resolved = apply()
+  void window.getComputedStyle(document.body).opacity
+
+  window.setTimeout(() => {
+    document.head.removeChild(style)
+  }, 1)
+
   return resolved
 }
 
+function applyThemeToDocument(theme: Theme, options?: { disableTransitions?: boolean }) {
+  const apply = () => {
+    const resolved = resolveTheme(theme)
+    const root = document.documentElement
+    root.classList.toggle("dark", resolved === "dark")
+    root.style.colorScheme = resolved
+    return resolved
+  }
+
+  if (options?.disableTransitions) {
+    return withoutTransitions(apply)
+  }
+
+  return apply()
+}
+
 function ThemeProvider({ children }: { children: ReactNode }) {
-  const inserted = useRef(false)
-
-  useServerInsertedHTML(() => {
-    if (inserted.current) return null
-    inserted.current = true
-    return (
-      <script
-        dangerouslySetInnerHTML={{ __html: THEME_BLOCKING_SCRIPT }}
-        suppressHydrationWarning
-      />
-    )
-  })
-
-  const theme = useSyncExternalStore(
-    subscribeTheme,
-    getStoredTheme,
-    () => "system" as Theme
-  )
+  const [theme, setThemeState] = useState<Theme>("system")
+  const [hydrated, setHydrated] = useState(false)
 
   const systemResolvedTheme = useSyncExternalStore(
     subscribeSystemTheme,
     getSystemResolvedTheme,
-    () => "light" as ResolvedTheme
+    () => "light" as ResolvedTheme,
   )
 
   const resolvedTheme: ResolvedTheme =
     theme === "system" ? systemResolvedTheme : theme
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const stored = getStoredTheme()
+    setThemeState(stored)
+    applyThemeToDocument(stored)
+    setHydrated(true)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!hydrated) return
     applyThemeToDocument(theme)
-  }, [theme, resolvedTheme])
+  }, [theme, systemResolvedTheme, hydrated])
+
+  useEffect(() => {
+    function onStorage(event: StorageEvent) {
+      if (event.key !== THEME_STORAGE_KEY) return
+      const next = (event.newValue as Theme | null) ?? "system"
+      flushSync(() => setThemeState(next))
+      applyThemeToDocument(next, { disableTransitions: true })
+    }
+
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [])
 
   const setTheme = useCallback((next: Theme) => {
     localStorage.setItem(THEME_STORAGE_KEY, next)
-    notifyThemeListeners()
-    applyThemeToDocument(next)
+    applyThemeToDocument(next, { disableTransitions: true })
+    flushSync(() => setThemeState(next))
   }, [])
 
   const value = useMemo(
     () => ({ theme, resolvedTheme, setTheme }),
-    [theme, resolvedTheme, setTheme]
+    [theme, resolvedTheme, setTheme],
   )
 
   return (

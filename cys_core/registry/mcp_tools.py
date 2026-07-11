@@ -104,8 +104,24 @@ class McpToolRegistry:
             payload = result.get("sanitized_payload") or json.dumps(result.get("data", {}), ensure_ascii=False)
             return payload
 
+        async def _arun(**kwargs: Any) -> str:
+            result = await self.ainvoke(
+                tool_name,
+                sandbox_id,
+                kwargs,
+                persona=persona,
+                job_id=job_id,
+                correlation_id=correlation_id,
+                profile_id=profile_id,
+            )
+            if not result.get("success", True):
+                return json.dumps({"error": result.get("error", "gateway invoke failed")}, ensure_ascii=False)
+            payload = result.get("sanitized_payload") or json.dumps(result.get("data", {}), ensure_ascii=False)
+            return payload
+
         return StructuredTool.from_function(
             func=_run,
+            coroutine=_arun,
             name=base.name,
             description=base.description,
         )
@@ -152,6 +168,30 @@ class McpToolRegistry:
         except Exception:
             metrics.record_tool_invocation(tool_name, success=False)
             raise
+
+    async def ainvoke(
+        self,
+        tool_name: str,
+        sandbox_id: str,
+        args: dict[str, Any],
+        *,
+        persona: str = "",
+        job_id: str = "",
+        correlation_id: str = "",
+        profile_id: str = DEFAULT_PROFILE_ID,
+    ) -> dict[str, Any]:
+        import asyncio
+
+        return await asyncio.to_thread(
+            self.invoke,
+            tool_name,
+            sandbox_id,
+            args,
+            persona=persona,
+            job_id=job_id,
+            correlation_id=correlation_id,
+            profile_id=profile_id,
+        )
 
     def _local_invoke(
         self,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -174,6 +175,23 @@ class McpServerEntry(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class PlannerRule(BaseModel):
+    name: str
+    when: dict[str, Any] = Field(default_factory=dict)
+    personas: list[str] = Field(default_factory=list)
+    execution_mode: str | None = None
+    sub_goals: dict[str, str] = Field(default_factory=dict)
+    rationale: str = ""
+
+
+class PlannerPack(BaseModel):
+    persona: str = "planner"
+    prompt_template: str = ""
+    rules: list[PlannerRule] = Field(default_factory=list)
+    synthesis_default: str = "consultant"
+    post_processors: list[str] = Field(default_factory=list)
+
+
 class ProfilePack(BaseModel):
     id: str
     name: str
@@ -184,6 +202,8 @@ class ProfilePack(BaseModel):
     global_rules: str = ""
     hints_template: str = ""
     policy: ProfilePolicyPayload = Field(default_factory=ProfilePolicyPayload)
+    planner: PlannerPack | None = None
+    intake_schema: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolCatalogEntry(BaseModel):

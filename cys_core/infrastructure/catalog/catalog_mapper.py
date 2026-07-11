@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from cys_core.domain.agents.models import AgentDefinition
 from cys_core.domain.catalog.models import AgentCatalogEntry, CatalogSource
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
@@ -9,7 +11,7 @@ def entry_to_definition(entry: AgentCatalogEntry) -> AgentDefinition:
     return AgentDefinition(
         name=entry.name,
         description=entry.description,
-        role=entry.role,  # type: ignore[arg-type]
+        role=cast(Literal["worker", "control", "specialist", "critic", "coordinator"], entry.role),
         system_prompt=entry.system_prompt,
         system_prompt_digest=entry.system_prompt_digest,
         schema_name=entry.output_schema,

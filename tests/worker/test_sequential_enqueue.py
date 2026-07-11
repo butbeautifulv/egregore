@@ -8,6 +8,7 @@ import pytest
 from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
 from cys_core.domain.workers.models import WorkerJob, RunResult
 from interfaces.worker.orchestrator import WorkerOrchestrator
+from tests.application.fakes.job_queue import FakeJobQueue, FakeJobStore
 from tests.application.workers.factory import build_run_worker_job_for_tests
 
 
@@ -25,14 +26,24 @@ async def test_dependency_not_ready_requeues_to_front(monkeypatch):
     )
     queue.enqueue(blocker)
 
-    monkeypatch.setattr(
-        "interfaces.worker.orchestrator.get_job_queue",
-        lambda **kwargs: queue,
-    )
-    monkeypatch.setattr(
-        "interfaces.worker.orchestrator.get_container",
-        lambda: MagicMock(),
-    )
+    class _Container:
+        def get_job_queue(self, **kwargs):
+            return queue
+
+        def get_engagement_state_store(self):
+            return EngagementStore()
+
+        def get_job_store(self):
+            return MagicMock()
+
+        def get_run_worker_job(self, **kwargs):
+            return MagicMock()
+
+        def get_tool_chain_policy(self):
+            return SimpleNamespace(clear=lambda *_a, **_k: None)
+
+        def get_metrics_port(self):
+            return MagicMock()
 
     class EngagementStore:
         def get(self, tenant_id: str, engagement_id: str):
@@ -45,19 +56,6 @@ async def test_dependency_not_ready_requeues_to_front(monkeypatch):
                 status=EngagementStatus.RUNNING,
                 completed_personas=[],
             )
-
-    class _Container:
-        def get_engagement_state_store(self):
-            return EngagementStore()
-
-        def get_job_store(self):
-            return MagicMock()
-
-        def get_run_worker_job(self, **kwargs):
-            return MagicMock()
-
-        def get_tool_chain_policy(self):
-            return SimpleNamespace(clear=lambda *_a, **_k: None)
 
     monkeypatch.setattr("interfaces.worker.orchestrator.get_container", lambda: _Container())
 
@@ -87,19 +85,37 @@ async def test_dependency_not_ready_requeues_to_front(monkeypatch):
 async def test_failed_upstream_unblocks_sequential_downstream(monkeypatch):
     from cys_core.infrastructure.queue import InMemoryJobQueue
 
-    monkeypatch.setattr(
-        "interfaces.worker.orchestrator.get_job_queue",
-        lambda **kwargs: InMemoryJobQueue(),
-    )
-    monkeypatch.setattr(
-        "interfaces.worker.orchestrator.get_container",
-        lambda: MagicMock(),
-    )
+    queue = InMemoryJobQueue()
+
+    class _ContainerEarly:
+        def get_job_queue(self, **kwargs):
+            return queue
+
+        def get_engagement_state_store(self):
+            return MagicMock()
+
+        def get_job_store(self):
+            return MagicMock()
+
+        def get_run_worker_job(self, **kwargs):
+            return MagicMock()
+
+        def get_tool_chain_policy(self):
+            return SimpleNamespace(clear=lambda *_a, **_k: None)
+
+        def get_metrics_port(self):
+            return MagicMock()
+
+    monkeypatch.setattr("interfaces.worker.orchestrator.get_container", lambda: _ContainerEarly())
     completed: list[str] = []
+    failed: list[str] = []
 
     class EngagementStore:
         def mark_persona_done(self, tenant_id: str, engagement_id: str, persona: str) -> None:
             completed.append(persona)
+
+        def mark_persona_failed(self, tenant_id: str, engagement_id: str, persona: str) -> None:
+            failed.append(persona)
 
         def get(self, tenant_id: str, engagement_id: str):
             from cys_core.domain.engagement.models import Engagement, EngagementStatus
@@ -110,6 +126,7 @@ async def test_failed_upstream_unblocks_sequential_downstream(monkeypatch):
                 goal="test",
                 status=EngagementStatus.RUNNING,
                 completed_personas=list(completed),
+                failed_personas=list(failed),
             )
 
     class JobStore:
@@ -136,7 +153,7 @@ async def test_failed_upstream_unblocks_sequential_downstream(monkeypatch):
     )
     result = await run.execute(soc_job, soc_job, "worker:soc:soc-evt-1-aaa", {})
     assert result.success is False
-    assert completed == ["soc"]
+    assert failed == ["soc"]
 
     orch = WorkerOrchestrator(
         persona="network",
@@ -152,6 +169,25 @@ async def test_failed_upstream_unblocks_sequential_downstream(monkeypatch):
 
         def get_tool_chain_policy(self):
             return SimpleNamespace(clear=lambda *_a, **_k: None)
+
+        def get_job_queue(self, **kwargs):
+            return orch.queue
+
+        def get_metrics_port(self):
+            return MagicMock()
+
+        def get_agent_catalog(self):
+            return MagicMock(get_agent=MagicMock(return_value=None))
+
+        @property
+        def settings(self):
+            return SimpleNamespace(
+                resolve_worker_job_timeout=lambda **kwargs: 300.0,
+                job_cost_per_1k_tokens_usd=0.01,
+            )
+
+        def get_profile_policy_port(self):
+            return MagicMock(get_cost_per_1k_tokens=MagicMock(return_value=0.01))
 
     monkeypatch.setattr("interfaces.worker.orchestrator.get_container", lambda: _Container())
 
@@ -173,24 +209,13 @@ async def test_failed_upstream_unblocks_sequential_downstream(monkeypatch):
 
 @pytest.mark.unit
 def test_enqueue_registers_pending_jobs():
-    pending: list[str] = []
-
-    class JobStore:
-        def upsert_pending(self, job_id, persona, **kwargs):
-            pending.append(job_id)
-
-    class Queue:
-        def enqueue(self, job: WorkerJob) -> str:
-            return job.job_id
-
-        async def aenqueue(self, job: WorkerJob) -> str:
-            return job.job_id
-
-    service = EnqueueWorkerJobs(queue=Queue(), job_store=JobStore())
+    store = FakeJobStore()
+    queue = FakeJobQueue()
+    service = EnqueueWorkerJobs(queue=queue, job_store=store)
     job_ids = service.enqueue_from_routing_sync(
         "evt-pending",
         ["consultant"],
         correlation_id="inv-pending",
     )
     assert job_ids
-    assert pending == job_ids
+    assert store.pending == job_ids

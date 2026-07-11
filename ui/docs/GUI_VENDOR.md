@@ -35,6 +35,7 @@ GUI_SRC=/path/to/shared/gui/src ./scripts/vendor-gui.sh
 `vendor-gui.sh` rsyncs these paths from `shared/gui/src/`:
 
 - `shell/`, `theme/`, `motion/`, `hooks/`, `ui/`, `layout/`
+- `data-table/`, `lib/data-table/`, `lib/datetime/`
 - `utils.ts`
 
 Also copies `shared/gui/gui-style-profiles.css` → `vendor/gui-style-profiles.css`.
@@ -60,7 +61,7 @@ No post-sync `apply-vendor-lyra-adaptation.mjs` token mapping.
 Canonical theme is preset **`b3Rq8QejA`** (Lyra + neutral baseColor + lime theme). Apply with:
 
 ```bash
-npx shadcn@latest apply b3Rq8QejA --yes
+bunx shadcn@latest apply b3Rq8QejA --yes
 ```
 
 `app/globals.css` and `components.json` are updated by the CLI.
@@ -72,6 +73,6 @@ Copy only modules required by current screens. Prefer adding directories to `ven
 After sync, run:
 
 ```bash
-npm run typecheck
-npm run build
+bun run typecheck
+bun run build
 ```

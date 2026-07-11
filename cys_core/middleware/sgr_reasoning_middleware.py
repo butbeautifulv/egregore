@@ -12,6 +12,7 @@ from langgraph.types import Command
 
 from cys_core.application.reasoning.sgr_policy import ResolvedSgrPolicy
 from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL, SchemaGuidedReasoningStep
+from cys_core.middleware._framework_casts import cast_model_response, cast_tool_result
 from cys_core.middleware.sgr_session import SgrSessionState
 
 
@@ -61,8 +62,8 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
             request = request.override(messages=messages)
         result = handler(request)
         if inspect.isawaitable(result):
-            return await result
-        return result
+            return cast_model_response(await result)
+        return cast_model_response(result)
 
     def wrap_tool_call(
         self,
@@ -93,14 +94,14 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
         if not self._policy.enabled:
             result = handler(request)
             if inspect.isawaitable(result):
-                return await result
-            return result
+                return cast_tool_result(await result)
+            return cast_tool_result(result)
         if self._session.is_reasoning_tool(tool_name):
             result = handler(request)
             if inspect.isawaitable(result):
                 result = await result
             record_reasoning_from_tool_args(self._session, request.tool_call.get("args", {}))
-            return result
+            return cast_tool_result(result)
         if self._policy.require_before_action and not self._session.reasoning_done:
             return ToolMessage(
                 content=f"Call {REASONING_STEP_TOOL} before using {tool_name}.",
@@ -109,8 +110,8 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
             )
         result = handler(request)
         if inspect.isawaitable(result):
-            result = await result
-        return result
+            return cast_tool_result(await result)
+        return cast_tool_result(result)
 
 
 def record_reasoning_from_tool_args(session: SgrSessionState, args: dict[str, Any]) -> None:

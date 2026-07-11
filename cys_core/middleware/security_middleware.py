@@ -11,9 +11,10 @@ from langgraph.types import Command, interrupt
 
 from bootstrap.settings import Settings, get_settings
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
+from cys_core.domain.policy.pure import classify_tool_risk_pure
 from cys_core.domain.security.risk import parse_threshold
-from cys_core.infrastructure.policy.profile_policy_adapter import classify_tool_risk_for_profile
 from cys_core.domain.workers.job_budget import JobBudgetExceeded, JobBudgetTracker
+from cys_core.middleware._framework_casts import cast_tool_result
 from cys_core.middleware.hitl_pause import (
     build_hitl_preview,
     register_hitl_pause,
@@ -21,6 +22,24 @@ from cys_core.middleware.hitl_pause import (
 )
 from cys_core.security.monitor import AgentMonitor
 from cys_core.security.rate_limit import RedisRateLimiter
+
+_MIDDLEWARE_BLOCK_PREFIXES = (
+    "Only one tool call per turn",
+    "investigate_incident already completed",
+    "SIEM ladder complete",
+    "Veil tool budget exhausted",
+    "SIEM/Veil ladder complete",
+    "Duplicate tool call blocked",
+)
+
+
+def _middleware_blocked_tool_result(result: Any) -> bool:
+    if not isinstance(result, ToolMessage):
+        return False
+    if getattr(result, "status", None) != "error":
+        return False
+    content = str(getattr(result, "content", "") or "")
+    return any(content.startswith(prefix) for prefix in _MIDDLEWARE_BLOCK_PREFIXES)
 
 
 class SecurityMiddleware(AgentMiddleware):
@@ -49,7 +68,7 @@ class SecurityMiddleware(AgentMiddleware):
 
     def _await_hitl_if_needed(self, request: ToolCallRequest) -> ToolMessage | None:
         tool_name = request.tool_call.get("name", "")
-        risk = classify_tool_risk_for_profile(tool_name, self.profile_id)
+        risk = classify_tool_risk_pure(tool_name, self._policy_port.get_policy(self.profile_id))
         if risk <= self.auto_approve_threshold:
             return None
         if self.stage == "dev":
@@ -106,14 +125,15 @@ class SecurityMiddleware(AgentMiddleware):
 
         try:
             result = handler(request)
-            JobBudgetTracker.record_tool_call(self.session_id)
+            if not _middleware_blocked_tool_result(result):
+                JobBudgetTracker.record_tool_call(self.session_id)
             self.monitor.log_tool_call(
                 self.session_id,
                 tool_name,
                 request.tool_call.get("args", {}),
                 {"status": "ok"},
             )
-            return result
+            return cast_tool_result(result)
         except JobBudgetExceeded as exc:
             return ToolMessage(
                 content=str(exc),
@@ -161,14 +181,15 @@ class SecurityMiddleware(AgentMiddleware):
             result = handler(request)
             if inspect.isawaitable(result):
                 result = await result
-            JobBudgetTracker.record_tool_call(self.session_id)
+            if not _middleware_blocked_tool_result(result):
+                JobBudgetTracker.record_tool_call(self.session_id)
             self.monitor.log_tool_call(
                 self.session_id,
                 tool_name,
                 request.tool_call.get("args", {}),
                 {"status": "ok"},
             )
-            return result
+            return cast_tool_result(result)
         except JobBudgetExceeded as exc:
             return ToolMessage(
                 content=str(exc),

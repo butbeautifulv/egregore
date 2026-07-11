@@ -11,6 +11,8 @@ coverage
 .DS_Store
 *.log
 npm-debug.log*
+bun-debug.log*
+package-lock.json
 .vscode
 .idea
 .cursor

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from rapidfuzz import fuzz
 
@@ -47,7 +47,7 @@ class QdrantVectorStore:
         self.url = url or settings.qdrant_url
         self.collection = collection
         self._fallback = MemoryVectorStore()
-        self._client = None
+        self._client: Any = None
         try:
             from qdrant_client import QdrantClient
             from qdrant_client.http.models import Distance, PointStruct, VectorParams
@@ -97,7 +97,7 @@ class QdrantVectorStore:
         if self._client is None:
             return self._fallback.search(query, limit=limit)
 
-        hits = self._client.search(
+        hits = getattr(self._client, "search")(
             collection_name=self.collection,
             query_vector=self._vector(query),
             limit=limit,

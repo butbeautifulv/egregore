@@ -24,7 +24,26 @@ export function StatCardsGridSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="grid gap-4 md:grid-cols-3">
       {Array.from({ length: count }).map((_, index) => (
-        <Skeleton key={index} className="h-24 w-full rounded-xl" />
+        <Skeleton key={index} className="h-24 w-full" />
+      ))}
+    </div>
+  )
+}
+
+export function ChartCardsGridSkeleton({ count = 2 }: { count?: number }) {
+  return (
+    <div className="grid gap-4 @2xl/main:grid-cols-2">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="flex flex-col border">
+          <div className="flex items-center justify-between gap-2 border-b p-4">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="size-8" />
+          </div>
+          <div className="p-4">
+            <Skeleton className="h-72 w-full" />
+            <Skeleton className="mt-4 h-14 w-full" />
+          </div>
+        </div>
       ))}
     </div>
   )
@@ -48,7 +67,7 @@ export function DetailCardsSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="flex flex-col gap-4">
       {Array.from({ length: count }).map((_, index) => (
-        <Skeleton key={index} className="h-32 w-full rounded-xl" />
+        <Skeleton key={index} className="h-32 w-full" />
       ))}
     </div>
   )
@@ -56,7 +75,7 @@ export function DetailCardsSkeleton({ count = 3 }: { count?: number }) {
 
 export function FormCardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border p-4">
+    <div className="flex flex-col gap-3 border p-4">
       <Skeleton className="h-5 w-40" />
       <Skeleton className="h-4 w-64 max-w-full" />
       <Skeleton className="h-9 w-full" />

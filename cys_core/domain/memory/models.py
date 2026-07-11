@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-MemoryType = Literal["finding", "pending_finding", "ioc", "lesson", "preference", "conversation"]
+MemoryType = Literal["finding", "pending_finding", "ioc", "lesson", "preference", "conversation", "intake"]
 InvestigationStatus = Literal["open", "in_progress", "closed"]
 PlannerStatus = Literal["planning", "ok", "fallback", "error"]
 

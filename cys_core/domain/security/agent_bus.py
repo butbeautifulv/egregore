@@ -16,6 +16,20 @@ from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.sanitizer import InputSanitizer
 
 
+_STRUCTURAL_ID_KEYS = frozenset(
+    {
+        "correlation_id",
+        "event_id",
+        "investigation_id",
+        "engagement_id",
+        "tenant_id",
+        "job_id",
+        "message_id",
+        "parent_correlation_key",
+    }
+)
+
+
 class AgentTrustLevel(IntEnum):
     UNTRUSTED = 0
     INTERNAL = 1
@@ -182,7 +196,10 @@ class SecureAgentBus:
         result: dict[str, Any] = {}
         for key, value in cleaned.items():
             if isinstance(value, str):
-                result[key] = self._sanitizer.filter_untrusted(value, source="agent_bus")
+                if key in _STRUCTURAL_ID_KEYS:
+                    result[key] = value
+                else:
+                    result[key] = self._sanitizer.filter_untrusted(value, source="agent_bus")
             elif isinstance(value, dict):
                 result[key] = self._sanitize_payload(value, trust_level)
             elif isinstance(value, list):

@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from enum import Enum
+from functools import total_ordering
 
 
-class RiskLevel(str, Enum):
+@total_ordering
+class RiskLevel(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
-    def __le__(self, other: "RiskLevel") -> bool:
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, RiskLevel):
+            return NotImplemented
         order = [RiskLevel.LOW, RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL]
-        return order.index(self) <= order.index(other)
-
-    def __ge__(self, other: "RiskLevel") -> bool:
-        order = [RiskLevel.LOW, RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL]
-        return order.index(self) >= order.index(other)
+        return order.index(self) < order.index(other)

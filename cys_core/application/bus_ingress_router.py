@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -108,10 +108,10 @@ class BusIngressRouter:
         if handler is not None:
             result = handler(envelope)
             if hasattr(result, "__await__"):
-                await result
+                await cast(Awaitable[Any], result)
             return
 
         if self._orchestration_enqueue is not None and recipient:
             result = self._orchestration_enqueue(envelope)
             if hasattr(result, "__await__"):
-                await result
+                await cast(Awaitable[Any], result)

@@ -96,6 +96,9 @@ async def run_gaia_solver(question: str, *, file_path: str = "") -> dict[str, An
         catalog=get_agent_catalog(),
         todo_store=get_work_todo_store(),
         judge_backend=get_container().get_judge_backend(),
+        context_summarizer=get_container().get_context_summarizer(),
+        reflexion_store=get_container().get_reflexion_store(),
+        policy_port=get_container().get_profile_policy_port(),
     )
     out = await step.execute(ctx, json.dumps(payload, ensure_ascii=False), persona="gaia_solver")
     result = out.get("result") if isinstance(out, dict) else {}

@@ -92,9 +92,7 @@ class ToolCoercionMiddleware(AgentMiddleware):
         if not _tool_result_ok(result):
             return
         if tool_name == "investigate_incident":
-            lower = text.lower()
-            if '"success": true' in lower or '"success":true' in lower:
-                record_tool_success(job_id, tool_name)
+            record_tool_success(job_id, tool_name)
             return
         if tool_name in _INTEL_SUCCESS_TOOLS or is_veil_tool(tool_name) or tool_name == "enrich_ioc":
             record_tool_success(job_id, tool_name)

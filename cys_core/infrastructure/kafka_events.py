@@ -44,7 +44,10 @@ async def consume_raw_event(timeout: float = 1.0) -> SecurityEvent | None:
                 for key, value in record.headers
             }
             bind_from_carrier(header_map)
-        data = json.loads(record.value.decode())
+        raw = record.value
+        if raw is None:
+            return None
+        data = json.loads(raw.decode()) if record.value is not None else {}
         return SecurityEvent.model_validate(data)
     except (TimeoutError, Exception):
         return None

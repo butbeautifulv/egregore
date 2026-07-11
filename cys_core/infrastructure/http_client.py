@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
 import httpx
@@ -30,6 +30,19 @@ def sync_http_client(
     """Create a short-lived sync httpx client with shared timeout defaults."""
     resolved = timeout if isinstance(timeout, httpx.Timeout) else default_timeout(total=timeout)
     with httpx.Client(timeout=resolved, headers=dict(headers or {}), base_url=base_url) as client:
+        yield client
+
+
+@asynccontextmanager
+async def async_http_client(
+    *,
+    timeout: float | httpx.Timeout | None = None,
+    headers: Mapping[str, str] | None = None,
+    base_url: str = "",
+) -> AsyncIterator[httpx.AsyncClient]:
+    """Create a short-lived async httpx client with shared timeout defaults."""
+    resolved = timeout if isinstance(timeout, httpx.Timeout) else default_timeout(total=timeout)
+    async with httpx.AsyncClient(timeout=resolved, headers=dict(headers or {}), base_url=base_url) as client:
         yield client
 
 

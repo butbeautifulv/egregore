@@ -20,6 +20,9 @@ metadata:
     {{- include "egregore.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.ui.replicas }}
+  strategy:
+    type: Recreate
+    rollingUpdate: null
   selector:
     matchLabels:
       app: egregore-ui
@@ -29,6 +32,14 @@ spec:
         app: egregore-ui
     spec:
       enableServiceLinks: false
+      {{- with .Values.ui.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: ui
           image: {{ include "egregore.uiImage" . | quote }}

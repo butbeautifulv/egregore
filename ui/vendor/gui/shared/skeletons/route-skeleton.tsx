@@ -1,9 +1,9 @@
 import {
+  ChartCardsGridSkeleton,
   DetailCardsSkeleton,
   FormCardSkeleton,
   PageContentShell,
   PageHeaderSkeleton,
-  StatCardsGridSkeleton,
   TableRowsSkeleton,
   TableToolbarSkeleton,
 } from "@/vendor/gui/shared/skeletons/primitives"
@@ -17,9 +17,9 @@ export function RouteSkeleton({ variant }: { variant: RouteSkeletonVariant }) {
       {variant === "home" ? (
         <>
           <FormCardSkeleton />
+          <ChartCardsGridSkeleton />
           <TableToolbarSkeleton />
           <TableRowsSkeleton />
-          <StatCardsGridSkeleton />
         </>
       ) : null}
       {variant === "table" ? (

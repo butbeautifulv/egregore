@@ -5,7 +5,8 @@ from typing import Any
 
 import structlog
 
-from cys_core.application.bus_engagement import extract_engagement_id
+from cys_core.application.bus_engagement import extract_engagement_id, normalize_correlation_id
+from cys_core.application.bus_planner_gate import off_plan_bus_enqueue_reason
 from cys_core.application.bus_fingerprint import envelope_fingerprint
 from cys_core.application.engagement_bus_guard import EngagementBusGuard, get_engagement_bus_guard
 from cys_core.application.ports.engagement_store import EngagementStateStore
@@ -33,6 +34,7 @@ class EnqueueWorkerJobs:
         bus_guard: EngagementBusGuard | None = None,
         metrics: MetricsPort | None = None,
         max_jobs_per_engagement: int = 20,
+        max_revisions_per_persona: int = 1,
     ) -> None:
         self._queue = queue
         self._job_store = job_store
@@ -40,6 +42,7 @@ class EnqueueWorkerJobs:
         self._bus_guard = bus_guard
         self._metrics = metrics
         self._max_jobs_per_engagement = max_jobs_per_engagement
+        self._max_revisions_per_persona = max_revisions_per_persona
 
     def _log_queue_depth(self, *, job_ids: list[str], correlation_id: str) -> None:
         depth_fn = getattr(self._queue, "queue_depth", None)
@@ -228,10 +231,7 @@ class EnqueueWorkerJobs:
 
         if self._engagement_store is not None:
             engagement = self._engagement_store.get(tenant_id, engagement_id)
-            if engagement is not None and engagement.status in (
-                EngagementStatus.CLOSED,
-                EngagementStatus.FAILED,
-            ):
+            if engagement is not None and isinstance(engagement.status, EngagementStatus) and engagement.status.is_terminal():
                 logger.warning(
                     "bus_enqueue_rejected_closed",
                     engagement_id=engagement_id,
@@ -250,12 +250,52 @@ class EnqueueWorkerJobs:
             return True
         return False
 
+    def _should_reject_off_plan_bus(
+        self,
+        envelope: dict[str, Any],
+        *,
+        correlation_id: str,
+        tenant_id: str,
+        msg_type: str,
+    ) -> bool:
+        payload = envelope.get("payload", {})
+        if not isinstance(payload, dict):
+            payload = {}
+        engagement_id = extract_engagement_id(correlation_id=correlation_id, payload=payload)
+        if not engagement_id or self._engagement_store is None:
+            return False
+        engagement = self._engagement_store.get(tenant_id, engagement_id)
+        if engagement is None or not engagement.planner_plan:
+            return False
+        recipient = str(envelope.get("recipient", ""))
+        reject_reason = off_plan_bus_enqueue_reason(
+            recipient,
+            list(engagement.planner_plan),
+            msg_type=msg_type,
+        )
+        if reject_reason is None:
+            return False
+        logger.info(
+            "bus_enqueue_rejected_off_plan",
+            engagement_id=engagement_id,
+            recipient=recipient,
+            msg_type=msg_type,
+            planner_plan=list(engagement.planner_plan),
+            reason=reject_reason,
+        )
+        if self._metrics is not None:
+            self._metrics.record_bus_enqueue_rejected_off_plan(reject_reason)
+        return True
+
     async def enqueue_from_bus(self, envelope: dict[str, Any]) -> str:
         """Enqueue a worker job from a bus envelope (delegate/revision/finding handoff)."""
         payload = dict(envelope.get("payload", {}))
         persona = str(envelope.get("recipient", payload.get("persona", "soc")))
         event_id = str(payload.get("event_id", envelope.get("message_id", f"bus-{uuid.uuid4().hex[:8]}")))
-        correlation_id = str(payload.get("correlation_id", event_id))
+        correlation_id = normalize_correlation_id(
+            str(payload.get("correlation_id", event_id)),
+            payload,
+        )
         tenant_id = str(payload.get("tenant_id", "default"))
         msg_type = str(envelope.get("type", "delegate"))
         if self._should_reject_bus_enqueue(
@@ -265,8 +305,31 @@ class EnqueueWorkerJobs:
             msg_type=msg_type,
         ):
             return ""
+        if self._should_reject_off_plan_bus(
+            envelope,
+            correlation_id=correlation_id,
+            tenant_id=tenant_id,
+            msg_type=msg_type,
+        ):
+            return ""
 
         if msg_type == "revision":
+            engagement_id = extract_engagement_id(correlation_id=correlation_id, payload=payload)
+            guard = self._bus_guard or get_engagement_bus_guard()
+            if engagement_id and guard.revision_cap_exceeded(
+                engagement_id,
+                persona,
+                max_revisions=self._max_revisions_per_persona,
+            ):
+                logger.warning(
+                    "bus_enqueue_rejected_revision_cap",
+                    engagement_id=engagement_id,
+                    persona=persona,
+                    limit=self._max_revisions_per_persona,
+                )
+                if self._metrics is not None:
+                    self._metrics.record_bus_revision_rejected("revision_cap")
+                return ""
             payload["feedback"] = payload.get("feedback", envelope.get("feedback", ""))
         job = WorkerJob(
             job_id=f"{persona}-bus-{uuid.uuid4().hex[:8]}",
@@ -293,4 +356,6 @@ class EnqueueWorkerJobs:
                 persona,
                 envelope_fingerprint(envelope),
             )
+            if msg_type == "revision":
+                guard.record_revision(engagement_id, persona)
         return job.job_id

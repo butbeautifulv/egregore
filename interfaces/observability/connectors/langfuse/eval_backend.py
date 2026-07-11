@@ -20,7 +20,7 @@ class LangfuseEvalBackend(NoopEvalBackend):
                 secret_key=settings.langfuse_secret_key,
                 host=settings.resolved_langfuse_host,
             )
-            client.score(trace_id=trace_id, name=name, value=value, comment=comment or None)
+            client.create_score(trace_id=trace_id, name=name, value=value, comment=comment or None)
         except Exception:
             return
 

@@ -20,6 +20,11 @@ metadata:
     {{- include "egregore.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.api.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.rollout.api.maxSurge }}
+      maxUnavailable: {{ .Values.rollout.api.maxUnavailable }}
   selector:
     matchLabels:
       app: egregore-api
@@ -29,6 +34,14 @@ spec:
         app: egregore-api
     spec:
       enableServiceLinks: false
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: api
           image: {{ include "egregore.image" . | quote }}
@@ -64,6 +77,10 @@ spec:
               port: {{ .Values.api.port }}
       volumes:
         - name: prom-multiproc
+          {{- if .Values.prometheus.multiprocHostPath }}
           hostPath:
             path: {{ .Values.prometheus.multiprocHostPath }}
             type: DirectoryOrCreate
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

@@ -13,11 +13,12 @@ if [[ ! -d "$GUI_SRC" ]]; then
 fi
 
 VENDOR="$ROOT/vendor/gui"
-DIRS=(shell theme motion hooks ui layout)
+DIRS=(shell theme motion hooks ui layout data-table lib/data-table lib/datetime)
 FILES=(utils.ts)
 
 mkdir -p "$VENDOR"
 for dir in "${DIRS[@]}"; do
+  mkdir -p "$VENDOR/$dir"
   rsync -a --delete "$GUI_SRC/$dir/" "$VENDOR/$dir/"
 done
 for file in "${FILES[@]}"; do
@@ -30,5 +31,5 @@ if [[ -f "$STYLE_PROFILES" ]]; then
 fi
 
 echo "Vendored gui from $GUI_SRC -> $VENDOR"
-echo "Rewriting imports…"
+echo "Rewriting imports..."
 node "$ROOT/scripts/rewrite-vendor-imports.mjs"

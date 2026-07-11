@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/vendor/gui/ui/alert-dialog"
-import { Alert, AlertDescription } from "@/vendor/gui/ui/alert"
+import { ApiErrorAlert } from "@/components/api-error-alert"
 import { Badge } from "@/vendor/gui/ui/badge"
 import { Button } from "@/vendor/gui/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
@@ -38,7 +38,13 @@ function riskVariant(risk: string): "default" | "secondary" | "destructive" | "o
   return "outline"
 }
 
-export function ApprovalActions({ approval }: { approval: PendingApproval }) {
+export function ApprovalActions({
+  approval,
+  compact = false,
+}: {
+  approval: PendingApproval
+  compact?: boolean
+}) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +65,21 @@ export function ApprovalActions({ approval }: { approval: PendingApproval }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (compact) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        <Button size="sm" disabled={loading} onClick={() => void decide("approve")}>
+          Approve
+        </Button>
+        <Button size="sm" variant="outline" disabled={loading} onClick={() => void decide("reject")}>
+          Reject
+        </Button>
+        {message ? <span className="text-primary self-center text-xs">{message}</span> : null}
+        {error ? <span className="text-destructive self-center text-xs">{error}</span> : null}
+      </div>
+    )
   }
 
   return (
@@ -123,11 +144,7 @@ export function ApprovalActions({ approval }: { approval: PendingApproval }) {
           </AlertDialog>
         </div>
         {message ? <p className="text-xs text-primary">{message}</p> : null}
-        {error ? (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
+        {error ? <ApiErrorAlert error={error} fallback="Action failed" /> : null}
       </CardContent>
     </Card>
   )

@@ -19,9 +19,27 @@ class EventRouter:
         plans: list[PlanRoutingConfig] | None = None,
         *,
         policy_port: ProfilePolicyPort | None = None,
+        plan_catalog: PlanCatalogPort | None = None,
     ) -> None:
         self._plans = plans or []
         self._policy_port = policy_port
+        self._plan_catalog = plan_catalog
+
+    def _plans_for_profile(self, profile_id: str) -> list[PlanRoutingConfig]:
+        if self._plan_catalog is None:
+            return self._plans
+        catalog_plans = self._plan_catalog.load_active(profile_id)
+        if not catalog_plans:
+            return self._plans
+        return [
+            PlanRoutingConfig(
+                id=entry.id,
+                name=entry.name,
+                description=entry.description,
+                rules=[_rule_from_dict(raw) for raw in entry.rules],
+            )
+            for entry in catalog_plans
+        ]
 
     @classmethod
     def from_plans_dir(
@@ -43,8 +61,8 @@ class EventRouter:
                     )
                     for entry in catalog_plans
                 ]
-                return cls(configs, policy_port=policy_port)
-        return cls(load_plans_from_dir(plans_dir), policy_port=policy_port)
+                return cls(configs, policy_port=policy_port, plan_catalog=plan_catalog)
+        return cls(load_plans_from_dir(plans_dir), policy_port=policy_port, plan_catalog=plan_catalog)
 
     def route(self, event: SecurityEvent, *, profile_id: str = DEFAULT_PROFILE_ID) -> RoutingDecision:
         personas: list[str] = []
@@ -54,7 +72,7 @@ class EventRouter:
         matched_plan_id = ""
         matched_rule_idx = -1
 
-        for plan in self._plans:
+        for plan in self._plans_for_profile(profile_id):
             for rule_idx, rule in enumerate(plan.rules):
                 if not rule_matches(rule, event.type, event.severity):
                     continue

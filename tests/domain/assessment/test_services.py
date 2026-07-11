@@ -44,6 +44,7 @@ def test_domain_layer_exports_and_assessment_services():
         stage="test",
         auto_approve_threshold="low",
     )
+    assert pending.interrupt_preview is not None
     assert pending.interrupt_preview["findings_count"] == 1
     assert (
         policy.decide(

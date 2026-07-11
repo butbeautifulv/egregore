@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
 
 from langchain.agents import create_agent
-from langchain.agents.middleware.human_in_the_loop import HumanInTheLoopMiddleware
+from langchain.agents.middleware.human_in_the_loop import HumanInTheLoopMiddleware, InterruptOnConfig
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
 from pydantic import BaseModel
@@ -50,6 +51,8 @@ from cys_core.middleware.prompt_context_middleware import PromptContextMiddlewar
 from cys_core.middleware.scope_middleware import ScopeMiddleware
 from cys_core.middleware.security_middleware import SecurityMiddleware
 from cys_core.middleware.tool_coercion_middleware import ToolCoercionMiddleware
+from cys_core.middleware.tool_dedup_middleware import ToolDedupMiddleware
+from cys_core.middleware.follow_up_tool_middleware import FollowUpToolMiddleware
 from cys_core.middleware.tool_ladder_middleware import ToolLadderMiddleware
 from cys_core.observability.trace_attributes import build_sgr_trace_metadata, merge_langchain_config
 from cys_core.observability.metrics import metrics
@@ -177,20 +180,24 @@ class AgentRuntime:
             [
                 ScopeMiddleware(allowed_tools=scope_allowed_tools(defn, profile_id)),
                 ToolCoercionMiddleware(),
+                ToolDedupMiddleware(persona=defn.name),
                 ToolLadderMiddleware(persona=defn.name),
+                FollowUpToolMiddleware(),
                 SecurityMiddleware(agent_id=defn.name, session_id=session_id, profile_id=profile_id),
             ]
         )
         interrupt_on = build_interrupt_on(defn.hitl_tools)
         if interrupt_on:
-            middleware.append(HumanInTheLoopMiddleware(interrupt_on=interrupt_on))
+            middleware.append(
+                HumanInTheLoopMiddleware(interrupt_on=cast(dict[str, bool | InterruptOnConfig], interrupt_on))
+            )
 
         if sgr.enabled:
             session = SgrSessionState()
             middleware.append(SchemaGuidedReasoningMiddleware(policy=sgr, session=session))
             middleware.append(SgrOneToolMiddleware(session=session))
         elif get_egregore_one_tool_per_turn():
-            middleware.append(OneToolPerTurnMiddleware())
+            middleware.append(OneToolPerTurnMiddleware(persona=defn.name))
         if get_egregore_json_tool_call_fallback():
             from cys_core.middleware.json_tool_call_middleware import JsonToolCallMiddleware
 

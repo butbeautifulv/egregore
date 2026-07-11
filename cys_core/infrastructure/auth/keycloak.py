@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 import jwt
 from jwt import PyJWKClient
 
@@ -32,16 +34,16 @@ class KeycloakJwtVerifier:
             raise AuthError("missing bearer token")
         try:
             signing_key = self._jwks_client.get_signing_key_from_jwt(token)
-            options: dict[str, bool] = {
+            options: dict[str, Any] = {
                 "require": ["exp", "sub", "iss"],
                 "verify_aud": False,
             }
             payload = jwt.decode(
                 token,
-                signing_key.key,
+                cast(str | bytes, signing_key.key),
                 algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
                 issuer=self.issuer,
-                options=options,
+                options=cast(Any, options),
             )
         except jwt.PyJWTError as exc:
             raise AuthError("invalid token") from exc

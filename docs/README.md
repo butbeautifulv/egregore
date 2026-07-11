@@ -8,6 +8,7 @@
 | [OBSERVABILITY.md](OBSERVABILITY.md) | Langfuse, Prometheus, OTEL/Tempo, Loki, Grafana |
 | [PLATFORM_TRUTH_MAP.md](PLATFORM_TRUTH_MAP.md) | Baseline inventory (middleware, tools, policy) |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Разработка, отладка, тестирование |
+| [operator-console-contract.md](operator-console-contract.md) | **Общий контракт web UI + TUI** (API, SSE, chat state) |
 | [SECURE_DEPLOYMENT.md](SECURE_DEPLOYMENT.md) | Secure deployment, MILS, A2A/mTLS, hardening |
 
 ## Architecture site (visual)

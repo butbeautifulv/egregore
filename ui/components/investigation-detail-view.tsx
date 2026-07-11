@@ -1,27 +1,26 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 
-import { ApiError, getInvestigation, getInvestigationJobs, subscribeEngagementStream } from "@/lib/api-client"
+import { ApiError, getEngagementEvents, getInvestigation, getInvestigationJobs } from "@/lib/api-client"
+import { formatApiError, getApiErrorTitle } from "@/lib/format-api-error"
+import { plannerJobId, eventDedupeKey, eventPayload, shouldRefreshOnEvent, sortChatEntries } from "@/lib/engagement-chat-state"
+import { isFollowUpJobId, buildFollowUpJobMap, groupFollowUpChildEntries, isFollowUpChildJob, isFollowUpOrchestratorJob } from "@/lib/follow-up"
 import { isInvestigationTerminal } from "@/lib/investigation-status"
 import { matchesInvestigation } from "@/lib/status-events"
 import type { InvestigationDetail, JobSummary, StatusStreamEvent } from "@/lib/types"
-import { InvestigationFindings } from "@/components/investigation-findings"
-import { InvestigationTimeline } from "@/components/investigation-timeline"
-import { JobCard } from "@/components/job-card"
-import { PageSection } from "@/components/page-section"
-import { PersonaStepper } from "@/components/persona-stepper"
+import { ApiErrorAlert } from "@/components/api-error-alert"
+import { EngagementChatThread } from "@/components/engagement/engagement-chat-thread"
+import { usePlatformBreadcrumbLabel } from "@/components/platform-breadcrumb"
+import { useApiFeatures } from "@/hooks/use-api-features"
+import { useEngagementChatState } from "@/hooks/use-engagement-chat"
+import { useFollowUpMessages } from "@/hooks/use-follow-up-messages"
+import { useEngagementStream } from "@/hooks/use-engagement-stream"
 import { useStatusStream } from "@/hooks/use-status-stream"
-import { RouteSkeleton } from "@/vendor/gui/shared/skeletons"
+import { EgregoreRouteSkeleton } from "@/components/skeletons"
 import { PageHeader } from "@/vendor/gui/layout/page-header"
-import { Alert, AlertDescription, AlertTitle } from "@/vendor/gui/ui/alert"
 import { Badge } from "@/vendor/gui/ui/badge"
-import { CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/vendor/gui/ui/collapsible"
 
 type InvestigationDetailViewProps = {
   investigationId: string
@@ -29,19 +28,7 @@ type InvestigationDetailViewProps = {
   initialJobs?: JobSummary[]
 }
 
-function plannerBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "ready" || status === "ok") return "default"
-  if (status === "fallback") return "secondary"
-  if (status === "error") return "destructive"
-  return "outline"
-}
-
-function formatPlannerRationale(rationale: string): string {
-  if (rationale === "planner_invalid_personas_fallback") {
-    return "Planner proposed unavailable personas; defaulted to catalog fallback."
-  }
-  return rationale
-}
+const SSE_ENABLED = process.env.NEXT_PUBLIC_EGRESS_SSE === "1"
 
 export function InvestigationDetailView({
   investigationId,
@@ -50,13 +37,37 @@ export function InvestigationDetailView({
 }: InvestigationDetailViewProps) {
   const [detail, setDetail] = useState<InvestigationDetail | null>(initialDetail ?? null)
   const [jobs, setJobs] = useState<JobSummary[]>(initialJobs ?? [])
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [loading, setLoading] = useState(!initialDetail)
 
-  const refresh = useCallback(async () => {
-    if (!investigationId) {
-      return
-    }
+  usePlatformBreadcrumbLabel(detail?.investigation_id ?? investigationId)
+
+  const { features } = useApiFeatures()
+  const chatDetail = useMemo(
+    () =>
+      detail
+        ? {
+            findings_summary: detail.findings_summary ?? [],
+            planner_plan: detail.planner_plan,
+            planner_rationale: detail.planner_rationale ?? "",
+            planner_sub_goals: detail.planner_sub_goals ?? {},
+            planner_depends_on: detail.planner_depends_on ?? {},
+            execution_mode: detail.execution_mode ?? null,
+            synthesis_persona: detail.synthesis_persona ?? null,
+          }
+        : undefined,
+    [detail],
+  )
+  const { entries, handleEvent } = useEngagementChatState(investigationId, features, chatDetail)
+  const { messages: followUps, sending: followUpSending, sendFollowUp, handleStreamEvent } =
+    useFollowUpMessages(investigationId)
+  const seenKeysRef = useRef(new Set<string>())
+  const replayedRef = useRef(false)
+  const followUpJobMapRef = useRef(new Map<string, string>())
+  const refreshDetailOnlyRef = useRef<() => Promise<void>>(async () => {})
+
+  const refreshDetailOnly = useCallback(async () => {
+    if (!investigationId) return
     try {
       const [nextDetail, nextJobs] = await Promise.all([
         getInvestigation(investigationId),
@@ -67,16 +78,76 @@ export function InvestigationDetailView({
       setError(null)
     } catch (exc) {
       if (exc instanceof ApiError && exc.status === 404) {
-        setError("Investigation not found")
+        setError(exc)
         setDetail(null)
         setJobs([])
         return
       }
-      setError(exc instanceof Error ? exc.message : "Failed to refresh investigation")
+      setError(exc)
     } finally {
       setLoading(false)
     }
   }, [investigationId])
+
+  refreshDetailOnlyRef.current = refreshDetailOnly
+
+  const applyEngagementEvent = useCallback(
+    (event: Parameters<typeof handleEvent>[0]) => {
+      const key = eventDedupeKey(event)
+      if (seenKeysRef.current.has(key)) return
+      seenKeysRef.current.add(key)
+
+      const payload = eventPayload(event)
+      const jobId = payload.job_id ? String(payload.job_id) : ""
+      const followUpId = payload.follow_up_id ? String(payload.follow_up_id) : ""
+      if (followUpId && jobId) {
+        followUpJobMapRef.current.set(jobId, followUpId)
+      }
+      if (followUpId && Array.isArray(payload.job_ids)) {
+        for (const item of payload.job_ids) {
+          const childJobId = String(item)
+          if (childJobId) followUpJobMapRef.current.set(childJobId, followUpId)
+        }
+      }
+      if (jobId && isFollowUpJobId(jobId)) {
+        handleStreamEvent(event)
+        return
+      }
+      if (
+        event.type === "follow_up_complete" ||
+        event.type === "follow_up_failed" ||
+        event.type === "follow_up_queued" ||
+        event.type === "follow_up_plan_started" ||
+        event.type === "follow_up_plan_complete"
+      ) {
+        handleStreamEvent(event)
+        return
+      }
+
+      handleEvent(event)
+      handleStreamEvent(event)
+      if (shouldRefreshOnEvent(event)) {
+        void refreshDetailOnlyRef.current()
+      }
+    },
+    [handleEvent, handleStreamEvent],
+  )
+
+  const replayEngagementEvents = useCallback(async () => {
+    if (!investigationId) return
+    try {
+      const events = await getEngagementEvents(investigationId)
+      for (const event of events) {
+        applyEngagementEvent(event)
+      }
+    } catch {
+      // events endpoint optional on very old API builds
+    }
+  }, [investigationId, applyEngagementEvent])
+
+  const refresh = useCallback(async () => {
+    await refreshDetailOnly()
+  }, [refreshDetailOnly])
 
   const onStreamEvent = useCallback(
     (event: StatusStreamEvent) => {
@@ -87,14 +158,31 @@ export function InvestigationDetailView({
     [investigationId, refresh],
   )
 
-  const { events, status: streamStatus } = useStatusStream(onStreamEvent)
-  const streamConnected = streamStatus === "open"
+  const { status: globalStreamStatus } = useStatusStream(onStreamEvent)
   const terminal = isInvestigationTerminal(detail, jobs)
 
+  const onEngagementEvent = applyEngagementEvent
+
+  const { status: engagementStreamStatus } = useEngagementStream(
+    investigationId,
+    onEngagementEvent,
+    SSE_ENABLED,
+  )
+
   useEffect(() => {
-    if (initialDetail) {
-      return
-    }
+    seenKeysRef.current = new Set()
+    replayedRef.current = false
+    followUpJobMapRef.current = new Map()
+  }, [investigationId])
+
+  useEffect(() => {
+    if (replayedRef.current) return
+    replayedRef.current = true
+    void replayEngagementEvents()
+  }, [investigationId, replayEngagementEvents])
+
+  useEffect(() => {
+    if (initialDetail) return
     let cancelled = false
     ;(async () => {
       try {
@@ -109,16 +197,14 @@ export function InvestigationDetailView({
       } catch (exc) {
         if (cancelled) return
         if (exc instanceof ApiError && exc.status === 404) {
-          setError("Investigation not found")
+          setError(exc)
           setDetail(null)
           setJobs([])
           return
         }
-        setError(exc instanceof Error ? exc.message : "Failed to refresh investigation")
+        setError(exc)
       } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+        if (!cancelled) setLoading(false)
       }
     })()
     return () => {
@@ -127,67 +213,134 @@ export function InvestigationDetailView({
   }, [initialDetail, investigationId])
 
   useEffect(() => {
-    if (!detail || terminal) {
-      return
-    }
-    if (detail.status !== "in_progress" && detail.status !== "open") {
+    if (!detail || terminal) return
+    if (SSE_ENABLED && engagementStreamStatus === "open") return
+    if (detail.status !== "in_progress" && detail.status !== "open" && detail.status !== "running") {
       return
     }
     const timer = setInterval(() => {
       void refresh()
     }, 12000)
     return () => clearInterval(timer)
-  }, [detail, terminal, refresh])
+  }, [detail, terminal, refresh, engagementStreamStatus])
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_EGRESS_SSE !== "1" || !investigationId || terminal) {
-      return
-    }
-    return subscribeEngagementStream(investigationId, () => {
-      void refresh()
-    })
-  }, [investigationId, terminal, refresh])
+    if (engagementStreamStatus !== "error") return
+    toast.error("Engagement stream disconnected — reconnecting…")
+    seenKeysRef.current = new Set()
+    void replayEngagementEvents()
+  }, [engagementStreamStatus, replayEngagementEvents])
+
+  const followUpJobMap = useMemo(
+    () => {
+      const merged = buildFollowUpJobMap(jobs, followUps)
+      for (const [jobId, fuId] of followUpJobMapRef.current) {
+        merged.set(jobId, fuId)
+      }
+      return merged
+    },
+    [jobs, followUps],
+  )
+
+  const followUpChildEntries = useMemo(
+    () => groupFollowUpChildEntries(entries, followUpJobMap),
+    [entries, followUpJobMap],
+  )
+
+  const sortedEntries = useMemo(
+    () =>
+      sortChatEntries(
+        entries.filter(
+          (entry) =>
+            !isFollowUpOrchestratorJob(entry.jobId) && !isFollowUpChildJob(entry.jobId, followUpJobMap),
+        ),
+        plannerJobId(investigationId),
+        detail?.planner_plan ?? null,
+        jobs,
+      ),
+    [entries, investigationId, detail?.planner_plan, jobs, followUpJobMap],
+  )
+
+  const isFollowUpPlanRunning = useMemo(() => {
+    if (detail?.status === "closed") return false
+    return followUps.some(
+      (item) =>
+        item.workKind === "follow_up_plan" &&
+        (item.streaming || item.status === "pending" || item.status === "queued"),
+    )
+  }, [detail?.status, followUps])
+
+  const isFirstFollowUp = useMemo(
+    () => !followUps.some((item) => item.role === "operator" && item.status === "completed"),
+    [followUps],
+  )
+
+  const followUpPlanFailedMessage = useMemo(() => {
+    const failed = followUps.find(
+      (item) =>
+        item.role === "assistant" &&
+        item.workKind === "follow_up_plan" &&
+        item.status === "failed",
+    )
+    if (!failed) return null
+    return (failed.error ?? failed.text ?? "").trim() || null
+  }, [followUps])
+
+  const plannerErrorForThread = useMemo(() => {
+    if (detail?.planner_status !== "error" || !detail.planner_error?.trim()) return null
+    const err = detail.planner_error.trim()
+    if (followUpPlanFailedMessage && err === followUpPlanFailedMessage) return null
+    return err
+  }, [detail?.planner_status, detail?.planner_error, followUpPlanFailedMessage])
+
+  const streamConnected =
+    engagementStreamStatus === "open" || globalStreamStatus === "open"
 
   if (!investigationId) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Missing investigation id</AlertTitle>
-      </Alert>
+      <ApiErrorAlert
+        title="Missing work order id"
+        message="Open a work order from the list or start a new one."
+      />
     )
   }
 
   if (loading) {
-    return <RouteSkeleton variant="detail" />
+    return <EgregoreRouteSkeleton variant="investigation" />
   }
 
   if (!detail) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Investigation" description={investigationId} backHref="/" backLabel="Investigations" />
+        <PageHeader title="Work order" description={investigationId} backHref="/" backLabel="Work orders" />
         {error ? (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <ApiErrorAlert
+            error={error}
+            title={getApiErrorTitle(error, "Work order")}
+            message={formatApiError(error, "Work order not found")}
+            onRetry={() => void refresh()}
+          />
         ) : null}
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader
-        title={detail.investigation_id}
+        title={detail.work_order_id ?? detail.investigation_id}
         backHref="/"
-        backLabel="Investigations"
-        description={detail.goal || "No goal recorded"}
+        backLabel="Work orders"
+        description={detail.goal || "Work order"}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{detail.status}</Badge>
+            {detail.profile_id ? <Badge variant="secondary">{detail.profile_id}</Badge> : null}
             {terminal ? (
               <Badge variant="default">Completed</Badge>
             ) : (
               <Badge variant={streamConnected ? "secondary" : "outline"}>
-                {streamConnected ? "SSE Connected" : "SSE Reconnecting"}
+                {streamConnected ? "Stream connected" : "Stream reconnecting"}
               </Badge>
             )}
           </div>
@@ -195,68 +348,40 @@ export function InvestigationDetailView({
       />
 
       {error ? (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <ApiErrorAlert
+          error={error}
+          title={getApiErrorTitle(error, "Work order")}
+          message={formatApiError(error, "Failed to refresh work order")}
+          onRetry={() => void refresh()}
+        />
       ) : null}
 
-      {detail.planner_status ? (
-        <PageSection>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle>Planner</CardTitle>
-            <Badge variant={plannerBadgeVariant(detail.planner_status)}>{detail.planner_status}</Badge>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2 text-xs">
-            {detail.planner_rationale ? (
-              <p className="text-muted-foreground">{formatPlannerRationale(detail.planner_rationale)}</p>
-            ) : null}
-            {detail.planner_error ? (
-              <Collapsible>
-                <CollapsibleTrigger className="text-destructive hover:underline">
-                  Show planner error
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <Alert variant="destructive" className="mt-2">
-                    <AlertTitle>Planner error</AlertTitle>
-                    <AlertDescription className="font-mono text-xs whitespace-pre-wrap">
-                      {detail.planner_error}
-                    </AlertDescription>
-                  </Alert>
-                </CollapsibleContent>
-              </Collapsible>
-            ) : null}
-          </CardContent>
-        </PageSection>
+      {isFollowUpPlanRunning ? (
+        <ApiErrorAlert
+          title="Re-plan in progress"
+          message="The planner is running follow-up agents. The composer unlocks when the work order closes again."
+        />
       ) : null}
 
-      <PageSection>
-        <CardHeader>
-          <CardTitle>Persona pipeline</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PersonaStepper
-            plannerPlan={detail.planner_plan}
-            completedPersonas={detail.completed_personas}
-            jobs={jobs}
-          />
-        </CardContent>
-      </PageSection>
-
-      <InvestigationFindings
+      <EngagementChatThread
+        goal={detail.goal || ""}
+        entries={sortedEntries}
+        jobs={jobs}
         findings={detail.findings_summary ?? []}
         completedPersonas={detail.completed_personas ?? []}
-        jobs={jobs}
+        intake={detail.intake}
+        profileId={detail.profile_id}
+        finalReport={detail.final_report}
+        plannerError={plannerErrorForThread}
+        plannerStatus={detail.planner_status}
+        followUps={followUps}
+        followUpChildEntries={followUpChildEntries}
+        followUpSending={followUpSending}
+        onSendFollowUp={sendFollowUp}
+        composerDisabled={followUpSending || detail.status !== "closed" || isFollowUpPlanRunning}
+        isFirstFollowUp={isFirstFollowUp}
+        isTerminal={terminal}
       />
-
-      {jobs.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          {jobs.map((job) => (
-            <JobCard key={job.job_id} job={job} />
-          ))}
-        </div>
-      ) : null}
-
-      <InvestigationTimeline investigationId={investigationId} events={events} />
     </div>
   )
 }

@@ -8,6 +8,7 @@ from langchain.agents.middleware.types import AgentMiddleware, ModelRequest, Mod
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 from cys_core.domain.memory.services import MemoryReadService
+from cys_core.middleware._framework_casts import cast_model_response
 from cys_core.domain.security.prompt_context import wrap_investigation_memory
 from cys_core.observability.metrics import metrics
 
@@ -67,5 +68,5 @@ class MemoryContextMiddleware(AgentMiddleware):
         updated = request.override(messages=self._inject_memory(request))
         result = handler(updated)
         if inspect.isawaitable(result):
-            result = await result
-        return result
+            return cast_model_response(await result)
+        return cast_model_response(result)

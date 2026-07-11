@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from cys_core.application.workers.noop_signals import revision_semantic_dedup_key, semantic_dedup_key
+from cys_core.domain.findings.noop import revision_semantic_dedup_key, semantic_dedup_key
 
 
 def _canonical_payload(payload: dict[str, Any]) -> dict[str, Any]:

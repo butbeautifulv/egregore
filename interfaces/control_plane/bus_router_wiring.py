@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from cys_core.application.bus_ingress_router import BusIngressRouter
+from cys_core.application.bus_engagement import normalize_correlation_id
 
 if TYPE_CHECKING:
     from bootstrap.container import Container
@@ -21,7 +22,12 @@ def build_bus_ingress_router(container: Container) -> BusIngressRouter:
 
     def _egress_publish(envelope: dict) -> None:
         payload = envelope.get("payload", {})
-        engagement_id = str(payload.get("correlation_id", payload.get("event_id", "")))
+        if not isinstance(payload, dict):
+            payload = {}
+        engagement_id = normalize_correlation_id(
+            str(payload.get("correlation_id", payload.get("event_id", ""))),
+            payload,
+        )
         if engagement_id:
             container.get_engagement_egress().publish_event(
                 engagement_id,

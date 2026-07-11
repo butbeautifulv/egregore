@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from bootstrap.settings import Settings, get_settings
+from cys_core.application.ports.sandbox import SandboxConnector
 from cys_core.domain.workers.models import SandboxCredentials
 
 
@@ -36,13 +37,13 @@ class LocalSandboxConnector:
         return run_id in self._active
 
 
-_sandbox_connector: LocalSandboxConnector | None = None
+_sandbox_connector: SandboxConnector | None = None
 
 
 def get_sandbox_connector(
     *,
     settings: Settings | None = None,
-) -> LocalSandboxConnector:
+) -> SandboxConnector:
     """Return sandbox connector; K8s when SANDBOX_CONNECTOR=k8s."""
     global _sandbox_connector
     cfg = settings or get_settings()
@@ -51,7 +52,7 @@ def get_sandbox_connector(
     if cfg.sandbox_connector == "k8s":
         from cys_core.infrastructure.k8s_sandbox import K8sSandboxConnector
 
-        connector: LocalSandboxConnector = K8sSandboxConnector(settings=cfg)
+        connector: SandboxConnector = K8sSandboxConnector(settings=cfg)
     elif cfg.egregore_sandbox_v2:
         from cys_core.infrastructure.sandbox_v2 import DockerSandboxConnector
 

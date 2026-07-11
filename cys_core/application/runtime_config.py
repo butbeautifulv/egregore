@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import Any, TypedDict
+
+
+class LlmSettings(TypedDict):
+    model: str
+    api_key: str
+    base_url: str | None
+    temperature: float
+    request_timeout: float
 
 _POLICY_GETTER_DEPRECATION = (
     "Policy getters in runtime_config are deprecated; use "
@@ -234,7 +242,7 @@ def get_recursion_limit_for_persona(persona: str) -> int:
     return _default_job_recursion_limit
 
 
-def get_llm_settings() -> dict[str, object]:
+def get_llm_settings() -> LlmSettings:
     return {
         "model": _llm_model,
         "api_key": _llm_api_key,
@@ -381,7 +389,7 @@ def get_trace_critic_hitl_on_exhausted() -> bool:
     return _trace_critic_hitl_on_exhausted
 
 
-def get_reasoning_llm_settings() -> dict[str, object]:
+def get_reasoning_llm_settings() -> LlmSettings:
     model = _reasoning_model or _llm_model
     return {
         "model": model,
