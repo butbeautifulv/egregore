@@ -7,11 +7,21 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from bootstrap.container import get_container
 from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
 from cys_core.domain.runs.plan_models import PlanApproval
+from interfaces.api.tenant_deps import require_tenant_match_http
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_ingress_role, require_operator_role
+from interfaces.api.authz_helpers import require_engagement_relation
+from interfaces.api.errors import authz_denied_http
 from interfaces.api.run_schemas import RunCreateIn, RunOut, RunStepIn, SessionCreateIn
 
 router = APIRouter(tags=["runs"])
+
+
+def _deny_legacy_runs_in_enforce() -> None:
+    if get_container().get_authz_service().mode == "enforce":
+        raise authz_denied_http(
+            message="Legacy /runs routes require workspace context; use /v1/work-orders",
+        )
 
 
 def _start_engagement():
@@ -50,10 +60,12 @@ async def create_run(
     body: RunCreateIn,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> RunOut:
+    _deny_legacy_runs_in_enforce()
+    tenant_id = require_tenant_match_http(_auth, body.tenant_id)
     out = await _create_via_engagement(
         goal=body.message or body.goal,
         profile_id=body.profile_id,
-        tenant_id=body.tenant_id,
+        tenant_id=tenant_id,
         persona=body.persona,
     )
     return RunOut(run_context=out["run_context"], result=out["result"])
@@ -66,6 +78,8 @@ async def run_step(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> RunOut:
+    _deny_legacy_runs_in_enforce()
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
     out = await _create_via_engagement(
         goal=body.message,
         profile_id="cybersec-soc",
@@ -83,6 +97,7 @@ async def approve_plan(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> RunOut:
+    require_tenant_match_http(_auth, tenant_id)
     raise HTTPException(status_code=501, detail="Plan approval via engagement queue not implemented")
 
 
@@ -91,10 +106,12 @@ async def create_session(
     body: SessionCreateIn,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> RunOut:
+    _deny_legacy_runs_in_enforce()
+    tenant_id = require_tenant_match_http(_auth, body.tenant_id)
     out = await _create_via_engagement(
         goal=body.message or body.goal,
         profile_id=body.profile_id,
-        tenant_id=body.tenant_id,
+        tenant_id=tenant_id,
         persona="conductor",
     )
     return RunOut(run_context=out["run_context"], result=out["result"])
@@ -106,6 +123,13 @@ async def get_run(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> dict[str, Any]:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=run_id,
+        relation="can_view",
+    )
     engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -122,6 +146,13 @@ async def upload_attachment(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> dict[str, Any]:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=run_id,
+        relation="can_operate",
+    )
     engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Run not found")

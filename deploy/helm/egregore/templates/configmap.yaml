@@ -15,6 +15,16 @@ data:
   AGENTS_ROOT: "agents"
   USE_QDRANT: {{ .Values.env.useQdrant | quote }}
   AUTH_ENABLED: {{ .Values.env.authEnabled | quote }}
+  AUTHZ_MODE: {{ .Values.env.authzMode | quote }}
+  {{- if .Values.env.openfgaApiUrl }}
+  OPENFGA_API_URL: {{ .Values.env.openfgaApiUrl | quote }}
+  {{- end }}
+  {{- if .Values.env.openfgaStoreId }}
+  OPENFGA_STORE_ID: {{ .Values.env.openfgaStoreId | quote }}
+  {{- end }}
+  {{- if .Values.env.openfgaModelId }}
+  OPENFGA_MODEL_ID: {{ .Values.env.openfgaModelId | quote }}
+  {{- end }}
   OTEL_ENABLED: {{ .Values.env.otelEnabled | quote }}
   LOG_LEVEL: {{ .Values.env.logLevel | quote }}
   LOG_FORMAT: {{ .Values.env.logFormat | quote }}
@@ -24,6 +34,8 @@ data:
   {{- if .Values.env.traceCriticEnabled }}
   TRACE_CRITIC_ENABLED: {{ .Values.env.traceCriticEnabled | quote }}
   {{- end }}
+  COORDINATOR_CHAT_NARRATIVE: {{ .Values.env.coordinatorChatNarrative | default "false" | quote }}
+  COORDINATOR_LLM_NARRATIVE: {{ .Values.env.coordinatorLlmNarrative | default "false" | quote }}
   {{- if .Values.env.llmRequestTimeout }}
   LLM_REQUEST_TIMEOUT: {{ .Values.env.llmRequestTimeout | quote }}
   {{- end }}
@@ -148,6 +160,9 @@ stringData:
   REDIS_PASSWORD: {{ .Values.redis.password | quote }}
   {{- if .Values.busSigningKey }}
   BUS_SIGNING_KEY: {{ .Values.busSigningKey | quote }}
+  {{- end }}
+  {{- if .Values.openfgaApiToken }}
+  OPENFGA_API_TOKEN: {{ .Values.openfgaApiToken | quote }}
   {{- end }}
   {{- if and .Values.langfuse.enabled .Values.langfuse.secretKey }}
   LANGFUSE_SECRET_KEY: {{ .Values.langfuse.secretKey | quote }}

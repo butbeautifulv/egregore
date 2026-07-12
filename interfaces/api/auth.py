@@ -8,6 +8,10 @@ from bootstrap.container import get_container
 from cys_core.domain.security.auth_models import AuthClaims, AuthError
 
 
+def get_token_verifier():
+    return get_container().get_token_verifier()
+
+
 def require_role_setting(*setting_fields: str):
     """FastAPI dependency factory: verify JWT and optional RBAC roles from settings."""
 
@@ -17,7 +21,7 @@ def require_role_setting(*setting_fields: str):
         settings = get_container().settings
         if not settings.auth_enabled:
             return None
-        verifier = get_container().get_token_verifier()
+        verifier = get_token_verifier()
         try:
             claims = verifier.verify_bearer(authorization)
         except AuthError as exc:

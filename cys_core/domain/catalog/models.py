@@ -118,6 +118,8 @@ class AgentCatalogEntry(BaseModel):
     hitl_tools: dict[str, bool] = Field(default_factory=dict)
     trust_level: str = "internal"
     bus_recipients: list[str] = Field(default_factory=list)
+    persona_prompt: str = ""
+    language: str = "ru"
     system_prompt: str = ""
     system_prompt_digest: str = ""
     profile_id: str = DEFAULT_PROFILE_ID
@@ -199,6 +201,7 @@ class ProfilePack(BaseModel):
     default_personas: list[str] = Field(default_factory=list)
     default_skills: list[str] = Field(default_factory=list)
     default_plan: str = "incident-triage"
+    control_plane_mode: str = "gate_only"
     global_rules: str = ""
     hints_template: str = ""
     policy: ProfilePolicyPayload = Field(default_factory=ProfilePolicyPayload)

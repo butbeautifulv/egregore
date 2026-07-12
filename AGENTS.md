@@ -92,6 +92,7 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ### Security
 
+- **Prompt layers:** persona (`persona_prompt`, mutable) + `GLOBAL_RULES` / `SECURITY_RULES` (immutable backend via `system_prompt_assembler.py`). See [ADR-004](docs/adr/ADR-004-immutable-prompt-rules.md).
 - Injection/PII: `cys_core/domain/security/patterns/` (RU priority)
 - Input sanitization на ingress и перед LLM
 - Tool allowlist per agent (`agent.yaml`)
@@ -102,6 +103,7 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 - **Nessus MCP** (`NESSUS_MCP_*`): vulnerability inventory — [docs/integration/egregore-tenable-mcp.md](../../docs/integration/egregore-tenable-mcp.md); `make cxado-up-tenable-mcp`
 - SecureAgentBus с trust levels
 - **Keycloak OIDC** (optional): JWT Bearer на Ingress API (`interfaces/api/`) и MCP Tool Gateway (`interfaces/gateways/tool/`). Env: `AUTH_ENABLED`, `KEYCLOAK_ISSUER`, RBAC roles — см. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#keycloak-oidc-ingress--tool-gateway).
+- **Workspace + OpenFGA ReBAC** (ADR-005): workspaces, tenant bind, FGA `AUTHZ_MODE` — см. [docs/auth/oidc-openfga.md](docs/auth/oidc-openfga.md) и [docs/adr/ADR-005-workspace-oidc-openfga.md](docs/adr/ADR-005-workspace-oidc-openfga.md).
 
 ### MCP-first exploration (Cursor)
 

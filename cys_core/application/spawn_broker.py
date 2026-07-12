@@ -6,9 +6,11 @@ from typing import Any
 from cys_core.application.policy_resolver import get_profile_policy_resolver
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
+from cys_core.application.ports.workspace_store import WorkspaceStorePort
 from cys_core.domain.runs.mode_policy import ModePolicy
 from cys_core.domain.runs.models import InteractionMode, RunContext
 from cys_core.domain.runs.plan_models import WorkPlan
+from cys_core.domain.agents.control import is_platform_readonly_persona
 from cys_core.domain.runs.spawn import MAX_SPAWN_DEPTH, SpawnWorkerPayload
 from cys_core.domain.runs.state_models import RunState, RunStatus
 from cys_core.domain.workers.models import WorkerJob
@@ -23,10 +25,14 @@ class SubagentSpawnBroker:
         *,
         max_spawn_depth: int | None = None,
         policy_port: ProfilePolicyPort | None = None,
+        workspace_store: WorkspaceStorePort | None = None,
+        require_workspace_in_enforce: bool = False,
     ) -> None:
         self._catalog = catalog
         self._max_spawn_depth_override = max_spawn_depth
         self._policy_port = policy_port
+        self._workspace_store = workspace_store
+        self._require_workspace_in_enforce = require_workspace_in_enforce
 
     def _resolve_max_spawn_depth(self, profile_id: str) -> int:
         if self._max_spawn_depth_override is not None:
@@ -47,6 +53,7 @@ class SubagentSpawnBroker:
         mode: InteractionMode | None,
         profile_id: str = "cybersec-soc",
         parent_persona: str = "",
+        workspace_id: str = "",
     ) -> str | None:
         if not ModePolicy.allow_spawn(mode):
             return "spawn_not_allowed_in_mode"
@@ -58,10 +65,24 @@ class SubagentSpawnBroker:
             return "unknown_persona"
         if parent_persona == "conductor":
             conductor = self._catalog.get_agent("conductor")
+            spawn_targets: set[str] = set()
             if conductor and conductor.capabilities:
-                spawn_targets = {cap for cap in conductor.capabilities if cap not in ("spawn_worker", "conductor")}
+                spawn_targets = {
+                    cap for cap in conductor.capabilities if cap not in ("spawn_worker", "conductor")
+                }
                 if spawn_targets and payload.persona not in spawn_targets:
                     return "persona_not_in_conductor_capabilities"
+            ws_id = (workspace_id or "").strip()
+            if not ws_id and self._require_workspace_in_enforce:
+                return "workspace_required_in_enforce"
+            if ws_id and self._workspace_store is not None:
+                forked = {a.name for a in self._workspace_store.list_agents(ws_id)}
+                if payload.persona in forked or is_platform_readonly_persona(payload.persona):
+                    pass
+                elif forked:
+                    return "persona_not_in_workspace"
+                elif not is_platform_readonly_persona(payload.persona):
+                    return "persona_not_in_workspace"
         floor = self._resolve_trust_floor(agent.profile_id)
         if agent.quality.empirical_trust < floor:
             return "persona_quality_below_floor"

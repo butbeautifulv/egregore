@@ -271,11 +271,18 @@ def reasoning_step(
 @tool
 def reasoning_check(goal: str, trace_json: str) -> str:
     """Review full action trace before final synthesis (DeepAgent reasoning step)."""
+    from bootstrap.container import get_container
+    from bootstrap.settings import get_settings
     from cys_core.application.use_cases.evaluate_trace_critic import EvaluateTraceCritic
     from cys_core.security.monitor import AgentMonitor
 
     AgentMonitor("conductor").log_orchestration_tool("reasoning", "reasoning_check", {"goal": goal[:120]})
-    critic = EvaluateTraceCritic()
+    settings = get_settings()
+    critic = EvaluateTraceCritic(
+        judge_backend=get_container().get_judge_backend() if settings.trace_critic_enabled else None,
+        threshold=settings.trace_critic_threshold,
+        application_tracing=get_container().get_application_tracing_port(),
+    )
     verdict = critic.execute(goal=goal, trace=trace_json)
     return json.dumps(verdict.model_dump(), ensure_ascii=False)
 
@@ -388,7 +395,17 @@ def _resolve_spawn_worker_job(
         return json.dumps({"error": "run_context_not_found"}, ensure_ascii=False), None, None
 
     ctx = state.run_context
-    broker = SubagentSpawnBroker(get_agent_catalog())
+    container = get_container()
+    workspace_id = ""
+    engagement_store = container.get_engagement_state_store()
+    engagement = engagement_store.get(tenant_id, context_id)
+    if engagement is not None:
+        workspace_id = (getattr(engagement, "workspace_id", "") or "").strip()
+    broker = SubagentSpawnBroker(
+        get_agent_catalog(),
+        workspace_store=container.get_workspace_store(),
+        require_workspace_in_enforce=container.settings.authz_mode == "enforce",
+    )
     payload = SpawnWorkerPayload(
         parent_context=ctx,
         persona=persona,
@@ -400,12 +417,12 @@ def _resolve_spawn_worker_job(
         mode=ctx.mode,
         profile_id=ctx.profile_id,
         parent_persona="conductor",
+        workspace_id=workspace_id,
     )
     if reason:
         return json.dumps({"error": reason}, ensure_ascii=False), None, None
 
     job = broker.to_worker_job(payload, event_id=context_id)
-    container = get_container()
     parent_job_id = structlog.contextvars.get_contextvars().get("job_id")
     work_kind = structlog.contextvars.get_contextvars().get("work_kind")
     if isinstance(parent_job_id, str) and work_kind == "follow_up_orchestrate":

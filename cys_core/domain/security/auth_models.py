@@ -19,6 +19,7 @@ class AuthClaims:
     sub: str
     email: str = ""
     roles: tuple[str, ...] = field(default_factory=tuple)
+    organization_id: str = ""
 
     def has_any_role(self, *required: str) -> bool:
         if not required:
@@ -53,6 +54,23 @@ def extract_roles(claims: dict[str, Any], client_id: str) -> tuple[str, ...]:
     return tuple(roles)
 
 
+def extract_organization_id(claims: dict[str, Any]) -> str:
+    """Prefer custom org claim, then organization, then first org in org list."""
+    for key in ("organization_id", "org_id", "org", "tenant_id"):
+        value = claims.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    org = claims.get("organization")
+    if isinstance(org, str) and org.strip():
+        return org.strip()
+    if isinstance(org, dict):
+        for key in ("id", "name"):
+            value = org.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
 def claims_from_payload(payload: dict[str, Any], *, client_id: str) -> AuthClaims:
     sub = payload.get("sub")
     if not isinstance(sub, str) or not sub:
@@ -62,4 +80,5 @@ def claims_from_payload(payload: dict[str, Any], *, client_id: str) -> AuthClaim
         sub=sub,
         email=email if isinstance(email, str) else "",
         roles=extract_roles(payload, client_id),
+        organization_id=extract_organization_id(payload),
     )

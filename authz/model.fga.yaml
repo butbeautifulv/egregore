@@ -1,0 +1,99 @@
+name: egregore-workspace-rebac
+model_file: model.fga
+
+tuples:
+  - user: user:alice
+    relation: admin
+    object: organization:acme
+  - user: user:bob
+    relation: member
+    object: organization:acme
+  - user: organization:acme
+    relation: organization
+    object: workspace:ws1
+  - user: user:alice
+    relation: owner
+    object: workspace:ws1
+  - user: workspace:ws1
+    relation: workspace
+    object: workspace_agent:ws1/soc
+  - user: workspace:ws1
+    relation: workspace
+    object: engagement:eng1
+  - user: organization:acme
+    relation: organization
+    object: datasource:siem-readonly
+  - user: workspace:ws1
+    relation: consumer
+    object: datasource:siem-readonly
+  - user: user:*
+    relation: platform
+    object: agent:planner
+
+tests:
+  - name: org-admin-owns-workspace
+    check:
+      - user: user:alice
+        object: workspace:ws1
+        assertions:
+          can_admin: true
+          can_run: true
+          can_create_agent: true
+      - user: user:bob
+        object: workspace:ws1
+        assertions:
+          can_admin: false
+          can_run: true
+          can_create_agent: false
+
+  - name: workspace-agent-edit
+    check:
+      - user: user:alice
+        object: workspace_agent:ws1/soc
+        assertions:
+          can_edit: true
+          can_view: true
+      - user: user:bob
+        object: workspace_agent:ws1/soc
+        assertions:
+          can_edit: false
+          can_view: true
+
+  - name: engagement-operate
+    check:
+      - user: user:alice
+        object: engagement:eng1
+        assertions:
+          can_operate: true
+          can_view: true
+      - user: user:bob
+        object: engagement:eng1
+        assertions:
+          can_operate: false
+          can_view: true
+
+  - name: datasource-explicit-grant
+    check:
+      - user: user:alice
+        object: datasource:siem-readonly
+        assertions:
+          can_query: true
+      - user: user:bob
+        object: datasource:siem-readonly
+        assertions:
+          can_query: true
+
+  - name: platform-agent-viewable
+    check:
+      - user: user:bob
+        object: agent:planner
+        assertions:
+          viewer: true
+
+  - name: list-workspaces-for-member
+    list_objects:
+      - user: user:bob
+        type: workspace
+        relation: can_run
+        assertions:
+          - workspace:ws1

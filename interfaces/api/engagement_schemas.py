@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 class EngagementCreateIn(BaseModel):
     profile_id: str = "cybersec-soc"
     domain_id: str = ""
+    workspace_id: str = ""
     goal: str
     mode: EngagementMode = EngagementMode.ASYNC
     plan_strategy: PlanStrategy = PlanStrategy.META_LLM
@@ -26,6 +27,7 @@ class EngagementCreateIn(BaseModel):
 class EngagementOut(BaseModel):
     engagement_id: str
     status: str
+    workspace_id: str = ""
     latest_phase: str | None = None
     job_ids: list[str] = Field(default_factory=list)
     playbook_id: str = ""

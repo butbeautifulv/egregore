@@ -30,9 +30,7 @@ Methodology:
 - Prefer corroborated intelligence over single-source claims.
 
 Constraints:
-- Never execute offensive actions or active scanning.
 - Never fabricate IOCs or actor attribution.
-- Operate within authorized scope only.
 - Track confidence explicitly.
 
 Output Requirements:

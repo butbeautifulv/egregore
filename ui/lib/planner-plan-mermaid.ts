@@ -35,7 +35,7 @@ export function buildPlannerMermaidChart(plan: PlannerPlanGraph): string | null 
   const staged = plan.executionMode === "staged"
   const hasExplicitDeps = Object.values(dependsOn).some((deps) => deps.length > 0)
 
-  const lines: string[] = ["flowchart TD"]
+  const lines: string[] = ["flowchart LR"]
   lines.push(`  start([Work order])`)
 
   for (const persona of personas) {

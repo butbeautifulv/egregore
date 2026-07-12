@@ -13,6 +13,9 @@ def to_command(request: ToolInvokeRequest) -> ToolInvokeCommand:
         job_id=request.job_id,
         correlation_id=request.correlation_id,
         profile_id=request.profile_id,
+        workspace_id=request.workspace_id,
+        organization_id=request.organization_id,
+        user_id=request.user_id,
     )
 
 

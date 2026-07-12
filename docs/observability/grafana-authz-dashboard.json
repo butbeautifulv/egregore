@@ -1,0 +1,23 @@
+{
+  "title": "Egregore AuthZ",
+  "panels": [
+    {
+      "title": "AuthZ deny rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(cys_authz_deny_total[5m])) by (relation)"
+        }
+      ]
+    },
+    {
+      "title": "AuthZ check errors",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(cys_authz_error_total[5m])) by (relation)"
+        }
+      ]
+    }
+  ]
+}

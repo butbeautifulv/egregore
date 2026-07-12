@@ -1,6 +1,7 @@
 import type { EngagementStreamEvent } from "@/lib/api-client"
 import { findingBody } from "@/lib/finding-display"
 import { parseJsonMaybe, plannerPlanFromDetail } from "@/lib/json-display"
+import { isPlaybookSearchTool, parsePlaybookSearchPreview } from "@/lib/tool-call-display"
 import type { AgentChatEntry, ApiFeatures, ChatReasoning, ChatToolCall } from "@/lib/types"
 
 export const CHAT_THROTTLE_MS = 50
@@ -20,7 +21,7 @@ export function createChatEntry(jobId: string, persona = "agent"): AgentChatEntr
     reasoning: null,
     tools: [],
     streaming: false,
-    agentExpanded: true,
+    agentExpanded: false,
     jobError: "",
     isControlError: false,
   }
@@ -84,7 +85,11 @@ export function eventDedupeKey(event: EngagementStreamEvent): string {
 export function shouldRefreshOnEvent(event: EngagementStreamEvent): boolean {
   const type = event.type ?? ""
   const phase = event.phase ?? ""
-  if (["assistant_done", "job_finished", "job_started", "error", "control", "report"].includes(type)) {
+  const payload = eventPayload(event)
+  if (payload.success === false && (type === "job_finished" || (type === "status" && phase === "job_finished"))) {
+    return false
+  }
+  if (["assistant_done", "job_finished", "job_started", "error", "control", "report", "outcome_ready"].includes(type)) {
     return true
   }
   if (type === "status" && phase === "final_report") {
@@ -105,15 +110,54 @@ function resolveControlJobId(type: string, payload: Record<string, unknown>, eng
   return `critic:${engagementId}`
 }
 
+function shouldApplyControlEvent(type: string, payload: Record<string, unknown>): boolean {
+  if (type === "report") {
+    return false
+  }
+  if (type !== "control") {
+    return true
+  }
+  const verdict = payload.verdict
+  if (verdict && typeof verdict === "object" && !Array.isArray(verdict)) {
+    const record = verdict as Record<string, unknown>
+    if (
+      record.passed === true &&
+      !record.auto_accepted_after_revision_cap &&
+      !record.revision_enqueued
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 function controlEventText(type: string, payload: Record<string, unknown>): string {
   if (type === "control_error") return String(payload.error ?? "control error")
   if (type === "report") return String(payload.summary ?? "")
+  const operatorMessage = payload.operator_message
+  if (typeof operatorMessage === "string" && operatorMessage.trim()) {
+    return operatorMessage.trim()
+  }
   const verdict = payload.verdict
+  if (verdict && typeof verdict === "object" && !Array.isArray(verdict)) {
+    const record = verdict as Record<string, unknown>
+    const issues = [
+      ...(Array.isArray(record.issues_detected) ? record.issues_detected.map(String) : []),
+      ...(Array.isArray(record.rejected_claims) ? record.rejected_claims.map(String) : []),
+    ].filter(Boolean)
+    const source = String(payload.source_persona ?? "agent")
+    if (record.auto_accepted_after_revision_cap) {
+      return `Quality check for ${source}: revision cap reached; result accepted automatically.`
+    }
+    if (issues.length) {
+      return `Quality check failed (${source}): ${issues.join(", ")}. Revision requested.`
+    }
+  }
   if (verdict && typeof verdict === "object") return JSON.stringify(verdict, null, 2)
   return JSON.stringify(payload, null, 2)
 }
 
-function formatJobError(err: string): string {
+export function formatJobError(err: string): string {
   if (err.startsWith("tools_not_executed:")) {
     return `Tools were planned in JSON but never executed. ${err.slice("tools_not_executed:".length)}`
   }
@@ -126,6 +170,23 @@ function formatJobError(err: string): string {
   }
   if (err.startsWith("model_refusal:")) {
     return `Model refused: ${err.slice("model_refusal:".length)}`
+  }
+  if (err.startsWith("ungrounded_finding:")) {
+    const detail = err.slice("ungrounded_finding:".length).replace(/,/g, ", ")
+    return `Finding failed quality checks (evidence grounding): ${detail}`
+  }
+  if (err.startsWith("noop_finding")) {
+    return "Agent completed without a new substantive finding."
+  }
+  if (err.includes("insufficient tool messages")) {
+    return "Model tool-call history was corrupted (parallel tools). Retry the work order or run agents sequentially."
+  }
+  const messageMatch = err.match(/"message":"([^"]+)"/)
+  if (messageMatch?.[1]) {
+    return `Job failed: ${messageMatch[1]}`
+  }
+  if (err.length > 280) {
+    return `Job failed: ${err.slice(0, 280)}…`
   }
   return `Job failed: ${err}`
 }
@@ -150,6 +211,9 @@ export function applyChatEvent(
   const entry = ensureChatEntry(state, jobId, persona)
 
   if (controlTypes.includes(type)) {
+    if (!shouldApplyControlEvent(type, payload)) {
+      return false
+    }
     entry.buffer = controlEventText(type, payload)
     entry.streaming = false
     entry.isControlError = type === "control_error"
@@ -218,7 +282,16 @@ export function applyChatEvent(
     const toolName = String(payload.tool_name ?? "tool")
     const toolCallId = String(payload.tool_call_id ?? "")
     const label = payload.skill_name ? `${toolName} → ${payload.skill_name}` : toolName
-    entry.tools.push({ name: label, status: "started", tool_call_id: toolCallId })
+    const toolArgs =
+      payload.tool_args && typeof payload.tool_args === "object"
+        ? (payload.tool_args as ChatToolCall["tool_args"])
+        : undefined
+    entry.tools.push({
+      name: label,
+      status: "started",
+      tool_call_id: toolCallId,
+      tool_args: toolArgs,
+    })
     return true
   }
 
@@ -231,6 +304,7 @@ export function applyChatEvent(
   if (type === "tool_done" && features.streamAgentTools) {
     const toolCallId = String(payload.tool_call_id ?? "")
     const toolName = String(payload.tool_name ?? "tool")
+    const outputPreview = payload.output_preview ? String(payload.output_preview) : ""
     const match = entry.tools.find(
       (tool) =>
         tool.status === "started" &&
@@ -238,19 +312,83 @@ export function applyChatEvent(
     )
     if (match) {
       match.status = payload.ok === false ? "error" : "done"
+      if (outputPreview) {
+        match.output_preview = outputPreview
+      }
+      if (isPlaybookSearchTool(toolName) && outputPreview) {
+        const parsed = parsePlaybookSearchPreview(outputPreview)
+        if (parsed) {
+          match.playbook_result = parsed
+        }
+      }
     } else {
-      entry.tools.push({ name: toolName, status: payload.ok === false ? "error" : "done" })
+      const tool: ChatToolCall = {
+        name: toolName,
+        status: payload.ok === false ? "error" : "done",
+        tool_call_id: toolCallId || undefined,
+      }
+      if (outputPreview) {
+        tool.output_preview = outputPreview
+        if (isPlaybookSearchTool(toolName)) {
+          const parsed = parsePlaybookSearchPreview(outputPreview)
+          if (parsed) tool.playbook_result = parsed
+        }
+      }
+      entry.tools.push(tool)
     }
     return true
   }
 
   if (type === "tool_error" && features.streamAgentTools) {
+    const toolCallId = String(payload.tool_call_id ?? "")
     const toolName = String(payload.tool_name ?? "tool")
-    entry.tools.push({ name: toolName, status: "error" })
+    const errorMessage = String(payload.error ?? "tool error")
+    const match = entry.tools.find(
+      (tool) =>
+        tool.status === "started" &&
+        (tool.tool_call_id === toolCallId || tool.name.startsWith(toolName)),
+    )
+    if (match) {
+      match.status = "error"
+      match.error_message = errorMessage
+    } else {
+      entry.tools.push({
+        name: toolName,
+        status: "error",
+        tool_call_id: toolCallId || undefined,
+        error_message: errorMessage,
+      })
+    }
     return true
   }
 
   return false
+}
+
+export function hydrateFailedJobsFromList(
+  state: ChatStateMap,
+  jobs: { job_id: string; persona: string; status: string; error?: string; reason?: string }[],
+  failedPersonas: string[] = [],
+): void {
+  for (const job of jobs) {
+    if (job.status !== "failed") continue
+    const entry = ensureChatEntry(state, job.job_id, job.persona)
+    if (entry.jobError || entry.buffer) continue
+    const err = job.error?.trim() || job.reason?.trim() || "Agent job failed"
+    entry.jobError = err
+    entry.buffer = formatJobError(err)
+    entry.streaming = false
+  }
+  for (const persona of failedPersonas) {
+    const job = jobs.find((item) => item.persona === persona && item.status === "failed")
+    if (job) continue
+    const placeholderId = `${persona}:failed`
+    const entry = ensureChatEntry(state, placeholderId, persona)
+    if (entry.jobError || entry.buffer) continue
+    entry.jobError = "Agent job failed"
+    entry.buffer = formatJobError("Agent job failed")
+    entry.streaming = false
+  }
 }
 
 export function hydrateChatFromDetail(
@@ -270,7 +408,7 @@ export function hydrateChatFromDetail(
     const jobId = item.job_id ? String(item.job_id) : ""
     if (!jobId) continue
     const entry = ensureChatEntry(state, jobId, item.persona ? String(item.persona) : undefined)
-    if (!entry.buffer) {
+    if (!entry.buffer && !entry.jobError) {
       entry.buffer = formatFindingText(item.finding ?? item)
     }
   }

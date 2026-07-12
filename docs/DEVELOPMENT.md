@@ -71,6 +71,21 @@ Smoke:
 USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/tool_gateway/test_veil_mcp_adapter.py -q
 ```
 
+## Keycloak OIDC + OpenFGA
+
+Auth remains disabled by default for local development:
+
+```bash
+AUTH_ENABLED=0
+AUTHZ_MODE=off
+```
+
+For local ReBAC, start OpenFGA with `docker compose -f ../../deploy/compose/egregore-infra.yml --profile fga up -d openfga`, then set `OPENFGA_API_URL`, `OPENFGA_STORE_ID`, and optional `OPENFGA_MODEL_ID`. The Operator UI uses `/api/auth/login` and an httpOnly session cookie when `NEXT_PUBLIC_OIDC_ISSUER` and `OIDC_CLIENT_ID` are configured.
+
+Details: [OIDC + OpenFGA Local Development](auth/oidc-openfga.md).
+
+**TUI:** the terminal UI does not use the Next.js OIDC cookie; use a Keycloak bearer token or keep `AUTH_ENABLED=0` for local runs (see oidc-openfga.md).
+
 ## Local LLM (Ollama / OpenAI-compatible)
 
 egregore routes all model calls through LiteLLM. For local inference without cloud API keys, point at Ollama or any OpenAI-compatible endpoint.

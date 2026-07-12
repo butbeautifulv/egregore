@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { ApiError, getEngagementEvents, getInvestigation, getInvestigationJobs } from "@/lib/api-client"
 import { formatApiError, getApiErrorTitle } from "@/lib/format-api-error"
 import { plannerJobId, eventDedupeKey, eventPayload, shouldRefreshOnEvent, sortChatEntries } from "@/lib/engagement-chat-state"
-import { isFollowUpJobId, buildFollowUpJobMap, groupFollowUpChildEntries, isFollowUpChildJob, isFollowUpOrchestratorJob } from "@/lib/follow-up"
+import { isFollowUpJobId, buildFollowUpJobMap, groupFollowUpChildEntries, isFollowUpChildJob, isFollowUpOrchestratorJob, isFollowUpTurn } from "@/lib/follow-up"
 import { isInvestigationTerminal } from "@/lib/investigation-status"
 import { matchesInvestigation } from "@/lib/status-events"
 import type { InvestigationDetail, JobSummary, StatusStreamEvent } from "@/lib/types"
@@ -54,11 +54,12 @@ export function InvestigationDetailView({
             planner_depends_on: detail.planner_depends_on ?? {},
             execution_mode: detail.execution_mode ?? null,
             synthesis_persona: detail.synthesis_persona ?? null,
+            failed_personas: detail.failed_personas ?? [],
           }
         : undefined,
     [detail],
   )
-  const { entries, handleEvent } = useEngagementChatState(investigationId, features, chatDetail)
+  const { entries, handleEvent } = useEngagementChatState(investigationId, features, chatDetail, jobs)
   const { messages: followUps, sending: followUpSending, sendFollowUp, handleStreamEvent } =
     useFollowUpMessages(investigationId)
   const seenKeysRef = useRef(new Set<string>())
@@ -271,7 +272,17 @@ export function InvestigationDetailView({
   }, [detail?.status, followUps])
 
   const isFirstFollowUp = useMemo(
-    () => !followUps.some((item) => item.role === "operator" && item.status === "completed"),
+    () => !followUps.some((item) => item.role === "operator" && isFollowUpTurn(item.followUpId)),
+    [followUps],
+  )
+
+  const hasInitialQaPending = useMemo(
+    () =>
+      followUps.some(
+        (item) =>
+          item.workKind === "initial_qa" &&
+          (item.streaming || item.status === "pending" || item.status === "queued"),
+      ),
     [followUps],
   )
 
@@ -331,7 +342,6 @@ export function InvestigationDetailView({
         title={detail.work_order_id ?? detail.investigation_id}
         backHref="/"
         backLabel="Work orders"
-        description={detail.goal || "Work order"}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{detail.status}</Badge>
@@ -364,7 +374,6 @@ export function InvestigationDetailView({
       ) : null}
 
       <EngagementChatThread
-        goal={detail.goal || ""}
         entries={sortedEntries}
         jobs={jobs}
         findings={detail.findings_summary ?? []}
@@ -378,7 +387,12 @@ export function InvestigationDetailView({
         followUpChildEntries={followUpChildEntries}
         followUpSending={followUpSending}
         onSendFollowUp={sendFollowUp}
-        composerDisabled={followUpSending || detail.status !== "closed" || isFollowUpPlanRunning}
+        composerDisabled={
+          followUpSending ||
+          isFollowUpPlanRunning ||
+          hasInitialQaPending ||
+          detail.status !== "closed"
+        }
         isFirstFollowUp={isFirstFollowUp}
         isTerminal={terminal}
       />

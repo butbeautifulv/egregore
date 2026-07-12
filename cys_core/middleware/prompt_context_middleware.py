@@ -99,9 +99,19 @@ class PromptContextMiddleware(AgentMiddleware):
         return self._guard_response(cast_model_response(result))
 
     def _validate_system_context(self, request: ModelRequest) -> AIMessage | None:
-        if not self.system_prompt_digest or request.system_message is None:
+        if request.system_message is None:
             return None
-        actual = compute_system_digest(request.system_message.text)
+        system_text = request.system_message.text
+        if "GLOBAL_RULES:" not in system_text or "SECURITY_RULES:" not in system_text:
+            self.monitor.record_injection_attempt(
+                self.session_id,
+                InjectionVerdict.HARD.value,
+                {"reason": "missing_immutable_rule_markers"},
+            )
+            return AIMessage(content=REFUSAL_MESSAGE)
+        if not self.system_prompt_digest:
+            return None
+        actual = compute_system_digest(system_text)
         if not digest_matches(self.system_prompt_digest, actual):
             self.monitor.record_injection_attempt(
                 self.session_id,

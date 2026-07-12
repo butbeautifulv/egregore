@@ -4,6 +4,7 @@ from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+import structlog
 from pydantic import BaseModel, Field
 
 from bootstrap.container import get_container
@@ -16,12 +17,27 @@ from cys_core.application.use_cases.upsert_catalog_resource import (
 )
 from cys_core.application.use_cases.upsert_profile_pack import UpsertProfilePack
 from cys_core.application.use_cases.upsert_profile_policy import UpsertProfilePolicy
+from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.security.auth_models import AuthClaims
+from cys_core.domain.security.system_prompt_assembler import (
+    assemble_trusted_system_context,
+    resolve_persona_prompt,
+)
 from interfaces.api.auth import require_operator_role, require_reader_role
-from interfaces.api.deps import api_actor
+from interfaces.api.deps import api_actor, api_actor_context
+from interfaces.api.errors import control_agent_immutable_http
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
+logger = structlog.get_logger(__name__)
+
+
+def _control_agent_immutable() -> HTTPException:
+    return control_agent_immutable_http()
+
+
+def _audit_context(auth: AuthClaims | None) -> dict[str, str]:
+    return api_actor_context(auth)
 
 
 class AgentCatalogOut(BaseModel):
@@ -39,6 +55,7 @@ class AgentCatalogOut(BaseModel):
 
 
 class AgentCatalogDetailOut(AgentCatalogOut):
+    persona_prompt: str = ""
     system_prompt: str = ""
     system_prompt_digest: str = ""
 
@@ -133,6 +150,8 @@ def _entry_out(entry) -> AgentCatalogOut:
 
 
 def _detail_out(entry) -> AgentCatalogDetailOut:
+    persona = resolve_persona_prompt(entry)
+    ctx = assemble_trusted_system_context(persona, language=entry.language)
     return AgentCatalogDetailOut(
         name=entry.name,
         description=entry.description,
@@ -145,8 +164,9 @@ def _detail_out(entry) -> AgentCatalogDetailOut:
         version_tag=entry.version_tag,
         enabled=entry.enabled,
         empirical_trust=entry.quality.empirical_trust,
-        system_prompt=entry.system_prompt,
-        system_prompt_digest=entry.system_prompt_digest,
+        persona_prompt=persona,
+        system_prompt=ctx.text,
+        system_prompt_digest=ctx.digest,
     )
 
 
@@ -180,6 +200,8 @@ async def put_agent(
     body: AgentCatalogPut,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> AgentCatalogOut:
+    if is_control_persona(name):
+        raise _control_agent_immutable()
     saved = UpsertCatalogAgent(
         _container().get_agent_catalog(),
         schema_registry=get_container().get_schema_registry_port(),
@@ -190,6 +212,7 @@ async def put_agent(
         body.model_dump(),
         actor=api_actor(_auth),
     )
+    logger.info("catalog_mutation", action="upsert", resource_type="agent", resource_id=name, **_audit_context(_auth))
     return _entry_out(saved)
 
 
@@ -199,6 +222,8 @@ async def delete_agent(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    if is_control_persona(name):
+        raise _control_agent_immutable()
     ok = _mutation().delete_agent(
         name,
         profile_id=profile_id,

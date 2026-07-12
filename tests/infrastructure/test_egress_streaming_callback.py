@@ -92,8 +92,39 @@ async def test_egress_streaming_callback_tool_events_name_only(monkeypatch: pyte
     types = [e[1] for e in egress.events]
     assert types == ["tool_start", "tool_done"]
     assert egress.events[0][2]["tool_name"] == "query_siem_readonly"
+    assert egress.events[0][2]["tool_call_id"] == str(run_id)
     assert egress.events[1][2].get("output_preview") == "result body"
+    assert egress.events[1][2]["tool_call_id"] == str(run_id)
     assert egress.events[1][2]["ok"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_egress_streaming_callback_playbook_search_tool_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "cys_core.infrastructure.observability.egress_streaming_callback.get_stream_agent_output",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "cys_core.infrastructure.observability.egress_streaming_callback.get_stream_agent_tools",
+        lambda: True,
+    )
+    egress = _RecordingEgress()
+    ctx = StreamContext(engagement_id="eng-pb", job_id="job-pb", persona="hunter")
+    callback = EgressStreamingCallback(ctx, egress=egress)
+    run_id = uuid4()
+
+    await callback.on_tool_start(
+        {"name": "playbook_search"},
+        "",
+        run_id=run_id,
+        inputs={"kwargs": {"query": "disk imaging", "limit": 5}},
+    )
+
+    assert egress.events[0][1] == "tool_start"
+    payload = egress.events[0][2]
+    assert payload["tool_call_id"] == str(run_id)
+    assert payload["tool_args"] == {"query": "disk imaging", "limit": 5}
 
 
 @pytest.mark.unit

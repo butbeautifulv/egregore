@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from cys_core.application.datasources.providers import get_datasource_audit_port
 from cys_core.domain.datasources.authz import AuthorizationDecision
 from cys_core.domain.datasources.tool_metadata import ToolDataSourceBinding
 from cys_core.domain.runs.trace_models import ToolCallTraceFields, policy_trace, tool_call_trace
 from cys_core.domain.runs.trajectory import TraceEvent
-from cys_core.application.datasources.providers import get_datasource_audit_port
 
 
 def policy_event_from_decision(
@@ -49,7 +49,11 @@ def record_datasource_authz_audit(
         datasource_id=binding.datasource_id,
     )
     tool_evt = tool_attempt_event(binding=binding, success=decision.allowed)
-    get_datasource_audit_port().append(
+    try:
+        audit = get_datasource_audit_port()
+    except RuntimeError:
+        return
+    audit.append(
         {
             "kind": "policy",
             "persona": persona,
@@ -84,7 +88,11 @@ def record_schema_mismatch_audit(
         tool_name,
         ToolCallTraceFields(tool=tool_name, args_digest="schema_mismatch", success=False),
     )
-    get_datasource_audit_port().append(
+    try:
+        audit = get_datasource_audit_port()
+    except RuntimeError:
+        return
+    audit.append(
         {
             "kind": "schema_mismatch",
             "persona": persona,

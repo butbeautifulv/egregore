@@ -59,8 +59,19 @@ PRODUCT_PACKS: dict[str, ProductProfilePack] = {
 
 def product_pack_to_profile_pack(pack: ProductProfilePack):
     from bootstrap.policy_defaults import default_profile_pack
+    from cys_core.domain.catalog.models import PlannerPack
 
-    return default_profile_pack(
+    mode = "off" if pack.id == "general-assistant" else "gate_only"
+    if pack.id == "gaia-benchmark":
+        mode = "full"
+    profile = default_profile_pack(
         id=pack.profile_id,
         default_personas=[p.catalog_agent for p in pack.personas if p.enabled],
+        control_plane_mode=mode,
     )
+    if pack.id == "general-assistant":
+        profile.planner = PlannerPack(
+            post_processors=["advisory_consultant_fallback"],
+            synthesis_default="consultant",
+        )
+    return profile

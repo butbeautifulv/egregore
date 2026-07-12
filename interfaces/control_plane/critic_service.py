@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from bootstrap.container import get_container
 from cys_core.application.bus_engagement import extract_engagement_id, normalize_correlation_id
 from cys_core.application.engagement_bus_guard import get_engagement_bus_guard
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
+from cys_core.application.control_plane.critic_display import (
+    critic_verdict_visible_to_operator,
+    format_critic_operator_message,
+)
 from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.domain.security.bus_messages import BusMessageType
 from cys_core.infrastructure.bus_transport import get_bus_transport
@@ -21,13 +24,10 @@ class CriticService(ControlMessageHandler):
         self.transport = get_bus_transport()
         from cys_core.application.use_cases.process_finding_critic import ProcessFindingCritic
 
-        settings = get_container().settings
         container = get_container()
         self._critic = ProcessFindingCritic(
             policy_port=container.get_profile_policy_port(),
             application_tracing=container.get_application_tracing_port(),
-            runtime=container.get_agent_runtime() if settings.critic_use_llm_judge else None,
-            use_llm_judge=settings.critic_use_llm_judge,
             schema_registry=container.get_schema_registry_port(),
         )
 
@@ -70,6 +70,7 @@ class CriticService(ControlMessageHandler):
             investigation_id=engagement_id,
             tenant_id=tenant_id,
         )
+        revision_enqueued = False
         if not result.get("passed", True) and not is_noop_finding(finding if isinstance(finding, dict) else {}):
             settings = get_container().settings
             guard = get_engagement_bus_guard()
@@ -87,18 +88,22 @@ class CriticService(ControlMessageHandler):
                     "passed": True,
                     "auto_accepted_after_revision_cap": True,
                 }
-            elif await self._enqueue_revision(envelope, feedback="critic_revision_requested"):
-                pass
             else:
-                result = {
-                    **result,
-                    "passed": True,
-                    "auto_accepted_after_revision_cap": True,
-                }
+                feedback = format_critic_operator_message(result, source_persona=persona)
+                if await self._enqueue_revision(envelope, feedback=feedback):
+                    revision_enqueued = True
+                    result = {**result, "revision_enqueued": True}
+                else:
+                    result = {
+                        **result,
+                        "passed": True,
+                        "auto_accepted_after_revision_cap": True,
+                    }
 
-        if engagement_id:
+        if engagement_id and critic_verdict_visible_to_operator(result):
             container = get_container()
             egress = container.get_engagement_egress()
+            operator_text = format_critic_operator_message(result, source_persona=persona)
             egress.publish_event(
                 engagement_id,
                 "control",
@@ -108,6 +113,7 @@ class CriticService(ControlMessageHandler):
                     "job_id": job_id,
                     "source_persona": persona,
                     "tenant_id": tenant_id,
+                    "operator_message": operator_text,
                 },
             )
             publish_assistant_snapshot(
@@ -115,7 +121,7 @@ class CriticService(ControlMessageHandler):
                 job_id=job_id,
                 persona="critic",
                 tenant_id=tenant_id,
-                text=json.dumps(result, indent=2, ensure_ascii=False),
+                text=operator_text,
                 egress=egress,
             )
         return result

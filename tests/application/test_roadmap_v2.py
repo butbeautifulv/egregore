@@ -20,10 +20,15 @@ def test_coerce_tool_args():
 
 
 def test_trim_tool_results_keeps_last_n():
-    msgs = [AIMessage(content="a"), ToolMessage(content="1", tool_call_id="1")]
-    msgs.append(ToolMessage(content="2", tool_call_id="2"))
+    msgs = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "t", "args": {}}]),
+        ToolMessage(content="1", tool_call_id="1"),
+        AIMessage(content="", tool_calls=[{"id": "2", "name": "t", "args": {}}]),
+        ToolMessage(content="2", tool_call_id="2"),
+    ]
     trimmed = trim_tool_results(msgs, keep=1)
     assert sum(isinstance(m, ToolMessage) for m in trimmed) == 1
+    assert isinstance(trimmed[0], AIMessage)
 
 
 def test_profile_tool_allowlist_gaia():

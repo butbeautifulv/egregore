@@ -1,5 +1,6 @@
-const DEFAULT_UPSTREAM =
-  process.env.NODE_ENV === "development" ? "http://127.0.0.1:8080" : "http://egregore-api:8080"
+import { DEFAULT_API_UPSTREAM, WORKSPACE_HEADER } from "@/lib/api-upstream"
+
+const DEFAULT_UPSTREAM = DEFAULT_API_UPSTREAM
 const DEFAULT_PROXY_TIMEOUT_MS = 25_000
 
 const HOP_BY_HOP_HEADERS = new Set([
@@ -11,6 +12,9 @@ const HOP_BY_HOP_HEADERS = new Set([
   "trailers",
   "transfer-encoding",
   "upgrade",
+  "host",
+  "content-length",
+  "cookie",
 ])
 
 export function upstreamBase(): string {
@@ -40,13 +44,20 @@ function buildUpstreamUrl(pathSegments: string[], search: string): string {
   return `${base}/${path}${search}`
 }
 
-function forwardRequestHeaders(request: Request): Headers {
+function forwardRequestHeaders(request: Request, accessToken?: string): Headers {
   const headers = new Headers()
   for (const [key, value] of request.headers.entries()) {
     if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
       continue
     }
     headers.set(key, value)
+  }
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`)
+  }
+  const workspaceId = request.headers.get(WORKSPACE_HEADER)
+  if (workspaceId) {
+    headers.set(WORKSPACE_HEADER, workspaceId)
   }
   return headers
 }
@@ -75,11 +86,14 @@ export async function proxyToEgregoreApi(request: Request, pathSegments: string[
   const hasBody = method !== "GET" && method !== "HEAD"
   const streamRequest = isEventStreamRequest(request)
 
+  const { getServerSession } = await import("@/lib/auth/server-session")
+  const session = await getServerSession()
+
   let upstream: Response
   try {
     upstream = await fetch(targetUrl, {
       method,
-      headers: forwardRequestHeaders(request),
+      headers: forwardRequestHeaders(request, session?.access_token),
       body: hasBody ? await request.arrayBuffer() : undefined,
       cache: "no-store",
       duplex: hasBody ? "half" : undefined,

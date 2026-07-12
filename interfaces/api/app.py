@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -20,6 +20,14 @@ from cys_core.observability.http import mount_metrics
 from cys_core.observability.metrics import metrics, seed_agent_trust_gauges
 from cys_core.observability.platform_gauges import refresh_platform_gauges
 from cys_core.observability.otel import instrument_fastapi, setup_otel
+from interfaces.api.tenant_deps import require_tenant_match_http
+from interfaces.api.authz_helpers import (
+    require_engagement_relation,
+    require_workspace_relation,
+    visible_engagement_ids,
+    visible_workspace_ids,
+    workspace_id_for_job,
+)
 from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
 from interfaces.api.tracing_middleware import tracing_middleware
 from interfaces.api.task_supervisor import BackgroundTaskSupervisor
@@ -109,7 +117,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ui_cors_origins,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
@@ -126,16 +134,20 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     from interfaces.api.engagements import router as engagements_router
     from interfaces.api.follow_ups import router as follow_ups_router
     from interfaces.api.work_orders import router as work_orders_router
+    from interfaces.api.workspaces import router as workspaces_router
 
     app.include_router(catalog_router)
     app.include_router(runs_router)
     app.include_router(work_orders_router)
+    app.include_router(workspaces_router)
     app.include_router(engagements_router)
     app.include_router(follow_ups_router)
 
     event_ingress = ingress or get_event_ingress()
     store = get_status_store()
-    job_store = get_container().get_job_store()
+
+    def _job_store():
+        return get_container().get_job_store()
 
     @app.post("/events", response_model=None)
     async def post_event(
@@ -162,6 +174,9 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         except HTTPException:
             raise
         if eng_request is not None:
+            tenant_id = require_tenant_match_http(_auth, eng_request.tenant_id)
+            if eng_request.tenant_id != tenant_id:
+                eng_request = eng_request.model_copy(update={"tenant_id": tenant_id})
             return await handle_engagement_ingress(
                 request,
                 eng_request=eng_request,
@@ -202,15 +217,15 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         from cys_core.infrastructure.infra_health import collect_infra_health
 
         container = get_container()
-        return {
-            "status": "ok",
-            **collect_infra_health(
-                queue=container.get_job_queue(),
-                egress=container.get_engagement_egress(),
-                transport=get_bus_transport(),
-                job_store=container.get_job_store(),
-            ),
-        }
+        infra = collect_infra_health(
+            queue=container.get_job_queue(),
+            egress=container.get_engagement_egress(),
+            transport=get_bus_transport(),
+            job_store=container.get_job_store(),
+        )
+        authz = container.get_authz_service()
+        infra["openfga"] = {"ok": authz.ping(), "mode": authz.mode}
+        return {"status": "ok", **infra}
 
     @app.get("/status")
     async def get_status(
@@ -268,21 +283,49 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     async def list_investigations(
         tenant_id: str = "default",
         limit: int = 20,
+        cursor: str | None = None,
+        response: Response = None,
         _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     ) -> InvestigationsListOut:
+        from cys_core.infrastructure.engagement.list_cursor import InvalidListCursor
+
+        tenant_id = require_tenant_match_http(_auth, tenant_id)
+        capped_limit = min(max(limit, 1), 100)
         eng_store = get_container().get_engagement_state_store()
-        engagements = eng_store.list_recent(tenant_id, limit=limit)
+        try:
+            pairs, next_cursor = eng_store.list_recent_page(
+                tenant_id,
+                limit=capped_limit,
+                cursor=cursor,
+            )
+        except InvalidListCursor as exc:
+            raise HTTPException(status_code=400, detail="invalid_cursor") from exc
+        visible = visible_workspace_ids(_auth)
+        engagement_visible = visible_engagement_ids(_auth)
+        if visible is not None:
+            pairs = [
+                (eng, ts)
+                for eng, ts in pairs
+                if not (getattr(eng, "workspace_id", "") or "") or eng.workspace_id in visible
+            ]
+        if engagement_visible is not None:
+            pairs = [(eng, ts) for eng, ts in pairs if eng.id in engagement_visible]
+        if response is not None:
+            response.headers["Deprecation"] = "true"
+            response.headers["Link"] = '</v1/work-orders>; rel="successor-version"'
         return InvestigationsListOut(
             investigations=[
                 InvestigationSummaryOut(
                     investigation_id=eng.id,
                     tenant_id=eng.tenant_id,
+                    workspace_id=getattr(eng, "workspace_id", ""),
                     goal=eng.goal,
                     status=eng.status.value,
                     completed_personas=eng.completed_personas,
                 )
-                for eng in engagements
-            ]
+                for eng, _ts in pairs
+            ],
+            next_cursor=next_cursor,
         )
 
     @app.get("/investigations/{investigation_id}", response_model=InvestigationDetailOut)
@@ -291,6 +334,13 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         tenant_id: str = "default",
         _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     ) -> InvestigationDetailOut:
+        tenant_id = require_tenant_match_http(_auth, tenant_id)
+        require_engagement_relation(
+            auth=_auth,
+            tenant_id=tenant_id,
+            engagement_id=investigation_id,
+            relation="can_view",
+        )
         eng_store = get_container().get_engagement_state_store()
         engagement = eng_store.get(tenant_id, investigation_id)
         if engagement is None:
@@ -300,6 +350,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         return InvestigationDetailOut(
             investigation_id=engagement.id,
             tenant_id=engagement.tenant_id,
+            workspace_id=getattr(engagement, "workspace_id", ""),
             goal=engagement.goal,
             status=engagement.status.value,
             latest_phase=_latest_egress_phase(snapshot),
@@ -317,7 +368,14 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         tenant_id: str = "default",
         _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     ) -> InvestigationJobsOut:
-        jobs = job_store.list_by_investigation(tenant_id, investigation_id)
+        tenant_id = require_tenant_match_http(_auth, tenant_id)
+        require_engagement_relation(
+            auth=_auth,
+            tenant_id=tenant_id,
+            engagement_id=investigation_id,
+            relation="can_view",
+        )
+        jobs = _job_store().list_by_investigation(tenant_id, investigation_id)
         return InvestigationJobsOut(
             jobs=[
                 JobSummaryOut(
@@ -329,6 +387,8 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
                     event_id=job.event_id,
                     created_at=job.created_at,
                     follow_up_id=job.follow_up_id,
+                    error=job.last_error,
+                    reason=job.failure_reason,
                 )
                 for job in jobs
             ]
@@ -337,10 +397,14 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     @app.get("/jobs/{job_id}")
     async def get_job(
         job_id: str,
-        _auth: Annotated[AuthClaims | None, Depends(require_reader_role)],
+        tenant_id: str = "default",
+        _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     ) -> dict[str, Any]:
-        record = job_store.get(job_id)
+        tenant_id = require_tenant_match_http(_auth, tenant_id)
+        record = _job_store().get(job_id)
         if record is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if record.tenant_id and record.tenant_id != tenant_id:
             raise HTTPException(status_code=404, detail="Job not found")
         return {
             "job_id": record.job_id,
@@ -354,7 +418,18 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     async def list_pending_approvals(
         _auth: Annotated[AuthClaims | None, Depends(require_operator_role)],
     ) -> dict[str, Any]:
-        pending = job_store.list_pending_approvals()
+        pending = _job_store().list_pending_approvals()
+        visible = visible_workspace_ids(_auth)
+        if visible is not None:
+            filtered = []
+            for item in pending:
+                record = _job_store().get(item.job_id)
+                if record is None:
+                    continue
+                ws_id = workspace_id_for_job(record.tenant_id or "default", record)
+                if not ws_id or ws_id in visible:
+                    filtered.append(item)
+            pending = filtered
         metrics.refresh_hitl_pending(len(pending))
         return {"count": len(pending), "approvals": [item.model_dump() for item in pending]}
 
@@ -362,8 +437,22 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     async def resume_job(
         job_id: str,
         body: JobResumeRequest,
-        _auth: Annotated[AuthClaims | None, Depends(require_operator_role)],
+        tenant_id: str = "default",
+        _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
+        authorization: Annotated[str | None, Header()] = None,
     ) -> dict[str, Any]:
+        tenant_id = require_tenant_match_http(_auth, tenant_id)
+        record = _job_store().get(job_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if record.tenant_id and record.tenant_id != tenant_id:
+            raise HTTPException(status_code=404, detail="Job not found")
+        require_workspace_relation(
+            _auth,
+            authorization,
+            workspace_id_for_job(tenant_id, record),
+            "can_operate",
+        )
         try:
             return await resume_worker_job(job_id, body)
         except HitlResumeError as exc:

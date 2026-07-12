@@ -12,6 +12,14 @@ class EngagementStateStore(Protocol):
 
     def list_recent(self, tenant_id: str, *, limit: int = 20) -> list[Engagement]: ...
 
+    def list_recent_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> tuple[list[Engagement], str | None]: ...
+
     def mark_persona_done(self, tenant_id: str, engagement_id: str, persona: str) -> None: ...
 
     def mark_persona_failed(self, tenant_id: str, engagement_id: str, persona: str) -> None: ...

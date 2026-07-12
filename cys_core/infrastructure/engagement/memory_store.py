@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from cys_core.domain.engagement.models import Engagement
 from cys_core.infrastructure.engagement import _store_ops
+from cys_core.infrastructure.engagement.list_cursor import decode_cursor, page_next_cursor
 
 
 class MemoryEngagementStateStore:
@@ -11,16 +13,47 @@ class MemoryEngagementStateStore:
         from collections import defaultdict
 
         self._by_tenant: dict[str, dict[str, Engagement]] = defaultdict(dict)
+        self._updated_at: dict[str, dict[str, datetime]] = defaultdict(dict)
 
     def get(self, tenant_id: str, engagement_id: str) -> Engagement | None:
         return self._by_tenant.get(tenant_id, {}).get(engagement_id)
 
     def upsert(self, engagement: Engagement) -> None:
         self._by_tenant[engagement.tenant_id][engagement.id] = engagement
+        self._updated_at[engagement.tenant_id][engagement.id] = datetime.now(UTC)
 
     def list_recent(self, tenant_id: str, *, limit: int = 20) -> list[Engagement]:
-        items = list(self._by_tenant.get(tenant_id, {}).values())
-        return list(reversed(items))[:limit]
+        items, _ = self.list_recent_page(tenant_id, limit=limit, cursor=None)
+        return [engagement for engagement, _updated in items]
+
+    def list_recent_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> tuple[list[tuple[Engagement, datetime]], str | None]:
+        rows: list[tuple[datetime, str, Engagement]] = []
+        for engagement_id, engagement in self._by_tenant.get(tenant_id, {}).items():
+            updated_at = self._updated_at.get(tenant_id, {}).get(engagement_id, datetime.min.replace(tzinfo=UTC))
+            rows.append((updated_at, engagement_id, engagement))
+        rows.sort(key=lambda item: (item[0], item[1]), reverse=True)
+
+        if cursor is not None:
+            cursor_updated_at, cursor_id = decode_cursor(cursor)
+            rows = [
+                row
+                for row in rows
+                if (row[0], row[1]) < (cursor_updated_at, cursor_id)
+            ]
+
+        fetch_limit = limit + 1
+        page_slice = rows[:fetch_limit]
+        cursor_rows = [(updated_at, engagement_id) for updated_at, engagement_id, _eng in page_slice]
+        page_keys, next_cursor = page_next_cursor(cursor_rows, limit=limit)
+        by_key = {(updated_at, engagement_id): engagement for updated_at, engagement_id, engagement in page_slice}
+        items = [(by_key[key], key[0]) for key in page_keys]
+        return items, next_cursor
 
     def mark_persona_done(self, tenant_id: str, engagement_id: str, persona: str) -> None:
         engagement = self.get(tenant_id, engagement_id)

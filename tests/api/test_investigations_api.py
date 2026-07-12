@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+from datetime import UTC, datetime
+
 import pytest
 
 from cys_core.domain.engagement.models import Engagement, EngagementMode, EngagementStatus
@@ -15,7 +17,20 @@ def _fake_ingress() -> SimpleNamespace:
 
 def _patch_container(monkeypatch, container: SimpleNamespace) -> None:
     import bootstrap.container as container_mod
+    from bootstrap.settings import get_settings
+    from cys_core.application.authz.service import AuthzService
+    from cys_core.infrastructure.authz.noop import NoopAuthzPort
 
+    if not hasattr(container, "get_job_store"):
+        container.get_job_store = lambda: InMemoryJobStore()
+    if not hasattr(container, "settings"):
+        container.settings = get_settings()
+    if not hasattr(container, "get_agent_catalog"):
+        catalog = MagicMock()
+        catalog.bus_recipients = []
+        container.get_agent_catalog = lambda: catalog
+    if not hasattr(container, "get_authz_service"):
+        container.get_authz_service = lambda: AuthzService(NoopAuthzPort(), mode="off")
     container_mod._container = container
     monkeypatch.setattr("bootstrap.container.get_container", lambda: container)
     monkeypatch.setattr("interfaces.api.app.get_container", lambda: container)
@@ -26,17 +41,19 @@ def _patch_container(monkeypatch, container: SimpleNamespace) -> None:
 async def test_list_investigations(monkeypatch):
     from interfaces.api.app import create_app
 
+    engagement = Engagement(
+        id="inv-1",
+        tenant_id="default",
+        goal="test goal",
+        status=EngagementStatus.RUNNING,
+        mode=EngagementMode.ASYNC,
+        completed_personas=["soc"],
+    )
     eng_store = SimpleNamespace(
-        list_recent=lambda tenant_id, limit=20: [
-            Engagement(
-                id="inv-1",
-                tenant_id=tenant_id,
-                goal="test goal",
-                status=EngagementStatus.RUNNING,
-                mode=EngagementMode.ASYNC,
-                completed_personas=["soc"],
-            )
-        ]
+        list_recent_page=lambda tenant_id, limit=20, cursor=None: (
+            [(engagement, datetime.now(UTC))],
+            None,
+        ),
     )
     _patch_container(monkeypatch, SimpleNamespace(get_engagement_state_store=lambda: eng_store))
 
@@ -94,14 +111,14 @@ async def test_get_investigation_jobs(monkeypatch):
 
     store = InMemoryJobStore()
     store.upsert_running("job-a", "sess-a", "soc", correlation_id="inv-3", tenant_id="default", event_id="evt-3")
-    monkeypatch.setattr("interfaces.api.app.get_job_store", lambda: store)
     _patch_container(
         monkeypatch,
         SimpleNamespace(
             get_engagement_state_store=lambda: SimpleNamespace(
                 list_recent=lambda *a, **k: [],
                 get=lambda *a, **k: None,
-            )
+            ),
+            get_job_store=lambda: store,
         ),
     )
 

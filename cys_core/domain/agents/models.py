@@ -35,6 +35,8 @@ class AgentDefinition(BaseModel):
     role: Literal["worker", "control", "specialist", "critic", "coordinator"]
     system_prompt: str
     system_prompt_digest: str = ""
+    persona_prompt: str = ""
+    language: str = "ru"
     schema_name: str | None = None
     tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)

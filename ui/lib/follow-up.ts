@@ -1,6 +1,7 @@
 export type FollowUpRole = "operator" | "assistant"
 
 export type FollowUpMode = "auto" | "qa" | "orchestrate" | "plan"
+export type OperatorIntentMode = FollowUpMode
 
 export type FollowUpContentType = "finding" | "plan" | "markdown"
 
@@ -85,6 +86,24 @@ export function mapFollowUpTurn(turn: FollowUpTurn): FollowUpMessage {
     contentType: turn.content_type ?? null,
     finding,
   }
+}
+
+export function isInitialTurn(followUpId: string): boolean {
+  return followUpId.startsWith("wo-")
+}
+
+export function isFollowUpTurn(followUpId: string): boolean {
+  return followUpId.startsWith("fu-")
+}
+
+export function splitInitialAndFollowUpPairs(messages: FollowUpMessage[]): {
+  initialPair: FollowUpPair | null
+  followUpPairs: FollowUpPair[]
+} {
+  const pairs = groupFollowUpPairs(messages)
+  const initialPair = pairs.find((pair) => isInitialTurn(pair.followUpId)) ?? null
+  const followUpPairs = pairs.filter((pair) => isFollowUpTurn(pair.followUpId))
+  return { initialPair, followUpPairs }
 }
 
 export function groupFollowUpPairs(messages: FollowUpMessage[]): FollowUpPair[] {
@@ -215,23 +234,41 @@ export function groupFollowUpChildEntries(
 export function formatFollowUpMarkerLabel(
   workKind?: string | null,
   persona?: string | null,
+  followUpId?: string | null,
 ): string {
+  const initial = followUpId ? isInitialTurn(followUpId) : false
+  if (workKind === "initial_qa" || (initial && (workKind === "follow_up_qa" || persona === "consultant"))) {
+    return "Initial · Ask"
+  }
+  if (initial && workKind === "follow_up_plan") return "Initial · plan"
   if (workKind === "follow_up_plan") return "Follow-up · plan"
-  if (workKind === "follow_up_orchestrate") return "Follow-up · reinvestigation"
-  if (workKind === "follow_up_qa" || persona === "consultant") return "Follow-up · Q&A"
+  if (workKind === "follow_up_orchestrate") return "Follow-up · Reinvestigate"
+  if (workKind === "follow_up_qa" || persona === "consultant") return "Follow-up · Ask"
+  if (initial) return "Initial message"
   return "Follow-up"
 }
 
-export function formatFollowUpRoleLabel(persona?: string | null, workKind?: string | null): string {
+export function formatFollowUpRoleLabel(
+  persona?: string | null,
+  workKind?: string | null,
+  followUpId?: string | null,
+): string {
+  const initial = followUpId ? isInitialTurn(followUpId) : false
   const p = persona ?? "assistant"
+  if (workKind === "initial_qa" || (initial && workKind === "follow_up_qa")) {
+    return `${p} · initial Ask · advisory only`
+  }
   if (workKind === "follow_up_plan") {
     return `${p} · follow-up plan · may run agents`
+  }
+  if (initial && workKind === "follow_up_plan") {
+    return `${p} · initial plan · may run agents`
   }
   if (workKind === "follow_up_orchestrate") {
     return `${p} · follow-up · may spawn workers`
   }
   if (workKind === "follow_up_qa" || p === "consultant") {
-    return `${p} · follow-up Q&A · read-only`
+    return `${p} · follow-up Ask · read-only`
   }
   return `${p} · follow-up`
 }

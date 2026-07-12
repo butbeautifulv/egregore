@@ -1,10 +1,9 @@
 import { getClientSessionToken } from "@/lib/auth/session"
+import { isControlPersona } from "@/lib/control-personas"
 import type { FollowUpListResult, FollowUpSendResult } from "@/lib/follow-up"
 
-const PROXY_BASE = "/api/egregore"
-const UPSTREAM_BASE =
-  process.env.EGREGORE_API_UPSTREAM ??
-  (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8080" : "http://egregore-api:8080")
+import { DEFAULT_API_UPSTREAM, PROXY_BASE, WORKSPACE_HEADER } from "@/lib/api-upstream"
+import { getSelectedWorkspaceId } from "@/lib/workspace"
 
 const DEFAULT_API_TIMEOUT_MS = 20_000
 
@@ -67,7 +66,7 @@ function resolveApiBase(): string {
   if (typeof window !== "undefined") {
     return PROXY_BASE
   }
-  return UPSTREAM_BASE.replace(/\/$/, "")
+  return DEFAULT_API_UPSTREAM.replace(/\/$/, "")
 }
 
 export class ApiError extends Error {
@@ -96,6 +95,90 @@ export function resolveOperatorUnitId(unit: {
 /** Default planner profile from seed catalog (multipurpose runtime; UI does not expose picker yet). */
 export const DEFAULT_PROFILE_ID = "cybersec-soc"
 
+export { isControlPersona }
+
+export type WorkspaceSummary = {
+  id: string
+  organization_id: string
+  name: string
+  profile_id?: string
+}
+
+export function listWorkspaces(tenantId = "default") {
+  return request<{ workspaces: WorkspaceSummary[] }>(
+    `/v1/workspaces?tenant_id=${encodeURIComponent(tenantId)}`,
+  )
+}
+
+export function createWorkspace(body: {
+  name: string
+  tenant_id?: string
+  profile_id?: string
+  id?: string
+}) {
+  return request<WorkspaceSummary>("/v1/workspaces", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export type WorkspaceAgentSummary = {
+  workspace_id: string
+  name: string
+  source_agent: string
+  persona_prompt?: string
+  tools?: string[]
+  skills?: string[]
+}
+
+export function listWorkspaceAgents(workspaceId: string) {
+  return request<{ agents: WorkspaceAgentSummary[] }>(
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/agents`,
+  )
+}
+
+export function forkWorkspaceAgent(workspaceId: string, name: string) {
+  return request<WorkspaceAgentSummary>(
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(name)}/fork`,
+    { method: "POST" },
+  )
+}
+
+export function updateWorkspaceAgent(
+  workspaceId: string,
+  name: string,
+  body: { persona_prompt?: string; tools?: string[]; skills?: string[] },
+) {
+  return request<WorkspaceAgentSummary>(
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(name)}`,
+    { method: "PUT", body: JSON.stringify(body) },
+  )
+}
+
+export function inviteWorkspaceMember(
+  workspaceId: string,
+  body: { user_id: string; role: "editor" | "viewer" },
+) {
+  return request(`/v1/workspaces/${encodeURIComponent(workspaceId)}/members`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+}
+
+export function grantWorkspaceDatasource(workspaceId: string, datasourceId: string) {
+  return request(
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/datasources/${encodeURIComponent(datasourceId)}/grant`,
+    { method: "POST" },
+  )
+}
+
+export function revokeWorkspaceDatasource(workspaceId: string, datasourceId: string) {
+  return request(
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/datasources/${encodeURIComponent(datasourceId)}/revoke`,
+    { method: "POST" },
+  )
+}
+
 export function apiAuthHeaders(): Record<string, string> {
   const result: Record<string, string> = {}
   const envToken = process.env.NEXT_PUBLIC_EGREGORE_API_TOKEN
@@ -115,9 +198,11 @@ export function apiAuthHeaders(): Record<string, string> {
 }
 
 function headers(): HeadersInit {
+  const workspaceId = typeof window !== "undefined" ? getSelectedWorkspaceId() : ""
   return {
     "Content-Type": "application/json",
     ...apiAuthHeaders(),
+    ...(workspaceId ? { [WORKSPACE_HEADER]: workspaceId } : {}),
   }
 }
 
@@ -134,6 +219,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ...(init?.headers ?? {}),
       },
       cache: "no-store",
+      credentials: "include",
       signal,
     })
   } catch (exc) {
@@ -142,6 +228,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const detail = await response.text()
+    if (typeof window !== "undefined" && response.status === 403) {
+      const isSessionDeny =
+        detail.includes("TENANT_MISMATCH") ||
+        detail.includes("AUTHZ_DENIED") && !detail.includes("workspace")
+      if (isSessionDeny) {
+        window.location.assign("/forbidden")
+      }
+    }
     throw new ApiError(detail || response.statusText, response.status)
   }
   if (response.status === 204) {
@@ -203,6 +297,7 @@ export type PostEventResponse = {
 export type EngagementSummary = {
   engagement_id: string
   status: string
+  workspace_id?: string
   latest_phase?: string | null
   job_ids: string[]
   playbook_id?: string
@@ -244,6 +339,7 @@ export type WorkOrderSummary = EngagementSummary & {
   work_order_id?: string
   profile_id?: string
   intake?: Record<string, unknown>
+  initial_follow_up_id?: string
 }
 
 export function createWorkOrder(body: {
@@ -253,7 +349,9 @@ export function createWorkOrder(body: {
   intake?: Record<string, unknown>
   mode?: string
   plan_strategy?: string
+  intent_mode?: string
   tenant_id?: string
+  workspace_id?: string
   correlation_id?: string
 }) {
   return request<WorkOrderSummary>("/v1/work-orders", {
@@ -299,10 +397,44 @@ export async function getWorkOrder(workOrderId: string, tenantId = "default") {
   }
 }
 
-export function listWorkOrders(tenantId = "default", limit = 20) {
-  return request<{ work_orders: WorkOrderSummary[] }>(
-    `/v1/work-orders?tenant_id=${encodeURIComponent(tenantId)}&limit=${limit}`,
+export type PaginatedList<T> = {
+  items: T[]
+  next_cursor: string | null
+}
+
+export type ListWorkOrdersOptions = {
+  tenantId?: string
+  limit?: number
+  cursor?: string
+}
+
+export function listWorkOrders(
+  tenantIdOrOpts: string | ListWorkOrdersOptions = "default",
+  limit = 20,
+) {
+  const opts: ListWorkOrdersOptions =
+    typeof tenantIdOrOpts === "string"
+      ? { tenantId: tenantIdOrOpts, limit }
+      : { tenantId: "default", limit: 20, ...tenantIdOrOpts }
+  const params = new URLSearchParams({
+    tenant_id: opts.tenantId ?? "default",
+    limit: String(opts.limit ?? 20),
+  })
+  if (opts.cursor) {
+    params.set("cursor", opts.cursor)
+  }
+  return request<{ work_orders: WorkOrderSummary[]; next_cursor: string | null }>(
+    `/v1/work-orders?${params.toString()}`,
   )
+}
+
+export function listWorkOrdersPage(
+  opts: ListWorkOrdersOptions = {},
+): Promise<PaginatedList<WorkOrderSummary>> {
+  return listWorkOrders(opts).then((data) => ({
+    items: data.work_orders,
+    next_cursor: data.next_cursor,
+  }))
 }
 
 export function sendWorkOrderFollowUp(
@@ -553,6 +685,8 @@ export type JobSummary = {
   correlation_id: string
   event_id: string
   follow_up_id?: string | null
+  error?: string
+  reason?: string
 }
 
 export function listWorkOrdersAsInvestigations(tenantId = "default", limit = 50) {
@@ -707,6 +841,7 @@ export type CatalogAgent = {
 }
 
 export type CatalogAgentDetail = CatalogAgent & {
+  persona_prompt?: string
   system_prompt?: string
   system_prompt_digest?: string
 }

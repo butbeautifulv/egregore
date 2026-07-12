@@ -76,8 +76,8 @@ export const ChatBubble = memo(function ChatBubble({
   return (
     <p
       className={cn(
-        "text-sm leading-relaxed whitespace-pre-wrap",
-        streaming && "ring-primary/40 ring-1 p-2",
+        "text-sm leading-7 whitespace-pre-wrap",
+        streaming && "text-foreground/90",
         isError && "text-destructive",
       )}
     >

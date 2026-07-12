@@ -5,9 +5,16 @@ from cys_core.infrastructure.observability.backends import NoopJudgeBackend
 
 
 class LangfuseJudgeBackend(NoopJudgeBackend):
-    """LLM judge via Langfuse-managed prompts when available; heuristic fallback."""
+    """Deprecated stub — use Langfuse platform eval jobs for LLM quality (see OBSERVABILITY.md)."""
 
     def judge(self, request: JudgeRequest) -> JudgeResult:
+        import warnings
+
+        warnings.warn(
+            "LangfuseJudgeBackend is deprecated; use Langfuse async eval jobs for LLM-as-judge",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         text = request.output_text.lower()
         score = 0.75
         issues: list[str] = []

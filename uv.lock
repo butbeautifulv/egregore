@@ -533,6 +533,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "litellm" },
+    { name = "openfga-sdk" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-instrumentation-fastapi" },
@@ -576,6 +577,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.2.4" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=3.1.0" },
     { name = "litellm", specifier = ">=1.86.1" },
+    { name = "openfga-sdk", specifier = ">=0.10.4" },
     { name = "opentelemetry-api", specifier = ">=1.29.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.29.0" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.50b0" },
@@ -1614,6 +1616,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8f/12/cfa322c5f5dd8fa21aab9a7a8e979e7a11123800f86ca8d82eb68a83d213/openai-2.38.0.tar.gz", hash = "sha256:798694c6cf74145541fda94325b6f8f72d8e1fd0262cc137c8d728177a6a4ce3", size = 772764, upload-time = "2026-05-21T21:23:42.105Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/bf/ccff9be562e24207716d04ef9dc931c76aff0c89a7265da43e2104d7fe06/openai-2.38.0-py3-none-any.whl", hash = "sha256:ec6661c57b2dcc47414a767e6e3335c7ed3d19c9696999283a3c82e95c756a3c", size = 1344910, upload-time = "2026-05-21T21:23:39.636Z" },
+]
+
+[[package]]
+name = "openfga-sdk"
+version = "0.10.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "opentelemetry-api" },
+    { name = "python-dateutil" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/56/e83a75eae64d75aec96a6cced80bb5bbe4d74837bb6409692debb14b10cb/openfga_sdk-0.10.4.tar.gz", hash = "sha256:f5a681af3adb11249ebe33d5977286bb385a5c448edb47d71583e2a04b546e4c", size = 348682, upload-time = "2026-06-29T10:28:29.154Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/a6/a55854a9ee7aadf2b32eaed16211075bf7667309775e53e01756eacf02ca/openfga_sdk-0.10.4-py3-none-any.whl", hash = "sha256:7daa358ff669f47a094045f01235bb2733cbcfef84b9783e2deb6b64f5611176", size = 267237, upload-time = "2026-06-29T10:28:27.467Z" },
 ]
 
 [[package]]

@@ -8,13 +8,18 @@ import structlog
 
 from bootstrap.settings import Settings, get_settings
 from cys_core.application.follow_up.intent import classify_follow_up_mode, orchestrator_persona_for
+from cys_core.application.operator_messages.service import (
+    is_follow_up_turn_id,
+    maybe_compact_context,
+    persist_operator_turn_to_memory,
+)
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.ports.metrics import MetricsPort
 from cys_core.domain.engagement.models import EngagementStatus, SynthesisStatus
-from cys_core.domain.follow_up.models import FOLLOW_UP_PHASE
+from cys_core.domain.follow_up.models import FOLLOW_UP_PHASE, initial_follow_up_id
 from cys_core.domain.memory.services import MemoryReadService, MemoryWriteService
 from cys_core.domain.runs.models import ContextKind, InteractionMode, RunContext
 from cys_core.domain.runs.state_models import RunState, RunStatus
@@ -82,10 +87,21 @@ class EnqueueFollowUp:
         if engagement.synthesis_status not in (SynthesisStatus.DONE, SynthesisStatus.SKIPPED, None):
             raise FollowUpError("synthesis_not_complete", status_code=409)
         turns = self._memory_reader.query_conversation_turns(tenant_id, engagement_id, limit=200)
-        operator_turns = [t for t in turns if self._turn_role(t) == "operator"]
+        operator_turns = [
+            t for t in turns
+            if self._turn_role(t) == "operator" and is_follow_up_turn_id(self._turn_follow_up_id(t))
+        ]
         if len(operator_turns) >= self._settings.max_follow_ups_per_engagement:
             raise FollowUpError("follow_up_rate_limit", status_code=429)
         return engagement
+
+    @staticmethod
+    def _turn_follow_up_id(entry) -> str:
+        try:
+            data = json.loads(entry.content)
+            return str(data.get("follow_up_id", ""))
+        except json.JSONDecodeError:
+            return ""
 
     @staticmethod
     def _turn_role(entry) -> str:
@@ -115,47 +131,30 @@ class EnqueueFollowUp:
     ) -> tuple[str, Any]:
         engagement = self._validate_engagement(tenant_id, engagement_id)
         fu_id = follow_up_id or f"fu-{uuid.uuid4().hex[:12]}"
-        entry = self._memory_writer.append_conversation_turn(
-            tenant_id=tenant_id,
-            investigation_id=engagement_id,
-            role="operator",
-            text=message.strip(),
-            follow_up_id=fu_id,
-            source_agent="operator",
-            work_kind=work_kind,
-            mode=mode,
-            status="completed",
-        )
-        if entry is None:
-            raise FollowUpError("conversation_turn_rejected", status_code=400)
-        if self._metrics is not None:
-            self._metrics.record_memory_write(tenant_id, "conversation")
-        self._maybe_compact_context(tenant_id, engagement_id)
+        try:
+            persist_operator_turn_to_memory(
+                self._memory_writer,
+                tenant_id=tenant_id,
+                engagement_id=engagement_id,
+                message=message,
+                follow_up_id=fu_id,
+                work_kind=work_kind,
+                mode=mode,
+                metrics=self._metrics,
+                memory_reader=self._memory_reader,
+                engagement_store=self._engagement_store,
+            )
+        except ValueError as exc:
+            raise FollowUpError("conversation_turn_rejected", status_code=400) from exc
         return fu_id, engagement
 
     def _maybe_compact_context(self, tenant_id: str, engagement_id: str) -> None:
-        turns = self._memory_reader.query_conversation_turns(tenant_id, engagement_id, limit=200)
-        if len(turns) <= 10:
-            return
-        engagement = self._engagement_store.get(tenant_id, engagement_id)
-        if engagement is None:
-            return
-        older = turns[:-10]
-        lines: list[str] = []
-        for entry in older:
-            try:
-                data = json.loads(entry.content)
-                role = str(data.get("role", "unknown"))
-                text = str(data.get("text", ""))[:240]
-                lines.append(f"{role}: {text}")
-            except json.JSONDecodeError:
-                lines.append(entry.content[:240])
-        if not lines:
-            return
-        checkpoint = "\n".join(lines)
-        prior = (engagement.context_summary or "").strip()
-        engagement.context_summary = f"{prior}\n{checkpoint}".strip()[-4000:]
-        self._engagement_store.upsert(engagement)
+        maybe_compact_context(
+            memory_reader=self._memory_reader,
+            engagement_store=self._engagement_store,
+            tenant_id=tenant_id,
+            engagement_id=engagement_id,
+        )
 
     def enqueue_pending(
         self,
@@ -341,18 +340,22 @@ class EnqueueFollowUp:
     def list_turns(self, tenant_id: str, engagement_id: str) -> list[dict[str, Any]]:
         entries = self._memory_reader.query_conversation_turns(tenant_id, engagement_id, limit=100)
         turns: list[dict[str, Any]] = []
+        has_initial = False
         for entry in entries:
             try:
                 data = json.loads(entry.content)
             except json.JSONDecodeError:
                 data = {"role": "unknown", "text": entry.content, "follow_up_id": ""}
+            follow_up_id = str(data.get("follow_up_id", ""))
+            if follow_up_id == initial_follow_up_id(engagement_id):
+                has_initial = True
             turns.append(
                 {
                     "id": entry.id,
                     "role": str(data.get("role", "unknown")),
                     "text": str(data.get("text", "")),
                     "created_at": entry.created_at.isoformat(),
-                    "follow_up_id": str(data.get("follow_up_id", "")),
+                    "follow_up_id": follow_up_id,
                     "job_id": data.get("job_id"),
                     "persona": data.get("persona"),
                     "status": str(data.get("status", "completed")),
@@ -362,4 +365,35 @@ class EnqueueFollowUp:
                     "finding": data.get("finding"),
                 }
             )
+        if not has_initial:
+            engagement = self._engagement_store.get(tenant_id, engagement_id)
+            goal = (engagement.goal or "").strip() if engagement is not None else ""
+            if goal:
+                created_at = ""
+                if engagement is not None and getattr(engagement, "planning_started_at", None):
+                    created_at = str(engagement.planning_started_at)
+                if not created_at and engagement is not None:
+                    created_at = str(getattr(engagement, "updated_at", "") or "")
+                if not created_at:
+                    from datetime import datetime, timezone
+
+                    created_at = datetime.now(timezone.utc).isoformat()
+                turns.insert(
+                    0,
+                    {
+                        "id": f"synthetic-{engagement_id}",
+                        "role": "operator",
+                        "text": goal,
+                        "created_at": created_at,
+                        "follow_up_id": initial_follow_up_id(engagement_id),
+                        "job_id": None,
+                        "persona": None,
+                        "status": "completed",
+                        "work_kind": None,
+                        "mode": "auto",
+                        "content_type": None,
+                        "finding": None,
+                    },
+                )
+        turns.sort(key=lambda item: item.get("created_at", ""))
         return turns

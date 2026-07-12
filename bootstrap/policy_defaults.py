@@ -7,7 +7,7 @@ def default_profile_policy():
     return default_profile_policy_payload()
 
 
-def default_profile_pack(*, id: str, default_personas: list[str]):
+def default_profile_pack(*, id: str, default_personas: list[str], control_plane_mode: str = "gate_only"):
     from cys_core.domain.catalog.models import PlannerPack, ProfilePack
     from cys_core.registry.product_context import get_product_context
 
@@ -18,7 +18,8 @@ def default_profile_pack(*, id: str, default_personas: list[str]):
         description="Filesystem seed profile",
         default_personas=default_personas,
         default_plan=product.manifest.default_plan,
-        global_rules=product.rules_block,
+        control_plane_mode=control_plane_mode,
+        global_rules="",
         policy=default_profile_policy(),
         planner=PlannerPack(
             post_processors=["advisory_consultant_fallback", "staged_soc_intel_for_incident"],

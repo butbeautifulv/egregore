@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import structlog
+
 from cys_core.domain.catalog.models import ProfilePack, ProfilePolicyPayload
+
+logger = structlog.get_logger(__name__)
 
 
 def merge_profile_policy(existing: ProfilePolicyPayload, patch: dict) -> ProfilePolicyPayload:
@@ -35,6 +39,8 @@ def merge_profile_policy(existing: ProfilePolicyPayload, patch: dict) -> Profile
 
 
 def merge_profile_pack(existing: ProfilePack | None, *, profile_id: str, body: dict) -> ProfilePack:
+    if "global_rules" in body:
+        logger.warning("profile_pack_global_rules_ignored", profile_id=profile_id)
     if existing is None:
         return ProfilePack(
             id=profile_id,
@@ -57,7 +63,7 @@ def merge_profile_pack(existing: ProfilePack | None, *, profile_id: str, body: d
         default_personas=body.get("default_personas", existing.default_personas),
         default_skills=body.get("default_skills", existing.default_skills),
         default_plan=body.get("default_plan", existing.default_plan),
-        global_rules=body.get("global_rules", existing.global_rules),
+        global_rules="",
         hints_template=body.get("hints_template", existing.hints_template),
         policy=policy,
     )

@@ -21,6 +21,7 @@ from cys_core.domain.follow_up.models import (
     is_follow_up_payload,
     is_follow_up_plan_iteration,
     is_follow_up_planning,
+    is_initial_qa_payload,
     work_kind_from_payload,
 )
 from cys_core.domain.workers.failure_reason import WorkerJobFailureReason, classify_worker_failure
@@ -101,7 +102,7 @@ class WorkerJobFinalizer:
             pass
 
         job.transition_to(WorkerJobStatus.FAILED)
-        self._job_store.mark_failed(job.job_id)
+        self._job_store.mark_failed(job.job_id, error=error, reason=resolved_reason.value)
 
         if job.payload.get("phase") == "synthesis":
             if self._engagement_store is not None:
@@ -210,7 +211,10 @@ class WorkerJobFinalizer:
             engagement = self._engagement_store.get(job.tenant_id, investigation_id)
             if engagement is not None:
                 if not is_follow_up_planning(job.payload):
-                    engagement.close_after_follow_up()
+                    if is_initial_qa_payload(job.payload):
+                        engagement.close_after_initial_qa()
+                    else:
+                        engagement.close_after_follow_up()
                     engagement.follow_up_spawned_job_ids = []
                     self._engagement_store.upsert(engagement)
         await self.mark_success(job, investigation_id)

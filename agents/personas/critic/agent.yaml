@@ -5,13 +5,7 @@ output_schema: CriticResult
 tools: []
 hitl_tools: {}
 trust_level: privileged
-bus_recipients:
-  - coordinator
-  - soc
-  - network
-  - consultant
-  - intel
-  - hunter
-  - identity
+# Control personas do not publish worker findings on the bus; revision uses REVISION messages only.
+bus_recipients: []
 language: ru
 sample: samples/default.txt

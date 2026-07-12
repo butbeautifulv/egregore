@@ -33,6 +33,7 @@ from cys_core.application.workers.tool_execution_tracker import (
     tool_succeeded,
 )
 from cys_core.application.workers.timeout_salvage import build_salvage_finding
+from cys_core.application.workspace.persona_resolver import resolve_worker_agent_definition
 from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.follow_up.models import (
     is_follow_up_orchestrator,
@@ -131,6 +132,31 @@ class RunWorkerJob:
         self.resolve_legacy_tools = resolve_legacy_tools
         self.make_load_skill_tool = make_load_skill_tool
 
+    def _workspace_id_for_job(self, job: WorkerJob, investigation_id: str) -> str:
+        store = self._context_builder._engagement_store
+        if store is None:
+            return ""
+        engagement = store.get(job.tenant_id, investigation_id)
+        if engagement is None:
+            return ""
+        return (getattr(engagement, "workspace_id", "") or "").strip()
+
+    def _resolve_defn(self, job: WorkerJob, investigation_id: str):
+        workspace_id = self._workspace_id_for_job(job, investigation_id)
+        if not workspace_id:
+            return self._registry.get(job.persona)
+        try:
+            from bootstrap.container import get_container
+
+            return resolve_worker_agent_definition(
+                persona=job.persona,
+                workspace_id=workspace_id,
+                registry=self._registry,
+                workspace_store=get_container().get_workspace_store(),
+            )
+        except Exception:
+            return self._registry.get(job.persona)
+
     def _mark_persona_completed(self, job: WorkerJob) -> None:
         self._job_finalizer.mark_persona_completed(job)
 
@@ -185,7 +211,7 @@ class RunWorkerJob:
         )
         if salvage is None:
             return None
-        defn = self._registry.get(job.persona)
+        defn = self._resolve_defn(job, investigation_id)
         validated = self._result_validator.validate(
             result=salvage, schema_name=defn.schema_name or ""
         )
@@ -212,7 +238,7 @@ class RunWorkerJob:
             job=job,
             result=result,
             investigation_id=investigation_id,
-            is_final_report=False,
+            defn=defn,
         )
         self._finding_publisher.persist_memory(job=job, result=result, investigation_id=investigation_id)
         if should_publish_finding_to_bus(persona=job.persona, role=getattr(defn, "role", None)):
@@ -301,13 +327,23 @@ class RunWorkerJob:
                 manifest = get_persona_manifests(investigation_id).get(job.persona)
                 if manifest is not None:
                     seed_job_from_persona_manifest(job.job_id, manifest, mark_siem_done=True)
-        with self._worker_tracing.span(
-            "worker.process_job",
+        inv_ctx = self._context_builder.build(job)
+        from cys_core.observability.trace_attributes import build_job_trace_metadata
+
+        trace_meta = build_job_trace_metadata(
             persona=job.persona,
             job_id=job.job_id,
-            engagement_id=investigation_id,
             correlation_id=job.correlation_id,
+            investigation_id=investigation_id,
             tenant_id=job.tenant_id,
+            workspace_id=str(inv_ctx.get("workspace_id", "") or ""),
+            sandbox_id=job.sandbox_id,
+            memory_entries_loaded=len(inv_ctx.get("prior_findings") or []),
+        )
+        span_attrs = trace_meta.get("metadata", {})
+        with self._worker_tracing.span(
+            "worker.process_job",
+            **span_attrs,
         ):
             creds = None
             try:
@@ -325,7 +361,7 @@ class RunWorkerJob:
 
                 raw_input = self._context_builder.job_input(job)
                 sanitized = self.sanitizer.sanitize(raw_input, source="external")
-                defn = self._registry.get(job.persona)
+                defn = self._resolve_defn(job, investigation_id)
                 if job.persona == "consultant" and not (defn.schema_name or "").strip():
                     logger.warning(
                         "consultant_missing_output_schema",
@@ -333,6 +369,7 @@ class RunWorkerJob:
                         engagement_id=investigation_id,
                     )
                 profile_id = resolve_profile_id(payload=job.payload, catalog_entry=defn)
+                workspace_id = str(inv_ctx.get("workspace_id", "") or "")
                 sandbox_tools: list = []
                 if self.use_tool_gateway:
                     sandbox_tools.extend(
@@ -343,6 +380,7 @@ class RunWorkerJob:
                             job_id=job.job_id,
                             correlation_id=job.correlation_id,
                             profile_id=profile_id,
+                            workspace_id=workspace_id,
                         )
                     )
                 else:
@@ -358,7 +396,6 @@ class RunWorkerJob:
                         )
                     )
 
-                inv_ctx = self._context_builder.build(job)
                 prior = inv_ctx.get("prior_findings") or []
                 prompt = sanitized
                 planned_tool_calls = False
@@ -581,6 +618,19 @@ class RunWorkerJob:
                     budget_state = JobBudgetTracker.get(session_id)
                     if budget_state is not None:
                         job.payload["estimated_cost_usd"] = budget_state.cost_usd
+                    if (
+                        work_kind_from_payload(job.payload) == "initial_qa"
+                        and isinstance(result, dict)
+                        and self._job_finalizer._engagement_store is not None
+                    ):
+                        from cys_core.application.findings.outcome_mapper import finding_to_operator_outcome
+
+                        outcome = finding_to_operator_outcome(result, kind="advisory")
+                        self._job_finalizer._engagement_store.set_final_report(
+                            job.tenant_id,
+                            investigation_id,
+                            outcome.to_final_report(),
+                        )
                     await self._job_finalizer.mark_follow_up_success(job, investigation_id)
                     return RunResult(
                         job_id=job.job_id,
@@ -590,12 +640,13 @@ class RunWorkerJob:
                         sandbox_id=creds.sandbox_id,
                     )
 
-                self._finding_publisher.append_engagement_finding(
-                    job=job,
-                    result=result,
-                    investigation_id=investigation_id,
-                    is_final_report=job.payload.get("phase") == "synthesis",
-                )
+                if job.payload.get("phase") != "synthesis":
+                    self._finding_publisher.append_engagement_finding(
+                        job=job,
+                        result=result,
+                        investigation_id=investigation_id,
+                        defn=defn,
+                    )
                 self._finding_publisher.persist_memory(job=job, result=result, investigation_id=investigation_id)
                 if job.payload.get("phase") == "synthesis":
                     self._finding_publisher.publish_final_report(

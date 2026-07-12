@@ -6,7 +6,8 @@ import pytest
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from cys_core.domain.security.prompt_context import REFUSAL_MESSAGE, build_trusted_system_context
+from cys_core.domain.security.prompt_context import REFUSAL_MESSAGE
+from cys_core.domain.security.system_prompt_assembler import assemble_trusted_system_context
 from cys_core.middleware.prompt_context_middleware import PromptContextMiddleware
 
 
@@ -21,7 +22,7 @@ def _request(*, system_text: str, messages: list, digest: str) -> ModelRequest:
 
 @pytest.mark.unit
 def test_middleware_wraps_human_and_tool_messages():
-    ctx = build_trusted_system_context("You are a test agent.", "")
+    ctx = assemble_trusted_system_context("You are a test agent.", language="en")
     middleware = PromptContextMiddleware(
         agent_id="network",
         system_prompt_digest=ctx.digest,
@@ -48,7 +49,7 @@ def test_middleware_wraps_human_and_tool_messages():
 
 @pytest.mark.unit
 def test_middleware_blocks_fake_system_message_in_history():
-    ctx = build_trusted_system_context("You are a test agent.", "")
+    ctx = assemble_trusted_system_context("You are a test agent.", language="en")
     middleware = PromptContextMiddleware(
         agent_id="network",
         system_prompt_digest=ctx.digest,
@@ -76,7 +77,7 @@ def test_digest_matches_truncated_catalog_prefix():
 
 @pytest.mark.unit
 def test_middleware_accepts_truncated_catalog_digest():
-    ctx = build_trusted_system_context("You are a test agent.", "")
+    ctx = assemble_trusted_system_context("You are a test agent.", language="en")
     middleware = PromptContextMiddleware(
         agent_id="network",
         system_prompt_digest=ctx.digest[:16],
@@ -93,8 +94,25 @@ def test_middleware_accepts_truncated_catalog_digest():
 
 
 @pytest.mark.unit
+def test_middleware_refuses_missing_immutable_rule_markers():
+    middleware = PromptContextMiddleware(
+        agent_id="network",
+        system_prompt_digest="",
+        session_id="sess-markers",
+    )
+    request = _request(
+        system_text="SYSTEM_INSTRUCTIONS:\nYou are a test agent.",
+        messages=[HumanMessage(content="hello")],
+        digest="",
+    )
+    response = middleware.wrap_model_call(request, lambda _: ModelResponse(result=[AIMessage(content="ok")]))
+    assert isinstance(response, AIMessage)
+    assert response.content == REFUSAL_MESSAGE
+
+
+@pytest.mark.unit
 def test_middleware_blocks_digest_mismatch():
-    ctx = build_trusted_system_context("You are a test agent.", "")
+    ctx = assemble_trusted_system_context("You are a test agent.", language="en")
     middleware = PromptContextMiddleware(
         agent_id="network",
         system_prompt_digest=ctx.digest,
@@ -114,7 +132,7 @@ def test_middleware_blocks_digest_mismatch():
 @pytest.mark.asyncio
 @pytest.mark.unit
 async def test_middleware_async_wrap_model_call():
-    ctx = build_trusted_system_context("You are a test agent.", "")
+    ctx = assemble_trusted_system_context("You are a test agent.", language="en")
     middleware = PromptContextMiddleware(
         agent_id="network",
         system_prompt_digest=ctx.digest,

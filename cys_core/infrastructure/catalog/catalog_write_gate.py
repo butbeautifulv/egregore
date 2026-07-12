@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import threading
 from typing import Callable, cast
 
@@ -19,8 +18,17 @@ from cys_core.domain.catalog.models import (
     SkillCatalogEntry,
     StagingStatus,
 )
+from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.catalog.validation import CrossRefValidator
+from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.factory import get_input_sanitizer
+from cys_core.domain.security.sanitizer import InjectionVerdict
+from cys_core.domain.security.system_prompt_assembler import (
+    assemble_trusted_system_context,
+    extract_persona_prompt,
+    had_embedded_rule_sections,
+    resolve_persona_prompt,
+)
 
 
 class CatalogWriteGate:
@@ -52,11 +60,40 @@ class CatalogWriteGate:
 
         return set(tool_registry.names())
 
-    def upsert_agent(self, entry: AgentCatalogEntry, *, actor: str = "api") -> AgentCatalogEntry:
+    def _normalize_agent_entry(self, entry: AgentCatalogEntry, *, actor: str) -> AgentCatalogEntry:
         sanitizer = get_input_sanitizer()
-        if entry.system_prompt:
-            entry.system_prompt = sanitizer.sanitize(entry.system_prompt, source="catalog")
-            entry.system_prompt_digest = hashlib.sha256(entry.system_prompt.encode("utf-8")).hexdigest()[:16]
+        raw = entry.persona_prompt or entry.system_prompt
+        stripped_rules = False
+        if raw:
+            persona_candidate = extract_persona_prompt(raw)
+            stripped_rules = had_embedded_rule_sections(raw)
+            verdict = sanitizer.classify(persona_candidate)
+            if verdict is InjectionVerdict.HARD:
+                raise SecurityViolation("Prompt injection detected in catalog persona")
+            persona = sanitizer.filter_patterns(persona_candidate)
+            entry.persona_prompt = persona
+        else:
+            persona = resolve_persona_prompt(entry)
+            entry.persona_prompt = persona
+
+        ctx = assemble_trusted_system_context(persona, language=entry.language)
+        entry.system_prompt = ""
+        entry.system_prompt_digest = ctx.digest
+
+        if stripped_rules:
+            self._audit.record_change(
+                "persona_rules_stripped",
+                agent=entry.name,
+                actor=actor,
+                resource_type="agent",
+                resource_id=entry.name,
+            )
+        return entry
+
+    def upsert_agent(self, entry: AgentCatalogEntry, *, actor: str = "api") -> AgentCatalogEntry:
+        if is_control_persona(entry.name):
+            raise SecurityViolation(f"Control persona '{entry.name}' is immutable")
+        entry = self._normalize_agent_entry(entry, actor=actor)
         validator = CrossRefValidator(known_skill_ids=self._skill_ids(), known_tool_names=self._tool_names())
         validator.validate_agent(entry)
         with self._lock:
@@ -129,6 +166,8 @@ class CatalogWriteGate:
         return saved
 
     def delete_agent(self, name: str, *, profile_id: str = "cybersec-soc", actor: str = "api") -> bool:
+        if is_control_persona(name):
+            raise SecurityViolation(f"Control persona '{name}' is immutable")
         with self._lock:
             ok = self._agents.delete_agent(name, profile_id=profile_id)
             if ok:

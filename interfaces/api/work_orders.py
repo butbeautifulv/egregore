@@ -9,11 +9,16 @@ from fastapi.responses import JSONResponse
 from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
 from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
-from cys_core.application.use_cases.start_work_order import StartWorkOrder, WorkOrderValidationError
+from cys_core.application.use_cases.start_work_order import (
+    INITIAL_QA_PENDING,
+    StartWorkOrder,
+    WorkOrderValidationError,
+)
 from cys_core.domain.security.auth_models import AuthClaims
 from cys_core.domain.work_order.models import WorkOrderRequest
-from cys_core.infrastructure.work_order.adapter import WorkOrderStore
+from interfaces.api.tenant_deps import require_tenant_match_http
 from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
+from interfaces.api.authz_helpers import require_engagement_relation, visible_workspace_ids
 from interfaces.api.planner_tasks import spawn_engagement_planner
 from interfaces.api.follow_ups import _get_enqueue_follow_up
 from interfaces.api.follow_up_schemas import FollowUpIn, FollowUpListOut, FollowUpOut, FollowUpTurnOut
@@ -21,19 +26,35 @@ from interfaces.api.work_order_schemas import WorkOrderCreateIn, WorkOrderListOu
 
 router = APIRouter(prefix="/v1", tags=["work-orders"])
 
+_MAX_LIST_LIMIT = 100
 
-def _work_order_store() -> WorkOrderStore:
+
+def _work_order_store():
+    from cys_core.infrastructure.work_order.adapter import WorkOrderStore
+
     return WorkOrderStore(get_container().get_engagement_state_store())
 
 
 def _start_work_order() -> StartWorkOrder:
     container = get_container()
+    authz = container.get_authz_service()
+
+    def _write_authz_tuples(tuples):
+        authz.write_tuples(tuples)
+
     return StartWorkOrder(
         work_order_store=_work_order_store(),
         start_engagement=container.get_start_engagement(),
         memory_writer=container.get_memory_write_service(),
+        memory_reader=container.get_memory_read_service(),
         agent_catalog=container.get_agent_catalog(),
         metrics=container.get_metrics_port(),
+        job_store=container.get_job_store(),
+        queue=container.get_job_queue(),
+        engagement_egress=container.get_engagement_egress(),
+        engagement_store=container.get_engagement_state_store(),
+        workspace_store=container.get_workspace_store(),
+        authz_tuple_writer=_write_authz_tuples if authz.mode != "off" else None,
     )
 
 
@@ -41,21 +62,36 @@ def _start_work_order() -> StartWorkOrder:
 async def list_work_orders(
     tenant_id: str = "default",
     limit: int = 20,
-    _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
+    cursor: str | None = None,
+    _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> WorkOrderListOut:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    capped_limit = min(max(limit, 1), _MAX_LIST_LIMIT)
     store = get_container().get_engagement_state_store()
-    from cys_core.infrastructure.engagement.postgres_store import PostgresEngagementStateStore
-
-    if isinstance(store, PostgresEngagementStateStore):
-        pairs = store.list_recent_with_updated_at(tenant_id, limit=limit)
-        return WorkOrderListOut(
-            work_orders=[
-                WorkOrderOut.from_engagement(eng, updated_at=ts) for eng, ts in pairs
-            ],
+    try:
+        pairs, next_cursor = store.list_recent_page(
+            tenant_id,
+            limit=capped_limit,
+            cursor=cursor,
         )
-    engagements = store.list_recent(tenant_id, limit=limit)
+    except Exception as exc:
+        from cys_core.infrastructure.engagement.list_cursor import InvalidListCursor
+
+        if isinstance(exc, InvalidListCursor):
+            raise HTTPException(status_code=400, detail="invalid_cursor") from exc
+        raise
+    visible = visible_workspace_ids(_auth)
+    if visible is not None:
+        pairs = [
+            (eng, ts)
+            for eng, ts in pairs
+            if not (getattr(eng, "workspace_id", "") or "") or eng.workspace_id in visible
+        ]
     return WorkOrderListOut(
-        work_orders=[WorkOrderOut.from_engagement(eng) for eng in engagements],
+        work_orders=[
+            WorkOrderOut.from_engagement(eng, updated_at=ts) for eng, ts in pairs
+        ],
+        next_cursor=next_cursor,
     )
 
 
@@ -65,7 +101,10 @@ async def create_work_order(
     request: Request,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> WorkOrderOut | JSONResponse:
+    tenant_id = require_tenant_match_http(_auth, body.tenant_id)
     wo_request = body.to_domain_request()
+    if wo_request.tenant_id != tenant_id:
+        wo_request = wo_request.model_copy(update={"tenant_id": tenant_id})
     start = _start_work_order()
     try:
         engagement, decision, job_ids = await start.execute(wo_request)
@@ -82,6 +121,8 @@ async def create_work_order(
             payload=dict(event.payload),
         )
         return JSONResponse(status_code=202, content=out.model_dump(mode="json"))
+    if decision.reason == INITIAL_QA_PENDING:
+        return JSONResponse(status_code=202, content=out.model_dump(mode="json"))
     return out
 
 
@@ -91,6 +132,13 @@ async def get_work_order(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> WorkOrderOut:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=work_order_id,
+        relation="can_view",
+    )
     store = _work_order_store()
     work_order = store.get(tenant_id, work_order_id)
     if work_order is None:
@@ -107,6 +155,7 @@ async def list_work_order_follow_ups(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> FollowUpListOut:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
     use_case = _get_enqueue_follow_up()
     turns = use_case.list_turns(tenant_id, work_order_id)
     return FollowUpListOut(turns=[FollowUpTurnOut(**item) for item in turns])
@@ -118,7 +167,13 @@ async def create_work_order_follow_up(
     body: FollowUpIn,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> FollowUpOut:
-    tenant_id = body.tenant_id or "default"
+    tenant_id = require_tenant_match_http(_auth, body.tenant_id or "default")
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=work_order_id,
+        relation="can_operate",
+    )
     use_case = _get_enqueue_follow_up()
     from cys_core.application.use_cases.enqueue_follow_up import FollowUpError
 

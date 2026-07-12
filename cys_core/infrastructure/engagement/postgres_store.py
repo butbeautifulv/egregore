@@ -7,6 +7,7 @@ import psycopg
 
 from cys_core.domain.engagement.models import Engagement
 from cys_core.infrastructure.engagement import _store_ops
+from cys_core.infrastructure.engagement.list_cursor import decode_cursor, page_next_cursor
 
 _ENGAGEMENT_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS engagements (
@@ -81,17 +82,41 @@ class PostgresEngagementStateStore:
     def list_recent_with_updated_at(
         self, tenant_id: str, *, limit: int = 20
     ) -> list[tuple[Engagement, Any]]:
+        items, _ = self.list_recent_page(tenant_id, limit=limit, cursor=None)
+        return items
+
+    def list_recent_page(
+        self,
+        tenant_id: str,
+        *,
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> tuple[list[tuple[Engagement, Any]], str | None]:
+        fetch_limit = limit + 1
+        params: list[Any] = [tenant_id]
+        cursor_clause = ""
+        if cursor is not None:
+            cursor_updated_at, cursor_id = decode_cursor(cursor)
+            cursor_clause = "AND (updated_at, engagement_id) < (%s, %s)"
+            params.extend([cursor_updated_at, cursor_id])
+        params.append(fetch_limit)
         with self._connect() as conn:
             rows = conn.execute(
-                """
-                SELECT state_json, updated_at FROM engagements
+                f"""
+                SELECT state_json, updated_at, engagement_id FROM engagements
                 WHERE tenant_id = %s
-                ORDER BY updated_at DESC
+                {cursor_clause}
+                ORDER BY updated_at DESC, engagement_id DESC
                 LIMIT %s
                 """,
-                (tenant_id, limit),
+                tuple(params),
             ).fetchall()
-        return [(Engagement.model_validate(row[0]), row[1]) for row in rows]
+        cursor_rows = [(row[1], row[2]) for row in rows]
+        page_rows, next_cursor = page_next_cursor(cursor_rows, limit=limit)
+        page_ids = {engagement_id for _, engagement_id in page_rows}
+        by_id = {row[2]: (Engagement.model_validate(row[0]), row[1]) for row in rows if row[2] in page_ids}
+        items = [by_id[engagement_id] for _, engagement_id in page_rows]
+        return items, next_cursor
 
     def mark_persona_done(self, tenant_id: str, engagement_id: str, persona: str) -> None:
         engagement = self.get(tenant_id, engagement_id)

@@ -1,17 +1,51 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from cys_core.domain.policy.defaults import ESCALATION_ONLY_PATHS
 
 CONTROL_PLANE_RECIPIENTS = frozenset({"critic", "coordinator"})
 BUS_ALWAYS_RECIPIENTS = CONTROL_PLANE_RECIPIENTS
 
 
-def filter_bus_recipients_for_plan(recipients: list[str], planner_plan: list[str] | None) -> list[str]:
-    """Keep bus handoffs aligned with planner_plan; always allow control-plane recipients."""
+class ControlPlaneMode(str, Enum):
+    OFF = "off"
+    GATE_ONLY = "gate_only"
+    FULL = "full"
+
+
+def _normalize_control_plane_mode(mode: str | ControlPlaneMode) -> str:
+    if isinstance(mode, ControlPlaneMode):
+        return mode.value
+    return str(mode or ControlPlaneMode.GATE_ONLY.value)
+
+
+def filter_control_plane_recipients(recipients: list[str], mode: str | ControlPlaneMode) -> list[str]:
+    normalized = _normalize_control_plane_mode(mode)
+    if normalized == ControlPlaneMode.OFF.value:
+        return [recipient for recipient in recipients if recipient not in CONTROL_PLANE_RECIPIENTS]
+    if normalized == ControlPlaneMode.GATE_ONLY.value:
+        return [recipient for recipient in recipients if recipient != "coordinator"]
+    return list(recipients)
+
+
+def filter_bus_recipients_for_plan(
+    recipients: list[str],
+    planner_plan: list[str] | None,
+    *,
+    control_plane_mode: str | ControlPlaneMode = ControlPlaneMode.GATE_ONLY,
+) -> list[str]:
+    """Keep bus handoffs aligned with planner_plan; allow control-plane per profile mode."""
+    recipients = filter_control_plane_recipients(recipients, control_plane_mode)
     planned = {persona for persona in (planner_plan or []) if persona}
     if not planned:
         return list(recipients)
-    return [recipient for recipient in recipients if recipient in planned or recipient in CONTROL_PLANE_RECIPIENTS]
+    allow_control = _normalize_control_plane_mode(control_plane_mode) != ControlPlaneMode.OFF.value
+    return [
+        recipient
+        for recipient in recipients
+        if recipient in planned or (allow_control and recipient in CONTROL_PLANE_RECIPIENTS)
+    ]
 
 
 def off_plan_bus_enqueue_reason(

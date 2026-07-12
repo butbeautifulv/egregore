@@ -17,12 +17,13 @@ def append_finding(engagement: Engagement, finding: dict[str, Any]) -> None:
     persona = str(finding.get("persona", ""))
     job_id = str(finding.get("job_id", ""))
     if persona and job_id:
-        for existing in engagement.findings_summary:
+        for index, existing in enumerate(engagement.findings_summary):
             if (
                 isinstance(existing, dict)
                 and existing.get("persona") == persona
                 and existing.get("job_id") == job_id
             ):
+                engagement.findings_summary[index] = finding
                 return
     engagement.findings_summary.append(finding)
 

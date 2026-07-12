@@ -173,3 +173,35 @@ func indentBlock(text, prefix string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// FormatOutcome renders OperatorOutcome-style final_report for TUI.
+func FormatOutcome(data map[string]interface{}) string {
+	if data == nil {
+		return "—"
+	}
+	title := str(data["title"])
+	if title == "" {
+		title = str(data["topic"])
+	}
+	if title == "" {
+		title = "Work order outcome"
+	}
+	summary := str(data["summary"])
+	lines := []string{title}
+	if kind := str(data["kind"]); kind != "" {
+		lines = append(lines, "Kind: "+kind)
+	}
+	if summary != "" {
+		lines = append(lines, "", summary)
+	}
+	if recs, ok := data["recommendations"].([]interface{}); ok && len(recs) > 0 {
+		lines = append(lines, "", "Recommendations:")
+		for _, item := range recs {
+			text := strings.TrimSpace(fmt.Sprint(item))
+			if text != "" {
+				lines = append(lines, "- "+text)
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}

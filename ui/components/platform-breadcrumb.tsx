@@ -62,10 +62,12 @@ export function usePlatformBreadcrumbLabel(label: string | null) {
 
 export function usePlatformBreadcrumbMiddle(crumbs: PlatformCrumb[]) {
   const { setMiddleCrumbs } = useBreadcrumbContext()
+  const crumbsKey = JSON.stringify(crumbs)
+  const stableCrumbs = useMemo(() => crumbs, [crumbsKey])
   useEffect(() => {
-    setMiddleCrumbs(crumbs)
+    setMiddleCrumbs(stableCrumbs)
     return () => setMiddleCrumbs([])
-  }, [crumbs, setMiddleCrumbs])
+  }, [stableCrumbs, setMiddleCrumbs])
 }
 
 function buildCrumbs(
@@ -77,6 +79,17 @@ function buildCrumbs(
 
   if (pathname === "/") {
     crumbs.push({ label: "Work orders" })
+    return crumbs
+  }
+
+  if (pathname.startsWith("/workspaces/")) {
+    crumbs.push({ label: "Workspaces", href: "/workspaces" })
+    crumbs.push({ label: dynamicLabel ?? "Workspace" })
+    return crumbs
+  }
+
+  if (pathname === "/workspaces") {
+    crumbs.push({ label: "Workspaces" })
     return crumbs
   }
 

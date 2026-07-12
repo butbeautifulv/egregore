@@ -1,14 +1,17 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { BotIcon } from "lucide-react"
 
 import { ChatBubble } from "@/components/engagement/chat-bubble"
 import { FindingContent } from "@/components/engagement/finding-content"
+import { MessageActions } from "@/components/engagement/message-actions"
 import { ReasoningBlock } from "@/components/engagement/reasoning-block"
 import { ToolCallList } from "@/components/engagement/tool-call-list"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import { findingEnvelope } from "@/lib/finding-display"
+import { resolveEntryCopyText } from "@/lib/chat-message-text"
+import { CHAT_COLUMN_CLASS } from "@/lib/chat-layout"
 import type { AgentChatEntry } from "@/lib/types"
 import { Badge } from "@/vendor/gui/ui/badge"
 import {
@@ -33,41 +36,46 @@ export function AgentMessageBlock({
   finding?: Record<string, unknown>
   defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(defaultOpen ?? (entry.streaming || entry.agentExpanded))
+  const [reasoningOpen, setReasoningOpen] = useState(
+    defaultOpen ?? (entry.streaming || entry.agentExpanded),
+  )
   const label = statusLabel(entry)
-  const hasToolsOrReasoning = Boolean(entry.reasoning || entry.tools.length > 0)
+  const hasTools = entry.tools.length > 0
+  const hasReasoning = Boolean(entry.reasoning)
   const hasTurns = entry.turns.length > 0 || Boolean(entry.buffer)
   const showStructuredFinding =
     Boolean(finding) && !entry.streaming && !entry.jobError && !entry.isControlError
   const { body, evidenceManifest } = finding ? findingEnvelope(finding) : { body: {}, evidenceManifest: undefined }
+  const copyText = useMemo(() => resolveEntryCopyText(entry, finding), [entry, finding])
 
   useEffect(() => {
-    if (entry.streaming) setOpen(true)
+    if (entry.streaming) setReasoningOpen(true)
   }, [entry.streaming])
 
   return (
-    <div className="flex w-full max-w-2xl flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Badge variant="secondary">{entry.persona}</Badge>
-        <Badge variant={entry.streaming ? "default" : "outline"} className="text-[10px]">
-          {label}
-        </Badge>
-      </div>
+    <div className={`group/message ${CHAT_COLUMN_CLASS}`}>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary">{entry.persona}</Badge>
+          <Badge variant={entry.streaming ? "default" : "outline"} className="text-[10px]">
+            {label}
+          </Badge>
+        </div>
 
-      <div className="bg-muted/40 border px-4 py-3">
-        {hasToolsOrReasoning ? (
-          <Collapsible open={open} onOpenChange={setOpen}>
-            <CollapsibleTrigger className="text-muted-foreground mb-2 text-xs underline-offset-2 hover:underline">
-              {open ? "Hide tools & reasoning" : "Show tools & reasoning"}
+        {hasTools ? <ToolCallList tools={entry.tools} /> : null}
+
+        {hasReasoning ? (
+          <Collapsible open={reasoningOpen} onOpenChange={setReasoningOpen}>
+            <CollapsibleTrigger className="text-muted-foreground text-xs underline-offset-2 hover:underline">
+              {reasoningOpen ? "Hide reasoning" : "Show reasoning"}
             </CollapsibleTrigger>
-            <CollapsibleContent className="mb-3 flex flex-col gap-2">
+            <CollapsibleContent className="flex flex-col gap-2">
               <ReasoningBlock reasoning={entry.reasoning} />
-              <ToolCallList tools={entry.tools} />
             </CollapsibleContent>
           </Collapsible>
         ) : null}
 
-        <div className="flex flex-col gap-2">
+        <div className="text-foreground flex flex-col gap-3 text-sm leading-7">
           {showStructuredFinding ? (
             <FindingContent data={body} evidenceManifest={evidenceManifest} />
           ) : (
@@ -104,8 +112,10 @@ export function AgentMessageBlock({
         </div>
 
         {!entry.streaming && (entry.jobError || entry.isControlError) ? (
-          <p className="text-destructive mt-2 text-xs">{entry.jobError || "Control error"}</p>
+          <p className="text-destructive text-xs">{entry.jobError || "Control error"}</p>
         ) : null}
+
+        {!entry.streaming && copyText ? <MessageActions text={copyText} /> : null}
       </div>
     </div>
   )

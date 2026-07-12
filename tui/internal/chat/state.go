@@ -10,9 +10,12 @@ import (
 )
 
 type ToolCall struct {
-	Name       string
-	Status     string // started, done, error
-	ToolCallID string
+	Name          string
+	Status        string // started, done, error
+	ToolCallID    string
+	SearchQuery   string
+	ResultCount   int
+	ErrorMessage  string
 }
 
 type Reasoning struct {
@@ -69,7 +72,7 @@ func (s *State) Ensure(jobID, persona string) *Entry {
 	e := &Entry{
 		JobID:         jobID,
 		Persona:       persona,
-		AgentExpanded: true,
+		AgentExpanded: false,
 	}
 	if e.Persona == "" {
 		e.Persona = "agent"
@@ -156,6 +159,9 @@ func (s *State) ApplyEvent(event api.EngagementStreamEvent, features api.APIFeat
 	entry := s.Ensure(jobID, persona)
 
 	if controlTypes[typ] {
+		if !shouldApplyControlEvent(typ, payload) {
+			return false
+		}
 		entry.Buffer = controlEventText(typ, payload)
 		entry.Streaming = false
 		entry.IsControlError = typ == "control_error"
@@ -227,11 +233,17 @@ func (s *State) ApplyEvent(event api.EngagementStreamEvent, features api.APIFeat
 			if skill := str(payload["skill_name"]); skill != "" {
 				label = toolName + " → " + skill
 			}
-			entry.Tools = append(entry.Tools, ToolCall{
+			tool := ToolCall{
 				Name:       label,
 				Status:     "started",
 				ToolCallID: str(payload["tool_call_id"]),
-			})
+			}
+			if toolName == "playbook_search" {
+				if args, ok := payload["tool_args"].(map[string]interface{}); ok {
+					tool.SearchQuery = str(args["query"])
+				}
+			}
+			entry.Tools = append(entry.Tools, tool)
 			return true
 		}
 	case "skill_loaded":
@@ -260,6 +272,11 @@ func (s *State) ApplyEvent(event api.EngagementStreamEvent, features api.APIFeat
 					} else {
 						t.Status = "done"
 					}
+					if toolName == "playbook_search" {
+						if preview := str(payload["output_preview"]); preview != "" {
+							t.ResultCount = parsePlaybookSearchCount(preview)
+						}
+					}
 					found = true
 					break
 				}
@@ -275,11 +292,30 @@ func (s *State) ApplyEvent(event api.EngagementStreamEvent, features api.APIFeat
 		}
 	case "tool_error":
 		if features.StreamAgentTools {
+			toolCallID := str(payload["tool_call_id"])
 			toolName := str(payload["tool_name"])
 			if toolName == "" {
 				toolName = "tool"
 			}
-			entry.Tools = append(entry.Tools, ToolCall{Name: toolName, Status: "error"})
+			errMsg := str(payload["error"])
+			found := false
+			for i := range entry.Tools {
+				t := &entry.Tools[i]
+				if t.Status == "started" && (t.ToolCallID == toolCallID || strings.HasPrefix(t.Name, toolName)) {
+					t.Status = "error"
+					t.ErrorMessage = errMsg
+					found = true
+					break
+				}
+			}
+			if !found {
+				entry.Tools = append(entry.Tools, ToolCall{
+					Name:         toolName,
+					Status:       "error",
+					ToolCallID:   toolCallID,
+					ErrorMessage: errMsg,
+				})
+			}
 			return true
 		}
 	}
@@ -405,6 +441,51 @@ func IsInvestigationTerminal(detail *api.InvestigationDetail, jobs []api.JobSumm
 	return true
 }
 
+func parsePlaybookSearchCount(preview string) int {
+	preview = strings.TrimSpace(preview)
+	if !strings.HasPrefix(preview, "{") {
+		return -1
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(preview), &parsed); err != nil {
+		return -1
+	}
+	if count, ok := parsed["count"].(float64); ok {
+		return int(count)
+	}
+	if skills, ok := parsed["skills"].([]interface{}); ok {
+		return len(skills)
+	}
+	return 0
+}
+
+func formatToolLabel(tool ToolCall) string {
+	if !strings.HasPrefix(tool.Name, "playbook_search") {
+		return tool.Name
+	}
+	query := tool.SearchQuery
+	if query != "" {
+		switch tool.Status {
+		case "started":
+			return fmt.Sprintf("playbook_search: %q", query)
+		case "error":
+			if tool.ErrorMessage != "" {
+				return fmt.Sprintf("playbook_search: %q (%s)", query, tool.ErrorMessage)
+			}
+			return fmt.Sprintf("playbook_search: %q (error)", query)
+		case "done":
+			if tool.ResultCount >= 0 {
+				return fmt.Sprintf("playbook_search: %d for %q", tool.ResultCount, query)
+			}
+			return fmt.Sprintf("playbook_search: %q", query)
+		}
+	}
+	if tool.Status == "done" && tool.ResultCount >= 0 {
+		return fmt.Sprintf("playbook_search: %d playbooks", tool.ResultCount)
+	}
+	return tool.Name
+}
+
 func resolveControlJobID(typ string, payload map[string]interface{}, engagementID string) string {
 	if id := str(payload["job_id"]); id != "" {
 		return id
@@ -415,18 +496,67 @@ func resolveControlJobID(typ string, payload map[string]interface{}, engagementI
 	return "critic:" + engagementID
 }
 
+func shouldApplyControlEvent(typ string, payload map[string]interface{}) bool {
+	if typ == "report" {
+		return false
+	}
+	if typ != "control" {
+		return true
+	}
+	verdict, ok := payload["verdict"].(map[string]interface{})
+	if !ok {
+		return true
+	}
+	if boolVal(verdict["passed"]) && !boolVal(verdict["auto_accepted_after_revision_cap"]) && !boolVal(verdict["revision_enqueued"]) {
+		return false
+	}
+	return true
+}
+
 func controlEventText(typ string, payload map[string]interface{}) string {
 	switch typ {
 	case "control_error":
-		return str(payload["error"])
+		if msg := str(payload["error"]); msg != "" {
+			return msg
+		}
+		return "control error"
 	case "report":
 		return str(payload["summary"])
 	default:
+		if msg := str(payload["operator_message"]); msg != "" {
+			return msg
+		}
 		if verdict, ok := payload["verdict"].(map[string]interface{}); ok {
+			source := str(payload["source_persona"])
+			if source == "" {
+				source = "agent"
+			}
+			if boolVal(verdict["auto_accepted_after_revision_cap"]) {
+				return "Quality check for " + source + ": revision cap reached; result accepted automatically."
+			}
+			issues := append(stringList(verdict["issues_detected"]), stringList(verdict["rejected_claims"])...)
+			if len(issues) > 0 {
+				return "Quality check failed (" + source + "): " + strings.Join(issues, ", ") + ". Revision requested."
+			}
 			return jsonfmt.FormatValue(verdict)
 		}
 		return jsonfmt.FormatValue(payload)
 	}
+}
+
+func stringList(v interface{}) []string {
+	raw, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		text := strings.TrimSpace(fmt.Sprint(item))
+		if text != "" {
+			out = append(out, text)
+		}
+	}
+	return out
 }
 
 func formatJobError(err string) string {
@@ -440,6 +570,11 @@ func formatJobError(err string) string {
 		return "Agent finished without a valid finding (model may have refused or returned invalid JSON)."
 	case strings.HasPrefix(err, "model_refusal:"):
 		return "Model refused: " + err[len("model_refusal:"):]
+	case strings.HasPrefix(err, "ungrounded_finding:"):
+		detail := strings.ReplaceAll(err[len("ungrounded_finding:"):], ",", ", ")
+		return "Finding failed quality checks (evidence grounding): " + detail
+	case strings.HasPrefix(err, "noop_finding"):
+		return "Agent completed without a new substantive finding."
 	default:
 		return "Job failed: " + err
 	}

@@ -6,16 +6,19 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from cys_core.domain.engagement.models import EngagementMode, PlanStrategy
+from cys_core.domain.follow_up.models import FollowUpMode, initial_follow_up_id
 from cys_core.domain.work_order.models import WorkOrder, WorkOrderRequest, WorkOrderStatus
 
 
 class WorkOrderCreateIn(BaseModel):
     profile_id: str = "cybersec-soc"
     domain_id: str = ""
+    workspace_id: str = ""
     goal: str = ""
     intake: dict[str, Any] = Field(default_factory=dict)
     mode: EngagementMode = EngagementMode.ASYNC
     plan_strategy: PlanStrategy = PlanStrategy.META_LLM
+    intent_mode: FollowUpMode = "auto"
     tenant_id: str = "default"
     correlation_id: str = ""
 
@@ -28,6 +31,7 @@ class WorkOrderOut(BaseModel):
     status: str
     profile_id: str
     domain_id: str = ""
+    workspace_id: str = ""
     goal: str = ""
     intake: dict[str, Any] = Field(default_factory=dict)
     job_ids: list[str] = Field(default_factory=list)
@@ -38,6 +42,7 @@ class WorkOrderOut(BaseModel):
     planner_plan: list[str] | None = None
     planner_status: str | None = None
     updated_at: datetime | None = None
+    initial_follow_up_id: str = ""
 
     @classmethod
     def from_domain(cls, work_order: WorkOrder, *, decision=None, job_ids=None) -> WorkOrderOut:
@@ -46,11 +51,13 @@ class WorkOrderOut(BaseModel):
             status=work_order.status.value,
             profile_id=work_order.profile_id,
             domain_id=work_order.domain_id,
+            workspace_id=work_order.workspace_id,
             goal=work_order.goal,
             intake=dict(work_order.intake),
             job_ids=job_ids if job_ids is not None else list(work_order.job_ids),
             playbook_id=decision.playbook_id if decision is not None else "",
             reason=decision.reason if decision is not None else "",
+            initial_follow_up_id=initial_follow_up_id(work_order.id),
         )
 
     @classmethod
@@ -67,6 +74,7 @@ class WorkOrderOut(BaseModel):
             status=engagement.status.value,
             profile_id=engagement.profile_id,
             domain_id=engagement.domain_id,
+            workspace_id=getattr(engagement, "workspace_id", ""),
             goal=engagement.goal,
             intake=dict(getattr(engagement, "intake", None) or {}),
             job_ids=job_ids if job_ids is not None else list(engagement.job_ids),
@@ -77,8 +85,10 @@ class WorkOrderOut(BaseModel):
             planner_plan=engagement.planner_plan,
             planner_status=engagement.planner_status,
             updated_at=updated_at,
+            initial_follow_up_id=initial_follow_up_id(engagement.id),
         )
 
 
 class WorkOrderListOut(BaseModel):
     work_orders: list[WorkOrderOut] = Field(default_factory=list)
+    next_cursor: str | None = None

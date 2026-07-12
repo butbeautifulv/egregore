@@ -1,0 +1,40 @@
+{
+  "title": "Egregore Control Plane",
+  "uid": "egregore-control-plane",
+  "tags": ["egregore", "control-plane", "critic"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Critic pass rate (logs)",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate({app=\"egregore\"} |= \"critic_verdict\" | json | passed=\"true\" [5m])) / sum(rate({app=\"egregore\"} |= \"critic_verdict\" [5m]))",
+          "legendFormat": "pass ratio"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Critic verdicts by persona",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (persona) (rate({app=\"egregore\"} |= \"critic_verdict\" | json [5m]))",
+          "legendFormat": "{{persona}}"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "title": "Langfuse correlation",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 8 },
+      "options": {
+        "content": "Open Langfuse traces filtered by `engagement:{engagement_id}` and compare Helpfulness/Hallucination eval scores with `critic_verdict` logs for the same session."
+      }
+    }
+  ]
+}

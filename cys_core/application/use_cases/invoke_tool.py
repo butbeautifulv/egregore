@@ -4,12 +4,15 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from cys_core.application.authz.service import AuthzDenied
 from cys_core.application.datasources.args_validation import build_schema_mismatch_payload, validate_tool_args
 from cys_core.application.datasources.deny_errors import build_deny_payload
 from cys_core.application.datasources.exec_authz import authorize_tool_datasource
 from cys_core.application.datasources.schema_fetch import fetch_tool_input_schema
 from cys_core.application.datasources.tool_bindings import get_tool_datasource_binding
 from cys_core.application.datasources.trace_audit import record_datasource_authz_audit, record_schema_mismatch_audit
+from cys_core.application.ports.tool_registry import ToolRegistryPort
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.datasources.authz import AuthorizationDecision
 from cys_core.domain.datasources.schema_models import ModelFamily
@@ -17,8 +20,6 @@ from cys_core.domain.tools.exceptions import ToolChainDepthExceeded
 from cys_core.domain.tools.models import ToolInvokeCommand, ToolInvokeResult
 
 
-from cys_core.application.ports.tool_registry import ToolRegistryPort
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
 def _normalize_raw_result(raw: Any) -> dict[str, Any]:
     if isinstance(raw, dict):
         return raw
@@ -47,6 +48,7 @@ class InvokeTool:
         record_tool_invocation: Callable[[ToolInvokeCommand, ToolInvokeResult], None],
         record_tool_metric: Callable[[str, bool], None] | None = None,
         application_tracing: ApplicationTracingPort | None = None,
+        authz_service: Any | None = None,
     ) -> None:
         self.require_sandbox = require_sandbox
         self.check_tool_chain = check_tool_chain
@@ -56,6 +58,7 @@ class InvokeTool:
         self.record_tool_invocation = record_tool_invocation
         self.record_tool_metric = record_tool_metric or (lambda _name, _ok: None)
         self._tracing = application_tracing or NOOP_APPLICATION_TRACING
+        self._authz_service = authz_service
 
     def _datasource_deny_response(
         self,
@@ -104,6 +107,45 @@ class InvokeTool:
             return self._schema_mismatch_response(command, errors)
         return None
 
+    def _datasource_subject(self, command: ToolInvokeCommand) -> str:
+        if command.workspace_id:
+            return f"workspace:{command.workspace_id}"
+        if command.user_id:
+            return f"user:{command.user_id}"
+        if command.organization_id:
+            return f"organization:{command.organization_id}#member"
+        return ""
+
+    def _rebac_deny_response(self, command: ToolInvokeCommand) -> ToolInvokeResult | None:
+        if self._authz_service is None or getattr(self._authz_service, "mode", "off") == "off":
+            return None
+        binding = get_tool_datasource_binding(command.tool_name)
+        if binding is None:
+            return None
+        subject = self._datasource_subject(command)
+        if not subject:
+            return None
+        try:
+            self._authz_service.check(
+                subject,
+                "can_query",
+                f"datasource:{binding.datasource_id}",
+            )
+        except AuthzDenied:
+            return ToolInvokeResult(
+                success=False,
+                tool_name=command.tool_name,
+                error="AUTHZ_DENIED",
+                data={
+                    "deny": {
+                        "code": "AUTHZ_DENIED",
+                        "datasource_id": binding.datasource_id,
+                        "relation": "can_query",
+                    }
+                },
+            )
+        return None
+
     def _execute_tool(self, command: ToolInvokeCommand) -> dict[str, Any]:
         adapter_result = self.invoke_adapter(command.tool_name, command.args)
         if adapter_result is not None:
@@ -137,6 +179,11 @@ class InvokeTool:
                 self.record_tool_invocation(command, response)
                 self.record_tool_metric(command.tool_name, False)
                 return response
+            rebac_deny = self._rebac_deny_response(command)
+            if rebac_deny is not None:
+                self.record_tool_invocation(command, rebac_deny)
+                self.record_tool_metric(command.tool_name, False)
+                return rebac_deny
             schema_deny = self._validate_args(command)
             if schema_deny is not None:
                 self.record_tool_invocation(command, schema_deny)
@@ -145,7 +192,12 @@ class InvokeTool:
             binding = get_tool_datasource_binding(command.tool_name)
             if binding is not None:
                 record_datasource_authz_audit(
-                    decision=AuthorizationDecision(allowed=True, reason="allowed", matched_rule="default_allow", tags=["allow"]),
+                    decision=AuthorizationDecision(
+                        allowed=True,
+                        reason="allowed",
+                        matched_rule="default_allow",
+                        tags=["allow"],
+                    ),
                     binding=binding,
                     profile_id=profile_id,
                     persona=command.persona,

@@ -14,6 +14,7 @@ PlannerStatus = Literal["planning", "ok", "fallback", "error"]
 class MemoryScope(BaseModel):
     tenant_id: str
     investigation_id: str
+    workspace_id: str = ""
     persona: str | None = None
 
 

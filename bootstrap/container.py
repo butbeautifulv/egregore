@@ -92,6 +92,9 @@ class Container:
         self._application_settings_port = None
         self._engagement_bus_guard = None
         self._bus_dedup_store = None
+        self._workspace_store = None
+        self._authz_port = None
+        self._authz_service = None
 
     def bus_guard_config(self):
         from cys_core.application.bus_guard_config import BusGuardConfig
@@ -200,7 +203,7 @@ class Container:
             return self._invoke_tool
         from cys_core.application.use_cases.invoke_tool import InvokeTool
         from cys_core.infrastructure.tools.adapters import invoke_adapter
-        from cys_core.infrastructure.tools.audit import configure_tool_audit, record_tool_invocation
+        from cys_core.infrastructure.tools.audit import record_tool_invocation
         from cys_core.infrastructure.tools.sanitize import sanitize_tool_output_or_raise
         from cys_core.observability.metrics import metrics
         from cys_core.registry.mcp_tools import require_sandbox
@@ -214,6 +217,7 @@ class Container:
             record_tool_invocation=record_tool_invocation,
             record_tool_metric=lambda name, ok: metrics.record_tool_invocation(name, success=ok),
             application_tracing=self.get_application_tracing_port(),
+            authz_service=self.get_authz_service(),
         )
         return self._invoke_tool
 
@@ -366,7 +370,6 @@ class Container:
         if self._meta_planner is not None:
             return self._meta_planner
         from cys_core.application.use_cases.meta_planner import MetaPlanner
-
         from cys_core.runtime.agent import get_runtime
 
         self._meta_planner = MetaPlanner(
@@ -404,6 +407,31 @@ class Container:
         from cys_core.infrastructure.engagement.store_factory import get_engagement_state_store
 
         return get_engagement_state_store(self.settings)
+
+    def get_workspace_store(self):
+        if self._workspace_store is not None:
+            return self._workspace_store
+        from cys_core.infrastructure.persistence_store_factory import resolve_persistence_store
+        from cys_core.infrastructure.workspace.memory_store import InMemoryWorkspaceStore
+        from cys_core.infrastructure.workspace.postgres_store import PostgresWorkspaceStore
+
+        def _use_postgres(settings: Settings) -> bool:
+            connector = settings.workspace_store_connector.lower()
+            if connector == "memory":
+                return False
+            if connector == "postgres":
+                return True
+            return not settings.use_memory_fallback and settings.stage != "test"
+
+        self._workspace_store = resolve_persistence_store(
+            self.settings,
+            connector=self.settings.workspace_store_connector,
+            use_postgres=_use_postgres,
+            postgres_factory=PostgresWorkspaceStore,
+            memory_factory=InMemoryWorkspaceStore,
+            fallback_label="workspace_store",
+        )
+        return self._workspace_store
 
     def get_engagement_egress(self):
         from cys_core.infrastructure.engagement.factory import get_engagement_egress
@@ -551,7 +579,7 @@ class Container:
     def get_judge_backend(self):
         from bootstrap.observability_factory import build_judge_backend
 
-        name = "langfuse" if self.settings.critic_use_llm_judge else self.settings.obs_judge_backend
+        name = self.settings.obs_judge_backend
         return build_judge_backend(name)
 
     def get_eval_backend(self):
@@ -568,6 +596,44 @@ class Container:
         from cys_core.infrastructure.auth.factory import build_token_verifier
 
         return build_token_verifier(self.settings)
+
+    def get_authz_service(self):
+        if self._authz_service is not None:
+            return self._authz_service
+        from cys_core.application.authz.service import AuthzService
+        from cys_core.application.authz.audit import log_authz_deny
+        from cys_core.observability.authz_trace import record_authz_decision
+        from cys_core.observability.metrics import metrics
+
+        self._authz_service = AuthzService(
+            self.get_authz_port(),
+            mode=self.settings.authz_mode,
+            metrics=metrics,
+            record_decision=lambda decision, relation, object: record_authz_decision(
+                decision, relation=relation, object=object
+            ),
+            log_deny=log_authz_deny,
+        )
+        return self._authz_service
+
+    def get_authz_port(self):
+        if self._authz_port is not None:
+            return self._authz_port
+        settings = self.settings
+        if settings.authz_mode != "off" and settings.openfga_api_url.strip() and settings.openfga_store_id.strip():
+            from cys_core.infrastructure.authz.openfga import OpenFgaAuthzPort
+
+            self._authz_port = OpenFgaAuthzPort(
+                api_url=settings.openfga_api_url,
+                store_id=settings.openfga_store_id,
+                api_token=settings.openfga_api_token,
+                model_id=settings.openfga_model_id,
+            )
+        else:
+            from cys_core.infrastructure.authz.noop import NoopAuthzPort
+
+            self._authz_port = NoopAuthzPort()
+        return self._authz_port
 
     def get_agent_catalog(self):
         return get_agent_catalog()
@@ -810,8 +876,8 @@ class Container:
 
     def wire_catalog_ports(self) -> None:
         from cys_core.application.datasources.providers import configure_datasource_audit, configure_datasource_catalog
-        from cys_core.application.plans_as_hints import configure_plan_hints
         from cys_core.application.persona_quality_hooks import configure_persona_quality
+        from cys_core.application.plans_as_hints import configure_plan_hints
         from cys_core.application.reasoning.sgr_iron_metrics import configure_sgr_iron_metrics
         from cys_core.application.resource_source import configure_resource_source
         from cys_core.application.runs.budget_metrics import configure_budget_metrics

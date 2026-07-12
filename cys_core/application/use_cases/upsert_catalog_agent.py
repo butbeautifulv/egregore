@@ -53,8 +53,12 @@ class UpsertCatalogAgent:
             bus_recipients=body.get("bus_recipients", []),
             enabled=body.get("enabled", True),
             profile_id=body.get("profile_id", "cybersec-soc"),
+            persona_prompt=body.get(
+                "persona_prompt",
+                body.get("system_prompt", existing.persona_prompt if existing else ""),
+            ),
+            language=body.get("language", existing.language if existing else "ru"),
             system_prompt=body.get("system_prompt", existing.system_prompt if existing else ""),
-            system_prompt_digest=existing.system_prompt_digest if existing else "",
             version_tag=body.get("version_tag", existing.version_tag if existing else ""),
             quality=existing.quality if existing else PersonaQuality(),
             source=CatalogSource.API,

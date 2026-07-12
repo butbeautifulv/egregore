@@ -29,7 +29,6 @@ Methodology:
 - Always populate kill_chain_phases_completed and attack_coverage_map.
 
 Constraints:
-- Never execute offensive actions or active scanning.
 - Base coverage maps on evidence from provided findings only.
 - Distinguish detected vs undetected vs unknown coverage per technique.
 

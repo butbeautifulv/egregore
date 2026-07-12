@@ -58,6 +58,7 @@ class McpToolRegistry:
         job_id: str = "",
         correlation_id: str = "",
         profile_id: str = DEFAULT_PROFILE_ID,
+        workspace_id: str = "",
     ) -> list[BaseTool]:
         require_sandbox(sandbox_id)
         filtered = filter_attachable_tools(
@@ -73,6 +74,7 @@ class McpToolRegistry:
                 job_id=job_id,
                 correlation_id=correlation_id,
                 profile_id=profile_id,
+                workspace_id=workspace_id,
             )
             for name in filtered
         ]
@@ -86,6 +88,7 @@ class McpToolRegistry:
         job_id: str,
         correlation_id: str,
         profile_id: str = DEFAULT_PROFILE_ID,
+        workspace_id: str = "",
     ) -> BaseTool:
         base = tool_registry.get(tool_name)
 
@@ -98,6 +101,7 @@ class McpToolRegistry:
                 job_id=job_id,
                 correlation_id=correlation_id,
                 profile_id=profile_id,
+                workspace_id=workspace_id,
             )
             if not result.get("success", True):
                 return json.dumps({"error": result.get("error", "gateway invoke failed")}, ensure_ascii=False)
@@ -113,6 +117,7 @@ class McpToolRegistry:
                 job_id=job_id,
                 correlation_id=correlation_id,
                 profile_id=profile_id,
+                workspace_id=workspace_id,
             )
             if not result.get("success", True):
                 return json.dumps({"error": result.get("error", "gateway invoke failed")}, ensure_ascii=False)
@@ -136,6 +141,7 @@ class McpToolRegistry:
         job_id: str = "",
         correlation_id: str = "",
         profile_id: str = DEFAULT_PROFILE_ID,
+        workspace_id: str = "",
     ) -> dict[str, Any]:
         require_sandbox(sandbox_id)
         try:
@@ -149,6 +155,7 @@ class McpToolRegistry:
                         job_id=job_id,
                         correlation_id=correlation_id,
                         profile_id=profile_id,
+                        workspace_id=workspace_id,
                     )
                     metrics.record_tool_invocation(tool_name, success=result.get("success", True))
                     return result
@@ -162,6 +169,7 @@ class McpToolRegistry:
                 profile_id=profile_id,
                 job_id=job_id,
                 correlation_id=correlation_id,
+                workspace_id=workspace_id,
             )
             metrics.record_tool_invocation(tool_name, success=result.get("success", True))
             return result
@@ -179,6 +187,7 @@ class McpToolRegistry:
         job_id: str = "",
         correlation_id: str = "",
         profile_id: str = DEFAULT_PROFILE_ID,
+        workspace_id: str = "",
     ) -> dict[str, Any]:
         import asyncio
 
@@ -191,6 +200,7 @@ class McpToolRegistry:
             job_id=job_id,
             correlation_id=correlation_id,
             profile_id=profile_id,
+            workspace_id=workspace_id,
         )
 
     def _local_invoke(
@@ -203,6 +213,7 @@ class McpToolRegistry:
         profile_id: str = DEFAULT_PROFILE_ID,
         job_id: str = "",
         correlation_id: str = "",
+        workspace_id: str = "",
     ) -> dict[str, Any]:
         from cys_core.domain.tools.models import ToolInvokeCommand
         from cys_core.infrastructure.tools.gateway_factory import get_tool_execution_gateway
@@ -216,6 +227,7 @@ class McpToolRegistry:
                 job_id=job_id,
                 correlation_id=correlation_id,
                 profile_id=profile_id,
+                workspace_id=workspace_id,
             )
         )
         return result.model_dump()
@@ -230,6 +242,7 @@ class McpToolRegistry:
         job_id: str,
         correlation_id: str,
         profile_id: str = DEFAULT_PROFILE_ID,
+        workspace_id: str = "",
     ) -> dict[str, Any]:
         body = {
             "tool_name": tool_name,
@@ -240,7 +253,11 @@ class McpToolRegistry:
             "correlation_id": correlation_id,
             "profile_id": profile_id,
         }
+        if workspace_id:
+            body["workspace_id"] = workspace_id
         headers: dict[str, str] = inject_correlation_headers()
+        if workspace_id:
+            headers["X-Workspace-Id"] = workspace_id
         token = settings.gateway_access_token.get_secret_value()
         if token:
             headers["Authorization"] = f"Bearer {token}"

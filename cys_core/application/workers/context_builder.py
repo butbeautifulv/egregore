@@ -37,6 +37,9 @@ class WorkerContextBuilder:
             engagement = self._engagement_store.get(job.tenant_id, investigation_id)
             if engagement is not None:
                 context["state"] = engagement.model_dump(mode="json")
+                workspace_id = (getattr(engagement, "workspace_id", "") or "").strip()
+                if workspace_id:
+                    context["workspace_id"] = workspace_id
         if self._memory_reader is not None:
             entries = self._memory_reader.query_investigation(
                 job.tenant_id,
@@ -60,6 +63,7 @@ class WorkerContextBuilder:
 
     def _operator_context(self, job: WorkerJob, engagement) -> dict[str, Any]:
         investigation_id = self.investigation_id(job)
+        work_kind = work_kind_from_payload(job.payload)
         prior_turns: list[dict[str, Any]] = []
         if self._memory_reader is not None:
             for entry in self._memory_reader.query_conversation_turns(
@@ -71,16 +75,24 @@ class WorkerContextBuilder:
                     prior_turns.append(json.loads(entry.content))
                 except json.JSONDecodeError:
                     continue
+        findings_summary = engagement.findings_summary if engagement else []
+        if work_kind == "initial_qa":
+            findings_summary = []
         return {
             "current_message": str(job.payload.get("operator_message", "")),
             "prior_turns": prior_turns,
             "context_summary": getattr(engagement, "context_summary", "") if engagement else "",
             "final_report": engagement.final_report if engagement else None,
-            "findings_summary": engagement.findings_summary if engagement else [],
+            "findings_summary": findings_summary,
             "evidence_manifests": engagement.evidence_manifests if engagement else {},
         }
 
     def _follow_up_instruction(self, work_kind: str) -> str:
+        if work_kind == "initial_qa":
+            return (
+                "Initial operator Q&A (no investigation yet): provide read-only advisory guidance "
+                "based on the operator message, goal, and intake context only. Do not call SIEM/Veil tools."
+            )
         if work_kind == "follow_up_orchestrate":
             return (
                 "Operator follow-up: answer from structured evidence or spawn_worker for reinvestigation. "

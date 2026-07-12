@@ -104,7 +104,7 @@ Helm values (`deploy/k8s/cxado-offline/values-egregore-offline.yaml`): `ui.repli
 | Approvals DataTable | yes |
 | Infra / worker banner | yes |
 | Rich findings + final report | yes |
-| Follow-up composer (Q&A / orchestrate / plan) | yes |
+| Follow-up composer (Ask / Reinvestigate / plan) | yes |
 | Structured intake on start | yes |
 | Status charts on home | yes |
 | Interactive conductor (`/runs`) | removed (HTTP API is stub) |

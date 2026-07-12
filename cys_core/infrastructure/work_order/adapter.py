@@ -18,6 +18,7 @@ class WorkOrderStore:
             tenant_id=engagement.tenant_id,
             profile_id=engagement.profile_id,
             domain_id=engagement.domain_id,
+            workspace_id=getattr(engagement, "workspace_id", ""),
             goal=engagement.goal,
             status=WorkOrderStatus(engagement.status.value),
             intake=dict(getattr(engagement, "intake", None) or {}),
@@ -29,6 +30,7 @@ class WorkOrderStore:
     def _apply_request(engagement: Engagement, request: WorkOrderRequest) -> None:
         engagement.profile_id = request.profile_id
         engagement.domain_id = request.domain_id
+        engagement.workspace_id = request.workspace_id
         engagement.goal = request.goal
         engagement.intake = dict(request.intake)
 
@@ -46,6 +48,7 @@ class WorkOrderStore:
                 tenant_id=work_order.tenant_id,
                 profile_id=work_order.profile_id,
                 domain_id=work_order.domain_id,
+                workspace_id=work_order.workspace_id,
                 goal=work_order.goal,
                 status=EngagementStatus(work_order.status.value),
                 correlation_id=work_order.correlation_id or work_order.id,
@@ -54,6 +57,7 @@ class WorkOrderStore:
         else:
             engagement.profile_id = work_order.profile_id
             engagement.domain_id = work_order.domain_id
+            engagement.workspace_id = work_order.workspace_id
             engagement.goal = work_order.goal
             engagement.intake = dict(work_order.intake)
         self._engagement_store.upsert(engagement)

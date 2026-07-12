@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from bootstrap.settings import get_settings
+from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
 from cys_core.domain.engagement.models import Engagement, EngagementMode, EngagementStatus, PlanStrategy
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
@@ -46,7 +48,14 @@ async def test_post_engagement_start_returns_202(monkeypatch):
     fake_start.plan_async_background = AsyncMock(return_value=[])
     import bootstrap.container as container_mod
 
-    container_mod._container = SimpleNamespace(get_start_engagement=lambda: fake_start)
+    catalog = MagicMock()
+    catalog.bus_recipients = []
+    container_mod._container = SimpleNamespace(
+        get_start_engagement=lambda: fake_start,
+        get_job_store=lambda: InMemoryJobStore(),
+        get_agent_catalog=lambda: catalog,
+        settings=get_settings(),
+    )
     monkeypatch.setattr(
         "bootstrap.container.get_container",
         lambda: container_mod._container,

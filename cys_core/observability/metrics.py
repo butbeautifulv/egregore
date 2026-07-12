@@ -84,6 +84,12 @@ class CysMetrics:
             ["profile_id"],
             multiprocess_mode="mostrecent",
         )
+        self.immutable_rules_version = Gauge(
+            "cys_immutable_rules_version",
+            "Immutable prompt rules bundle active (1 = current)",
+            ["version"],
+            multiprocess_mode="mostrecent",
+        )
         self.persistence_fallback = Counter(
             "cys_persistence_fallback_total",
             "Silent fallbacks from durable persistence to in-memory stores",
@@ -170,6 +176,27 @@ class CysMetrics:
             "cys_work_orders_created_total",
             "Work orders created",
             ["profile_id"],
+        )
+        self.authz_check_total = Counter(
+            "cys_authz_check_total",
+            "Authorization checks by decision, relation, and object type",
+            ["decision", "relation", "object_type"],
+        )
+        self.authz_deny_total = Counter(
+            "cys_authz_deny_total",
+            "Authorization denials by relation and object type",
+            ["relation", "object_type"],
+        )
+        self.authz_error_total = Counter(
+            "cys_authz_error_total",
+            "Authorization check errors by relation and object type",
+            ["relation", "object_type"],
+        )
+        self.authz_check_latency = Histogram(
+            "cys_authz_check_latency_seconds",
+            "Authorization check latency",
+            ["relation"],
+            buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
         )
 
     def record_event_ingested(self, event_type: str) -> None:
@@ -274,14 +301,21 @@ class CysMetrics:
 
 metrics = CysMetrics()
 
-from cys_core.domain.catalog.trust import declared_trust_score as _declared_trust_score
+from cys_core.domain.catalog.trust import declared_trust_score as _declared_trust_score  # noqa: E402
 
 
 def declared_trust_score(entry) -> float:
     return _declared_trust_score(entry)
 
 
+def seed_immutable_rules_version() -> None:
+    from cys_core.domain.security.immutable_rules import IMMUTABLE_RULES_VERSION
+
+    metrics.immutable_rules_version.labels(version=IMMUTABLE_RULES_VERSION).set(1)
+
+
 def seed_agent_trust_gauges() -> None:
+    seed_immutable_rules_version()
     try:
         from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 

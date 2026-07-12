@@ -32,10 +32,28 @@ export type ApiFeatures = {
   streamAgentTools: boolean
 }
 
+export type PlaybookHit = {
+  id: string
+  name: string
+  description?: string
+  attack_ids?: string[]
+}
+
+export type PlaybookSearchResult = {
+  query: string
+  count: number
+  subdomain?: string
+  skills: PlaybookHit[]
+}
+
 export type ChatToolCall = {
   name: string
   status: "started" | "done" | "error"
   tool_call_id?: string
+  tool_args?: { query?: string; limit?: number; subdomain?: string }
+  playbook_result?: PlaybookSearchResult
+  output_preview?: string
+  error_message?: string
 }
 
 export type ChatReasoning = {

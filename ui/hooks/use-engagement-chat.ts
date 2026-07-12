@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import type { EngagementStreamEvent } from "@/lib/api-client"
+import type { EngagementStreamEvent, JobSummary } from "@/lib/api-client"
 import {
   applyChatEvent,
   CHAT_THROTTLE_MS,
   createChatEntry,
   hydrateChatFromDetail,
+  hydrateFailedJobsFromList,
   type ChatStateMap,
 } from "@/lib/engagement-chat-state"
 import type { AgentChatEntry, ApiFeatures } from "@/lib/types"
@@ -32,12 +33,14 @@ export function useEngagementChatState(
     planner_depends_on?: Record<string, string[]>
     execution_mode?: string | null
     synthesis_persona?: string | null
+    failed_personas?: string[]
   },
+  jobs: JobSummary[] = [],
 ) {
   const stateRef = useRef<ChatStateMap>(new Map())
   const [entries, setEntries] = useState<AgentChatEntry[]>([])
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const versionRef = useRef(0)
+  const engagementIdRef = useRef(engagementId)
 
   const scheduleFlush = useCallback(() => {
     if (flushTimerRef.current) return
@@ -56,27 +59,34 @@ export function useEngagementChatState(
   }, [])
 
   useEffect(() => {
-    stateRef.current = new Map()
-    versionRef.current += 1
-    if (detail) {
-      hydrateChatFromDetail(
-        stateRef.current,
-        engagementId,
-        detail.findings_summary,
-        detail.planner_plan,
-        detail.planner_rationale ?? "",
-        {
-          planner_sub_goals: detail.planner_sub_goals,
-          planner_depends_on: detail.planner_depends_on,
-          execution_mode: detail.execution_mode,
-          synthesis_persona: detail.synthesis_persona,
-        },
-      )
-      flushNow()
-    } else {
+    if (engagementIdRef.current !== engagementId) {
+      engagementIdRef.current = engagementId
+      stateRef.current = new Map()
       setEntries([])
     }
-  }, [engagementId, detail, flushNow])
+    if (!detail) {
+      if (engagementIdRef.current === engagementId) {
+        stateRef.current = new Map()
+        setEntries([])
+      }
+      return
+    }
+    hydrateChatFromDetail(
+      stateRef.current,
+      engagementId,
+      detail.findings_summary,
+      detail.planner_plan,
+      detail.planner_rationale ?? "",
+      {
+        planner_sub_goals: detail.planner_sub_goals,
+        planner_depends_on: detail.planner_depends_on,
+        execution_mode: detail.execution_mode,
+        synthesis_persona: detail.synthesis_persona,
+      },
+    )
+    hydrateFailedJobsFromList(stateRef.current, jobs, detail.failed_personas ?? [])
+    flushNow()
+  }, [engagementId, detail, jobs, flushNow])
 
   const handleEvent = useCallback(
     (event: EngagementStreamEvent) => {

@@ -1,11 +1,13 @@
 "use client"
 
-import { ClipboardCheck, LayoutDashboard, Library, Shield } from "lucide-react"
+import { ClipboardCheck, FolderKanban, LayoutDashboard, Library, Shield } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 
 import { listPendingApprovals } from "@/lib/api-client"
 import { NavUser } from "@/components/nav-user"
+import { SidebarRecentWorkOrders } from "@/components/sidebar-recent-work-orders"
+import { WorkspacePicker } from "@/components/workspace-picker"
 import { ShellSidebar } from "@/vendor/gui/shell/shell-sidebar"
 import { ShellNavMain } from "@/vendor/gui/shell/shell-nav-main"
 import { Badge } from "@/vendor/gui/ui/badge"
@@ -59,6 +61,12 @@ export function AppSidebar() {
 
   const catalogItems = [
     {
+      title: "Workspaces",
+      href: "/workspaces",
+      icon: FolderKanban,
+      isActive: pathname.startsWith("/workspaces"),
+    },
+    {
       title: "Catalog",
       href: "/catalog",
       icon: Library,
@@ -80,6 +88,8 @@ export function AppSidebar() {
         <>
           <ShellNavMain groupLabel="Operations" items={opsItems} />
           <ShellNavMain groupLabel="Catalog" items={catalogItems} />
+          <WorkspacePicker />
+          <SidebarRecentWorkOrders />
         </>
       }
     />

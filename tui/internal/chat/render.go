@@ -61,7 +61,7 @@ func renderEntry(entry *Entry, opts RenderOptions, width int) string {
 		case "started":
 			icon = "…"
 		}
-		b.WriteString(textutil.WrapLine(fmt.Sprintf("  %s %s", icon, tool.Name), width))
+		b.WriteString(textutil.WrapLine(fmt.Sprintf("  %s %s", icon, formatToolLabel(tool)), width))
 		b.WriteString("\n")
 	}
 

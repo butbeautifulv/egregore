@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -107,16 +108,18 @@ async def test_get_engagement_preserves_closed_status_with_egress(monkeypatch):
         planner_plan=["consultant"],
     )
     fake_start = MagicMock()
-    fake_start.get = MagicMock(return_value=engagement)
     egress = MagicMock()
     egress.snapshot.return_value = [{"phase": "job_finished", "payload": {"persona": "consultant"}}]
     monkeypatch.setattr(
         "interfaces.api.engagements.get_container",
         lambda: MagicMock(
-            get_start_engagement=lambda: fake_start,
+            get_engagement_state_store=lambda: SimpleNamespace(
+                get=lambda tenant_id, engagement_id: engagement if engagement_id == "eng-closed" else None,
+            ),
             get_engagement_egress=lambda: egress,
         ),
     )
+    monkeypatch.setattr("cys_core.observability.catalog_drift.verify_critic_intel_recipient", lambda _c: True)
 
     app = create_app()
     from httpx import ASGITransport, AsyncClient

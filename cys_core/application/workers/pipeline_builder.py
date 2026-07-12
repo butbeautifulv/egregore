@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp
 from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.use_cases.enqueue_next_planned_persona import EnqueueNextPlannedPersona
 from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Header
 
 from cys_core.domain.security.auth_models import AuthClaims
 from cys_core.observability.http import mount_metrics
@@ -23,7 +23,8 @@ def create_app() -> FastAPI:
     async def post_invoke(
         request: ToolInvokeRequest,
         _auth: Annotated[AuthClaims | None, Depends(require_gateway_role)],
+        x_workspace_id: Annotated[str, Header(alias="X-Workspace-Id")] = "",
     ) -> ToolInvokeResponse:
-        return invoke_tool(request)
+        return invoke_tool(request, auth=_auth, workspace_id=x_workspace_id)
 
     return app

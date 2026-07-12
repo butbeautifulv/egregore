@@ -9,8 +9,10 @@ from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
 from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
 from cys_core.domain.parsing.json_text import parse_json_text
+from interfaces.api.tenant_deps import require_tenant_match_http
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_ingress_role, require_reader_role
+from interfaces.api.authz_helpers import filter_by_visible_workspaces, require_engagement_relation, visible_workspace_ids
 from interfaces.api.engagement_schemas import (
     EngagementCreateIn,
     EngagementListOut,
@@ -45,6 +47,7 @@ def _engagement_out(
     return EngagementOut(
         engagement_id=engagement.id,
         status=status or engagement.status.value,
+        workspace_id=getattr(engagement, "workspace_id", ""),
         latest_phase=latest_phase,
         job_ids=job_ids if job_ids is not None else engagement.job_ids,
         playbook_id=decision.playbook_id if decision is not None else "",
@@ -71,17 +74,30 @@ def _engagement_out(
 async def list_engagements(
     tenant_id: str = "default",
     limit: int = 20,
-    _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
+    _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> EngagementListOut:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
     store = get_container().get_engagement_state_store()
     from cys_core.infrastructure.engagement.postgres_store import PostgresEngagementStateStore
+
+    visible = visible_workspace_ids(_auth)
+
+    def _visible(engagement) -> bool:
+        if visible is None:
+            return True
+        workspace_id = (getattr(engagement, "workspace_id", "") or "").strip()
+        return not workspace_id or workspace_id in visible
 
     if isinstance(store, PostgresEngagementStateStore):
         pairs = store.list_recent_with_updated_at(tenant_id, limit=limit)
         return EngagementListOut(
-            engagements=[_engagement_out(eng, updated_at=ts) for eng, ts in pairs],
+            engagements=[
+                _engagement_out(eng, updated_at=ts)
+                for eng, ts in pairs
+                if _visible(eng)
+            ],
         )
-    engagements = store.list_recent(tenant_id, limit=limit)
+    engagements = filter_by_visible_workspaces(store.list_recent(tenant_id, limit=limit), visible)
     return EngagementListOut(engagements=[_engagement_out(eng) for eng in engagements])
 
 
@@ -91,7 +107,10 @@ async def create_engagement(
     request: Request,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> EngagementOut | JSONResponse:
+    tenant_id = require_tenant_match_http(_auth, body.tenant_id)
     eng_request = body.to_domain_request()
+    if eng_request.tenant_id != tenant_id:
+        eng_request = eng_request.model_copy(update={"tenant_id": tenant_id})
     start = get_container().get_start_engagement()
     engagement, decision, job_ids = await start.execute(eng_request)
     out = _engagement_out(engagement, decision=decision, job_ids=job_ids)
@@ -113,8 +132,15 @@ async def create_engagement(
 async def get_engagement(
     engagement_id: str,
     tenant_id: str = "default",
-    _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
+    _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> EngagementOut:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=engagement_id,
+        relation="can_view",
+    )
     store = get_container().get_engagement_state_store()
     engagement = store.get(tenant_id, engagement_id)
     if engagement is None:
@@ -135,8 +161,15 @@ async def get_engagement_memory(
     agent: str | None = None,
     memory_type: str | None = None,
     limit: int = 50,
-    _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
+    _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> EngagementMemoryOut:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=engagement_id,
+        relation="can_view",
+    )
     store = get_container().get_engagement_state_store()
     engagement = store.get(tenant_id, engagement_id)
     if engagement is None:
@@ -189,11 +222,25 @@ async def list_tenant_memory(
     tenant_id: str = "default",
     agent: str | None = None,
     limit: int = 100,
-    _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
+    _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> TenantMemoryOut:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
     cap = min(max(limit, 1), 200)
     reader = get_container().get_memory_read_service()
     entries = reader.list_by_tenant(tenant_id, limit=cap, agent=agent)
+    visible = visible_workspace_ids(_auth)
+    if visible is not None:
+        eng_store = get_container().get_engagement_state_store()
+        filtered = []
+        for entry in entries:
+            investigation_id = entry.scope.investigation_id
+            engagement = eng_store.get(tenant_id, investigation_id)
+            if engagement is None:
+                continue
+            workspace_id = (getattr(engagement, "workspace_id", "") or "").strip()
+            if not workspace_id or workspace_id in visible:
+                filtered.append(entry)
+        entries = filtered
     return TenantMemoryOut(entries=[_memory_entry_out(entry) for entry in entries])
 
 
@@ -204,6 +251,7 @@ async def promote_engagement_plan(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> dict:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
     from cys_core.application.use_cases.promote_engagement_plan import (
         PromoteEngagementPlanError,
         PromoteEngagementPlanToCatalog,
@@ -237,6 +285,13 @@ async def list_engagement_events(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> list[dict]:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=engagement_id,
+        relation="can_view",
+    )
     engagement = get_container().get_engagement_state_store().get(tenant_id, engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
@@ -249,8 +304,15 @@ async def list_engagement_events(
 async def stream_engagement(
     engagement_id: str,
     tenant_id: str = "default",
-    _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
+    _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> StreamingResponse:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=engagement_id,
+        relation="can_view",
+    )
     egress = get_container().get_engagement_egress()
 
     async def _gen():

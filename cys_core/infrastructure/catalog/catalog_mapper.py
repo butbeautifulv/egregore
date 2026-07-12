@@ -5,15 +5,21 @@ from typing import Literal, cast
 from cys_core.domain.agents.models import AgentDefinition
 from cys_core.domain.catalog.models import AgentCatalogEntry, CatalogSource
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+from cys_core.domain.security.system_prompt_assembler import (
+    assemble_trusted_system_context,
+    resolve_persona_prompt,
+)
 
 
 def entry_to_definition(entry: AgentCatalogEntry) -> AgentDefinition:
+    persona = resolve_persona_prompt(entry)
+    ctx = assemble_trusted_system_context(persona, language=entry.language)
     return AgentDefinition(
         name=entry.name,
         description=entry.description,
         role=cast(Literal["worker", "control", "specialist", "critic", "coordinator"], entry.role),
-        system_prompt=entry.system_prompt,
-        system_prompt_digest=entry.system_prompt_digest,
+        system_prompt=ctx.text,
+        system_prompt_digest=ctx.digest,
         schema_name=entry.output_schema,
         tools=entry.tools,
         skills=entry.skills,
@@ -21,14 +27,18 @@ def entry_to_definition(entry: AgentCatalogEntry) -> AgentDefinition:
         trust_level=entry.trust_level,
         bus_recipients=entry.bus_recipients,
         capabilities=entry.capabilities,
+        persona_prompt=persona,
+        language=entry.language,
     )
 
 
 def definition_to_entry(defn: AgentDefinition, *, profile_id: str = DEFAULT_PROFILE_ID) -> AgentCatalogEntry:
     from cys_core.domain.security.classification import persona_clearance_for
+    from cys_core.domain.security.system_prompt_assembler import extract_persona_prompt
     from cys_core.domain.workers.budgets import persona_budget
 
     budget = persona_budget(defn.name)
+    persona_prompt = defn.persona_prompt or extract_persona_prompt(defn.system_prompt)
     return AgentCatalogEntry(
         name=defn.name,
         description=defn.description,
@@ -39,7 +49,9 @@ def definition_to_entry(defn: AgentDefinition, *, profile_id: str = DEFAULT_PROF
         hitl_tools=defn.hitl_tools,
         trust_level=defn.trust_level,
         bus_recipients=defn.bus_recipients,
-        system_prompt=defn.system_prompt,
+        persona_prompt=persona_prompt,
+        language=defn.language,
+        system_prompt="",
         system_prompt_digest=defn.system_prompt_digest,
         profile_id=profile_id,
         source=CatalogSource.FILESYSTEM,

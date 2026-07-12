@@ -63,12 +63,15 @@ class EngagementPlan(BaseModel):
 class EngagementRequest(BaseModel):
     profile_id: str = "cybersec-soc"
     domain_id: str = ""
+    workspace_id: str = ""
     goal: str
     mode: EngagementMode = EngagementMode.ASYNC
     plan_strategy: PlanStrategy = PlanStrategy.META_LLM
     input: dict[str, Any] = Field(default_factory=dict)
     tenant_id: str = "default"
     correlation_id: str = ""
+    intent_mode: str = "auto"
+    skip_dispatch: bool = False
 
 
 class Engagement(BaseModel):
@@ -76,6 +79,7 @@ class Engagement(BaseModel):
     tenant_id: str = "default"
     profile_id: str = "cybersec-soc"
     domain_id: str = ""
+    workspace_id: str = ""
     goal: str
     mode: EngagementMode = EngagementMode.ASYNC
     status: EngagementStatus = EngagementStatus.CREATED
@@ -114,6 +118,11 @@ class Engagement(BaseModel):
     def close_after_follow_up(self) -> None:
         self.status = EngagementStatus.CLOSED
         self.active_follow_up_id = None
+
+    def close_after_initial_qa(self) -> None:
+        self.status = EngagementStatus.CLOSED
+        self.active_follow_up_id = None
+        self.synthesis_status = SynthesisStatus.SKIPPED
 
     def begin_follow_up_planning(self, *, operator_message: str, follow_up_id: str) -> None:
         from datetime import datetime, timezone
@@ -241,10 +250,19 @@ class Engagement(BaseModel):
             self.status = EngagementStatus.CLOSED
             if self.final_report is None:
                 self.final_report = {
-                    "topic": "Degraded synthesis",
+                    "kind": "synthesis",
+                    "title": "Degraded synthesis",
                     "summary": reason,
                     "degraded": True,
-                    "specialist_findings": specialist_findings,
+                    "provenance": [
+                        {
+                            "persona": str(item.get("persona", "")),
+                            "job_id": str(item.get("job_id", "")),
+                            "status": "completed",
+                        }
+                        for item in specialist_findings
+                        if isinstance(item, dict) and item.get("persona")
+                    ],
                 }
         else:
             self.status = EngagementStatus.FAILED

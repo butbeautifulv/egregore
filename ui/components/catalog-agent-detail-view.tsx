@@ -6,6 +6,7 @@ import { useEffect, useState } from "react"
 import {
   getCatalogAgent,
   getCatalogSkill,
+  isControlPersona,
   listCatalogTools,
   listTenantMemory,
   type CatalogAgentDetail,
@@ -165,6 +166,9 @@ export function CatalogAgentDetailView({ agentName }: { agentName: string }) {
               <Badge variant="secondary">trust {(agent.empirical_trust * 100).toFixed(0)}%</Badge>
             ) : null}
             {agent.version_tag ? <Badge variant="outline">{agent.version_tag}</Badge> : null}
+            {isControlPersona(agent.name) ? (
+              <Badge variant="secondary">platform view-only</Badge>
+            ) : null}
           </div>
         }
       />
@@ -214,10 +218,23 @@ export function CatalogAgentDetailView({ agentName }: { agentName: string }) {
           <TabsTrigger value="memory">Memory</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="prompt" className="mt-4">
-          <pre className="bg-muted max-h-[min(60vh,480px)] overflow-auto whitespace-pre-wrap rounded-md p-3 text-xs">
-            {agent.system_prompt?.trim() || "No system prompt stored."}
-          </pre>
+        <TabsContent value="prompt" className="mt-4 flex flex-col gap-4">
+          <div>
+            <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">
+              Persona (editable via catalog API)
+            </p>
+            <pre className="bg-muted max-h-[min(40vh,320px)] overflow-auto whitespace-pre-wrap rounded-md p-3 text-xs">
+              {agent.persona_prompt?.trim() || agent.system_prompt?.trim() || "No persona stored."}
+            </pre>
+          </div>
+          <div>
+            <p className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">
+              Full system prompt (includes immutable backend rules)
+            </p>
+            <pre className="bg-muted max-h-[min(40vh,320px)] overflow-auto whitespace-pre-wrap rounded-md p-3 text-xs">
+              {agent.system_prompt?.trim() || "No assembled system prompt."}
+            </pre>
+          </div>
         </TabsContent>
 
         <TabsContent value="skills" className="mt-4">

@@ -30,8 +30,10 @@ def engagement_request_to_security_event(request: EngagementRequest, engagement_
         **request.input,
         "profile_id": request.profile_id,
         "domain_id": request.domain_id,
+        "workspace_id": request.workspace_id,
         "plan_strategy": request.plan_strategy.value,
         "engagement_mode": request.mode.value,
+        "intent_mode": request.intent_mode,
     }
     return SecurityEvent(
         id=engagement_id,
@@ -90,6 +92,7 @@ class StartEngagement:
             tenant_id=request.tenant_id,
             profile_id=request.profile_id,
             domain_id=request.domain_id,
+            workspace_id=request.workspace_id,
             goal=request.goal,
             mode=request.mode,
             status=EngagementStatus.CREATED,
@@ -106,6 +109,16 @@ class StartEngagement:
 
         event = engagement_request_to_security_event(request, engagement_id)
         payload = dict(event.payload)
+
+        if request.skip_dispatch:
+            decision = RoutingDecision(
+                event_id=event.id,
+                personas=[],
+                playbook_id="",
+                notify_control=False,
+                reason="record_only",
+            )
+            return engagement, decision, []
 
         meta_planner_sync = False
         if request.plan_strategy == PlanStrategy.META_LLM and self.meta_planner is not None:

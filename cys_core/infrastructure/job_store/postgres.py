@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS worker_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_worker_jobs_status ON worker_jobs (status);
 CREATE INDEX IF NOT EXISTS idx_worker_jobs_correlation ON worker_jobs (tenant_id, correlation_id);
+ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS failure_reason TEXT NOT NULL DEFAULT '';
 """
 
 
@@ -68,6 +70,8 @@ class PostgresJobStore:
             event_id=row[6] or "",
             hitl_preview=preview,
             pending_hitl=pending,
+            last_error=str(row[9] or ""),
+            failure_reason=str(row[10] or ""),
         )
 
     def _upsert(
@@ -82,6 +86,8 @@ class PostgresJobStore:
         correlation_id: str = "",
         tenant_id: str = "default",
         event_id: str = "",
+        last_error: str | None = None,
+        failure_reason: str | None = None,
     ) -> JobRecord:
         existing = self.get(job_id)
         preview = hitl_preview if hitl_preview is not None else (existing.hitl_preview if existing else {})
@@ -89,13 +95,17 @@ class PostgresJobStore:
         resolved_correlation = correlation_id or (existing.correlation_id if existing else "")
         resolved_tenant = tenant_id or (existing.tenant_id if existing else "default")
         resolved_event = event_id or (existing.event_id if existing else "")
+        resolved_error = last_error if last_error is not None else (existing.last_error if existing else "")
+        resolved_reason = (
+            failure_reason if failure_reason is not None else (existing.failure_reason if existing else "")
+        )
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO worker_jobs (
                     job_id, persona, status, session_id, correlation_id, tenant_id, event_id,
-                    hitl_preview_json, pending_hitl_json, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, NOW())
+                    hitl_preview_json, pending_hitl_json, last_error, failure_reason, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW())
                 ON CONFLICT (job_id) DO UPDATE SET
                     persona = EXCLUDED.persona,
                     status = EXCLUDED.status,
@@ -105,6 +115,8 @@ class PostgresJobStore:
                     event_id = EXCLUDED.event_id,
                     hitl_preview_json = EXCLUDED.hitl_preview_json,
                     pending_hitl_json = EXCLUDED.pending_hitl_json,
+                    last_error = EXCLUDED.last_error,
+                    failure_reason = EXCLUDED.failure_reason,
                     updated_at = NOW()
                 """,
                 (
@@ -117,6 +129,8 @@ class PostgresJobStore:
                     resolved_event,
                     json.dumps(preview),
                     json.dumps(pending_json),
+                    (resolved_error or "")[:500],
+                    (resolved_reason or "")[:120],
                 ),
             )
             conn.commit()
@@ -130,6 +144,8 @@ class PostgresJobStore:
             correlation_id=resolved_correlation,
             tenant_id=resolved_tenant,
             event_id=resolved_event,
+            last_error=(resolved_error or "")[:500],
+            failure_reason=(resolved_reason or "")[:120],
         )
 
     def upsert_pending(
@@ -190,7 +206,7 @@ class PostgresJobStore:
             row = conn.execute(
                 """
                 SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id,
-                       hitl_preview_json, pending_hitl_json
+                       hitl_preview_json, pending_hitl_json, last_error, failure_reason
                 FROM worker_jobs WHERE job_id = %s
                 """,
                 (job_id,),
@@ -230,7 +246,7 @@ class PostgresJobStore:
             event_id=record.event_id,
         )
 
-    def mark_failed(self, job_id: str) -> None:
+    def mark_failed(self, job_id: str, *, error: str = "", reason: str = "") -> None:
         record = self.get(job_id)
         if record is None:
             return
@@ -243,6 +259,8 @@ class PostgresJobStore:
             correlation_id=record.correlation_id,
             tenant_id=record.tenant_id,
             event_id=record.event_id,
+            last_error=(error or "")[:500],
+            failure_reason=(reason or "")[:120],
         )
 
     def list_pending_approvals(self) -> list[PendingHitlAction]:
@@ -264,7 +282,8 @@ class PostgresJobStore:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id, created_at, payload_json
+                SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id, created_at,
+                       payload_json, last_error, failure_reason
                 FROM worker_jobs
                 WHERE tenant_id = %s AND correlation_id = %s
                 ORDER BY created_at ASC
@@ -282,6 +301,8 @@ class PostgresJobStore:
                 event_id=row[6] or "",
                 created_at=row[7].isoformat() if row[7] is not None else "",
                 follow_up_id=_follow_up_id_from_payload(row[8]),
+                last_error=str(row[9] or ""),
+                failure_reason=str(row[10] or ""),
             )
             for row in rows
         ]

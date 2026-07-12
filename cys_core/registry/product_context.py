@@ -9,7 +9,8 @@ from pydantic import BaseModel
 from bootstrap.settings import settings
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.domain.security.prompt_context import TrustedSystemContext, build_trusted_system_context
+from cys_core.domain.security.prompt_context import TrustedSystemContext
+from cys_core.domain.security.system_prompt_assembler import assemble_trusted_system_context
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RULES_SKIP = frozenset({"README.md"})
@@ -107,20 +108,8 @@ class ProductContext:
         return self.build_system_context(base_prompt).text
 
     def build_system_context(self, persona: str, *, profile_id: str = DEFAULT_PROFILE_ID) -> TrustedSystemContext:
-        rules = self._rules_block
-        try:
-            from cys_core.application.runtime_config import get_use_dynamic_catalog
-
-            if get_use_dynamic_catalog():
-                catalog = _default_catalog()
-                if catalog is not None:
-                    for profile in catalog.list_profiles():
-                        if profile.id == profile_id and profile.global_rules:
-                            rules = profile.global_rules
-                            break
-        except Exception:
-            pass
-        return build_trusted_system_context(persona, rules)
+        _ = profile_id
+        return assemble_trusted_system_context(persona, language="ru")
 
 
 @lru_cache

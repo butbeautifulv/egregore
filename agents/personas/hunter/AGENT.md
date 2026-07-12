@@ -31,7 +31,6 @@ Methodology:
 
 Constraints:
 - Never fabricate telemetry or artifacts.
-- Never execute offensive actions.
 - Distinguish confirmed malicious from suspicious-but-unproven.
 - Track hunt_status: open, confirmed, refuted, inconclusive.
 

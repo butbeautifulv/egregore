@@ -29,6 +29,42 @@ def _tool_output_preview(output: Any) -> str:
     return f"{text[:_OUTPUT_PREVIEW_MAX]}…"
 
 
+def _unwrap_tool_inputs(inputs: dict[str, Any] | None, input_str: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if isinstance(inputs, dict):
+        payload.update(inputs)
+    if not payload and input_str.strip().startswith("{"):
+        try:
+            parsed = json.loads(input_str)
+            if isinstance(parsed, dict):
+                payload = parsed
+        except json.JSONDecodeError:
+            return {}
+    nested = payload.pop("kwargs", None)
+    if isinstance(nested, dict):
+        for key, value in nested.items():
+            payload.setdefault(key, value)
+    return payload
+
+
+def _playbook_search_tool_args(inputs: dict[str, Any] | None, input_str: str) -> dict[str, Any] | None:
+    raw = _unwrap_tool_inputs(inputs, input_str)
+    out: dict[str, Any] = {}
+    query = raw.get("query")
+    if isinstance(query, str) and query.strip():
+        out["query"] = query.strip()
+    limit = raw.get("limit")
+    if isinstance(limit, bool):
+        pass
+    elif isinstance(limit, int):
+        out["limit"] = limit
+    elif isinstance(limit, str) and limit.isdigit():
+        out["limit"] = int(limit)
+    subdomain = raw.get("subdomain")
+    if isinstance(subdomain, str) and subdomain.strip():
+        out["subdomain"] = subdomain.strip()
+    return out or None
+
 def _parse_reasoning_inputs(inputs: dict[str, Any] | None, input_str: str) -> dict[str, Any] | None:
     payload: dict[str, Any] = {}
     if isinstance(inputs, dict):
@@ -221,20 +257,29 @@ class EgressStreamingCallback(AsyncCallbackHandler):
             return
         if not get_stream_agent_tools():
             return
-        payload = {**self._base_payload(), "tool_name": tool_name}
+        payload = {**self._base_payload(), "tool_name": tool_name, "tool_call_id": str(run_id)}
         if tool_name == "load_skill":
             from cys_core.registry.skills_tool import _parse_skill_name_from_inputs
 
             skill_name = _parse_skill_name_from_inputs(inputs, input_str)
             if skill_name:
                 payload["skill_name"] = skill_name
+        if tool_name == "playbook_search":
+            tool_args = _playbook_search_tool_args(inputs, input_str)
+            if tool_args:
+                payload["tool_args"] = tool_args
         self._publish("tool_start", payload)
 
     async def on_tool_end(self, output: str, *, run_id: UUID, **kwargs: Any) -> None:
         if not get_stream_agent_tools():
             return
         tool_name = self._tool_names.pop(run_id, "tool")
-        payload: dict[str, Any] = {**self._base_payload(), "tool_name": tool_name, "ok": True}
+        payload: dict[str, Any] = {
+            **self._base_payload(),
+            "tool_name": tool_name,
+            "tool_call_id": str(run_id),
+            "ok": True,
+        }
         preview = _tool_output_preview(output)
         if preview:
             payload["output_preview"] = preview
@@ -246,7 +291,12 @@ class EgressStreamingCallback(AsyncCallbackHandler):
         tool_name = self._tool_names.pop(run_id, "tool")
         self._publish(
             "tool_error",
-            {**self._base_payload(), "tool_name": tool_name, "error": str(error)},
+            {
+                **self._base_payload(),
+                "tool_name": tool_name,
+                "tool_call_id": str(run_id),
+                "error": str(error),
+            },
         )
 
 

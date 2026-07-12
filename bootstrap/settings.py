@@ -12,6 +12,7 @@ _ALLOWED_CONTROL_MODES = frozenset({"inprocess", "daemon"})
 _ALLOWED_SIEM_ADAPTERS = frozenset({"mock", "http"})
 _ALLOWED_SGR_MODES = frozenset({"off", "soft", "iron", "sgr_hybrid", "sgr_iron", "hybrid"})
 _ALLOWED_STORE_CONNECTORS = frozenset({"auto", "memory", "postgres", "redis"})
+_ALLOWED_AUTHZ_MODES = frozenset({"off", "shadow", "enforce"})
 _DEFAULT_REDIS_PASSWORD = "password"
 _DEFAULT_POSTGRES_PASSWORD = "password"
 _DEFAULT_BUS_SIGNING_KEY = "cys-agi-bus-key"
@@ -78,6 +79,11 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="COORDINATOR_LLM_NARRATIVE",
         description="Use LLM coordinator narrator (worker/control pod only).",
+    )
+    coordinator_chat_narrative: bool = Field(
+        default=False,
+        validation_alias="COORDINATOR_CHAT_NARRATIVE",
+        description="Publish coordinator summaries into operator chat (default: progress events only).",
     )
     egregore_sandbox_v2: bool = Field(
         default=False,
@@ -161,6 +167,7 @@ class Settings(BaseSettings):
     persistence_connector: str = Field(default="auto", validation_alias="PERSISTENCE_CONNECTOR")
     job_store_connector: str = Field(default="auto", validation_alias="JOB_STORE_CONNECTOR")
     engagement_store_connector: str = Field(default="auto", validation_alias="ENGAGEMENT_STORE_CONNECTOR")
+    workspace_store_connector: str = Field(default="auto", validation_alias="WORKSPACE_STORE_CONNECTOR")
     bus_signing_key: SecretStr = Field(
         default=SecretStr(_DEFAULT_BUS_SIGNING_KEY),
         validation_alias="BUS_SIGNING_KEY",
@@ -344,6 +351,11 @@ class Settings(BaseSettings):
 
     auth_enabled: bool = Field(default=False, validation_alias="AUTH_ENABLED")
     rbac_enabled: bool = Field(default=False, validation_alias="RBAC_ENABLED")
+    authz_mode: str = Field(default="off", validation_alias="AUTHZ_MODE")
+    openfga_api_url: str = Field(default="", validation_alias="OPENFGA_API_URL")
+    openfga_store_id: str = Field(default="", validation_alias="OPENFGA_STORE_ID")
+    openfga_api_token: str = Field(default="", validation_alias="OPENFGA_API_TOKEN")
+    openfga_model_id: str = Field(default="", validation_alias="OPENFGA_MODEL_ID")
     keycloak_issuer: str = Field(default="", validation_alias="KEYCLOAK_ISSUER")
     keycloak_audience: str = Field(default="", validation_alias="KEYCLOAK_AUDIENCE")
     keycloak_client_id: str = Field(default="egregore-api", validation_alias="KEYCLOAK_CLIENT_ID")
@@ -415,6 +427,7 @@ class Settings(BaseSettings):
             ("PERSISTENCE_CONNECTOR", self.persistence_connector),
             ("JOB_STORE_CONNECTOR", self.job_store_connector),
             ("STATUS_STORE_CONNECTOR", self.status_store_connector),
+            ("WORKSPACE_STORE_CONNECTOR", self.workspace_store_connector),
         ):
             normalized = value.lower()
             if normalized not in _ALLOWED_STORE_CONNECTORS:
@@ -455,6 +468,9 @@ class Settings(BaseSettings):
     def validate_auth_config(self) -> Self:
         if self.auth_enabled and not self.keycloak_issuer.strip():
             raise ValueError("KEYCLOAK_ISSUER is required when AUTH_ENABLED=1")
+        if self.authz_mode.lower() not in _ALLOWED_AUTHZ_MODES:
+            raise ValueError(f"AUTHZ_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}")
+        self.authz_mode = self.authz_mode.lower()
         return self
 
     def resolve_worker_job_timeout(self, *, persona: str, phase: str | None = None) -> float:

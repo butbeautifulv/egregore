@@ -1,5 +1,5 @@
 name: coordinator
-description: Long-running cybersecurity assessment orchestrator
+description: Engagement progress narrator for operator status (not an orchestrator; see conductor)
 role: control
 output_schema: null
 tools: []

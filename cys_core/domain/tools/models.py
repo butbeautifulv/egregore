@@ -41,6 +41,9 @@ class ToolInvokeCommand(BaseModel):
     profile_id: str = "cybersec-soc"
     job_id: str = ""
     correlation_id: str = ""
+    workspace_id: str = ""
+    organization_id: str = ""
+    user_id: str = ""
 
 
 class ToolInvokeResult(BaseModel):

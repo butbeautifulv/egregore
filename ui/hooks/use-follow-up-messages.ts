@@ -102,6 +102,10 @@ export function useFollowUpMessages(investigationId: string) {
 
   useEffect(() => {
     jobIdToFollowUpIdRef.current = new Map()
+    const stored = sessionStorage.getItem(`wo-initial-fu:${investigationId}`)
+    if (stored) {
+      jobIdToFollowUpIdRef.current.set("", stored)
+    }
     void reloadFollowUps()
   }, [investigationId, reloadFollowUps])
 

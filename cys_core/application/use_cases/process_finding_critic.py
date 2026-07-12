@@ -115,40 +115,6 @@ class ProcessFindingCritic:
         investigation_id: str | None = None,
         tenant_id: str | None = None,
     ) -> dict[str, Any]:
-        if is_noop_finding(finding):
-            return {"passed": True, "auto_passed": True, "trust_score": 1.0, "issues_detected": []}
-
-        if self._use_llm_judge and self._runtime is not None:
-            prompt = {
-                "persona": persona,
-                "finding": finding,
-                "investigation_id": investigation_id,
-            }
-            verdict = await self._runtime.arun(prompt)
-            if isinstance(verdict, dict):
-                trust_score = float(verdict.get("trust_score", 0.5))
-                issues = list(verdict.get("issues_detected") or [])
-                passed = trust_score >= self.trust_threshold and not issues
-                result = {
-                    "passed": passed,
-                    "trust_score": trust_score,
-                    "issues_detected": issues,
-                    "validated_claims": list(verdict.get("validated_claims") or []),
-                    "rejected_claims": list(verdict.get("rejected_claims") or []),
-                    "reasoning_notes": list(verdict.get("reasoning_notes") or []),
-                    "recommended_disposition": verdict.get("recommended_disposition", "revise"),
-                }
-                if investigation_id:
-                    record_critic_verdict(
-                        persona=persona,
-                        investigation_id=investigation_id,
-                        tenant_id=tenant_id or "default",
-                        passed=passed,
-                        trust_score=trust_score,
-                        issues=issues,
-                    )
-                return result
-
         return self.execute(
             persona=persona,
             finding=finding,

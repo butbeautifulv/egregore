@@ -138,3 +138,24 @@ curl -sf -X POST "$BASE/v1/work-orders/{id}/follow-ups" \
 ```
 
 SSE: `GET /v1/work-orders/{id}/events?tenant_id=default` — watch for `follow_up_*` events during follow-up flows.
+
+## Quality layers (runtime gate vs Langfuse eval)
+
+| Layer | Purpose | Where |
+|-------|---------|--------|
+| **Runtime gate** | Block/revise specialist findings (trust, evidence gaps) | `ProcessFindingCritic` + bus `CriticService` |
+| **Trace critic** | Conductor step quality before synthesis | `EvaluateTraceCritic` + `reasoning_check` tool |
+| **Platform eval** | Offline LLM quality on GENERATION spans | `scripts/langfuse-setup-llm-judge.sh` → Langfuse UI |
+
+Do **not** enable deprecated `CRITIC_USE_LLM_JUDGE` expecting in-app LLM judge. Use Langfuse eval jobs for answer quality monitoring.
+
+Langfuse setup (local):
+
+```bash
+./scripts/langfuse-setup-llm-judge.sh
+```
+
+Docs drift: there is no `make langfuse-setup-judge` — use the script above.
+
+Grafana: import [`grafana-control-plane-dashboard.json`](observability/grafana-control-plane-dashboard.json) for `critic_verdict` log-derived panels (when Loki wired).
+

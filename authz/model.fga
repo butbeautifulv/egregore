@@ -1,0 +1,45 @@
+model
+  schema 1.1
+
+type user
+
+type organization
+  relations
+    define admin: [user]
+    define member: [user] or admin
+    define platform_admin: [user] or admin
+
+type workspace
+  relations
+    define organization: [organization]
+    define owner: [user] or admin from organization
+    define editor: [user] or owner
+    define viewer: [user] or editor or member from organization
+    define can_create_agent: editor
+    define can_run: editor or viewer
+    define can_admin: owner
+
+type agent
+  relations
+    define platform: [user:*]
+    define viewer: [user, organization#member] or platform
+
+type workspace_agent
+  relations
+    define workspace: [workspace]
+    define can_view: viewer from workspace
+    define can_edit: editor from workspace
+    define can_delete: owner from workspace
+    define can_run: can_run from workspace
+
+type datasource
+  relations
+    define organization: [organization]
+    define consumer: [user, workspace, organization#member]
+    define can_query: consumer or admin from organization
+
+type engagement
+  relations
+    define workspace: [workspace]
+    define can_view: viewer from workspace
+    define can_operate: editor from workspace

@@ -8,15 +8,11 @@ from pathlib import Path
 import yaml
 
 from cys_core.domain.agents.models import AgentConfig, AgentDefinition
+from cys_core.domain.security.system_prompt_assembler import assemble_trusted_system_context
 from cys_core.registry.product_context import ProductContext, default_agents_root
 
 PROMPT_FILENAMES = ("AGENT.md", "SKILL.md")
 PERSONAS_DIRNAME = "personas"
-
-LANGUAGE_SUFFIX = (
-    "\n\nLanguage: You may think in English, but you MUST answer in Russian. "
-    "Keep JSON field names in English; values should be in Russian."
-)
 
 
 def _iter_persona_dirs(base: Path):
@@ -64,15 +60,15 @@ def _load_agent_from_dir(agent_dir: Path, product: ProductContext) -> AgentDefin
         fallback_text=body,
     )
     persona_text = resolved.text if resolved else body
-    if config.language == "ru":
-        persona_text = f"{persona_text}{LANGUAGE_SUFFIX}"
-    system_ctx = product.build_system_context(persona_text)
+    system_ctx = assemble_trusted_system_context(persona_text, language=config.language)
     return AgentDefinition(
         name=config.name,
         description=config.description,
         role=config.role,
         system_prompt=system_ctx.text,
         system_prompt_digest=system_ctx.digest,
+        persona_prompt=persona_text,
+        language=config.language,
         schema_name=config.output_schema,
         tools=config.tools,
         skills=config.skills,

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class InvestigationSummaryOut(BaseModel):
     investigation_id: str
     tenant_id: str
+    workspace_id: str = ""
     goal: str = ""
     status: str
     completed_personas: list[str] = Field(default_factory=list)
@@ -29,10 +30,13 @@ class JobSummaryOut(BaseModel):
     event_id: str = ""
     created_at: str = ""
     follow_up_id: str | None = None
+    error: str = ""
+    reason: str = ""
 
 
 class InvestigationsListOut(BaseModel):
     investigations: list[InvestigationSummaryOut]
+    next_cursor: str | None = None
 
 
 class InvestigationJobsOut(BaseModel):

@@ -88,10 +88,12 @@ class InMemoryJobStore:
         if record is not None:
             record.status = WorkerJobStatus.COMPLETED
 
-    def mark_failed(self, job_id: str) -> None:
+    def mark_failed(self, job_id: str, *, error: str = "", reason: str = "") -> None:
         record = self._jobs.get(job_id)
         if record is not None:
             record.status = WorkerJobStatus.FAILED
+            record.last_error = (error or "")[:500]
+            record.failure_reason = (reason or "")[:120]
 
     def list_pending_approvals(self) -> list[PendingHitlAction]:
         return [
@@ -110,6 +112,8 @@ class InMemoryJobStore:
                 correlation_id=record.correlation_id,
                 tenant_id=record.tenant_id,
                 event_id=record.event_id,
+                last_error=record.last_error,
+                failure_reason=record.failure_reason,
             )
             for record in self._jobs.values()
             if record.tenant_id == tenant_id and record.correlation_id == investigation_id

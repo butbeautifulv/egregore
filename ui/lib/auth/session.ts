@@ -1,8 +1,37 @@
 export const SESSION_COOKIE_NAME = "egregore_session"
 export const SESSION_STORAGE_KEY = "egregore_session"
 
+export type ClientSession = {
+  authenticated: boolean
+  sub?: string
+  email?: string
+  organization_id?: string
+  roles?: string[]
+}
+
+function allowLocalTokenFallback(): boolean {
+  return process.env.NEXT_PUBLIC_ALLOW_LOCAL_TOKEN === "1"
+}
+
+export async function getClientSession(): Promise<ClientSession> {
+  if (typeof window === "undefined") {
+    return { authenticated: false }
+  }
+  const response = await fetch("/api/auth/session", {
+    credentials: "include",
+    cache: "no-store",
+  })
+  if (!response.ok) {
+    return { authenticated: false }
+  }
+  return response.json() as Promise<ClientSession>
+}
+
 export function getClientSessionToken(): string | null {
   if (typeof window === "undefined") {
+    return null
+  }
+  if (!allowLocalTokenFallback()) {
     return null
   }
 
@@ -10,21 +39,11 @@ export function getClientSessionToken(): string | null {
   if (fromStorage) {
     return fromStorage
   }
-
-  const match = document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-
-  if (!match) {
-    return null
-  }
-
-  return decodeURIComponent(match.slice(SESSION_COOKIE_NAME.length + 1)) || null
+  return null
 }
 
 export function setClientSessionToken(token: string) {
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || !allowLocalTokenFallback()) {
     return
   }
   window.localStorage.setItem(SESSION_STORAGE_KEY, token)

@@ -17,6 +17,8 @@ class JobRecord:
     correlation_id: str = ""
     tenant_id: str = "default"
     event_id: str = ""
+    last_error: str = ""
+    failure_reason: str = ""
 
 
 @dataclass
@@ -30,6 +32,8 @@ class JobRecordSummary:
     event_id: str = ""
     created_at: str = ""
     follow_up_id: str | None = None
+    last_error: str = ""
+    failure_reason: str = ""
 
 
 class JobStorePort(Protocol):
@@ -62,7 +66,7 @@ class JobStorePort(Protocol):
 
     def mark_completed(self, job_id: str) -> None: ...
 
-    def mark_failed(self, job_id: str) -> None: ...
+    def mark_failed(self, job_id: str, *, error: str = "", reason: str = "") -> None: ...
 
     def list_pending_approvals(self) -> list[PendingHitlAction]: ...
 

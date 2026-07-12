@@ -5,15 +5,18 @@ from cys_core.application.datasources.policy_resolver import datasource_policy_f
 from cys_core.application.datasources.providers import get_datasource_catalog_port
 from cys_core.application.datasources.tool_bindings import get_tool_datasource_binding
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.domain.datasources.authz import AuthzRequest, AuthorizationDecision
+from cys_core.domain.datasources.authz import AuthorizationDecision, AuthzRequest
 from cys_core.domain.datasources.models import DataSource, DataSourceCapability
 
 
 def _resolve_source(binding_datasource_id: str) -> DataSource:
-    catalog = get_datasource_catalog_port()
-    source = catalog.get(binding_datasource_id)
-    if source is not None:
-        return source
+    try:
+        catalog = get_datasource_catalog_port()
+        source = catalog.get(binding_datasource_id)
+        if source is not None:
+            return source
+    except RuntimeError:
+        pass
     return DataSource(
         id=binding_datasource_id,
         type=binding_datasource_id,

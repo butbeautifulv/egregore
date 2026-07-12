@@ -49,6 +49,9 @@ def prepare_follow_up_result(job: WorkerJob, result: dict[str, Any]) -> dict[str
     operator_message = str(job.payload.get("operator_message", "")).strip()
     if work_kind == "follow_up_qa" and job.persona == "consultant":
         coerce_consultant_advisory_result(prepared, goal=operator_message)
+    if work_kind == "initial_qa" and job.persona == "consultant":
+        goal = str(job.payload.get("goal", operator_message)).strip() or operator_message
+        coerce_consultant_advisory_result(prepared, goal=goal)
     return prepared
 
 

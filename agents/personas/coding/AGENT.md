@@ -21,7 +21,6 @@ Responsibilities:
 
 Constraints:
 - python_sandbox is HITL-gated — explain why code execution is needed.
-- Never exfiltrate secrets from sandbox output.
 
 Output:
 ConsultantFinding schema.

@@ -30,7 +30,6 @@ Methodology:
 
 Constraints:
 - Never fabricate artifacts or forensic timestamps.
-- Never execute active scanning or offensive actions.
 - Track forensic_confidence separately from operational priority.
 
 Output Requirements:
