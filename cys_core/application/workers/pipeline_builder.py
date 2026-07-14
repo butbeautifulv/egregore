@@ -15,6 +15,7 @@ from cys_core.application.workers.follow_up_aggregator import FollowUpAggregator
 from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher
 from cys_core.application.workers.job_finalizer import WorkerJobFinalizer
 from cys_core.application.workers.result_validator import WorkerResultValidator
+from bootstrap.settings import get_settings
 from cys_core.application.runtime_config import get_self_refine_max, get_use_run_kernel
 from cys_core.domain.security.factory import get_output_guardrails
 
@@ -114,10 +115,13 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         record_worker_job_failure=deps.metrics.record_worker_job_failure,
         follow_up_publisher=follow_up_publisher,
     )
+    follow_up_settings = get_settings()
     follow_up_aggregator = FollowUpAggregator(
         deps.job_store,
         memory_reader=deps.memory_reader,
         engagement_store=deps.engagement_store,
+        timeout_s=follow_up_settings.follow_up_aggregator_timeout_s,
+        poll_s=follow_up_settings.follow_up_aggregator_poll_s,
     )
     plan_follow_up_runner = None
     if deps.meta_planner is not None and deps.dispatch is not None:

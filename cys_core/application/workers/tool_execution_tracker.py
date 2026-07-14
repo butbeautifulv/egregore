@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from typing import Any
 
+from bootstrap.settings import get_settings
 from cys_core.domain.evidence.manifest_builder import build_manifest_from_tool_output, merge_manifests
 from cys_core.domain.evidence.models import EvidenceManifest
 from cys_core.domain.parsing.json_text import parse_json_text
@@ -16,10 +17,6 @@ _persona_manifests: dict[str, dict[str, EvidenceManifest]] = {}
 
 _veil_counts: dict[str, int] = {}
 _siem_drilldown_counts: dict[str, int] = {}
-
-_MAX_OUTPUT_PREVIEW = 16_384
-_MAX_STORED_OUTPUTS = 5
-_MAX_SIEM_DRILLDOWN = 2
 
 
 def record_tool_execution(job_id: str) -> None:
@@ -73,13 +70,14 @@ def record_tool_output(job_id: str, tool_name: str, preview: str) -> None:
     text = (preview or "").strip()
     if not text:
         return
-    if len(text) > _MAX_OUTPUT_PREVIEW:
-        text = text[:_MAX_OUTPUT_PREVIEW] + "…"
+    if len(text) > get_settings().tool_output_preview_max:
+        text = text[: get_settings().tool_output_preview_max] + "…"
     with _lock:
         entries = _outputs.setdefault(job_id, [])
         entries.append((tool_name, text))
-        if len(entries) > _MAX_STORED_OUTPUTS:
-            del entries[: len(entries) - _MAX_STORED_OUTPUTS]
+        max_stored = get_settings().tool_stored_outputs_max
+        if len(entries) > max_stored:
+            del entries[: len(entries) - max_stored]
 
 
 def get_tool_outputs(job_id: str) -> list[tuple[str, str]]:
@@ -257,7 +255,7 @@ def siem_drilldown_budget_exhausted(job_id: str) -> bool:
     if not job_id:
         return True
     with _lock:
-        return _siem_drilldown_counts.get(job_id, 0) >= _MAX_SIEM_DRILLDOWN
+        return _siem_drilldown_counts.get(job_id, 0) >= get_settings().tool_siem_drilldown_max
 
 
 def is_siem_telemetry_sparse(job_id: str) -> bool:

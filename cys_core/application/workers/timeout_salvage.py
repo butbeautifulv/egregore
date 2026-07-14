@@ -4,10 +4,10 @@ import json
 import re
 from typing import Any
 
+from bootstrap.settings import get_settings
 from cys_core.application.workers.tool_execution_tracker import get_merged_manifest
 from cys_core.domain.evidence.models import EvidenceRef
 
-_SUMMARY_MAX = 2000
 _IOC_PATTERN = re.compile(
     r"\b(?:\d{1,3}\.){3}\d{1,3}\b|[a-f0-9]{32}|[a-f0-9]{40}|[a-f0-9]{64}",
     re.IGNORECASE,
@@ -30,9 +30,10 @@ def _is_ladder_block_output(preview: str) -> bool:
 
 def _truncate_summary(text: str) -> str:
     cleaned = " ".join(text.split())
-    if len(cleaned) <= _SUMMARY_MAX:
+    summary_max = get_settings().timeout_salvage_summary_max
+    if len(cleaned) <= summary_max:
         return cleaned
-    return cleaned[:_SUMMARY_MAX] + "…"
+    return cleaned[:summary_max] + "…"
 
 
 def _summary_from_outputs(tool_outputs: list[tuple[str, str]], preferred: tuple[str, ...]) -> str:

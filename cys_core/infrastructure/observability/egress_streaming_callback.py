@@ -9,14 +9,12 @@ from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult, LLMResult
 
+from bootstrap.settings import get_settings
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.stream_context import StreamContext
 from cys_core.application.runtime_config import get_stream_agent_output, get_stream_agent_tools
 from cys_core.application.workers.tool_execution_tracker import record_tool_execution
 from cys_core.infrastructure.engagement.factory import get_engagement_egress
-
-_BATCH_SECONDS = 0.05
-_OUTPUT_PREVIEW_MAX = 800
 
 
 def _tool_output_preview(output: Any) -> str:
@@ -24,9 +22,10 @@ def _tool_output_preview(output: Any) -> str:
     text = text.strip()
     if not text:
         return ""
-    if len(text) <= _OUTPUT_PREVIEW_MAX:
+    preview_max = get_settings().egress_output_preview_max
+    if len(text) <= preview_max:
         return text
-    return f"{text[:_OUTPUT_PREVIEW_MAX]}…"
+    return f"{text[:preview_max]}…"
 
 
 def _unwrap_tool_inputs(inputs: dict[str, Any] | None, input_str: str) -> dict[str, Any]:
@@ -184,7 +183,7 @@ class EgressStreamingCallback(AsyncCallbackHandler):
             await self.on_llm_new_token(_message_content_text(content), **kwargs)
 
     async def _flush_after_delay(self) -> None:
-        await asyncio.sleep(_BATCH_SECONDS)
+        await asyncio.sleep(get_settings().egress_batch_seconds)
         await self._flush_buffer()
 
     async def _flush_buffer(self) -> None:
