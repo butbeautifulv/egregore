@@ -1,0 +1,11 @@
+# Offline / VPN-TUN build: run `bun run build` on the host first, then:
+#   docker build -f Dockerfile.prebuilt -t cxado/egregore-ui:<tag> .
+# No registry access required inside the build context.
+FROM oven/bun:1-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY .next/standalone ./
+COPY .next/static ./.next/static
+COPY public ./public
+EXPOSE 3000
+CMD ["bun", "server.js"]
