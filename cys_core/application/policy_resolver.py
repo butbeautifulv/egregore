@@ -110,6 +110,7 @@ def env_overrides_from_settings(settings: Any) -> dict[str, Any]:
         "trace_critic_rerun_max": settings.trace_critic_rerun_max,
         "delegate_budget_fraction": settings.delegate_budget_fraction,
         "max_spawn_depth": settings.max_spawn_depth,
+        "cost_per_1k_tokens_usd": settings.job_cost_per_1k_tokens_usd,
     }
 
 

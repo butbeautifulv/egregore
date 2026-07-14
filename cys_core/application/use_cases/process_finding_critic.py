@@ -48,12 +48,18 @@ class ProcessFindingCritic:
         policy_port: Any,
         application_tracing: ApplicationTracingPort | None = None,
         schema_registry: SchemaRegistryPort | None = None,
-        trust_threshold: float = 0.5,
+        trust_threshold: float | None = None,
     ) -> None:
+        from bootstrap.settings import get_settings
+
         self._policy_port = policy_port
         self._application_tracing = application_tracing
         self._schema_registry = schema_registry
-        self.trust_threshold = trust_threshold
+        self.trust_threshold = (
+            trust_threshold
+            if trust_threshold is not None
+            else get_settings().critic_trust_threshold
+        )
 
     # NOTE(evidence-grounding-consolidation, 2026-07-14): this reads `get_persona_manifests`
     # (investigation-keyed), while run_worker_job._apply_soc_sparse_coerce reads
@@ -65,10 +71,15 @@ class ProcessFindingCritic:
     # cys_core/application/workers/tool_execution_tracker.py. Do not "fix" this without reading
     # that note first.
     def _resolve_trust_score(self, finding: dict[str, Any], persona: str, investigation_id: str | None) -> float:
+        from bootstrap.settings import get_settings
+
+        default_confidence = get_settings().critic_default_confidence
         try:
-            confidence = float(finding.get("confidence", finding.get("trust_score", 0.5)))
+            confidence = float(
+                finding.get("confidence", finding.get("trust_score", default_confidence))
+            )
         except (TypeError, ValueError):
-            confidence = 0.5
+            confidence = default_confidence
         if persona == "soc" and investigation_id:
             manifests = get_persona_manifests(investigation_id)
             manifest = manifests.get(persona)

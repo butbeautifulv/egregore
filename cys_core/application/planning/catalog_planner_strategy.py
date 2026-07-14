@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 _DEFAULT_POST_PROCESSORS = ["advisory_consultant_fallback", "staged_soc_intel_for_incident"]
 
 
+def _default_post_processors() -> list[str]:
+    from bootstrap.settings import get_settings
+
+    raw = get_settings().planner_default_post_processors
+    parsed = [p.strip() for p in raw.split(",") if p.strip()]
+    return parsed or list(_DEFAULT_POST_PROCESSORS)
+
+
 class CatalogPlannerStrategy:
     """Catalog-driven planner: prompt, signals, and post-processors from ProfilePack."""
 
@@ -65,7 +73,7 @@ class CatalogPlannerStrategy:
             return profile.planner
         return PlannerPack(
             persona=self.planner_persona,
-            post_processors=list(_DEFAULT_POST_PROCESSORS),
+            post_processors=_default_post_processors(),
             synthesis_default="consultant",
         )
 

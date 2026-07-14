@@ -4,12 +4,12 @@ from cys_core.domain.catalog.models import AgentCatalogEntry, ModePolicyPayload,
 from cys_core.domain.policy.defaults import (
     ACTION_RISK_MAPPING,
     DEFAULT_MODE_POLICY,
-    PERSONA_BUDGETS,
     PERSONA_CLEARANCE,
     PLAN_BLOCKED_TOOLS,
     PROFILE_TOOL_ALLOWLIST,
     READ_ONLY_TOOLS,
     MUTATING_TOOLS,
+    get_persona_budgets,
 )
 from cys_core.domain.runs.models import InteractionMode
 from cys_core.domain.workers.models import DEFAULT_BUDGET, PersonaBudget
@@ -85,7 +85,7 @@ def persona_budget_pure(persona: str, entry: AgentCatalogEntry | None = None) ->
             max_cost_usd=entry.budget_max_cost_usd or DEFAULT_BUDGET.max_cost_usd,
             max_tool_calls=entry.budget_max_tool_calls or DEFAULT_BUDGET.max_tool_calls,
         )
-    return PERSONA_BUDGETS.get(persona, DEFAULT_BUDGET)
+    return get_persona_budgets().get(persona, DEFAULT_BUDGET)
 
 
 def persona_clearance_pure(persona: str, entry: AgentCatalogEntry | None = None):
