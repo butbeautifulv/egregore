@@ -28,7 +28,7 @@ class BusIngressRouter:
         control_handlers: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
         orchestration_enqueue: Callable[[dict[str, Any]], str | Awaitable[str]] | None = None,
         egress_publish: Callable[[dict[str, Any]], None] | None = None,
-        seen_ttl_seconds: int = 300,
+        seen_ttl_seconds: int | None = None,
         dedup_store: BusDedupPort | None = None,
         bus_guard: EngagementBusGuard | None = None,
         metrics: MetricsPort | None = None,
@@ -37,6 +37,10 @@ class BusIngressRouter:
         self._orchestration_enqueue = orchestration_enqueue
         self._egress_publish = egress_publish
         self._seen: dict[str, float] = {}
+        if seen_ttl_seconds is None:
+            from bootstrap.settings import get_settings
+
+            seen_ttl_seconds = get_settings().bus_seen_ttl_seconds
         self._seen_ttl = seen_ttl_seconds
         self._dedup_store = dedup_store
         self._bus_guard = bus_guard

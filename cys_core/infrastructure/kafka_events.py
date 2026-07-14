@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from bootstrap.settings import settings
+from bootstrap.settings import get_settings, settings
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.infrastructure.kafka_publisher import get_kafka_publisher
 from cys_core.infrastructure.kafka_topics import RAW_EVENTS_TOPIC
@@ -24,8 +24,9 @@ def publish_raw_event_sync(event: SecurityEvent) -> bool:
     return get_kafka_publisher().publish_bytes_sync(RAW_EVENTS_TOPIC, event.model_dump_json().encode())
 
 
-async def consume_raw_event(timeout: float = 1.0) -> SecurityEvent | None:
+async def consume_raw_event(timeout: float | None = None) -> SecurityEvent | None:
     """Consume one event from the raw ingress topic."""
+    resolved_timeout = timeout if timeout is not None else get_settings().kafka_consume_timeout_s
     consumer: Any = None
     try:
         from aiokafka import AIOKafkaConsumer
@@ -37,7 +38,7 @@ async def consume_raw_event(timeout: float = 1.0) -> SecurityEvent | None:
             auto_offset_reset="earliest",
         )
         await consumer.start()
-        record = await asyncio.wait_for(consumer.getone(), timeout=timeout)
+        record = await asyncio.wait_for(consumer.getone(), timeout=resolved_timeout)
         if record.headers:
             header_map = {
                 key: value.decode("utf-8") if isinstance(value, bytes) else str(value)

@@ -4,12 +4,13 @@ import asyncio
 import json
 from typing import Any
 
-from bootstrap.settings import settings
+from bootstrap.settings import get_settings, settings
 from cys_core.infrastructure.kafka_topics import BUS_FINDINGS_TOPIC
 
 
-async def consume_bus_finding(timeout: float = 1.0, *, group_id: str = "bus-findings") -> dict[str, Any] | None:
+async def consume_bus_finding(timeout: float | None = None, *, group_id: str = "bus-findings") -> dict[str, Any] | None:
     """Consume one envelope from bus.findings."""
+    resolved_timeout = timeout if timeout is not None else get_settings().kafka_consume_timeout_s
     consumer: Any = None
     try:
         from aiokafka import AIOKafkaConsumer
@@ -21,7 +22,7 @@ async def consume_bus_finding(timeout: float = 1.0, *, group_id: str = "bus-find
             auto_offset_reset="earliest",
         )
         await consumer.start()
-        record = await asyncio.wait_for(consumer.getone(), timeout=timeout)
+        record = await asyncio.wait_for(consumer.getone(), timeout=resolved_timeout)
         raw = record.value
         if raw is None:
             return None

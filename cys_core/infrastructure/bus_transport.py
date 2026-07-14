@@ -88,6 +88,8 @@ class RedisBusTransport:
         self._stop_event = threading.Event()
         cfg = settings or get_settings()
         self._redis_url = redis_url or cfg.redis_url
+        self._get_message_timeout_s = cfg.bus_redis_get_message_timeout_s
+        self._subscriber_join_timeout_s = cfg.bus_redis_subscriber_join_timeout_s
         try:
             import redis
 
@@ -221,7 +223,7 @@ class RedisBusTransport:
             for channel in self._subscriber_channels:
                 pubsub.subscribe(self._channel(channel))
             while not self._stop_event.is_set():
-                message = pubsub.get_message(timeout=1.0)
+                message = pubsub.get_message(timeout=self._get_message_timeout_s)
                 if not message or message.get("type") != "message":
                     continue
                 raw_channel = str(message.get("channel", ""))
@@ -239,7 +241,7 @@ class RedisBusTransport:
     async def aclose(self) -> None:
         self._stop_event.set()
         if self._subscriber_thread is not None:
-            self._subscriber_thread.join(timeout=2.0)
+            self._subscriber_thread.join(timeout=self._subscriber_join_timeout_s)
             self._subscriber_thread = None
         if self._pubsub is not None:
             try:
