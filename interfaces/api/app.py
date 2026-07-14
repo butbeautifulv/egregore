@@ -80,29 +80,30 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
 
         async def _refresh_gauges_loop() -> None:
             container = get_container()
+            gauge_settings = get_settings()
             while True:
                 refresh_platform_gauges(
                     engagement_store=container.get_engagement_state_store(),
                     job_store=container.get_job_store(),
                 )
-                await asyncio.sleep(30)
+                await asyncio.sleep(gauge_settings.api_gauge_refresh_interval_s)
 
         async def _reconcile_engagements_loop() -> None:
             container = get_container()
             reconciler = container.get_reconcile_stuck_engagements()
-            settings = get_settings()
+            reconcile_settings = get_settings()
             while True:
                 try:
                     async with redis_leader(
                         "egregore:api:reconcile",
-                        ttl=280,
-                        redis_url=settings.redis_url,
+                        ttl=reconcile_settings.api_reconcile_leader_ttl_s,
+                        redis_url=reconcile_settings.redis_url,
                     ) as is_leader:
                         if is_leader:
                             await reconciler.execute()
                 except Exception:
                     logger.exception("engagement_reconcile_loop_failed")
-                await asyncio.sleep(300)
+                await asyncio.sleep(reconcile_settings.api_reconcile_interval_s)
 
         container = get_container()
         verify_critic_intel_recipient(container.get_agent_catalog())
@@ -265,6 +266,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         _auth: Annotated[AuthClaims | None, Depends(require_reader_role)],
     ) -> StreamingResponse:
         async def event_generator():
+            sse_settings = get_settings()
             if isinstance(store, MemoryStatusStore):
                 queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
@@ -275,7 +277,10 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
                 try:
                     while True:
                         try:
-                            event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                            event = await asyncio.wait_for(
+                                queue.get(),
+                                timeout=sse_settings.api_sse_queue_timeout_s,
+                            )
                             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
                         except TimeoutError:
                             heartbeat = {"kind": "heartbeat", "ts": datetime.now(UTC).isoformat()}
@@ -298,11 +303,11 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
                     else:
                         heartbeat = {"kind": "heartbeat", "ts": datetime.now(UTC).isoformat()}
                         yield f"data: {json.dumps(heartbeat)}\n\n"
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(sse_settings.api_sse_retry_sleep_s)
             else:
                 heartbeat = {"kind": "heartbeat", "ts": datetime.now(UTC).isoformat()}
                 yield f"data: {json.dumps(heartbeat)}\n\n"
-                await asyncio.sleep(15)
+                await asyncio.sleep(sse_settings.api_sse_idle_sleep_s)
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 
