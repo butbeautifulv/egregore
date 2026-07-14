@@ -58,7 +58,11 @@ def _event_id_from(payload_or_finding: dict[str, Any], finding: dict[str, Any]) 
     )
 
 
-def _low_confidence(value: Any, *, threshold: float = 0.25) -> bool:
+def _low_confidence(value: Any, *, threshold: float | None = None) -> bool:
+    if threshold is None:
+        from bootstrap.settings import get_settings
+
+        threshold = get_settings().noop_low_confidence_threshold
     if not isinstance(value, (int, float)):
         return False
     return float(value) <= threshold
@@ -83,6 +87,9 @@ def _is_untrusted_pending_summary(summary: str) -> bool:
 
 def classify_finding(result: dict[str, Any]) -> NoopClass | None:
     """Classify a worker finding as noop, or None if it should propagate."""
+    from bootstrap.settings import get_settings
+
+    settings = get_settings()
     finding = _coerce_finding_dict(result)
     if finding is None:
         return None
@@ -103,7 +110,10 @@ def classify_finding(result: dict[str, Any]) -> NoopClass | None:
     if status in _NOOP_STATUSES and _low_confidence(confidence):
         return NoopClass.PENDING_DATA
 
-    if status in _LOW_CONFIDENCE_STATUSES and _low_confidence(trust_score, threshold=0.3):
+    if status in _LOW_CONFIDENCE_STATUSES and _low_confidence(
+        trust_score,
+        threshold=settings.noop_pending_trust_threshold,
+    ):
         return NoopClass.PENDING_DATA
 
     analysis_type = str(finding.get("analysis_type", ""))

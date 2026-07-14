@@ -29,6 +29,7 @@ class CapabilityBinding(BaseModel):
 
 
 class PersonaQuality(BaseModel):
+    # Catalog YAML / profile pack is the runtime source of truth for persona quality defaults.
     empirical_trust: float = 0.75
     critic_pass_rate: float = 0.0
     trace_critic_pass_rate: float = 0.0
@@ -54,6 +55,7 @@ class PlanQuality(BaseModel):
 
 class TraceCriticPolicy(BaseModel):
     enabled: bool = True
+    # TRACE_CRITIC_* env overrides applied via ProfilePolicyResolver.env_overrides_from_settings.
     threshold: float = 0.55
     every_n_steps: int = 3
     rerun_max: int = 2
@@ -69,6 +71,7 @@ class AnomalyPolicy(BaseModel):
 
 
 class QualitySignals(BaseModel):
+    # Catalog YAML / profile pack is the runtime source of truth for quality signal weights.
     job_success: float = 0.85
     job_failure: float = 0.35
     trace_critic_pass: float = 0.8
@@ -85,6 +88,7 @@ class ModePolicyPayload(BaseModel):
 
 
 class ProfilePolicyPayload(BaseModel):
+    # Catalog YAML / profile pack is the runtime source of truth for profile policy defaults.
     trust_floor: float = 0.5
     bus_policy: dict[str, list[str]] = Field(default_factory=dict)
     breaker_failure_threshold: int = 5
