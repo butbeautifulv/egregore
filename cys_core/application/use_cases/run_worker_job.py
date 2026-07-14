@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import structlog
 from typing import Any
 
@@ -449,7 +450,14 @@ class RunWorkerJob:
             engagement_id=investigation_id,
             tenant_id=job.tenant_id,
         ):
-            max_attempts = 2 if job.persona in _TRIAGE_PERSONAS else 3
+            from bootstrap.settings import get_settings
+
+            worker_settings = get_settings()
+            max_attempts = (
+                worker_settings.worker_triage_max_attempts
+                if job.persona in _TRIAGE_PERSONAS
+                else worker_settings.worker_max_attempts
+            )
             for attempt in range(max_attempts):
                 result = await self._agent_executor.run(
                     job=job,
@@ -642,7 +650,12 @@ class RunWorkerJob:
                     child_ids = [str(item) for item in raw_children]
             if child_ids:
                 await self._follow_up_aggregator.wait_for_children(child_ids)
-                result = self._follow_up_aggregator.merge_child_findings(
+                # merge_child_findings does blocking job_store/memory-store reads;
+                # offload to a worker thread so it doesn't block the event loop
+                # (same pattern used elsewhere in this codebase for sync I/O
+                # inside async def, e.g. cys_core/infrastructure/k8s_sandbox.py).
+                result = await asyncio.to_thread(
+                    self._follow_up_aggregator.merge_child_findings,
                     result,
                     child_ids,
                     tenant_id=job.tenant_id,

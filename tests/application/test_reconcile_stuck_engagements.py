@@ -53,6 +53,11 @@ async def test_reconcile_enqueues_pending_synthesis() -> None:
         engagement_store=store,
         job_store=job_store,
         enqueue_synthesis_job=enqueue,
+        synthesis_stale_multiplier=2.0,
+        default_job_timeout_s=300.0,
+        synth_job_timeout_s=180.0,
+        planner_timeout_seconds=120,
+        scan_limit=50,
     )
 
     stats = await reconciler.execute()
@@ -109,6 +114,10 @@ async def test_reconcile_fails_stale_bus_jobs_before_synthesis() -> None:
         job_store=job_store,
         enqueue_synthesis_job=synth,
         default_job_timeout_s=300.0,
+        synth_job_timeout_s=180.0,
+        planner_timeout_seconds=120,
+        synthesis_stale_multiplier=2.0,
+        scan_limit=50,
     )
 
     stats = await reconciler.execute()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import structlog
 from datetime import datetime, timezone
 from typing import Any
@@ -33,10 +34,11 @@ class ReconcileStuckEngagements:
         queue: JobQueueConnector | None = None,
         enqueue_worker_jobs: EnqueueWorkerJobs | None = None,
         metrics: MetricsPort | None = None,
-        synthesis_stale_multiplier: float = 2.0,
-        default_job_timeout_s: float = 300.0,
-        synth_job_timeout_s: float = 180.0,
-        planner_timeout_seconds: int = 120,
+        synthesis_stale_multiplier: float,
+        default_job_timeout_s: float,
+        synth_job_timeout_s: float,
+        planner_timeout_seconds: int,
+        scan_limit: int,
     ) -> None:
         self._engagement_store = engagement_store
         self._job_store = job_store
@@ -48,8 +50,9 @@ class ReconcileStuckEngagements:
         self._default_job_timeout_s = default_job_timeout_s
         self._synth_job_timeout_s = synth_job_timeout_s
         self._planner_timeout_seconds = planner_timeout_seconds
+        self._scan_limit = scan_limit
 
-    async def execute(self, tenant_id: str = "default", *, limit: int = 50) -> dict[str, int]:
+    async def execute(self, tenant_id: str = "default", *, limit: int | None = None) -> dict[str, int]:
         stats = {
             "scanned": 0,
             "synthesis_enqueued": 0,
@@ -57,7 +60,16 @@ class ReconcileStuckEngagements:
             "stale_failed": 0,
             "planner_fallback": 0,
         }
-        engagements = self._engagement_store.list_recent(tenant_id, limit=limit)
+        # list_recent is a blocking Postgres call; this loop runs periodically
+        # on the API's shared event loop (see interfaces/api/app.py
+        # _reconcile_engagements_loop), so run it off-thread (same pattern
+        # used elsewhere in this codebase for sync I/O inside async def).
+        resolved_limit = self._scan_limit if limit is None else limit
+        engagements = await asyncio.to_thread(
+            self._engagement_store.list_recent,
+            tenant_id,
+            limit=resolved_limit,
+        )
         for engagement in engagements:
             stats["scanned"] += 1
             action, stale_failed = await self._reconcile_one(tenant_id, engagement)
@@ -87,7 +99,13 @@ class ReconcileStuckEngagements:
         if not terminal:
             return "noop", 0
 
-        stale_failed = self._reconcile_stale_bus_jobs(tenant_id, engagement)
+        # _reconcile_stale_bus_jobs, _anchor_job and _is_synth_stale each make
+        # several blocking Postgres round-trips (job_store.get/list_*/
+        # mark_failed). This method runs per-engagement inside the API's
+        # shared-event-loop reconcile background task, so route the sync
+        # helpers through a worker thread (same pattern used elsewhere in
+        # this codebase for sync I/O inside async def).
+        stale_failed = await asyncio.to_thread(self._reconcile_stale_bus_jobs, tenant_id, engagement)
         if stale_failed:
             logger.warning(
                 "engagement_reconcile_bus_jobs_failed",
@@ -96,7 +114,7 @@ class ReconcileStuckEngagements:
             )
 
         if engagement.synthesis_status == SynthesisStatus.PENDING:
-            anchor = self._anchor_job(tenant_id, engagement)
+            anchor = await asyncio.to_thread(self._anchor_job, tenant_id, engagement)
             if anchor is None:
                 return "noop", stale_failed
             job_id = await self._enqueue_synthesis_job.execute(anchor)
@@ -111,8 +129,12 @@ class ReconcileStuckEngagements:
 
         if engagement.synthesis_status == SynthesisStatus.RUNNING:
             synth_job_id = next((jid for jid in engagement.job_ids if jid.endswith("-synth")), "")
-            if synth_job_id and self._is_synth_stale(tenant_id, engagement.id, synth_job_id):
-                self._engagement_store.fail_synthesis(
+            is_stale = synth_job_id and await asyncio.to_thread(
+                self._is_synth_stale, tenant_id, engagement.id, synth_job_id
+            )
+            if is_stale:
+                await asyncio.to_thread(
+                    self._engagement_store.fail_synthesis,
                     tenant_id,
                     engagement.id,
                     reason="synthesis_stale_timeout",
@@ -158,7 +180,9 @@ class ReconcileStuckEngagements:
             pipeline_staged=True,
         )
         engagement.mark_enqueued(job_ids)
-        self._engagement_store.upsert(engagement)
+        # Blocking Postgres write; offload (same pattern used elsewhere in
+        # this codebase for sync I/O inside async def).
+        await asyncio.to_thread(self._engagement_store.upsert, engagement)
         if self._metrics is not None:
             self._metrics.record_planner_stuck_fallback()
         logger.warning(
