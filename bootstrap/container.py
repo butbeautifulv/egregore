@@ -2,14 +2,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from bootstrap.persona_budget_loader import load_persona_budgets
 from bootstrap.settings import Settings, get_settings
+from bootstrap.containers.auth_container import AuthContainer
+from bootstrap.containers.catalog_container import CatalogContainer
+from bootstrap.containers.engagement_container import EngagementContainer
+from bootstrap.containers.observability_container import ObservabilityContainer
+from bootstrap.containers.persistence_container import PersistenceContainer
+from bootstrap.containers.policy_container import PolicyContainer
+from bootstrap.containers.tools_container import ToolsContainer
 from cys_core.application.policy_enforcement import PolicyEnforcementService
-from cys_core.application.policy_resolver import (
-    ProfilePolicyResolver,
-    configure_policy_resolver_from_settings,
-)
+from cys_core.application.policy_resolver import ProfilePolicyResolver
 from cys_core.application.runtime_config import configure_from_settings
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+from cys_core.domain.workers.job_budget import configure_job_cost
 from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog, reload_agent_registry
 from cys_core.infrastructure.catalog.profile_policy import (
     ProfilePolicyLoader,
@@ -41,265 +47,63 @@ if TYPE_CHECKING:
 
 
 class Container:
-    """Composition root for infrastructure connectors, catalog ports, and policy wiring."""
+    """Composition root for infrastructure connectors, catalog ports, and policy wiring.
+
+    Construction logic is split across sub-containers by responsibility
+    (see ``bootstrap/containers/``): ``CatalogContainer`` (catalog/registry
+    ports), ``PersistenceContainer`` (queue/transport/sandbox/memory
+    stores), ``EngagementContainer`` (event routing/dispatch, worker job
+    pipeline, bus orchestration), ``ToolsContainer`` (tool chain policy and
+    invocation), ``AuthContainer`` (authn/authz), ``ObservabilityContainer``
+    (metrics/tracing/eval backends), and ``PolicyContainer`` (profile
+    policy resolution, built eagerly). ``Container`` itself keeps every
+    ``get_*()`` method that existed before this split — each one now
+    delegates to the owning sub-container instead of constructing inline —
+    so it remains the sole entry point (service-locator surface) used
+    throughout the app.
+    """
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
         configure_from_settings(self.settings)
-        from cys_core.infrastructure.observability.metrics_adapter import build_metrics_port
+        configure_job_cost(self.settings.job_cost_per_1k_tokens_usd)
+        load_persona_budgets(self.settings)
 
-        self._policy_loader = ProfilePolicyLoader(get_agent_catalog)
-        self._resolver = configure_policy_resolver_from_settings(
-            self.settings,
-            policy_loader=self._policy_loader,
-            metrics_port=build_metrics_port(),
-        )
-        self._enforcement = PolicyEnforcementService(self._resolver)
-        self._bus_router = None
-        self._start_engagement = None
-        self._meta_planner = None
-        self._orchestration = None
-        self._event_router = None
-        self._route_event = None
-        self._route_and_enqueue = None
-        self._event_ingress = None
-        self._dispatch_event = None
-        self._worker_orchestrators: dict[str | None, Any] = {}
-        self._tool_chain_policy = None
-        self._invoke_tool = None
-        self._tool_execution_gateway = None
-        self._agent_registry_port = None
-        self._schema_registry_port = None
-        self._tool_registry_port = None
-        self._persona_ranking_port = None
-        self._skill_registry_port = None
-        self._resource_source_port = None
-        self._agents_root_port = None
-        self._datasource_catalog_port = None
-        self._datasource_audit_port = None
-        self._policy_merge_port = None
-        self._context_summarizer = None
-        self._reflexion_store = None
-        self._catalog_mutation_service = None
-        self._plan_investigation = None
-        self._metrics_port = None
-        self._correlation_id_port = None
-        self._worker_tracing_port = None
-        self._trace_flush_port = None
-        self._product_pack_port = None
-        self._catalog_seed_loaders_port = None
-        self._policy_defaults_port = None
-        self._application_settings_port = None
-        self._engagement_bus_guard = None
-        self._bus_dedup_store = None
-        self._workspace_store = None
-        self._authz_port = None
-        self._authz_service = None
+        self._policy = PolicyContainer(self.settings)
+        self._catalog = CatalogContainer(self)
+        self._persistence = PersistenceContainer(self)
+        self._engagement = EngagementContainer(self)
+        self._tools = ToolsContainer(self)
+        self._auth = AuthContainer(self)
+        self._observability = ObservabilityContainer(self)
+
+    # ------------------------------------------------------------------
+    # Engagement / event routing / bus orchestration
+    # ------------------------------------------------------------------
 
     def bus_guard_config(self):
-        from cys_core.application.bus_guard_config import BusGuardConfig
-
-        s = self.settings
-        return BusGuardConfig(
-            max_total_jobs_window=s.bus_max_total_jobs_window,
-            dedup_trip_threshold=s.bus_dedup_trip_threshold,
-            pingpong_trip_threshold=s.bus_pingpong_trip_threshold,
-            noop_churn_threshold=s.bus_noop_churn_threshold,
-            guard_window_seconds=s.bus_guard_window_seconds,
-            redis_url=s.redis_url,
-            max_jobs_per_engagement=s.bus_max_jobs_per_engagement,
-        )
+        return self._engagement.bus_guard_config()
 
     def get_engagement_bus_guard(self):
-        if self._engagement_bus_guard is None:
-            from cys_core.application.engagement_bus_guard import (
-                EngagementBusGuard,
-                configure_engagement_bus_guard,
-            )
-
-            self._engagement_bus_guard = EngagementBusGuard(config=self.bus_guard_config())
-            configure_engagement_bus_guard(self._engagement_bus_guard)
-        return self._engagement_bus_guard
-
-    def get_bus_dedup_store(self):
-        if self._bus_dedup_store is None:
-            from cys_core.infrastructure.bus_dedup_store import get_bus_dedup_store
-
-            self._bus_dedup_store = get_bus_dedup_store(
-                redis_url=self.settings.redis_url,
-                strict_redis=self.settings.strict_redis_queue,
-            )
-        return self._bus_dedup_store
-
-    def get_metrics_port(self):
-        if self._metrics_port is None:
-            from cys_core.infrastructure.observability.metrics_adapter import build_metrics_port
-
-            self._metrics_port = build_metrics_port()
-        return self._metrics_port
-
-    def get_correlation_id_port(self):
-        if self._correlation_id_port is None:
-            from cys_core.infrastructure.observability.tracing_adapter import build_correlation_id_port
-
-            self._correlation_id_port = build_correlation_id_port()
-        return self._correlation_id_port
-
-    def get_worker_tracing_port(self):
-        if self._worker_tracing_port is None:
-            from cys_core.infrastructure.observability.worker_tracing_adapter import build_worker_tracing_port
-
-            self._worker_tracing_port = build_worker_tracing_port(self.get_trace_backend)
-        return self._worker_tracing_port
-
-    def get_application_tracing_port(self):
-        return self.get_worker_tracing_port()
-
-    def get_trace_flush_port(self):
-        if self._trace_flush_port is None:
-            from cys_core.infrastructure.observability.trace_flush_adapter import build_trace_flush_port
-
-            self._trace_flush_port = build_trace_flush_port()
-        return self._trace_flush_port
-
-    def get_product_pack_port(self):
-        if self._product_pack_port is None:
-            from cys_core.infrastructure.bootstrap.product_pack_adapter import build_product_pack_port
-
-            self._product_pack_port = build_product_pack_port()
-        return self._product_pack_port
-
-    def get_catalog_seed_loaders_port(self):
-        if self._catalog_seed_loaders_port is None:
-            from cys_core.infrastructure.bootstrap.catalog_seed_adapter import build_catalog_seed_loaders_port
-
-            self._catalog_seed_loaders_port = build_catalog_seed_loaders_port()
-        return self._catalog_seed_loaders_port
-
-    def get_policy_defaults_port(self):
-        if self._policy_defaults_port is None:
-            from cys_core.infrastructure.bootstrap.policy_defaults_adapter import build_policy_defaults_port
-
-            self._policy_defaults_port = build_policy_defaults_port()
-        return self._policy_defaults_port
-
-    def get_application_settings_port(self):
-        if self._application_settings_port is None:
-            from cys_core.infrastructure.bootstrap.application_settings_adapter import build_application_settings_port
-
-            self._application_settings_port = build_application_settings_port()
-        return self._application_settings_port
-
-    def get_tool_chain_policy(self):
-        if self._tool_chain_policy is not None:
-            return self._tool_chain_policy
-        from cys_core.application.tools.tool_chain_policy import ToolChainPolicy
-
-        self._tool_chain_policy = ToolChainPolicy(max_high_risk_depth=self.settings.max_high_risk_tool_chain_depth)
-        return self._tool_chain_policy
-
-    def get_invoke_tool(self):
-        if self._invoke_tool is not None:
-            return self._invoke_tool
-        from cys_core.application.use_cases.invoke_tool import InvokeTool
-        from cys_core.infrastructure.tools.adapters import invoke_adapter
-        from cys_core.infrastructure.tools.audit import record_tool_invocation
-        from cys_core.infrastructure.tools.sanitize import sanitize_tool_output_or_raise
-        from cys_core.observability.metrics import metrics
-        from cys_core.registry.mcp_tools import require_sandbox
-
-        self._invoke_tool = InvokeTool(
-            require_sandbox=require_sandbox,
-            check_tool_chain=self.get_tool_chain_policy().check,
-            invoke_adapter=invoke_adapter,
-            tool_registry=self.get_tool_registry_port(),
-            sanitize_tool_output_or_raise=sanitize_tool_output_or_raise,
-            record_tool_invocation=record_tool_invocation,
-            record_tool_metric=lambda name, ok: metrics.record_tool_invocation(name, success=ok),
-            application_tracing=self.get_application_tracing_port(),
-            authz_service=self.get_authz_service(),
-        )
-        return self._invoke_tool
-
-    def get_tool_execution_gateway(self):
-        if self._tool_execution_gateway is not None:
-            return self._tool_execution_gateway
-        from cys_core.infrastructure.tools.local_gateway import build_local_tool_execution_gateway
-
-        self._tool_execution_gateway = build_local_tool_execution_gateway(self.get_invoke_tool())
-        return self._tool_execution_gateway
+        return self._engagement.get_engagement_bus_guard()
 
     def get_event_router(self):
-        if self._event_router is not None:
-            return self._event_router
-        from cys_core.application.routing.event_router import EventRouter
-
-        self._event_router = EventRouter.from_plans_dir(
-            self.get_agents_root_port().agents_root() / "plans",
-            policy_port=self.get_profile_policy_port(),
-            plan_catalog=self.get_plan_catalog(),
-        )
-        return self._event_router
+        return self._engagement.get_event_router()
 
     def get_route_event(self):
-        if self._route_event is not None:
-            return self._route_event
-        from cys_core.application.use_cases.route_event import RouteEvent
-
-        metrics = self.get_metrics_port()
-        self._route_event = RouteEvent(
-            self.get_event_router(),
-            plan_catalog=self.get_plan_catalog(),
-            record_event_ingested=metrics.record_event_ingested,
-            mutation=self.get_catalog_mutation_service(),
-        )
-        return self._route_event
+        return self._engagement.get_route_event()
 
     def get_dispatch_event(self):
-        if self._dispatch_event is not None:
-            return self._dispatch_event
-        from cys_core.application.use_cases.dispatch_event import DispatchEvent
-
-        self._dispatch_event = DispatchEvent(
-            route_event=self.get_route_event(),
-            enqueuer=self.get_orchestration_port(),
-            application_tracing=self.get_application_tracing_port(),
-        )
-        return self._dispatch_event
+        return self._engagement.get_dispatch_event()
 
     def get_route_and_enqueue(self):
-        if self._route_and_enqueue is not None:
-            return self._route_and_enqueue
-        from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
-        from cys_core.infrastructure.kafka_events import publish_raw_event, publish_raw_event_sync
-
-        metrics = self.get_metrics_port()
-        self._route_and_enqueue = RouteAndEnqueueEvent(
-            route_event=self.get_route_event(),
-            enqueuer=self.get_orchestration_port(),
-            correlation_id_port=self.get_correlation_id_port(),
-            use_kafka=self.settings.use_kafka,
-            publish_raw_event_sync=publish_raw_event_sync,
-            publish_raw_event=publish_raw_event,
-            record_event_ingested=metrics.record_event_ingested,
-            application_tracing=self.get_application_tracing_port(),
-        )
-        return self._route_and_enqueue
+        return self._engagement.get_route_and_enqueue()
 
     def get_event_ingress(self):
-        if self._event_ingress is not None:
-            return self._event_ingress
-        from interfaces.ingress.router import EventIngress
-
-        self._event_ingress = EventIngress(route_and_enqueue=self.get_route_and_enqueue())
-        return self._event_ingress
+        return self._engagement.get_event_ingress()
 
     def get_worker_orchestrator(self, persona: str | None = None):
-        if persona not in self._worker_orchestrators:
-            from interfaces.worker.orchestrator import WorkerOrchestrator
-
-            self._worker_orchestrators[persona] = WorkerOrchestrator(persona=persona)
-        return self._worker_orchestrators[persona]
+        return self._engagement.get_worker_orchestrator(persona)
 
     def get_run_worker_job(
         self,
@@ -313,494 +117,254 @@ class Container:
         queue: JobQueueConnector | None = None,
         sanitizer=None,
     ):
-        from cys_core.application.workers.pipeline_builder import WorkerPipelineDeps, build_worker_pipeline
-        from cys_core.domain.security.factory import get_input_sanitizer
-        from cys_core.infrastructure.bus_transport import get_bus_transport
-        from cys_core.infrastructure.memory.factory import get_memory_read_service, get_memory_write_service
-        from cys_core.infrastructure.queue import get_job_queue
-        from cys_core.infrastructure.sandbox import get_sandbox_connector
-        from cys_core.registry.mcp_tools import mcp_tool_registry
-        from cys_core.registry.skills_tool import make_load_skill_tool
-        from cys_core.registry.tools import tool_registry
-
-        metrics = self.get_metrics_port()
-        runtime = runtime or self.get_agent_runtime()
-        sandbox = sandbox or get_sandbox_connector()
-        transport = transport or get_bus_transport()
-        queue = queue or get_job_queue(persona=persona, settings=self.settings)
-        sanitizer = sanitizer or get_input_sanitizer()
-        if bus is None:
-            from interfaces.worker.orchestrator import build_agent_bus
-
-            bus = build_agent_bus(signing_key=self.settings.bus_signing_key_bytes)
-
-        return build_worker_pipeline(
-            WorkerPipelineDeps(
-                engagement_store=self.get_engagement_state_store(),
-                memory_reader=get_memory_read_service(self.settings),
-                memory_writer=get_memory_write_service(self.settings),
-                metrics=metrics,
-                runtime=runtime,
-                schema_registry=self.get_schema_registry_port(),
-                bus=bus,
-                transport=transport,
-                queue=queue,
-                job_store=self.get_job_store(),
-                agent_catalog=self.get_agent_catalog(),
-                engagement_egress=self.get_engagement_egress(),
-                bus_guard=self.get_engagement_bus_guard(),
-                agent_registry=registry or self.get_agent_registry_port(),
-                sandbox=sandbox,
-                sanitizer=sanitizer,
-                worker_tracing=self.get_worker_tracing_port(),
-                use_tool_gateway=self.settings.use_tool_gateway,
-                dev_schema_bypass=self.settings.stage == "dev",
-                resolve_mcp_tools=mcp_tool_registry.resolve,
-                resolve_legacy_tools=tool_registry.resolve,
-                make_load_skill_tool=make_load_skill_tool,
-                meta_planner=self.get_meta_planner(),
-                dispatch=self.get_dispatch_event(),
-                workspace_store=self.get_workspace_store(),
-            )
+        return self._engagement.get_run_worker_job(
+            persona,
+            runtime=runtime,
+            registry=registry,
+            bus=bus,
+            sandbox=sandbox,
+            transport=transport,
+            queue=queue,
+            sanitizer=sanitizer,
         )
 
     def get_agent_runtime(self):
-        return self.get_worker_orchestrator().runtime
+        return self._engagement.get_agent_runtime()
 
     def get_meta_planner(self):
-        if self._meta_planner is not None:
-            return self._meta_planner
-        from cys_core.application.use_cases.meta_planner import MetaPlanner
-        from cys_core.runtime.agent import get_runtime
-
-        self._meta_planner = MetaPlanner(
-            runtime=get_runtime(),
-            engagement_store=self.get_engagement_state_store(),
-            resource_source=self.get_resource_source_port(),
-            persona_ranking=self.get_persona_ranking_port(),
-            agent_catalog=self.get_agent_catalog(),
-            application_tracing=self.get_application_tracing_port(),
-        )
-        return self._meta_planner
+        return self._engagement.get_meta_planner()
 
     def wire_engagement_egress(self) -> None:
-        from cys_core.infrastructure.engagement.factory import reset_engagement_egress_cache
-
-        reset_engagement_egress_cache()
+        self._engagement.wire_engagement_egress()
 
     def get_start_engagement(self):
-        if self._start_engagement is not None:
-            return self._start_engagement
-        from cys_core.application.use_cases.start_engagement import StartEngagement
-
-        self._start_engagement = StartEngagement(
-            engagement_store=self.get_engagement_state_store(),
-            dispatch=self.get_dispatch_event(),
-            egress=self.get_engagement_egress(),
-            meta_planner=self.get_meta_planner(),
-            correlation_id_port=self.get_correlation_id_port(),
-            trace_flush_port=self.get_trace_flush_port(),
-            application_tracing=self.get_application_tracing_port(),
-        )
-        return self._start_engagement
+        return self._engagement.get_start_engagement()
 
     def get_engagement_state_store(self):
-        from cys_core.infrastructure.engagement.store_factory import get_engagement_state_store
-
-        return get_engagement_state_store(self.settings)
-
-    def get_workspace_store(self):
-        if self._workspace_store is not None:
-            return self._workspace_store
-        from cys_core.infrastructure.persistence_store_factory import resolve_persistence_store
-        from cys_core.infrastructure.workspace.memory_store import InMemoryWorkspaceStore
-        from cys_core.infrastructure.workspace.postgres_store import PostgresWorkspaceStore
-
-        def _use_postgres(settings: Settings) -> bool:
-            connector = settings.workspace_store_connector.lower()
-            if connector == "memory":
-                return False
-            if connector == "postgres":
-                return True
-            return not settings.use_memory_fallback and settings.stage != "test"
-
-        self._workspace_store = resolve_persistence_store(
-            self.settings,
-            connector=self.settings.workspace_store_connector,
-            use_postgres=_use_postgres,
-            postgres_factory=PostgresWorkspaceStore,
-            memory_factory=InMemoryWorkspaceStore,
-            fallback_label="workspace_store",
-        )
-        return self._workspace_store
+        return self._engagement.get_engagement_state_store()
 
     def get_engagement_egress(self):
-        from cys_core.infrastructure.engagement.factory import get_engagement_egress
-
-        return get_engagement_egress(self.settings)
+        return self._engagement.get_engagement_egress()
 
     def get_reconcile_stuck_engagements(self):
-        from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
-        from cys_core.application.use_cases.reconcile_stuck_engagements import ReconcileStuckEngagements
-
-        settings = self.settings
-        return ReconcileStuckEngagements(
-            engagement_store=self.get_engagement_state_store(),
-            job_store=self.get_job_store(),
-            enqueue_synthesis_job=EnqueueSynthesisJob(
-                engagement_store=self.get_engagement_state_store(),
-                queue=self.get_job_queue(),
-                job_store=self.get_job_store(),
-                engagement_egress=self.get_engagement_egress(),
-            ),
-            queue=self.get_job_queue(),
-            enqueue_worker_jobs=self.get_orchestration_port(),
-            metrics=self.get_metrics_port(),
-            default_job_timeout_s=settings.worker_job_timeout,
-            synth_job_timeout_s=settings.worker_job_timeout_synth or settings.worker_job_timeout,
-            planner_timeout_seconds=settings.planner_timeout_seconds,
-        )
+        return self._engagement.get_reconcile_stuck_engagements()
 
     def get_bus_ingress_router(self):
-        if self._bus_router is not None:
-            return self._bus_router
-        from interfaces.control_plane.bus_router_wiring import build_bus_ingress_router
-
-        self._bus_router = build_bus_ingress_router(self)
-        return self._bus_router
+        return self._engagement.get_bus_ingress_router()
 
     def wire_bus_router(self) -> None:
-        from cys_core.infrastructure.bus_transport import DELIVERY_TOPIC, get_bus_transport
-
-        router = self.get_bus_ingress_router()
-        transport = get_bus_transport()
-
-        async def _on_delivery(envelope: dict) -> None:
-            await router.route_envelope(envelope)
-
-        transport.subscribe(DELIVERY_TOPIC, _on_delivery)
-
-    def get_job_queue(self, persona: str | None = None) -> JobQueueConnector:
-        from cys_core.infrastructure.queue import get_job_queue
-
-        return get_job_queue(persona=persona, settings=self.settings)
-
-    def get_bus_transport(self) -> AgentTransportConnector:
-        from cys_core.infrastructure.bus_transport import get_bus_transport
-
-        return get_bus_transport(settings=self.settings)
-
-    def get_sandbox_connector(self) -> SandboxConnector:
-        from cys_core.infrastructure.sandbox import get_sandbox_connector
-
-        return get_sandbox_connector(settings=self.settings)
-
-    def get_persistence_context(self) -> PersistenceContext:
-        from cys_core.persistence import get_persistence_connector
-
-        return get_persistence_connector(self.settings.persistence_connector).open()
-
-    async def get_async_persistence_context(self) -> PersistenceContext:
-        from cys_core.persistence import get_persistence_connector
-
-        connector = get_persistence_connector(self.settings.persistence_connector)
-        return await connector.open_async()
-
-    def get_job_store(self):
-        from interfaces.control_plane.job_store import get_job_store
-
-        return get_job_store(self.settings)
+        self._engagement.wire_bus_router()
 
     def get_orchestration_port(self):
-        if self._orchestration is not None:
-            return self._orchestration
-        from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
-
-        cfg = self.bus_guard_config()
-        self._orchestration = EnqueueWorkerJobs(
-            queue=self.get_job_queue(),
-            job_store=self.get_job_store(),
-            engagement_store=self.get_engagement_state_store(),
-            bus_guard=self.get_engagement_bus_guard(),
-            metrics=self.get_metrics_port(),
-            max_jobs_per_engagement=cfg.max_jobs_per_engagement,
-            max_revisions_per_persona=self.settings.bus_max_revisions_per_persona,
-        )
-        return self._orchestration
-
-    def get_episodic_memory_store(self) -> EpisodicMemoryStore:
-        from cys_core.infrastructure.memory.factory import get_episodic_memory_store
-
-        return get_episodic_memory_store(self.settings)
-
-    def get_memory_read_service(self):
-        from cys_core.infrastructure.memory.factory import get_memory_read_service
-
-        return get_memory_read_service(self.settings)
-
-    def get_memory_write_service(self):
-        from cys_core.infrastructure.memory.factory import get_memory_write_service
-
-        return get_memory_write_service(self.settings)
-
-    def get_attachment_store(self):
-        from cys_core.infrastructure.runs.factory import get_attachment_store
-
-        return get_attachment_store()
-
-    def get_catalog_version(self) -> int:
-        from cys_core.infrastructure.catalog.catalog_registry import get_catalog_version_metric
-
-        return get_catalog_version_metric()
-
-    def get_seed_catalog(self):
-        from bootstrap.catalog_loader import load_profile_pack
-        from cys_core.application.use_cases.seed_catalog import SeedCatalog
-        from cys_core.infrastructure.catalog.tool_catalog_seed import load_tools_for_seed
-
-        return SeedCatalog(
-            self.get_agent_catalog(),
-            tool_catalog=self.get_tool_catalog(),
-            seed_loaders=self.get_catalog_seed_loaders_port(),
-            load_profile_pack=load_profile_pack,
-            load_tools_for_seed=load_tools_for_seed,
-            reload=self.reload_catalog,
-            mutation=self.get_catalog_mutation_service(),
-        )
-
-    def get_trace_backend(self):
-        from bootstrap.observability_factory import build_trace_backend, resolve_trace_backend_name
-
-        return build_trace_backend(resolve_trace_backend_name(self.settings), cfg=self.settings)
-
-    def get_prompt_backend(self):
-        from bootstrap.observability_factory import build_prompt_backend
-
-        return build_prompt_backend(self.settings.obs_prompt_backend)
-
-    def get_judge_backend(self):
-        from bootstrap.observability_factory import build_judge_backend
-
-        name = self.settings.obs_judge_backend
-        return build_judge_backend(name)
-
-    def get_eval_backend(self):
-        from bootstrap.observability_factory import build_eval_backend
-
-        return build_eval_backend(self.settings.obs_eval_backend)
-
-    def get_prompt_resolver(self):
-        from cys_core.application.observability.prompt_resolver import PromptResolver
-
-        return PromptResolver(self.get_prompt_backend())
-
-    def get_token_verifier(self):
-        from cys_core.infrastructure.auth.factory import build_token_verifier
-
-        return build_token_verifier(self.settings)
-
-    def get_authz_service(self):
-        if self._authz_service is not None:
-            return self._authz_service
-        from cys_core.application.authz.service import AuthzService
-        from cys_core.application.authz.audit import log_authz_deny
-        from cys_core.observability.authz_trace import record_authz_decision
-        from cys_core.observability.metrics import metrics
-
-        self._authz_service = AuthzService(
-            self.get_authz_port(),
-            mode=self.settings.authz_mode,
-            metrics=metrics,
-            record_decision=lambda decision, relation, object: record_authz_decision(
-                decision, relation=relation, object=object
-            ),
-            log_deny=log_authz_deny,
-        )
-        return self._authz_service
-
-    def get_authz_port(self):
-        if self._authz_port is not None:
-            return self._authz_port
-        settings = self.settings
-        if settings.authz_mode != "off" and settings.openfga_api_url.strip() and settings.openfga_store_id.strip():
-            from cys_core.infrastructure.authz.openfga import OpenFgaAuthzPort
-
-            self._authz_port = OpenFgaAuthzPort(
-                api_url=settings.openfga_api_url,
-                store_id=settings.openfga_store_id,
-                api_token=settings.openfga_api_token,
-                model_id=settings.openfga_model_id,
-            )
-        else:
-            from cys_core.infrastructure.authz.noop import NoopAuthzPort
-
-            self._authz_port = NoopAuthzPort()
-        return self._authz_port
-
-    def get_agent_catalog(self):
-        return get_agent_catalog()
-
-    def get_skill_catalog(self):
-        return get_skill_catalog()
-
-    def get_plan_catalog(self):
-        return get_plan_catalog()
-
-    def get_mcp_catalog(self):
-        return get_mcp_catalog()
-
-    def get_tool_catalog(self):
-        return get_tool_catalog()
-
-    def get_catalog_write_gate(self):
-        return get_catalog_write_gate()
-
-    def get_catalog_audit(self):
-        return get_catalog_audit()
-
-    def get_agent_registry_port(self):
-        if self._agent_registry_port is not None:
-            return self._agent_registry_port
-        from cys_core.infrastructure.registry.agent_registry_adapter import build_agent_registry_port
-
-        self._agent_registry_port = build_agent_registry_port()
-        return self._agent_registry_port
-
-    def get_schema_registry_port(self):
-        if self._schema_registry_port is not None:
-            return self._schema_registry_port
-        from cys_core.infrastructure.registry.schema_registry_adapter import build_schema_registry_port
-
-        self._schema_registry_port = build_schema_registry_port()
-        return self._schema_registry_port
-
-    def get_tool_registry_port(self):
-        if self._tool_registry_port is not None:
-            return self._tool_registry_port
-        from cys_core.infrastructure.registry.tool_registry_adapter import build_tool_registry_port
-
-        self._tool_registry_port = build_tool_registry_port()
-        return self._tool_registry_port
-
-    def get_persona_ranking_port(self):
-        if self._persona_ranking_port is not None:
-            return self._persona_ranking_port
-        from cys_core.infrastructure.catalog.persona_ranking import build_persona_ranking_port
-
-        self._persona_ranking_port = build_persona_ranking_port(
-            catalog=self.get_agent_catalog(),
-            policy_port=self.get_profile_policy_port(),
-        )
-        return self._persona_ranking_port
-
-    def get_skill_registry_port(self):
-        if self._skill_registry_port is not None:
-            return self._skill_registry_port
-        from cys_core.infrastructure.registry.skill_registry_adapter import build_skill_registry_port
-
-        self._skill_registry_port = build_skill_registry_port()
-        return self._skill_registry_port
-
-    def get_resource_source_port(self):
-        if self._resource_source_port is not None:
-            return self._resource_source_port
-        from cys_core.infrastructure.registry.resource_source_adapter import build_resource_source_port
-
-        self._resource_source_port = build_resource_source_port(
-            self.get_agent_registry_port(),
-            agent_catalog=self.get_agent_catalog(),
-        )
-        return self._resource_source_port
-
-    def get_agents_root_port(self):
-        if self._agents_root_port is not None:
-            return self._agents_root_port
-        from cys_core.infrastructure.registry.agents_root_adapter import build_agents_root_port
-
-        self._agents_root_port = build_agents_root_port()
-        return self._agents_root_port
-
-    def get_datasource_catalog_port(self):
-        if self._datasource_catalog_port is not None:
-            return self._datasource_catalog_port
-        from cys_core.infrastructure.datasources.catalog_adapter import build_datasource_catalog_port
-
-        self._datasource_catalog_port = build_datasource_catalog_port()
-        return self._datasource_catalog_port
-
-    def get_datasource_audit_port(self):
-        if self._datasource_audit_port is not None:
-            return self._datasource_audit_port
-        from cys_core.infrastructure.datasources.audit_adapter import build_datasource_audit_port
-
-        self._datasource_audit_port = build_datasource_audit_port()
-        return self._datasource_audit_port
-
-    def get_policy_merge_port(self):
-        if self._policy_merge_port is not None:
-            return self._policy_merge_port
-        from cys_core.infrastructure.catalog.policy_merge_adapter import build_policy_merge_port
-
-        self._policy_merge_port = build_policy_merge_port()
-        return self._policy_merge_port
-
-    def get_context_summarizer(self):
-        if self._context_summarizer is not None:
-            return self._context_summarizer
-        from cys_core.infrastructure.context.factory import get_context_summarizer
-
-        self._context_summarizer = get_context_summarizer()
-        return self._context_summarizer
-
-    def get_reflexion_store(self):
-        if self._reflexion_store is not None:
-            return self._reflexion_store
-        from cys_core.infrastructure.reflexion.memory import get_reflexion_store
-
-        self._reflexion_store = get_reflexion_store()
-        return self._reflexion_store
-
-    def get_catalog_mutation_service(self):
-        if self._catalog_mutation_service is not None:
-            return self._catalog_mutation_service
-        from cys_core.application.catalog_mutation_service import CatalogMutationService
-
-        self._catalog_mutation_service = CatalogMutationService(
-            write_gate=get_catalog_write_gate(reload=self.reload_catalog),
-            agent_catalog=self.get_agent_catalog(),
-            tool_catalog=self.get_tool_catalog(),
-            audit=self.get_catalog_audit(),
-            reload=self.reload_catalog,
-        )
-        return self._catalog_mutation_service
+        return self._engagement.get_orchestration_port()
 
     def get_plan_investigation(self):
-        if self._plan_investigation is not None:
-            return self._plan_investigation
-        from cys_core.application.use_cases.plan_investigation import PlanInvestigation
+        return self._engagement.get_plan_investigation()
 
-        self._plan_investigation = PlanInvestigation(
-            runtime=self.get_agent_runtime(),
-            engagement_store=self.get_engagement_state_store(),
-            resource_source=self.get_resource_source_port(),
-            persona_ranking=self.get_persona_ranking_port(),
-            agent_catalog=self.get_agent_catalog(),
-            application_tracing=self.get_application_tracing_port(),
-            engagement_egress=self.get_engagement_egress(),
-        )
-        return self._plan_investigation
+    def wire_bus_reload(self) -> None:
+        self._engagement.wire_bus_reload()
 
-    def get_profile_policy_port(self) -> ProfilePolicyLoader:
-        return self._policy_loader
+    # ------------------------------------------------------------------
+    # Persistence / queue / transport / sandbox / memory
+    # ------------------------------------------------------------------
 
-    def get_policy_resolver(self) -> ProfilePolicyResolver:
-        return self._resolver
+    def get_job_queue(self, persona: str | None = None) -> JobQueueConnector:
+        return self._persistence.get_job_queue(persona)
 
-    def get_policy_enforcement(self) -> PolicyEnforcementService:
-        return self._enforcement
+    def get_bus_transport(self) -> AgentTransportConnector:
+        return self._persistence.get_bus_transport()
+
+    def get_sandbox_connector(self) -> SandboxConnector:
+        return self._persistence.get_sandbox_connector()
+
+    def get_persistence_context(self) -> PersistenceContext:
+        return self._persistence.get_persistence_context()
+
+    async def get_async_persistence_context(self) -> PersistenceContext:
+        return await self._persistence.get_async_persistence_context()
+
+    def get_job_store(self):
+        return self._persistence.get_job_store()
+
+    def get_bus_dedup_store(self):
+        return self._persistence.get_bus_dedup_store()
+
+    def get_episodic_memory_store(self) -> EpisodicMemoryStore:
+        return self._persistence.get_episodic_memory_store()
+
+    def get_memory_read_service(self):
+        return self._persistence.get_memory_read_service()
+
+    def get_memory_write_service(self):
+        return self._persistence.get_memory_write_service()
+
+    def get_attachment_store(self):
+        return self._persistence.get_attachment_store()
+
+    def get_workspace_store(self):
+        return self._persistence.get_workspace_store()
+
+    def get_context_summarizer(self):
+        return self._persistence.get_context_summarizer()
+
+    def get_reflexion_store(self):
+        return self._persistence.get_reflexion_store()
+
+    # ------------------------------------------------------------------
+    # Catalog / registry ports
+    # ------------------------------------------------------------------
+
+    def get_product_pack_port(self):
+        return self._catalog.get_product_pack_port()
+
+    def get_catalog_seed_loaders_port(self):
+        return self._catalog.get_catalog_seed_loaders_port()
+
+    def get_policy_defaults_port(self):
+        return self._catalog.get_policy_defaults_port()
+
+    def get_application_settings_port(self):
+        return self._catalog.get_application_settings_port()
+
+    def get_catalog_version(self) -> int:
+        return self._catalog.get_catalog_version()
+
+    def get_seed_catalog(self):
+        return self._catalog.get_seed_catalog()
+
+    def get_agent_catalog(self):
+        return self._catalog.get_agent_catalog()
+
+    def get_skill_catalog(self):
+        return self._catalog.get_skill_catalog()
+
+    def get_plan_catalog(self):
+        return self._catalog.get_plan_catalog()
+
+    def get_mcp_catalog(self):
+        return self._catalog.get_mcp_catalog()
+
+    def get_tool_catalog(self):
+        return self._catalog.get_tool_catalog()
+
+    def get_catalog_write_gate(self):
+        return self._catalog.get_catalog_write_gate()
+
+    def get_catalog_audit(self):
+        return self._catalog.get_catalog_audit()
+
+    def get_agent_registry_port(self):
+        return self._catalog.get_agent_registry_port()
+
+    def get_schema_registry_port(self):
+        return self._catalog.get_schema_registry_port()
+
+    def get_tool_registry_port(self):
+        return self._catalog.get_tool_registry_port()
+
+    def get_persona_ranking_port(self):
+        return self._catalog.get_persona_ranking_port()
+
+    def get_skill_registry_port(self):
+        return self._catalog.get_skill_registry_port()
+
+    def get_resource_source_port(self):
+        return self._catalog.get_resource_source_port()
+
+    def get_agents_root_port(self):
+        return self._catalog.get_agents_root_port()
+
+    def get_datasource_catalog_port(self):
+        return self._catalog.get_datasource_catalog_port()
+
+    def get_datasource_audit_port(self):
+        return self._catalog.get_datasource_audit_port()
+
+    def get_policy_merge_port(self):
+        return self._catalog.get_policy_merge_port()
+
+    def get_catalog_mutation_service(self):
+        return self._catalog.get_catalog_mutation_service()
 
     def reload_catalog(self) -> None:
-        reload_agent_registry()
+        self._catalog.reload_catalog()
+
+    # ------------------------------------------------------------------
+    # Tools
+    # ------------------------------------------------------------------
+
+    def get_tool_chain_policy(self):
+        return self._tools.get_tool_chain_policy()
+
+    def get_invoke_tool(self):
+        return self._tools.get_invoke_tool()
+
+    def get_tool_execution_gateway(self):
+        return self._tools.get_tool_execution_gateway()
+
+    # ------------------------------------------------------------------
+    # Auth / authz
+    # ------------------------------------------------------------------
+
+    def get_token_verifier(self):
+        return self._auth.get_token_verifier()
+
+    def get_authz_service(self):
+        return self._auth.get_authz_service()
+
+    def get_authz_port(self):
+        return self._auth.get_authz_port()
+
+    # ------------------------------------------------------------------
+    # Observability
+    # ------------------------------------------------------------------
+
+    def get_metrics_port(self):
+        return self._observability.get_metrics_port()
+
+    def get_correlation_id_port(self):
+        return self._observability.get_correlation_id_port()
+
+    def get_worker_tracing_port(self):
+        return self._observability.get_worker_tracing_port()
+
+    def get_application_tracing_port(self):
+        return self._observability.get_application_tracing_port()
+
+    def get_trace_flush_port(self):
+        return self._observability.get_trace_flush_port()
+
+    def get_trace_backend(self):
+        return self._observability.get_trace_backend()
+
+    def get_prompt_backend(self):
+        return self._observability.get_prompt_backend()
+
+    def get_judge_backend(self):
+        return self._observability.get_judge_backend()
+
+    def get_eval_backend(self):
+        return self._observability.get_eval_backend()
+
+    def get_prompt_resolver(self):
+        return self._observability.get_prompt_resolver()
+
+    # ------------------------------------------------------------------
+    # Policy (built eagerly in __init__)
+    # ------------------------------------------------------------------
+
+    def get_profile_policy_port(self) -> ProfilePolicyLoader:
+        return self._policy.get_profile_policy_port()
+
+    def get_policy_resolver(self) -> ProfilePolicyResolver:
+        return self._policy.get_policy_resolver()
+
+    def get_policy_enforcement(self) -> PolicyEnforcementService:
+        return self._policy.get_policy_enforcement()
+
+    # ------------------------------------------------------------------
+    # Cross-cutting bootstrap wiring (touches multiple sub-containers)
+    # ------------------------------------------------------------------
 
     def wire_hitl_pause(self) -> None:
         from cys_core.infrastructure.kafka_paused import publish_paused_job_sync
