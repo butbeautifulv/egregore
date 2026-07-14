@@ -5,6 +5,7 @@ import asyncio
 import structlog
 
 from bootstrap.container import get_container
+from bootstrap.settings import get_settings
 from cys_core.infrastructure.daemon_runner import run_poll_daemon
 from cys_core.observability.langfuse_client import flush_langfuse
 from cys_core.observability.logging_setup import configure_logging
@@ -21,11 +22,12 @@ class WorkerDaemon:
         persona: str,
         *,
         max_jobs: int | None = None,
-        idle_timeout: float = 0.0,
+        idle_timeout: float | None = None,
     ) -> None:
+        settings = get_settings()
         self.persona = persona
         self.max_jobs = max_jobs
-        self.idle_timeout = idle_timeout
+        self.idle_timeout = settings.worker_idle_timeout if idle_timeout is None else idle_timeout
         self._stop = False
 
     def request_stop(self) -> None:
@@ -89,9 +91,11 @@ def run_worker_daemon(
     persona: str,
     *,
     max_jobs: int | None = None,
-    idle_timeout: float = 0.0,
+    idle_timeout: float | None = None,
 ) -> int:
-    return asyncio.run(WorkerDaemon(persona, max_jobs=max_jobs, idle_timeout=idle_timeout).run())
+    settings = get_settings()
+    resolved_idle = settings.worker_idle_timeout if idle_timeout is None else idle_timeout
+    return asyncio.run(WorkerDaemon(persona, max_jobs=max_jobs, idle_timeout=resolved_idle).run())
 
 
 if __name__ == "__main__":
@@ -100,11 +104,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Worker job consumer daemon")
     parser.add_argument("--persona", required=True)
     parser.add_argument("--max-jobs", type=int, default=0)
-    parser.add_argument("--idle-timeout", type=float, default=0.0)
+    parser.add_argument("--idle-timeout", type=float, default=None)
     args = parser.parse_args()
+    settings = get_settings()
     processed = run_worker_daemon(
         args.persona,
         max_jobs=args.max_jobs if args.max_jobs > 0 else None,
-        idle_timeout=args.idle_timeout,
+        idle_timeout=settings.worker_idle_timeout if args.idle_timeout is None else args.idle_timeout,
     )
     raise SystemExit(0 if processed >= 0 else 1)

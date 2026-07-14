@@ -42,6 +42,7 @@ def build_bus_ingress_router(container: Container) -> BusIngressRouter:
         },
         orchestration_enqueue=_enqueue_from_bus,
         egress_publish=_egress_publish,
+        seen_ttl_seconds=container.settings.bus_seen_ttl_seconds,
         dedup_store=container.get_bus_dedup_store(),
         bus_guard=container.get_engagement_bus_guard(),
         metrics=container.get_metrics_port(),

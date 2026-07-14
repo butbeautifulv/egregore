@@ -56,6 +56,10 @@ def build_agent_bus(
 _MAX_DEPENDENCY_DEFERRALS = 10
 
 
+def _max_dependency_deferrals() -> int:
+    return get_container().settings.worker_max_dependency_deferrals
+
+
 class WorkerOrchestrator:
     """Dequeue → budget → worker pipeline execution."""
 
@@ -106,7 +110,7 @@ class WorkerOrchestrator:
                 and job.depends_on_persona not in failed
             ):
                 deferrals = int(job.payload.get("dependency_deferrals", 0))
-                if deferrals >= _MAX_DEPENDENCY_DEFERRALS:
+                if deferrals >= _max_dependency_deferrals():
                     await self._run_worker_job.mark_runtime_failure(
                         job,
                         "dependency_timeout",
@@ -166,7 +170,7 @@ class WorkerOrchestrator:
                     persona=job.persona,
                     phase=str(job.payload.get("phase") or ""),
                 )
-                soft_timeout = job_timeout * 0.9
+                soft_timeout = job_timeout * container.settings.worker_soft_timeout_fraction
                 try:
                     return await asyncio.wait_for(
                         self._run_worker_job.execute(job, budgeted, session_id, job_state),
@@ -230,7 +234,7 @@ class WorkerOrchestrator:
             structlog.contextvars.unbind_contextvars("persona", "job_id", "correlation_id", "work_kind")
 
     async def process_next(self) -> RunResult | None:
-        job = await self.queue.adequeue(timeout=2.0)
+        job = await self.queue.adequeue(timeout=get_container().settings.worker_dequeue_timeout_s)
         if job is None:
             return None
         return await self.run_job(job)
