@@ -73,6 +73,16 @@ class Settings(BaseSettings):
         validation_alias="WORKER_JOB_TIMEOUT_SYNTH",
         description="Optional override for synthesis phase jobs (0 = use WORKER_JOB_TIMEOUT).",
     )
+    llm_thinking_token_budget: int = Field(
+        default=0,
+        validation_alias="LLM_THINKING_TOKEN_BUDGET",
+        description=(
+            "Sent as extra_body.thinking_token_budget on every LiteLLM call (0 = unset, "
+            "no limit). Requires the vLLM server to have --reasoning-config enabled in "
+            "addition to --reasoning-parser, otherwise vLLM rejects the request — this "
+            "setting alone does not enable server-side enforcement."
+        ),
+    )
     engagement_async_planning: bool = Field(
         default=True,
         validation_alias="ENGAGEMENT_ASYNC_PLANNING",

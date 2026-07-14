@@ -149,6 +149,7 @@ class LiteLLMChatModel(BaseChatModel):
     api_base: str | None = None
     temperature: float = Field(default=0.1)
     request_timeout: float | None = None
+    thinking_token_budget: int = Field(default=0)
     bound_tools: list[dict[str, Any]] | None = None
     bound_tool_choice: str | dict[str, Any] | None = None
 
@@ -197,6 +198,10 @@ class LiteLLMChatModel(BaseChatModel):
             if choice is not None:
                 call_kwargs["tool_choice"] = choice
         call_kwargs.update(kwargs)
+        if self.thinking_token_budget > 0:
+            extra_body = dict(call_kwargs.get("extra_body") or {})
+            extra_body.setdefault("thinking_token_budget", self.thinking_token_budget)
+            call_kwargs["extra_body"] = extra_body
         if call_kwargs.get("tools"):
             choice = _normalize_tool_choice(call_kwargs.get("tool_choice"))
             if choice is not None:
@@ -279,6 +284,7 @@ class LiteLLMProvider:
         base_url: str | None,
         temperature: float,
         request_timeout: float | None = None,
+        thinking_token_budget: int = 0,
     ) -> BaseChatModel:
         import os
 
@@ -295,4 +301,5 @@ class LiteLLMProvider:
             api_base=base_url or None,
             temperature=temperature,
             request_timeout=request_timeout,
+            thinking_token_budget=thinking_token_budget,
         )

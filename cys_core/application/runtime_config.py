@@ -10,6 +10,7 @@ class LlmSettings(TypedDict):
     base_url: str | None
     temperature: float
     request_timeout: float
+    thinking_token_budget: int
 
 _POLICY_GETTER_DEPRECATION = (
     "Policy getters in runtime_config are deprecated; use "
@@ -33,6 +34,7 @@ _llm_api_key: str = ""
 _llm_base_url: str | None = None
 _llm_temperature: float = 0.1
 _llm_request_timeout: float = 120.0
+_llm_thinking_token_budget: int = 0
 _veil_mcp_url: str = "http://localhost:8091/mcp"
 _veil_mcp_enabled: bool = True
 _veil_mcp_timeout: float = 30.0
@@ -89,6 +91,7 @@ def configure_from_settings(settings: Any) -> None:
     global _max_spawn_depth, _use_dynamic_catalog, _use_memory_fallback
     global _postgres_url, _default_job_recursion_limit, _triage_recursion_limit
     global _llm_model, _llm_api_key, _llm_base_url, _llm_temperature, _llm_request_timeout
+    global _llm_thinking_token_budget
     global _veil_mcp_url, _veil_mcp_enabled, _veil_mcp_timeout
     global _siem_mcp_url, _siem_mcp_enabled, _siem_mcp_timeout
     global _nessus_mcp_url, _nessus_mcp_enabled, _nessus_mcp_timeout
@@ -120,6 +123,7 @@ def configure_from_settings(settings: Any) -> None:
     _llm_base_url = settings.llm_base_url
     _llm_temperature = settings.llm_temperature
     _llm_request_timeout = settings.llm_request_timeout
+    _llm_thinking_token_budget = settings.llm_thinking_token_budget
     _veil_mcp_url = settings.veil_mcp_url
     _veil_mcp_enabled = settings.veil_mcp_enabled
     _veil_mcp_timeout = settings.veil_mcp_timeout
@@ -254,6 +258,7 @@ def get_llm_settings() -> LlmSettings:
         "base_url": _llm_base_url,
         "temperature": _llm_temperature,
         "request_timeout": _llm_request_timeout,
+        "thinking_token_budget": _llm_thinking_token_budget,
     }
 
 
@@ -402,6 +407,7 @@ def get_reasoning_llm_settings() -> LlmSettings:
         "base_url": _llm_base_url,
         "temperature": _reasoning_temperature,
         "request_timeout": _llm_request_timeout,
+        "thinking_token_budget": _llm_thinking_token_budget,
     }
 
 

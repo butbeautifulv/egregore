@@ -29,6 +29,7 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
             "base_url": "https://llm.example",
             "temperature": 0.2,
             "request_timeout": 120.0,
+            "thinking_token_budget": 0,
         },
     )
 
@@ -126,6 +127,39 @@ def test_litellm_message_conversion_and_sync_generation(monkeypatch):
     )
     assert isinstance(created, provider.LiteLLMChatModel)
     assert created.api_key is None
+
+
+@pytest.mark.unit
+def test_litellm_thinking_token_budget_sent_via_extra_body(monkeypatch):
+    from cys_core.llm import litellm_provider as provider
+
+    calls = []
+
+    def fake_completion(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="answer"))])
+
+    monkeypatch.setattr(provider.litellm, "completion", fake_completion)
+
+    # Default (0) — no extra_body injected at all.
+    unset_model = provider.LiteLLMChatModel(model="test-model", temperature=0.1)
+    unset_model._generate([HumanMessage(content="hi")])
+    assert "extra_body" not in calls[-1]
+
+    budgeted_model = provider.LiteLLMChatModel(
+        model="test-model", temperature=0.1, thinking_token_budget=50
+    )
+    budgeted_model._generate([HumanMessage(content="hi")])
+    assert calls[-1]["extra_body"] == {"thinking_token_budget": 50}
+
+    # Caller-supplied extra_body is preserved alongside the injected key.
+    budgeted_model._generate([HumanMessage(content="hi")], extra_body={"other": "x"})
+    assert calls[-1]["extra_body"] == {"other": "x", "thinking_token_budget": 50}
+
+    created = provider.LiteLLMProvider().create(
+        model="m", api_key="", base_url=None, temperature=0.1, thinking_token_budget=25
+    )
+    assert created.thinking_token_budget == 25
 
 
 @pytest.mark.unit
