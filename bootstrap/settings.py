@@ -339,6 +339,20 @@ class Settings(BaseSettings):
         default="cys-agi-worker:latest",
         validation_alias="K8S_WORKER_IMAGE",
     )
+    k8s_sandbox_ttl_seconds: float = Field(
+        default=600.0,
+        validation_alias="K8S_SANDBOX_TTL_SECONDS",
+        description="Hard cap (Job activeDeadlineSeconds) forcing kubelet to kill the "
+        "sandbox pod if the agent hangs, and the TTL used for the sandbox's short-lived "
+        "credential (sandbox_tokens.mint_sandbox_token).",
+    )
+    k8s_sandbox_ready_timeout_s: float = Field(
+        default=30.0,
+        validation_alias="K8S_SANDBOX_READY_TIMEOUT_S",
+        description="Max time to wait for the sandbox Job's pod to be admitted/running "
+        "before create() fails closed instead of handing back credentials for a sandbox "
+        "that never actually started.",
+    )
 
     qdrant_url: str = Field(default="http://localhost:6333", validation_alias="QDRANT_URL")
     use_qdrant: bool = Field(default=False, validation_alias="USE_QDRANT")

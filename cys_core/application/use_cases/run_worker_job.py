@@ -364,6 +364,15 @@ class RunWorkerJob:
         return trace_meta.get("metadata", {})
 
     async def _create_sandbox(self, job: WorkerJob, run_id: str, investigation_id: str, session_id: str):
+        # NOTE(k8s-sandbox-followup, backlog Q2-1): `sandbox.acreate()` provisions and
+        # (for K8sSandboxConnector) genuinely waits for the sandbox resource to be
+        # ready, failing closed instead of silently falling back to unsandboxed
+        # execution — see cys_core/infrastructure/k8s_sandbox.py docstring. The agent
+        # LLM/tool loop below (`_run_agent_with_retries`) still runs in *this* process,
+        # not inside the sandbox's container/pod; tool calls are routed to it via the
+        # MCP Tool Gateway bound to `creds.sandbox_id` instead. Moving the agent loop
+        # itself into the sandboxed pod (dispatcher pattern) is the remaining piece of
+        # Q2-1, not done here.
         with self._worker_tracing.span(
             "worker.sandbox.create",
             persona=job.persona,
