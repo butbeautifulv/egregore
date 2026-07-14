@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request
@@ -39,7 +40,16 @@ def require_relation(object_type: str, relation: str, object_id_param: str):
             raise HTTPException(status_code=400, detail={"code": "AUTHZ_OBJECT_ID_MISSING"})
         user = f"user:{auth.sub}" if auth and auth.sub else _authz_user_from_bearer(authorization)
         try:
-            authz.check(user, relation, f"{object_type}:{object_id}")
+            # authz.check() ultimately performs a blocking network round-trip
+            # to OpenFGA (OpenFgaAuthzPort._run() bridges to asyncio.run() in
+            # a worker thread and blocks on future.result() when called from
+            # a running loop, which is exactly this coroutine). This
+            # dependency runs on every authz-checked request, so without
+            # offloading it here every concurrent request shares the same
+            # stall on the FastAPI event loop for the duration of each check
+            # (same pattern used elsewhere in this codebase for sync I/O
+            # inside async def, e.g. cys_core/infrastructure/k8s_sandbox.py).
+            await asyncio.to_thread(authz.check, user, relation, f"{object_type}:{object_id}")
         except AuthzDenied as exc:
             raise authz_denied_http() from exc
 
