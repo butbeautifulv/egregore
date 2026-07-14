@@ -106,7 +106,10 @@ def search_archived_webpage(url: str, timestamp: str = "") -> dict[str, Any]:
         params["timestamp"] = timestamp
     api = "https://archive.org/wayback/available?" + urllib.parse.urlencode(params)
     try:
-        with urllib.request.urlopen(api, timeout=20) as resp:
+        from bootstrap.settings import get_settings
+
+        timeout_s = get_settings().wayback_api_timeout_s
+        with urllib.request.urlopen(api, timeout=timeout_s) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         return {"success": False, "error": str(exc)}

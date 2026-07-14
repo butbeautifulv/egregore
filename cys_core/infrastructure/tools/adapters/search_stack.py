@@ -44,12 +44,16 @@ def _judge_search_relevance_llm(query: str, results_text: str) -> bool | None:
         from cys_core.domain.workers.job_budget import JobBudgetTracker
         from cys_core.llm.reasoning import get_reasoning_model_connector
 
-        if not get_search_judge_llm() or not get_settings().reasoning_model.strip():
+        settings = get_settings()
+        if not get_search_judge_llm() or not settings.reasoning_model.strip():
             return None
-        JobBudgetTracker.record_tokens("judge:search", JobBudgetTracker.estimate_tokens(results_text[:2000]))
+        JobBudgetTracker.record_tokens(
+            "judge:search",
+            JobBudgetTracker.estimate_tokens(results_text[: settings.search_judge_input_max]),
+        )
         model = get_reasoning_model_connector().create_model()
         prompt = (
-            f"Query: {query}\nResults:\n{results_text[:4000]}\n"
+            f"Query: {query}\nResults:\n{results_text[: settings.search_judge_prompt_max]}\n"
             "Did the results answer the query? Reply YES or NO only."
         )
         response = model.invoke(prompt)
@@ -63,21 +67,24 @@ def _judge_search_relevance_llm(query: str, results_text: str) -> bool | None:
         return None
 
 
-def perplexity_search(query: str, *, limit: int = 5) -> dict:
+def perplexity_search(query: str, *, limit: int | None = None) -> dict:
+    from bootstrap.settings import get_settings
     from cys_core.application.runtime_config import get_perplexity_api_key
 
+    settings = get_settings()
+    resolved_limit = limit if limit is not None else settings.perplexity_search_default_limit
     key = get_perplexity_api_key()
     if not key:
         return {"success": False, "error": "PERPLEXITY_API_KEY not set", "results": []}
     body = json.dumps({"model": "sonar", "messages": [{"role": "user", "content": query}]}).encode("utf-8")
     req = urllib.request.Request(
-        "https://api.perplexity.ai/chat/completions",
+        settings.perplexity_api_url,
         data=body,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=settings.perplexity_api_timeout_s) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         return {"success": False, "error": str(exc), "results": []}
@@ -85,17 +92,25 @@ def perplexity_search(query: str, *, limit: int = 5) -> dict:
     return {"success": bool(content), "results": [{"snippet": content}], "provider": "perplexity"}
 
 
-def jina_search(query: str, *, limit: int = 5) -> dict:
+def jina_search(query: str, *, limit: int | None = None) -> dict:
+    from bootstrap.settings import get_settings
     from cys_core.application.runtime_config import get_jina_api_key
 
+    settings = get_settings()
+    del limit  # Jina returns a single synthesized snippet; limit kept for API symmetry.
     key = get_jina_api_key()
     if not key:
         return {"success": False, "error": "JINA_API_KEY not set", "results": []}
-    url = "https://s.jina.ai/?" + urllib.parse.urlencode({"q": query})
+    base = settings.jina_search_api_url.rstrip("/?")
+    url = base + "/?" + urllib.parse.urlencode({"q": query})
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=settings.jina_search_api_timeout_s) as resp:
             text = resp.read().decode("utf-8")
     except Exception as exc:
         return {"success": False, "error": str(exc), "results": []}
-    return {"success": bool(text.strip()), "results": [{"snippet": text[:8000]}], "provider": "jina"}
+    return {
+        "success": bool(text.strip()),
+        "results": [{"snippet": text[: settings.jina_search_snippet_max]}],
+        "provider": "jina",
+    }

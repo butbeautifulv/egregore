@@ -7,8 +7,12 @@ from cys_core.infrastructure.http_client import request_json
 from bootstrap.settings import get_settings
 
 
+def _cap_siem_limit(limit: int) -> int:
+    return max(1, min(limit, get_settings().siem_search_max_limit))
+
+
 def _mock_search(*, query: str, time_range: str, limit: int) -> dict[str, Any]:
-    capped = max(1, min(limit, 100))
+    capped = _cap_siem_limit(limit)
     return {
         "query": query,
         "time_range": time_range,
@@ -36,12 +40,13 @@ def _mock_search(*, query: str, time_range: str, limit: int) -> dict[str, Any]:
 
 
 def _http_search(*, query: str, time_range: str, limit: int, base_url: str) -> dict[str, Any]:
-    capped = max(1, min(limit, 100))
+    settings = get_settings()
+    capped = _cap_siem_limit(limit)
     url = f"{base_url.rstrip('/')}/search"
     response = request_json(
         "GET",
         url,
-        timeout=10.0,
+        timeout=settings.siem_http_search_timeout_s,
         params={"q": query, "time_range": time_range, "limit": capped, "readonly": "true"},
     )
     response.raise_for_status()
@@ -61,7 +66,7 @@ def _http_search(*, query: str, time_range: str, limit: int, base_url: str) -> d
 
 
 def _mcp_search(*, query: str, time_range: str, limit: int) -> dict[str, Any]:
-    capped = max(1, min(limit, 100))
+    capped = _cap_siem_limit(limit)
     result = call_siem_mcp_tool("search_events", {"where": query, "limit": capped})
     if not result.get("success"):
         return {
@@ -87,14 +92,21 @@ def _mcp_search(*, query: str, time_range: str, limit: int) -> dict[str, Any]:
 def query_siem_readonly_search(
     *,
     query: str,
-    time_range: str = "24h",
-    limit: int = 50,
+    time_range: str | None = None,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     """Read-only SIEM search — MCP when SIEM_MCP_ENABLED, else mock or legacy HTTP."""
     settings = get_settings()
-    capped = max(1, min(limit, 100))
+    resolved_time_range = time_range or settings.siem_search_default_time_range
+    resolved_limit = limit if limit is not None else settings.siem_search_default_limit
+    capped = _cap_siem_limit(resolved_limit)
     if settings.siem_mcp_enabled and siem_mcp_enabled():
-        return _mcp_search(query=query, time_range=time_range, limit=capped)
+        return _mcp_search(query=query, time_range=resolved_time_range, limit=capped)
     if settings.siem_adapter.lower() == "http" and settings.siem_base_url:
-        return _http_search(query=query, time_range=time_range, limit=capped, base_url=settings.siem_base_url)
-    return _mock_search(query=query, time_range=time_range, limit=capped)
+        return _http_search(
+            query=query,
+            time_range=resolved_time_range,
+            limit=capped,
+            base_url=settings.siem_base_url,
+        )
+    return _mock_search(query=query, time_range=resolved_time_range, limit=capped)
