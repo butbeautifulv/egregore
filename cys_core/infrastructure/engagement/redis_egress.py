@@ -12,15 +12,13 @@ from cys_core.infrastructure.redis_client import ResilientRedisClient
 
 logger = structlog.get_logger(__name__)
 
-_EGRESS_TTL_SECONDS = 86_400
-_MAX_EVENTS = 200
-
 
 class RedisEngagementEgress:
     """Redis-backed engagement egress shared across API and worker processes."""
 
     def __init__(self, redis_url: str | None = None, *, settings) -> None:
-        self._fallback = MemoryEngagementEgress(max_events=_MAX_EVENTS)
+        self._settings = settings
+        self._fallback = MemoryEngagementEgress(max_events=settings.engagement_egress_max_events)
         self._logged_backend = False
         self._redis_url = redis_url or settings.redis_url
         self._redis_client = ResilientRedisClient(self._redis_url)
@@ -66,9 +64,10 @@ class RedisEngagementEgress:
         self._log_backend_once()
         try:
             key = self._list_key(tenant_id, engagement_id)
+            max_events = self._settings.engagement_egress_max_events
             self._redis.rpush(key, json.dumps(event, ensure_ascii=False))
-            self._redis.ltrim(key, -_MAX_EVENTS, -1)
-            self._redis.expire(key, _EGRESS_TTL_SECONDS)
+            self._redis.ltrim(key, -max_events, -1)
+            self._redis.expire(key, self._settings.engagement_egress_ttl_s)
             self._redis.publish(self._notify_key(tenant_id, engagement_id), "1")
         except Exception as exc:
             logger.warning("engagement_egress_redis_publish_failed", error=str(exc))
@@ -111,9 +110,12 @@ class RedisEngagementEgress:
         pubsub.subscribe(notify_key)
         try:
             while True:
-                message = await asyncio.to_thread(pubsub.get_message, timeout=1.0)
+                message = await asyncio.to_thread(
+                    pubsub.get_message,
+                    timeout=self._settings.engagement_egress_pubsub_timeout_s,
+                )
                 if message is None:
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(self._settings.engagement_egress_pubsub_idle_sleep_s)
                     continue
                 current = self.snapshot(engagement_id, tenant_id=tenant_id)
                 while seen < len(current):
