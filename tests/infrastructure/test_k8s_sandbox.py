@@ -18,6 +18,7 @@ def _settings_stub(**overrides):
         k8s_worker_image="cys-agi-worker:latest",
         k8s_sandbox_ttl_seconds=600.0,
         k8s_sandbox_ready_timeout_s=30.0,
+        k8s_sandbox_ready_poll_interval_s=0.5,
         bus_signing_key_bytes=_SECRET,
     )
     defaults.update(overrides)

@@ -4,11 +4,11 @@ import subprocess
 import uuid
 from typing import Any
 
+from bootstrap.settings import get_settings
+
 _MEMORY_LIMIT = "256m"
 _CPU_LIMIT = "0.5"
 _PIDS_LIMIT = "64"
-_DOCKER_AVAILABILITY_PROBE_TIMEOUT_S = 5.0
-_CONTAINER_KILL_TIMEOUT_S = 10.0
 
 
 def docker_available() -> bool:
@@ -17,7 +17,7 @@ def docker_available() -> bool:
         result = subprocess.run(
             ["docker", "version", "--format", "{{.Server.Version}}"],
             capture_output=True,
-            timeout=_DOCKER_AVAILABILITY_PROBE_TIMEOUT_S,
+            timeout=get_settings().docker_probe_timeout_s,
             check=False,
         )
         return result.returncode == 0
@@ -97,7 +97,7 @@ def run_python_in_docker(code: str, *, timeout: float, image: str) -> dict[str, 
         subprocess.run(
             ["docker", "rm", "-f", container_name],
             capture_output=True,
-            timeout=_CONTAINER_KILL_TIMEOUT_S,
+            timeout=get_settings().docker_kill_timeout_s,
             check=False,
         )
         return {"success": False, "error": "sandbox timeout", "provider": "docker"}

@@ -12,8 +12,6 @@ from cys_core.domain.workers.models import SandboxCredentials
 
 logger = structlog.get_logger(__name__)
 
-_DEFAULT_READY_POLL_INTERVAL_S = 0.5
-
 
 class K8sSandboxConnector:
     """Kubernetes Job-backed worker sandbox — one Job per job run, no unsandboxed fallback.
@@ -50,7 +48,7 @@ class K8sSandboxConnector:
         settings: Settings | None = None,
         ttl_seconds: float | None = None,
         ready_timeout_s: float | None = None,
-        ready_poll_interval_s: float = _DEFAULT_READY_POLL_INTERVAL_S,
+        ready_poll_interval_s: float | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self.namespace = namespace or self._settings.k8s_namespace
@@ -64,7 +62,11 @@ class K8sSandboxConnector:
             if ready_timeout_s is not None
             else self._settings.k8s_sandbox_ready_timeout_s
         )
-        self._ready_poll_interval_s = ready_poll_interval_s
+        self._ready_poll_interval_s = (
+            ready_poll_interval_s
+            if ready_poll_interval_s is not None
+            else self._settings.k8s_sandbox_ready_poll_interval_s
+        )
 
     def _load_batch_api(self) -> Any:
         try:
