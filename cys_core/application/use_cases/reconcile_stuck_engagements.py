@@ -12,7 +12,9 @@ from cys_core.application.ports.metrics import MetricsPort
 from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
 from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
 from cys_core.domain.engagement.models import Engagement, EngagementStatus, ExecutionMode, SynthesisStatus
+from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.workers.models import WorkerJob, WorkerJobStatus
+from cys_core.domain.workers.failure_reason import WorkerJobFailureReason
 
 logger = structlog.get_logger(__name__)
 
@@ -58,23 +60,24 @@ class ReconcileStuckEngagements:
         engagements = self._engagement_store.list_recent(tenant_id, limit=limit)
         for engagement in engagements:
             stats["scanned"] += 1
-            action = await self._reconcile_one(tenant_id, engagement)
+            action, stale_failed = await self._reconcile_one(tenant_id, engagement)
             stats[action] = stats.get(action, 0) + 1
+            stats["stale_failed"] += stale_failed
         if stats["scanned"]:
             logger.info("engagement_reconcile_complete", tenant_id=tenant_id, **stats)
         return stats
 
-    async def _reconcile_one(self, tenant_id: str, engagement: Engagement) -> str:
+    async def _reconcile_one(self, tenant_id: str, engagement: Engagement) -> tuple[str, int]:
         if engagement.status == EngagementStatus.PLANNING and engagement.planner_status == "planning":
             fallback = await self._maybe_planner_fallback(tenant_id, engagement)
             if fallback:
-                return "planner_fallback"
+                return "planner_fallback", 0
 
         if engagement.status != EngagementStatus.RUNNING:
-            return "noop"
+            return "noop", 0
 
         if not engagement.planner_plan:
-            return "noop"
+            return "noop", 0
 
         terminal = planner_personas_terminal(
             list(engagement.planner_plan),
@@ -82,12 +85,20 @@ class ReconcileStuckEngagements:
             list(engagement.failed_personas),
         )
         if not terminal:
-            return "noop"
+            return "noop", 0
+
+        stale_failed = self._reconcile_stale_bus_jobs(tenant_id, engagement)
+        if stale_failed:
+            logger.warning(
+                "engagement_reconcile_bus_jobs_failed",
+                engagement_id=engagement.id,
+                stale_failed=stale_failed,
+            )
 
         if engagement.synthesis_status == SynthesisStatus.PENDING:
             anchor = self._anchor_job(tenant_id, engagement)
             if anchor is None:
-                return "noop"
+                return "noop", stale_failed
             job_id = await self._enqueue_synthesis_job.execute(anchor)
             if job_id:
                 logger.warning(
@@ -95,8 +106,8 @@ class ReconcileStuckEngagements:
                     engagement_id=engagement.id,
                     job_id=job_id,
                 )
-                return "synthesis_enqueued"
-            return "noop"
+                return "synthesis_enqueued", stale_failed
+            return "noop", stale_failed
 
         if engagement.synthesis_status == SynthesisStatus.RUNNING:
             synth_job_id = next((jid for jid in engagement.job_ids if jid.endswith("-synth")), "")
@@ -111,8 +122,8 @@ class ReconcileStuckEngagements:
                     engagement_id=engagement.id,
                     job_id=synth_job_id,
                 )
-                return "synthesis_closed_degraded"
-        return "noop"
+                return "synthesis_closed_degraded", stale_failed
+        return "noop", stale_failed
 
     async def _maybe_planner_fallback(self, tenant_id: str, engagement: Engagement) -> bool:
         if engagement.planner_plan or engagement.job_ids:
@@ -174,7 +185,7 @@ class ReconcileStuckEngagements:
 
     def _anchor_job(self, tenant_id: str, engagement: Engagement) -> WorkerJob | None:
         for job_id in engagement.job_ids:
-            if job_id.endswith("-synth") or "-bus-" in job_id:
+            if job_id.endswith("-synth") or is_bus_worker_job_id(job_id):
                 continue
             record = self._job_store.get(job_id)
             persona = record.persona if record is not None else job_id.split("-", 1)[0]
@@ -212,3 +223,36 @@ class ReconcileStuckEngagements:
         stale_after = self._synth_job_timeout_s * self._synthesis_stale_multiplier
         now = datetime.now(timezone.utc)
         return (now - started).total_seconds() >= stale_after
+
+    def _reconcile_stale_bus_jobs(self, tenant_id: str, engagement: Engagement) -> int:
+        older_than_s = self._default_job_timeout_s * 1.5
+        active = self._job_store.list_active_bus_jobs(tenant_id, engagement.id)
+        if not active:
+            return 0
+        stale_ids = {
+            item.job_id
+            for item in self._job_store.list_stale_bus_jobs(
+                tenant_id,
+                engagement.id,
+                older_than_s=older_than_s,
+            )
+        }
+        terminal_personas = set(engagement.completed_personas) | set(engagement.failed_personas)
+        failed = 0
+        for summary in active:
+            if summary.job_id in stale_ids:
+                self._job_store.mark_failed(
+                    summary.job_id,
+                    error="reconciled_stale_bus_job",
+                    reason=WorkerJobFailureReason.CANCELLED.value,
+                )
+                failed += 1
+                continue
+            if summary.persona in terminal_personas:
+                self._job_store.mark_failed(
+                    summary.job_id,
+                    error="reconciled_orphan_bus_job",
+                    reason=WorkerJobFailureReason.CANCELLED.value,
+                )
+                failed += 1
+        return failed

@@ -4,13 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cys_core.application.use_cases.plan_investigation import PlanInvestigation
+from cys_core.application.planning.catalog_planner_strategy import CatalogPlannerStrategy
 from tests.application.port_fakes import plan_investigation_port_kwargs
 
 
 @pytest.mark.unit
 def test_parse_plan_includes_reasoning_metadata():
-    pi = PlanInvestigation(runtime=MagicMock(), engagement_store=MagicMock(), **plan_investigation_port_kwargs())
+    pi = CatalogPlannerStrategy(runtime=MagicMock(), engagement_store=MagicMock(), **plan_investigation_port_kwargs())
     plan = pi._parse_plan(
         {
             "personas": ["soc"],
@@ -27,7 +27,7 @@ def test_parse_plan_includes_reasoning_metadata():
 
 @pytest.mark.unit
 def test_parse_plan_loose_python_repr():
-    pi = PlanInvestigation(runtime=MagicMock(), engagement_store=MagicMock(), **plan_investigation_port_kwargs())
+    pi = CatalogPlannerStrategy(runtime=MagicMock(), engagement_store=MagicMock(), **plan_investigation_port_kwargs())
     plan = pi._parse_plan(
         {
             "raw_response": (
@@ -44,13 +44,14 @@ def test_parse_plan_loose_python_repr():
 
 @pytest.mark.unit
 def test_advisory_consultant_fallback_on_empty_personas():
-    pi = PlanInvestigation(runtime=MagicMock(), engagement_store=MagicMock(), **plan_investigation_port_kwargs())
+    from cys_core.application.planning.post_processors import advisory_consultant_fallback
     from cys_core.domain.engagement.models import EngagementPlan
 
     plan = EngagementPlan(personas=[], sub_goals={}, rationale="")
-    out = pi._advisory_consultant_fallback(
+    out = advisory_consultant_fallback(
         plan,
-        "Расскажи мне про защиту CI/CD. DevSecOps. КАК?",
+        {"advisory": True},
         ["consultant", "soc"],
+        "Расскажи мне про защиту CI/CD. DevSecOps. КАК?",
     )
     assert out.personas == ["consultant"]

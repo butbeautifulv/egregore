@@ -10,7 +10,9 @@
     "start": "bun --bun next start",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:watch": "tsc --noEmit -p tsconfig.json --watch",
+    "test": "bun test lib/"
   },
   "dependencies": {
     "@shadcn/react": "^0.2.1",
@@ -44,6 +46,7 @@
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "6.0.2"
   }
 }

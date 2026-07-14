@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import base64
 import json
-import subprocess
-import tempfile
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
 
-from cys_core.application.runtime_config import get_e2b_api_key, get_python_sandbox_timeout, get_stage
+from cys_core.application.runtime_config import (
+    get_e2b_api_key,
+    get_python_sandbox_image,
+    get_python_sandbox_timeout,
+    get_stage,
+)
 
 
 def _e2b_execute(code: str) -> dict[str, Any]:
@@ -33,36 +36,29 @@ def _e2b_execute(code: str) -> dict[str, Any]:
 
 
 def python_sandbox(code: str) -> dict[str, Any]:
-    """Execute Python in E2B when configured; local subprocess only in dev."""
+    """Execute LLM-generated Python inside an isolated sandbox.
+
+    Prefers E2B (managed microVM) when configured. Otherwise runs in a throwaway,
+    locked-down Docker container (no network, read-only rootfs, dropped caps,
+    non-root). NEVER falls back to bare host `subprocess` — arbitrary
+    model-authored code must not execute with the worker process's privileges.
+    """
     if get_e2b_api_key():
         result = _e2b_execute(code)
         if result.get("success") or get_stage() == "prod":
             return result
-    if get_stage() == "prod" and get_e2b_api_key():
-        return {"success": False, "error": "E2B execution failed; local fallback disabled in prod"}
+        # E2B configured but failed in a non-prod stage: fall through to the Docker
+        # sandbox rather than silently returning the E2B error.
     if not code.strip():
         return {"success": False, "error": "empty code"}
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tmp:
-        tmp.write(code)
-        script = tmp.name
-    try:
-        proc = subprocess.run(
-            ["python3", script],
-            capture_output=True,
-            text=True,
-            timeout=get_python_sandbox_timeout(),
-            check=False,
-        )
-        return {
-            "success": proc.returncode == 0,
-            "stdout": proc.stdout[-8000:],
-            "stderr": proc.stderr[-2000:],
-            "exit_code": proc.returncode,
-        }
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": "sandbox timeout"}
-    finally:
-        Path(script).unlink(missing_ok=True)
+
+    from cys_core.infrastructure.tools.adapters.docker_sandbox import run_python_in_docker
+
+    return run_python_in_docker(
+        code,
+        timeout=get_python_sandbox_timeout(),
+        image=get_python_sandbox_image(),
+    )
 
 
 def vision_analyze(path: str, question: str = "Describe this image in detail.") -> dict[str, Any]:

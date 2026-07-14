@@ -1,15 +1,13 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { toast } from "sonner"
 
 import { ApiError, getEngagementEvents, getInvestigation, getInvestigationJobs } from "@/lib/api-client"
 import { formatApiError, getApiErrorTitle } from "@/lib/format-api-error"
 import { plannerJobId, eventDedupeKey, eventPayload, shouldRefreshOnEvent, sortChatEntries } from "@/lib/engagement-chat-state"
 import { isFollowUpJobId, buildFollowUpJobMap, groupFollowUpChildEntries, isFollowUpChildJob, isFollowUpOrchestratorJob, isFollowUpTurn } from "@/lib/follow-up"
 import { isInvestigationTerminal } from "@/lib/investigation-status"
-import { matchesInvestigation } from "@/lib/status-events"
-import type { InvestigationDetail, JobSummary, StatusStreamEvent } from "@/lib/types"
+import type { InvestigationDetail, JobSummary } from "@/lib/types"
 import { ApiErrorAlert } from "@/components/api-error-alert"
 import { EngagementChatThread } from "@/components/engagement/engagement-chat-thread"
 import { usePlatformBreadcrumbLabel } from "@/components/platform-breadcrumb"
@@ -17,7 +15,6 @@ import { useApiFeatures } from "@/hooks/use-api-features"
 import { useEngagementChatState } from "@/hooks/use-engagement-chat"
 import { useFollowUpMessages } from "@/hooks/use-follow-up-messages"
 import { useEngagementStream } from "@/hooks/use-engagement-stream"
-import { useStatusStream } from "@/hooks/use-status-stream"
 import { EgregoreRouteSkeleton } from "@/components/skeletons"
 import { PageHeader } from "@/vendor/gui/layout/page-header"
 import { Badge } from "@/vendor/gui/ui/badge"
@@ -150,16 +147,6 @@ export function InvestigationDetailView({
     await refreshDetailOnly()
   }, [refreshDetailOnly])
 
-  const onStreamEvent = useCallback(
-    (event: StatusStreamEvent) => {
-      if (matchesInvestigation(event, investigationId)) {
-        void refresh()
-      }
-    },
-    [investigationId, refresh],
-  )
-
-  const { status: globalStreamStatus } = useStatusStream(onStreamEvent)
   const terminal = isInvestigationTerminal(detail, jobs)
 
   const onEngagementEvent = applyEngagementEvent
@@ -227,7 +214,6 @@ export function InvestigationDetailView({
 
   useEffect(() => {
     if (engagementStreamStatus !== "error") return
-    toast.error("Engagement stream disconnected — reconnecting…")
     seenKeysRef.current = new Set()
     void replayEngagementEvents()
   }, [engagementStreamStatus, replayEngagementEvents])
@@ -304,8 +290,7 @@ export function InvestigationDetailView({
     return err
   }, [detail?.planner_status, detail?.planner_error, followUpPlanFailedMessage])
 
-  const streamConnected =
-    engagementStreamStatus === "open" || globalStreamStatus === "open"
+  const streamConnected = engagementStreamStatus === "open"
 
   if (!investigationId) {
     return (

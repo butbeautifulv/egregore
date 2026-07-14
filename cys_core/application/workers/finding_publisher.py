@@ -11,6 +11,7 @@ from cys_core.application.bus_planner_gate import (
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.findings.outcome_mapper import finding_to_operator_outcome, synthesis_outcome_from_context
 from cys_core.application.ports.bus import AgentTransportConnector
+from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.workers.noop_finding import is_noop_finding
@@ -46,6 +47,7 @@ class WorkerFindingPublisher:
         engagement_egress: EngagementEgressPort | None = None,
         bus_guard: Any | None = None,
         record_memory_write: Callable[[str, str], None] | None = None,
+        agent_catalog: AgentCatalogPort | None = None,
     ) -> None:
         self._bus = bus
         self._transport = transport
@@ -54,6 +56,7 @@ class WorkerFindingPublisher:
         self._engagement_egress = engagement_egress
         self._bus_guard = bus_guard
         self._record_memory_write = record_memory_write or (lambda _tenant, _memory_type: None)
+        self._agent_catalog = agent_catalog
 
     def _resolve_control_plane_mode(self, job: WorkerJob) -> str:
         work_kind = str(job.payload.get("work_kind", ""))
@@ -65,12 +68,9 @@ class WorkerFindingPublisher:
             engagement = self._engagement_store.get(job.tenant_id, investigation_id)
             if engagement is not None and getattr(engagement, "profile_id", ""):
                 profile_id = str(engagement.profile_id)
-        if profile_id:
+        if profile_id and self._agent_catalog is not None:
             try:
-                from bootstrap.container import get_container
-
-                catalog = get_container().get_agent_catalog()
-                for profile in catalog.list_profiles():
+                for profile in self._agent_catalog.list_profiles():
                     if profile.id == profile_id:
                         return str(profile.control_plane_mode or ControlPlaneMode.GATE_ONLY.value)
             except Exception:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -8,8 +9,59 @@ from cys_core.application.use_cases.run_worker_job import RunWorkerJob
 from cys_core.application.workers.tool_execution_tracker import (
     clear_tool_execution_count,
     record_tool_success,
+    record_tool_output,
 )
 from cys_core.domain.policy.defaults import PERSONA_BUDGETS
+from cys_core.domain.workers.models import WorkerJob
+from tests.application.workers.factory import build_run_worker_job_for_tests
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_try_salvage_partial_resolves_investigation_id_before_defn() -> None:
+    """Regression: investigation_id was used before assignment (cc56 intel-bus UnboundLocalError)."""
+    job_id = "intel-bus-salvage-cc56"
+    clear_tool_execution_count(job_id)
+    record_tool_output(job_id, "enrich_ioc", "IOC 192.168.1.50 marked malicious in TI feed")
+    job = WorkerJob(
+        job_id=job_id,
+        event_id="evt-salvage",
+        persona="intel",
+        correlation_id="eng-salvage-cc56",
+        payload={"phase": "specialist"},
+    )
+    job_finalizer = SimpleNamespace(
+        mark_persona_completed=lambda _job: None,
+        mark_success=AsyncMock(),
+    )
+    registry = SimpleNamespace(
+        get=lambda _name: SimpleNamespace(
+            schema_name="IntelFinding",
+            tools=[],
+            skills=[],
+            bus_recipients=[],
+            role="worker",
+        )
+    )
+    runner = build_run_worker_job_for_tests(
+        job_finalizer=job_finalizer,
+        registry=registry,
+        schema_registry=SimpleNamespace(get=lambda _name: None),
+    )
+
+    result = await runner.try_salvage_partial(
+        job,
+        "sess-salvage",
+        {},
+        reason="recursion_limit_exhausted",
+    )
+
+    assert result is not None
+    assert result.success is True
+    assert result.finding is not None
+    assert "192.168.1.50" in result.finding.get("iocs", [])
+    job_finalizer.mark_success.assert_awaited_once()
+    clear_tool_execution_count(job_id)
 
 
 @pytest.mark.unit

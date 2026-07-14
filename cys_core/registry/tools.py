@@ -332,7 +332,8 @@ async def extract_structured_output(goal: str, agent_summary: str, schema_type: 
 
 @tool
 def python_sandbox(code: str) -> str:
-    """Execute Python code in a restricted local subprocess. Requires HITL approval."""
+    """Execute Python code in an isolated sandbox (E2B microVM, or a locked-down
+    throwaway Docker container). Requires HITL approval."""
     from cys_core.infrastructure.tools.adapters.multimodal import python_sandbox as _run
 
     return json.dumps(_run(code), ensure_ascii=False)

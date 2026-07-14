@@ -97,7 +97,14 @@ export function shouldRefreshOnEvent(event: EngagementStreamEvent): boolean {
   }
   if (
     type === "status" &&
-    ["job_started", "job_finished", "error", "planning_done", "planning_error"].includes(phase)
+    [
+      "job_started",
+      "job_finished",
+      "job_enqueued",
+      "error",
+      "planning_done",
+      "planning_error",
+    ].includes(phase)
   ) {
     return true
   }

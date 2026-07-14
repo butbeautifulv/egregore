@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
@@ -24,6 +25,7 @@ from cys_core.domain.follow_up.models import (
     is_initial_qa_payload,
     work_kind_from_payload,
 )
+from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.workers.failure_reason import WorkerJobFailureReason, classify_worker_failure
 from cys_core.domain.workers.models import WorkerJob, WorkerJobStatus
 
@@ -102,24 +104,28 @@ class WorkerJobFinalizer:
             pass
 
         job.transition_to(WorkerJobStatus.FAILED)
-        self._job_store.mark_failed(job.job_id, error=error, reason=resolved_reason.value)
+        await asyncio.to_thread(self._job_store.mark_failed, job.job_id, error=error, reason=resolved_reason.value)
 
         if job.payload.get("phase") == "synthesis":
             if self._engagement_store is not None:
-                self._engagement_store.fail_synthesis(job.tenant_id, investigation_id, reason=error)
+                await asyncio.to_thread(
+                    self._engagement_store.fail_synthesis, job.tenant_id, investigation_id, reason=error
+                )
         elif is_follow_up_payload(job.payload):
             if self._follow_up_publisher is not None and job.payload.get("follow_up_id"):
-                self._follow_up_publisher.publish_failure(
+                await asyncio.to_thread(
+                    self._follow_up_publisher.publish_failure,
                     job=job,
                     investigation_id=investigation_id,
                     error=error,
                 )
         else:
-            self.mark_persona_failed(job)
+            await asyncio.to_thread(self.mark_persona_failed, job)
             await self._enqueue_pipeline_next(job)
 
         if self._engagement_egress is not None:
-            self._engagement_egress.publish_status(
+            await asyncio.to_thread(
+                self._engagement_egress.publish_status,
                 investigation_id,
                 "job_finished",
                 {
@@ -149,13 +155,15 @@ class WorkerJobFinalizer:
                             "tokens_used": state.tokens_used,
                         }
                     )
-                self._engagement_egress.publish_event(investigation_id, "budget_exceeded", payload)
+                await asyncio.to_thread(
+                    self._engagement_egress.publish_event, investigation_id, "budget_exceeded", payload
+                )
 
         send_dlq = getattr(self._queue, "send_to_dlq", None)
         if send_dlq is not None:
             await send_dlq(job, error)
-        self._maybe_close_playbook_engagement(job)
-        self._fail_orphan_bus_jobs_if_terminal(job)
+        await asyncio.to_thread(self._maybe_close_playbook_engagement, job)
+        await asyncio.to_thread(self._fail_orphan_bus_jobs_if_terminal, job)
         return resolved_reason
 
     def mark_running(self, job: WorkerJob, session_id: str) -> None:
@@ -180,9 +188,10 @@ class WorkerJobFinalizer:
 
     async def mark_success(self, job: WorkerJob, investigation_id: str) -> None:
         job.transition_to(WorkerJobStatus.COMPLETED)
-        self._job_store.mark_completed(job.job_id)
+        await asyncio.to_thread(self._job_store.mark_completed, job.job_id)
         if self._engagement_egress is not None:
-            self._engagement_egress.publish_status(
+            await asyncio.to_thread(
+                self._engagement_egress.publish_status,
                 investigation_id,
                 "job_finished",
                 {"tenant_id": job.tenant_id, "persona": job.persona, "job_id": job.job_id, "success": True},
@@ -194,8 +203,8 @@ class WorkerJobFinalizer:
                 await self._enqueue_synthesis_job.execute(job)
         if work_kind_from_payload(job.payload) == "follow_up_child":
             pass
-        self._maybe_close_playbook_engagement(job)
-        self._fail_orphan_bus_jobs_if_terminal(job)
+        await asyncio.to_thread(self._maybe_close_playbook_engagement, job)
+        await asyncio.to_thread(self._fail_orphan_bus_jobs_if_terminal, job)
         try:
             from cys_core.application.persona_quality_hooks import record_job_completed
 
@@ -208,7 +217,7 @@ class WorkerJobFinalizer:
 
     async def mark_follow_up_success(self, job: WorkerJob, investigation_id: str) -> None:
         if self._engagement_store is not None:
-            engagement = self._engagement_store.get(job.tenant_id, investigation_id)
+            engagement = await asyncio.to_thread(self._engagement_store.get, job.tenant_id, investigation_id)
             if engagement is not None:
                 if not is_follow_up_planning(job.payload):
                     if is_initial_qa_payload(job.payload):
@@ -216,7 +225,7 @@ class WorkerJobFinalizer:
                     else:
                         engagement.close_after_follow_up()
                     engagement.follow_up_spawned_job_ids = []
-                    self._engagement_store.upsert(engagement)
+                    await asyncio.to_thread(self._engagement_store.upsert, engagement)
         await self.mark_success(job, investigation_id)
 
     async def _enqueue_pipeline_next(self, job: WorkerJob) -> None:
@@ -232,8 +241,9 @@ class WorkerJobFinalizer:
             return
         if self._engagement_store is None:
             return
-        engagement_id = job.correlation_id or job.event_id
+        engagement_id = self._investigation_id(job)
         self._engagement_store.mark_persona_done(job.tenant_id, engagement_id, job.persona)
+        self._fail_orphan_bus_jobs_for_persona(job)
         self._notify_engagement_update(job)
 
     def mark_persona_failed(self, job: WorkerJob) -> None:
@@ -243,12 +253,13 @@ class WorkerJobFinalizer:
             return
         if self._engagement_store is None:
             return
-        engagement_id = job.correlation_id or job.event_id
+        engagement_id = self._investigation_id(job)
         self._engagement_store.mark_persona_failed(job.tenant_id, engagement_id, job.persona)
+        self._fail_orphan_bus_jobs_for_persona(job)
         self._notify_engagement_update(job)
 
     def _notify_engagement_update(self, job: WorkerJob) -> None:
-        engagement_id = job.correlation_id or job.event_id
+        engagement_id = self._investigation_id(job)
         if self._engagement_egress is None or self._engagement_store is None:
             return
         engagement = self._engagement_store.get(job.tenant_id, engagement_id)
@@ -266,6 +277,22 @@ class WorkerJobFinalizer:
             },
         )
 
+    def _fail_orphan_bus_jobs_for_persona(self, job: WorkerJob) -> None:
+        list_active = getattr(self._job_store, "list_active_bus_jobs", None)
+        if list_active is None:
+            return
+        investigation_id = self._investigation_id(job)
+        for summary in list_active(job.tenant_id, investigation_id):
+            if summary.persona != job.persona:
+                continue
+            if summary.status not in (WorkerJobStatus.PENDING, WorkerJobStatus.RUNNING):
+                continue
+            self._job_store.mark_failed(
+                summary.job_id,
+                error="reconciled_orphan_bus_job",
+                reason=WorkerJobFailureReason.CANCELLED.value,
+            )
+
     def _fail_orphan_bus_jobs_if_terminal(self, job: WorkerJob) -> None:
         if self._engagement_store is None:
             return
@@ -275,16 +302,30 @@ class WorkerJobFinalizer:
             isinstance(engagement.status, EngagementStatus) and engagement.status.is_terminal()
         ):
             return
+        list_active = getattr(self._job_store, "list_active_bus_jobs", None)
+        if list_active is not None:
+            for summary in list_active(job.tenant_id, engagement_id):
+                if summary.status in (WorkerJobStatus.PENDING, WorkerJobStatus.RUNNING):
+                    self._job_store.mark_failed(
+                        summary.job_id,
+                        error="reconciled_orphan_bus_job",
+                        reason=WorkerJobFailureReason.CANCELLED.value,
+                    )
+            return
         for summary in self._job_store.list_by_investigation(job.tenant_id, engagement_id):
-            if "-bus-" not in summary.job_id:
+            if not is_bus_worker_job_id(summary.job_id):
                 continue
             if summary.status in (WorkerJobStatus.PENDING, WorkerJobStatus.RUNNING):
-                self._job_store.mark_failed(summary.job_id)
+                self._job_store.mark_failed(
+                    summary.job_id,
+                    error="reconciled_orphan_bus_job",
+                    reason=WorkerJobFailureReason.CANCELLED.value,
+                )
 
     def _maybe_close_playbook_engagement(self, job: WorkerJob) -> None:
         if self._engagement_store is None:
             return
-        engagement_id = job.correlation_id or job.event_id
+        engagement_id = self._investigation_id(job)
         engagement = self._engagement_store.get(job.tenant_id, engagement_id)
         if engagement is None or engagement.planner_plan:
             return

@@ -204,19 +204,14 @@ class AgentRuntime:
             middleware.append(JsonToolCallMiddleware())
         return middleware
 
-    def create(
+    def _resolve_tools(
         self,
         defn: AgentDefinition,
         *,
-        model: BaseChatModel | None = None,
-        session_id: str = "default",
-        use_checkpointer: bool = True,
-        extra_tools: list | None = None,
-        tenant_id: str = "default",
-        investigation_id: str = "",
-        profile_id: str = DEFAULT_PROFILE_ID,
-        goal: str = "",
-    ):
+        session_id: str,
+        profile_id: str,
+        extra_tools: list | None,
+    ) -> list:
         tool_names = resolve_agent_tool_names(defn, profile_id)
         tools = tool_registry.resolve(tool_names, profile_id=profile_id)
         if extra_tools:
@@ -225,11 +220,22 @@ class AgentRuntime:
             from cys_core.registry.skills_tool import make_load_skill_tool
 
             tools.append(make_load_skill_tool(defn.skills, persona=defn.name, job_id=session_id))
+        return tools
 
-        persistence = self._sync_persistence()
-        checkpointer = persistence.checkpointer if use_checkpointer else None
-        store = persistence.store if use_checkpointer else None
-
+    def _build_agent(
+        self,
+        defn: AgentDefinition,
+        *,
+        model: BaseChatModel | None,
+        tools: list,
+        checkpointer,
+        store,
+        session_id: str,
+        tenant_id: str,
+        investigation_id: str,
+        profile_id: str,
+        goal: str,
+    ):
         schema = schema_registry.get(defn.schema_name)
         return create_agent(
             model=model or self.model_connector.create_model(),
@@ -249,6 +255,36 @@ class AgentRuntime:
             name=defn.name,
         )
 
+    def create(
+        self,
+        defn: AgentDefinition,
+        *,
+        model: BaseChatModel | None = None,
+        session_id: str = "default",
+        use_checkpointer: bool = True,
+        extra_tools: list | None = None,
+        tenant_id: str = "default",
+        investigation_id: str = "",
+        profile_id: str = DEFAULT_PROFILE_ID,
+        goal: str = "",
+    ):
+        tools = self._resolve_tools(defn, session_id=session_id, profile_id=profile_id, extra_tools=extra_tools)
+        persistence = self._sync_persistence()
+        checkpointer = persistence.checkpointer if use_checkpointer else None
+        store = persistence.store if use_checkpointer else None
+        return self._build_agent(
+            defn,
+            model=model,
+            tools=tools,
+            checkpointer=checkpointer,
+            store=store,
+            session_id=session_id,
+            tenant_id=tenant_id,
+            investigation_id=investigation_id,
+            profile_id=profile_id,
+            goal=goal,
+        )
+
     async def acreate(
         self,
         defn: AgentDefinition,
@@ -266,36 +302,22 @@ class AgentRuntime:
         if sandbox_tools is not None:
             tools = sandbox_tools
         else:
-            tool_names = resolve_agent_tool_names(defn, profile_id)
-            tools = tool_registry.resolve(tool_names, profile_id=profile_id)
-            if extra_tools:
-                tools = [*tools, *extra_tools]
-            if defn.skills:
-                from cys_core.registry.skills_tool import make_load_skill_tool
-
-                tools.append(make_load_skill_tool(defn.skills, persona=defn.name, job_id=session_id))
+            tools = self._resolve_tools(defn, session_id=session_id, profile_id=profile_id, extra_tools=extra_tools)
 
         persistence = await self._async_persistence()
         checkpointer = persistence.checkpointer if use_checkpointer else None
         store = persistence.store if use_checkpointer else None
-
-        schema = schema_registry.get(defn.schema_name)
-        return create_agent(
-            model=model or self.model_connector.create_model(),
+        return self._build_agent(
+            defn,
+            model=model,
             tools=tools,
-            system_prompt=defn.system_prompt,
-            middleware=self._build_middleware(
-                defn,
-                session_id,
-                tenant_id=tenant_id,
-                investigation_id=investigation_id,
-                goal=goal or investigation_id,
-                profile_id=profile_id,
-            ),
-            response_format=schema,
             checkpointer=checkpointer,
             store=store,
-            name=defn.name,
+            session_id=session_id,
+            tenant_id=tenant_id,
+            investigation_id=investigation_id,
+            profile_id=profile_id,
+            goal=goal,
         )
 
     def run(
@@ -388,6 +410,20 @@ class AgentRuntime:
             result = {**result, "sgr_metadata": sgr_metadata}
         return result
 
+    @staticmethod
+    def _sgr_preflight_result(mode: str, phase: str, res: Any) -> dict[str, Any]:
+        return {
+            "mode": mode,
+            "selected_tool": res.selected_tool,
+            "tool_args": res.tool_args,
+            "reasoning": res.reasoning.model_dump(),
+            **build_sgr_trace_metadata(
+                phase=phase,
+                task_completed=res.reasoning.task_completed,
+                enough_data=res.reasoning.enough_data,
+            ),
+        }
+
     def _run_sgr_preflight(
         self,
         defn: AgentDefinition,
@@ -399,46 +435,23 @@ class AgentRuntime:
         if not sgr.enabled or sgr.mode == "off":
             return {}
         tool_names = resolve_agent_tool_names(defn, profile_id)
-        profile_policy = get_profile_policy_resolver().policy(profile_id)
         try:
             if sgr.mode == "sgr_hybrid":
                 from cys_core.application.reasoning.sgr_runtime import SgrHybridRuntime
 
-                hres = SgrHybridRuntime().reason_then_act(
-                    prompt=user_input,
-                    tool_names=tool_names,
-                )
-                return {
-                    "mode": sgr.mode,
-                    "selected_tool": hres.selected_tool,
-                    "tool_args": hres.tool_args,
-                    "reasoning": hres.reasoning.model_dump(),
-                    **build_sgr_trace_metadata(
-                        phase="hybrid_reason_then_act",
-                        task_completed=hres.reasoning.task_completed,
-                        enough_data=hres.reasoning.enough_data,
-                    ),
-                }
+                hres = SgrHybridRuntime().reason_then_act(prompt=user_input, tool_names=tool_names)
+                return self._sgr_preflight_result(sgr.mode, "hybrid_reason_then_act", hres)
             if sgr.mode == "sgr_iron":
                 from cys_core.application.reasoning.sgr_iron import SgrIronRuntime
 
+                profile_policy = get_profile_policy_resolver().policy(profile_id)
                 ires = SgrIronRuntime(max_retries=get_sgr_iron_max_retries()).reason_then_act(
                     prompt=user_input,
                     tool_names=tool_names,
                     profile_id=profile_id,
                     policy=profile_policy,
                 )
-                return {
-                    "mode": sgr.mode,
-                    "selected_tool": ires.selected_tool,
-                    "tool_args": ires.tool_args,
-                    "reasoning": ires.reasoning.model_dump(),
-                    **build_sgr_trace_metadata(
-                        phase="iron_reason_then_act",
-                        task_completed=ires.reasoning.task_completed,
-                        enough_data=ires.reasoning.enough_data,
-                    ),
-                }
+                return self._sgr_preflight_result(sgr.mode, "iron_reason_then_act", ires)
         except Exception:
             return {"mode": sgr.mode, "error": "sgr_preflight_failed"}
         return {}
@@ -495,6 +508,58 @@ class AgentRuntime:
         )
         return self._coerce_result(result, schema=schema)
 
+    def _build_ainvoke_config(
+        self,
+        *,
+        session_id: str,
+        recursion_limit: int | None,
+        agent_id: str,
+        job_id: str,
+        event_id: str,
+        correlation_id: str,
+        investigation_id: str,
+        tenant_id: str,
+        sandbox_id: str,
+        memory_entries_loaded: int,
+        sgr_metadata: dict[str, Any] | None,
+        stream_context: StreamContext | None,
+        use_api_usage: bool,
+    ) -> dict[str, Any]:
+        callbacks = list(self.model_connector.callbacks())
+        callbacks.append(build_budget_usage_callback(session_id, use_api_usage=use_api_usage))
+        if stream_context is not None:
+            callbacks.extend(build_egress_streaming_callbacks(stream_context))
+        return merge_langchain_config(
+            {
+                "configurable": {"thread_id": session_id},
+                "callbacks": callbacks,
+                "recursion_limit": recursion_limit or get_persona_recursion_limit(agent_id),
+                "metadata": dict(sgr_metadata or {}),
+            },
+            persona=agent_id or session_id,
+            job_id=job_id,
+            event_id=event_id,
+            correlation_id=correlation_id,
+            investigation_id=investigation_id,
+            session_id=session_id,
+            tenant_id=tenant_id,
+            sandbox_id=sandbox_id,
+            memory_entries_loaded=memory_entries_loaded,
+        )
+
+    @staticmethod
+    async def _call_agent(
+        agent, input_payload: dict[str, Any], config: dict[str, Any], *, stream_context: StreamContext | None
+    ) -> Any:
+        if stream_context is not None and get_stream_agent_token_streaming():
+            result = None
+            async for chunk in agent.astream(input_payload, config=config, stream_mode="values"):
+                result = chunk
+            if result is None:
+                result = await agent.ainvoke(input_payload, config=config)
+            return result
+        return await agent.ainvoke(input_payload, config=config)
+
     async def _ainvoke(
         self,
         agent,
@@ -522,41 +587,24 @@ class AgentRuntime:
         use_api_usage = get_budget_use_api_usage()
         if not use_api_usage:
             JobBudgetTracker.record_tokens(session_id, JobBudgetTracker.estimate_tokens(sanitized))
-        callbacks = list(self.model_connector.callbacks())
-        callbacks.append(build_budget_usage_callback(session_id, use_api_usage=use_api_usage))
-        if stream_context is not None:
-            callbacks.extend(build_egress_streaming_callbacks(stream_context))
-        config = merge_langchain_config(
-            {
-                "configurable": {"thread_id": session_id},
-                "callbacks": callbacks,
-                "recursion_limit": recursion_limit or get_persona_recursion_limit(agent_id),
-                "metadata": dict(sgr_metadata or {}),
-            },
-            persona=agent_id or session_id,
+        config = self._build_ainvoke_config(
+            session_id=session_id,
+            recursion_limit=recursion_limit,
+            agent_id=agent_id,
             job_id=job_id,
             event_id=event_id,
             correlation_id=correlation_id,
             investigation_id=investigation_id,
-            session_id=session_id,
             tenant_id=tenant_id,
             sandbox_id=sandbox_id,
             memory_entries_loaded=memory_entries_loaded,
+            sgr_metadata=sgr_metadata,
+            stream_context=stream_context,
+            use_api_usage=use_api_usage,
         )
         try:
             input_payload = {"messages": [{"role": "user", "content": sanitized}]}
-            if stream_context is not None and get_stream_agent_token_streaming():
-                result = None
-                async for chunk in agent.astream(
-                    input_payload,
-                    config=config,
-                    stream_mode="values",
-                ):
-                    result = chunk
-                if result is None:
-                    result = await agent.ainvoke(input_payload, config=config)
-            else:
-                result = await agent.ainvoke(input_payload, config=config)
+            result = await self._call_agent(agent, input_payload, config, stream_context=stream_context)
         except JobBudgetExceeded as exc:
             return {"error": str(exc)}
         coerced = self._coerce_result(result, schema=schema)

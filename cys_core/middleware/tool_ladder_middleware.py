@@ -38,6 +38,23 @@ _SIEM_ALLOWED_AFTER_INVESTIGATE = frozenset(
     }
 )
 
+# NOTE: these block messages are matched by substring in
+# cys_core/application/workers/timeout_salvage.py's _LADDER_BLOCK_MARKERS to decide
+# whether a cached tool output is just a ladder-block echo (not real progress) when
+# building a salvage finding. Keep both in sync — see test_ladder_marker_sync.py.
+_MSG_SIEM_REPEAT_BLOCKED = (
+    "investigate_incident already completed. "
+    "Emit SocFinding JSON citing evidence_manifest obs_id refs."
+)
+_MSG_SIEM_VEIL_LADDER_COMPLETE = "SIEM/Veil ladder complete. Emit SocFinding JSON now."
+_MSG_SIEM_LADDER_COMPLETE = (
+    "SIEM ladder complete after investigate_incident. "
+    "Emit SocFinding JSON citing evidence_manifest obs_id refs."
+)
+_MSG_VEIL_BUDGET_EXHAUSTED = (
+    f"Veil tool budget exhausted ({_MAX_VEIL_TOOLS} max). Emit the persona finding JSON now."
+)
+
 
 def _is_veil_ladder_tool(tool_name: str) -> bool:
     return is_veil_tool(tool_name) or tool_name in _VEIL_LADDER_TOOLS
@@ -89,11 +106,7 @@ class ToolLadderMiddleware(AgentMiddleware):
                         persona=self.persona,
                         job_id=job_id,
                     )
-                    return self._blocked(
-                        request,
-                        "investigate_incident already completed. "
-                        "Emit SocFinding JSON citing evidence_manifest obs_id refs.",
-                    )
+                    return self._blocked(request, _MSG_SIEM_REPEAT_BLOCKED)
                 sparse = is_siem_telemetry_sparse(job_id)
                 if (
                     sparse
@@ -106,10 +119,7 @@ class ToolLadderMiddleware(AgentMiddleware):
                         get_veil_tool_count(job_id) >= _MAX_VEIL_TOOLS
                         or siem_drilldown_budget_exhausted(job_id)
                     ):
-                        return self._blocked(
-                            request,
-                            "SIEM/Veil ladder complete. Emit SocFinding JSON now.",
-                        )
+                        return self._blocked(request, _MSG_SIEM_VEIL_LADDER_COMPLETE)
                     return None
                 manifest = get_merged_manifest(job_id)
                 logger.info(
@@ -119,11 +129,7 @@ class ToolLadderMiddleware(AgentMiddleware):
                     job_id=job_id,
                     telemetry_level=getattr(manifest, "telemetry_level", None),
                 )
-                return self._blocked(
-                    request,
-                    "SIEM ladder complete after investigate_incident. "
-                    "Emit SocFinding JSON citing evidence_manifest obs_id refs.",
-                )
+                return self._blocked(request, _MSG_SIEM_LADDER_COMPLETE)
             if tool_name in _SIEM_ALLOWED_AFTER_INVESTIGATE:
                 return None
             sparse = is_siem_telemetry_sparse(job_id)
@@ -143,10 +149,7 @@ class ToolLadderMiddleware(AgentMiddleware):
                 or siem_drilldown_budget_exhausted(job_id)
             )
         ):
-            return self._blocked(
-                request,
-                "SIEM/Veil ladder complete. Emit SocFinding JSON now.",
-            )
+            return self._blocked(request, _MSG_SIEM_VEIL_LADDER_COMPLETE)
 
         if _is_veil_ladder_tool(tool_name) and get_veil_tool_count(job_id) >= _MAX_VEIL_TOOLS:
             logger.info(
@@ -156,11 +159,7 @@ class ToolLadderMiddleware(AgentMiddleware):
                 job_id=job_id,
                 veil_calls=get_veil_tool_count(job_id),
             )
-            return self._blocked(
-                request,
-                f"Veil tool budget exhausted ({_MAX_VEIL_TOOLS} max). "
-                "Emit the persona finding JSON now.",
-            )
+            return self._blocked(request, _MSG_VEIL_BUDGET_EXHAUSTED)
         return None
 
     def wrap_tool_call(

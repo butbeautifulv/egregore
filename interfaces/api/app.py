@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from bootstrap.container import get_container
 from bootstrap.settings import get_settings
+from cys_core.infrastructure.redis_leader import redis_leader
 from cys_core.domain.security.auth_models import AuthClaims
 from cys_core.domain.workers.models import JobResumeRequest
 from cys_core.observability.http import mount_metrics
@@ -89,9 +90,16 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         async def _reconcile_engagements_loop() -> None:
             container = get_container()
             reconciler = container.get_reconcile_stuck_engagements()
+            settings = get_settings()
             while True:
                 try:
-                    await reconciler.execute()
+                    async with redis_leader(
+                        "egregore:api:reconcile",
+                        ttl=280,
+                        redis_url=settings.redis_url,
+                    ) as is_leader:
+                        if is_leader:
+                            await reconciler.execute()
                 except Exception:
                     logger.exception("engagement_reconcile_loop_failed")
                 await asyncio.sleep(300)
@@ -124,6 +132,25 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     @app.middleware("http")
     async def _tracing_middleware(request: Request, call_next):
         return await tracing_middleware(request, call_next)
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        # Only reached for exceptions no route/dependency already turned into an
+        # HTTPException — FastAPI still dispatches HTTPException to its own default
+        # handler first, so this doesn't change any existing intentional error response.
+        # Previously such exceptions fell through to Starlette's bare default 500 with no
+        # structured log and an inconsistent (non {"code", "message"}) body.
+        logger.error(
+            "unhandled_api_exception",
+            method=request.method,
+            path=request.url.path,
+            error=str(exc),
+            exc_info=exc,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"code": "internal_error", "message": "Internal server error"},
+        )
 
     mount_metrics(app)
     instrument_fastapi(app)

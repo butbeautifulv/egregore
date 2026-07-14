@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from interfaces.observability.connectors.langfuse.trace import LangfuseTraceBackend, _ensure_langfuse_client
+from interfaces.observability.connectors.langfuse.trace import (
+    LangfuseTraceBackend,
+    reset_langfuse_client_cache,
+)
 
 
 @pytest.mark.unit
@@ -15,6 +18,6 @@ def test_langfuse_trace_noop_when_disabled(monkeypatch):
     monkeypatch.setattr(settings, "langfuse_public_key", "")
     monkeypatch.setattr(settings, "langfuse_secret_key", "")
     monkeypatch.setattr(settings, "langfuse_api_key", "")
-    _ensure_langfuse_client.cache_clear()
+    reset_langfuse_client_cache()
     backend = LangfuseTraceBackend()
     assert backend.get_callback_handler() is None

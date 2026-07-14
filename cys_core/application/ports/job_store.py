@@ -31,6 +31,7 @@ class JobRecordSummary:
     tenant_id: str = "default"
     event_id: str = ""
     created_at: str = ""
+    updated_at: str = ""
     follow_up_id: str | None = None
     last_error: str = ""
     failure_reason: str = ""
@@ -75,3 +76,13 @@ class JobStorePort(Protocol):
     def count_running(self) -> int: ...
 
     def count_active_bus_jobs(self, tenant_id: str, engagement_id: str) -> int: ...
+
+    def list_active_bus_jobs(self, tenant_id: str, engagement_id: str) -> list[JobRecordSummary]: ...
+
+    def list_stale_bus_jobs(
+        self,
+        tenant_id: str,
+        engagement_id: str,
+        *,
+        older_than_s: float,
+    ) -> list[JobRecordSummary]: ...

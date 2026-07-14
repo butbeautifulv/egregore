@@ -5,6 +5,8 @@ from typing import Any
 
 from cys_core.application.ports.agent_registry import AgentRegistryPort
 from cys_core.application.ports.sandbox import SandboxConnector
+from cys_core.application.ports.workspace_store import WorkspaceStorePort
+from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
 from cys_core.application.workers.finding_publisher import WorkerFindingPublisher
@@ -40,8 +42,10 @@ from cys_core.domain.follow_up.models import (
     is_follow_up_plan_planner_job,
     work_kind_from_payload,
 )
+from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.sanitizer import InputSanitizer
+from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.workers.exceptions import JobBudgetExceeded
 from cys_core.domain.workers.job_budget import JobBudgetTracker
 from cys_core.application.ports.tracing_ports import WorkerTracingPort
@@ -113,7 +117,8 @@ class RunWorkerJob:
         make_load_skill_tool: Any,
         follow_up_publisher: FollowUpAnswerPublisher | None = None,
         follow_up_aggregator: FollowUpAggregator | None = None,
-        plan_follow_up_runner=None,
+        plan_follow_up_runner: PlanFollowUpRunner | None = None,
+        workspace_store: WorkspaceStorePort | None = None,
     ) -> None:
         self._context_builder = context_builder
         self._agent_executor = agent_executor
@@ -131,6 +136,7 @@ class RunWorkerJob:
         self.resolve_mcp_tools = resolve_mcp_tools
         self.resolve_legacy_tools = resolve_legacy_tools
         self.make_load_skill_tool = make_load_skill_tool
+        self._workspace_store = workspace_store
 
     def _workspace_id_for_job(self, job: WorkerJob, investigation_id: str) -> str:
         store = self._context_builder._engagement_store
@@ -143,16 +149,14 @@ class RunWorkerJob:
 
     def _resolve_defn(self, job: WorkerJob, investigation_id: str):
         workspace_id = self._workspace_id_for_job(job, investigation_id)
-        if not workspace_id:
+        if not workspace_id or self._workspace_store is None:
             return self._registry.get(job.persona)
         try:
-            from bootstrap.container import get_container
-
             return resolve_worker_agent_definition(
                 persona=job.persona,
                 workspace_id=workspace_id,
                 registry=self._registry,
-                workspace_store=get_container().get_workspace_store(),
+                workspace_store=self._workspace_store,
             )
         except Exception:
             return self._registry.get(job.persona)
@@ -162,6 +166,29 @@ class RunWorkerJob:
 
     async def mark_job_timeout(self, job: WorkerJob) -> None:
         await self._job_finalizer.mark_runtime_failure(job, "worker_job_timeout", exc=TimeoutError())
+
+    # NOTE(evidence-grounding-consolidation, 2026-07-14): uses `get_merged_manifest(job.job_id)`
+    # (job-keyed), while process_finding_critic._structural_issues reads
+    # `get_persona_manifests(investigation_id).get(persona)` for the same finding once it reaches
+    # the critic. See the detailed rationale above `record_evidence_manifest` in
+    # cys_core/application/workers/tool_execution_tracker.py for why these two lookups were
+    # deliberately NOT unified (both are process-local in-memory state; the worker and critic run
+    # as separate processes in every real deployment topology here).
+    def _apply_soc_sparse_coerce(self, job: WorkerJob, result: dict[str, Any], investigation_id: str) -> bool:
+        if job.persona != "soc":
+            return False
+        manifest = get_merged_manifest(job.job_id)
+        if manifest is None:
+            return False
+        coerced = coerce_sparse_soc_finding(result, manifest)
+        if coerced:
+            logger.info(
+                "worker_grounding_coerced",
+                job_id=job.job_id,
+                persona=job.persona,
+                engagement_id=investigation_id,
+            )
+        return coerced
 
     def _retry_nudge(
         self,
@@ -211,12 +238,12 @@ class RunWorkerJob:
         )
         if salvage is None:
             return None
+        investigation_id = self._context_builder.investigation_id(job)
         defn = self._resolve_defn(job, investigation_id)
         validated = self._result_validator.validate(
             result=salvage, schema_name=defn.schema_name or ""
         )
         result = validated if isinstance(validated, dict) else {"raw": validated}
-        investigation_id = self._context_builder.investigation_id(job)
         if not finding_meets_minimum(
             job.persona,
             result,
@@ -282,40 +309,33 @@ class RunWorkerJob:
             reason="worker_job_timeout",
         )
 
-    async def execute(
-        self,
-        job: WorkerJob,
-        budgeted: WorkerJob,
-        session_id: str,
-        job_state: dict[str, str],
+    async def _execute_follow_up_plan_planner(
+        self, plan_follow_up_runner: PlanFollowUpRunner, job: WorkerJob, investigation_id: str, session_id: str
     ) -> RunResult:
-        run_id = job.job_id
-        investigation_id = self._context_builder.investigation_id(job)
-
-        if is_follow_up_plan_planner_job(job.payload, persona=job.persona) and self._plan_follow_up_runner:
-            try:
-                self._job_finalizer.mark_running(job, session_id)
-                self._job_finalizer.publish_job_started(job, investigation_id)
-                result = await self._plan_follow_up_runner.execute(job, investigation_id)
-                await self._job_finalizer.mark_success(job, investigation_id)
-                return RunResult(
-                    job_id=job.job_id,
-                    persona=job.persona,
-                    success=True,
-                    finding=result,
-                    sandbox_id="",
+        try:
+            self._job_finalizer.mark_running(job, session_id)
+            self._job_finalizer.publish_job_started(job, investigation_id)
+            result = await plan_follow_up_runner.execute(job, investigation_id)
+            await self._job_finalizer.mark_success(job, investigation_id)
+            return RunResult(
+                job_id=job.job_id,
+                persona=job.persona,
+                success=True,
+                finding=result,
+                sandbox_id="",
+            )
+        except Exception as exc:
+            if self._follow_up_publisher is not None:
+                self._follow_up_publisher.publish_failure(
+                    job=job,
+                    investigation_id=investigation_id,
+                    error=str(exc),
                 )
-            except Exception as exc:
-                if self._follow_up_publisher is not None:
-                    self._follow_up_publisher.publish_failure(
-                        job=job,
-                        investigation_id=investigation_id,
-                        error=str(exc),
-                    )
-                await self._job_finalizer.mark_runtime_failure(job, str(exc), exc=exc)
-                return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
+            await self._job_finalizer.mark_runtime_failure(job, str(exc), exc=exc)
+            return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
 
-        if job.feedback or "-bus-" in job.job_id:
+    def _seed_bus_or_follow_up_manifest(self, job: WorkerJob, investigation_id: str) -> None:
+        if job.feedback or is_bus_worker_job_id(job.job_id):
             manifest = get_persona_manifests(investigation_id).get(job.persona)
             if manifest is not None:
                 seed_job_from_persona_manifest(job.job_id, manifest, mark_siem_done=True)
@@ -327,7 +347,8 @@ class RunWorkerJob:
                 manifest = get_persona_manifests(investigation_id).get(job.persona)
                 if manifest is not None:
                     seed_job_from_persona_manifest(job.job_id, manifest, mark_siem_done=True)
-        inv_ctx = self._context_builder.build(job)
+
+    def _build_job_span_attrs(self, job: WorkerJob, investigation_id: str, inv_ctx: dict) -> dict:
         from cys_core.observability.trace_attributes import build_job_trace_metadata
 
         trace_meta = build_job_trace_metadata(
@@ -340,177 +361,436 @@ class RunWorkerJob:
             sandbox_id=job.sandbox_id,
             memory_entries_loaded=len(inv_ctx.get("prior_findings") or []),
         )
-        span_attrs = trace_meta.get("metadata", {})
+        return trace_meta.get("metadata", {})
+
+    async def _create_sandbox(self, job: WorkerJob, run_id: str, investigation_id: str, session_id: str):
+        with self._worker_tracing.span(
+            "worker.sandbox.create",
+            persona=job.persona,
+            job_id=job.job_id,
+            engagement_id=investigation_id,
+            tenant_id=job.tenant_id,
+        ):
+            creds = await self.sandbox.acreate(run_id, job.persona)
+        job.sandbox_id = creds.sandbox_id
+        self._job_finalizer.mark_running(job, session_id)
+        self._job_finalizer.publish_job_started(job, investigation_id)
+        return creds
+
+    def _prepare_agent_inputs(self, job: WorkerJob, investigation_id: str, inv_ctx: dict, creds):
+        raw_input = self._context_builder.job_input(job)
+        sanitized = self.sanitizer.sanitize(raw_input, source="external")
+        defn = self._resolve_defn(job, investigation_id)
+        if job.persona == "consultant" and not (defn.schema_name or "").strip():
+            logger.warning(
+                "consultant_missing_output_schema",
+                job_id=job.job_id,
+                engagement_id=investigation_id,
+            )
+        profile_id = resolve_profile_id(payload=job.payload, catalog_entry=defn)
+        workspace_id = str(inv_ctx.get("workspace_id", "") or "")
+        sandbox_tools: list = []
+        if self.use_tool_gateway:
+            sandbox_tools.extend(
+                self.resolve_mcp_tools(
+                    defn.tools,
+                    creds.sandbox_id,
+                    persona=job.persona,
+                    job_id=job.job_id,
+                    correlation_id=job.correlation_id,
+                    profile_id=profile_id,
+                    workspace_id=workspace_id,
+                )
+            )
+        else:
+            sandbox_tools.extend(self.resolve_legacy_tools(defn.tools))
+        if defn.skills:
+            sandbox_tools.append(
+                self.make_load_skill_tool(
+                    defn.skills,
+                    persona=job.persona,
+                    job_id=job.job_id,
+                    investigation_id=investigation_id,
+                    tenant_id=job.tenant_id,
+                )
+            )
+        return sanitized, defn, profile_id, sandbox_tools
+
+    async def _run_agent_with_retries(
+        self,
+        job: WorkerJob,
+        sanitized: str,
+        session_id: str,
+        sandbox_tools: list,
+        investigation_id: str,
+        profile_id: str,
+        creds,
+        prior: list,
+        defn,
+    ) -> tuple[dict[str, Any], bool]:
+        prompt = sanitized
+        planned_tool_calls = False
+        result: dict[str, Any] = {}
+        # NOTE: this span previously only wrapped the `max_attempts` assignment due to a
+        # dedent bug, leaving the actual agent run (LLM + tool calls, all retries) untraced.
+        with self._worker_tracing.span(
+            "worker.agent.run",
+            persona=job.persona,
+            job_id=job.job_id,
+            engagement_id=investigation_id,
+            tenant_id=job.tenant_id,
+        ):
+            max_attempts = 2 if job.persona in _TRIAGE_PERSONAS else 3
+            for attempt in range(max_attempts):
+                result = await self._agent_executor.run(
+                    job=job,
+                    sanitized=prompt,
+                    session_id=session_id,
+                    sandbox_tools=sandbox_tools,
+                    investigation_id=investigation_id,
+                    profile_id=profile_id,
+                    sandbox_id=creds.sandbox_id,
+                    prior_findings_count=len(prior),
+                )
+                result = await self._agent_executor.self_refine(
+                    job, prompt, result, session_id=session_id
+                )
+                planned_tool_calls = (
+                    has_planned_tool_calls(result) if isinstance(result, dict) else False
+                )
+                validated = self._result_validator.validate(
+                    result=result, schema_name=defn.schema_name or ""
+                )
+                result = validated if isinstance(validated, dict) else {"raw": validated}
+                self._apply_soc_sparse_coerce(job, result, investigation_id)
+                if finding_meets_minimum(
+                    job.persona,
+                    result,
+                    schema_name=defn.schema_name or None,
+                    job_id=job.job_id,
+                    investigation_id=investigation_id,
+                    phase=str(job.payload.get("phase", "")),
+                    specialist_findings=job.payload.get("findings_summary")
+                    if job.payload.get("phase") == "synthesis"
+                    else None,
+                ):
+                    break
+                grounding_gaps: list[str] | None = None
+                if job.persona == "soc":
+                    grounding_gaps = soc_evidence_gaps(result, get_merged_manifest(job.job_id))
+                tools_executed = get_tool_execution_count(job.job_id)
+                nudge = self._retry_nudge(
+                    job,
+                    sanitized,
+                    attempt=attempt,
+                    planned_tool_calls=planned_tool_calls,
+                    tools_executed=tools_executed,
+                    grounding_gaps=grounding_gaps,
+                )
+                if nudge is not None:
+                    if planned_tool_calls and tools_executed == 0 and attempt == 0:
+                        clear_tool_execution_count(job.job_id)
+                        logger.info(
+                            "worker_tool_retry",
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            engagement_id=investigation_id,
+                        )
+                    elif job.persona == "soc" and tool_succeeded(job.job_id, "investigate_incident"):
+                        logger.info(
+                            "worker_siem_finding_nudge",
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            engagement_id=investigation_id,
+                        )
+                    elif job.persona == "intel":
+                        logger.info(
+                            "worker_intel_finding_nudge",
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            engagement_id=investigation_id,
+                            tools_executed=tools_executed,
+                        )
+                    else:
+                        logger.info(
+                            "worker_emit_finding_nudge",
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            engagement_id=investigation_id,
+                            tools_executed=tools_executed,
+                        )
+                    prompt = nudge
+                    continue
+                break
+        return result, planned_tool_calls
+
+    async def _handle_noop_finding(
+        self, job: WorkerJob, result: dict, session_id: str, investigation_id: str, creds
+    ) -> RunResult | None:
+        if not is_noop_finding(result):
+            return None
+        logger.info(
+            "worker_noop_finding_skipped",
+            job_id=job.job_id,
+            persona=job.persona,
+            engagement_id=investigation_id,
+        )
+        self._finding_publisher.record_noop(job=job, investigation_id=investigation_id)
+        budget_state = JobBudgetTracker.get(session_id)
+        if budget_state is not None:
+            job.payload["estimated_cost_usd"] = budget_state.cost_usd
+        job.payload["noop_finding"] = True
+        if job.payload.get("phase") != "synthesis":
+            self._job_finalizer.mark_persona_completed(job)
+        await self._job_finalizer.mark_success(job, investigation_id)
+        return RunResult(
+            job_id=job.job_id,
+            persona=job.persona,
+            success=True,
+            finding=result,
+            sandbox_id=creds.sandbox_id,
+        )
+
+    async def _handle_invalid_finding(
+        self,
+        job: WorkerJob,
+        result: dict,
+        planned_tool_calls: bool,
+        session_id: str,
+        job_state: dict[str, str],
+        investigation_id: str,
+    ) -> RunResult:
+        """Diagnose why a finding failed `finding_meets_minimum` and raise the most
+        specific error, or (intel only) return a salvaged partial result. Always
+        raises or returns — never falls through."""
+        raw_text = str(
+            result.get("raw")
+            or result.get("raw_response")
+            or result.get("summary")
+            or result.get("error")
+            or ""
+        ).strip()
+        if raw_text and (
+            "cannot process" in raw_text.lower()
+            or "operational guidelines" in raw_text.lower()
+            or "i can't" in raw_text.lower()
+            or "i cannot" in raw_text.lower()
+        ):
+            raise ValueError(f"model_refusal:{raw_text[:240]}")
+        tools_executed = get_tool_execution_count(job.job_id)
+        if planned_tool_calls and tools_executed == 0:
+            raise ValueError(
+                "tools_not_executed:model returned planned tool_calls JSON "
+                "without native tool invocations; call SIEM/Veil tools directly"
+            )
+        if job.persona == "consultant" and not is_follow_up_orchestrator(job.payload):
+            gaps = consultant_finding_gaps(result)
+            if gaps:
+                raise ValueError(f"empty_finding:{','.join(gaps)}")
+        if is_follow_up_orchestrator(job.payload):
+            result = prepare_follow_up_result(job, result)
+            gaps = follow_up_answer_gaps(result)
+            if gaps:
+                raise ValueError(f"empty_finding:{','.join(gaps)}")
+        if job.persona == "soc":
+            self._apply_soc_sparse_coerce(job, result, investigation_id)
+            gaps = soc_evidence_gaps(result, get_merged_manifest(job.job_id))
+            if gaps:
+                logger.warning(
+                    "worker_grounding_rejected",
+                    job_id=job.job_id,
+                    persona=job.persona,
+                    engagement_id=investigation_id,
+                    ungrounded_claims=gaps,
+                )
+                raise ValueError(f"ungrounded_finding:{','.join(gaps)}")
+        if job.persona == "intel":
+            salvaged = await self.try_salvage_partial(
+                job,
+                session_id,
+                job_state,
+                reason="empty_finding",
+            )
+            if salvaged is not None:
+                return salvaged
+        raise ValueError("empty_finding")
+
+    async def _complete_follow_up_orchestrator(
+        self, job: WorkerJob, result: dict, session_id: str, investigation_id: str, creds
+    ) -> RunResult:
+        if (
+            work_kind_from_payload(job.payload) == "follow_up_orchestrate"
+            and self._follow_up_aggregator is not None
+        ):
+            child_ids = self._follow_up_aggregator.spawned_child_ids(
+                job.tenant_id,
+                investigation_id,
+                orchestrator_job_id=job.job_id,
+            )
+            if not child_ids:
+                raw_children = job.payload.get("spawned_job_ids")
+                if isinstance(raw_children, list):
+                    child_ids = [str(item) for item in raw_children]
+            if child_ids:
+                await self._follow_up_aggregator.wait_for_children(child_ids)
+                result = self._follow_up_aggregator.merge_child_findings(
+                    result,
+                    child_ids,
+                    tenant_id=job.tenant_id,
+                    investigation_id=investigation_id,
+                )
+        if self._follow_up_publisher is not None:
+            self._follow_up_publisher.publish_success(
+                job=job,
+                result=result,
+                investigation_id=investigation_id,
+            )
+        budget_state = JobBudgetTracker.get(session_id)
+        if budget_state is not None:
+            job.payload["estimated_cost_usd"] = budget_state.cost_usd
+        if (
+            work_kind_from_payload(job.payload) == "initial_qa"
+            and isinstance(result, dict)
+            and self._job_finalizer._engagement_store is not None
+        ):
+            from cys_core.application.findings.outcome_mapper import finding_to_operator_outcome
+
+            outcome = finding_to_operator_outcome(result, kind="advisory")
+            self._job_finalizer._engagement_store.set_final_report(
+                job.tenant_id,
+                investigation_id,
+                outcome.to_final_report(),
+            )
+        await self._job_finalizer.mark_follow_up_success(job, investigation_id)
+        return RunResult(
+            job_id=job.job_id,
+            persona=job.persona,
+            success=True,
+            finding=result,
+            sandbox_id=creds.sandbox_id,
+        )
+
+    async def _publish_and_finalize(
+        self, job: WorkerJob, result: dict, investigation_id: str, session_id: str, creds, defn
+    ) -> RunResult:
+        if job.payload.get("phase") != "synthesis":
+            self._finding_publisher.append_engagement_finding(
+                job=job,
+                result=result,
+                investigation_id=investigation_id,
+                defn=defn,
+            )
+        self._finding_publisher.persist_memory(job=job, result=result, investigation_id=investigation_id)
+        if job.payload.get("phase") == "synthesis":
+            self._finding_publisher.publish_final_report(
+                job=job,
+                result=result,
+                investigation_id=investigation_id,
+            )
+            follow_up_id = str(job.payload.get("follow_up_id", ""))
+            if follow_up_id and self._follow_up_publisher is not None:
+                engagement = None
+                if self._job_finalizer._engagement_store is not None:
+                    engagement = self._job_finalizer._engagement_store.get(
+                        job.tenant_id, investigation_id
+                    )
+                plan_snapshot: dict[str, Any] = {
+                    "summary": str(result.get("summary", result.get("finding", ""))),
+                    "final_report": result,
+                }
+                if engagement is not None and engagement.planner_plan:
+                    plan_snapshot["personas"] = list(engagement.planner_plan)
+                    plan_snapshot["sub_goals"] = dict(engagement.planner_sub_goals or {})
+                    plan_snapshot["rationale"] = engagement.planner_rationale
+                synth_job = WorkerJob(
+                    job_id=job.job_id,
+                    event_id=job.event_id,
+                    persona=job.persona,
+                    correlation_id=job.correlation_id,
+                    tenant_id=job.tenant_id,
+                    payload={**job.payload, "work_kind": "follow_up_plan"},
+                )
+                self._follow_up_publisher.publish_success(
+                    job=synth_job,
+                    result=plan_snapshot,
+                    investigation_id=investigation_id,
+                )
+                if engagement is not None:
+                    engagement.close_after_follow_up()
+                    if self._job_finalizer._engagement_store is not None:
+                        self._job_finalizer._engagement_store.upsert(engagement)
+        else:
+            if should_publish_finding_to_bus(persona=job.persona, role=getattr(defn, "role", None)):
+                await self._finding_publisher.publish(
+                    job=job,
+                    defn=defn,
+                    result=result,
+                    sandbox_id=creds.sandbox_id,
+                    investigation_id=investigation_id,
+                )
+
+        budget_state = JobBudgetTracker.get(session_id)
+        if budget_state is not None:
+            job.payload["estimated_cost_usd"] = budget_state.cost_usd
+
+        if job.payload.get("phase") != "synthesis":
+            self._job_finalizer.mark_persona_completed(job)
+        await self._job_finalizer.mark_success(job, investigation_id)
+
+        return RunResult(
+            job_id=job.job_id,
+            persona=job.persona,
+            success=True,
+            finding=result,
+            sandbox_id=creds.sandbox_id,
+        )
+
+    async def execute(
+        self,
+        job: WorkerJob,
+        budgeted: WorkerJob,
+        session_id: str,
+        job_state: dict[str, str],
+    ) -> RunResult:
+        run_id = job.job_id
+        investigation_id = self._context_builder.investigation_id(job)
+
+        if is_follow_up_plan_planner_job(job.payload, persona=job.persona) and self._plan_follow_up_runner is not None:
+            return await self._execute_follow_up_plan_planner(
+                self._plan_follow_up_runner, job, investigation_id, session_id
+            )
+
+        self._seed_bus_or_follow_up_manifest(job, investigation_id)
+        inv_ctx = self._context_builder.build(job)
+        span_attrs = self._build_job_span_attrs(job, investigation_id, inv_ctx)
+
         with self._worker_tracing.span(
             "worker.process_job",
             **span_attrs,
         ):
             creds = None
             try:
-                with self._worker_tracing.span(
-                    "worker.sandbox.create",
-                    persona=job.persona,
-                    job_id=job.job_id,
-                    engagement_id=investigation_id,
-                    tenant_id=job.tenant_id,
-                ):
-                    creds = await self.sandbox.acreate(run_id, job.persona)
-                job.sandbox_id = creds.sandbox_id
-                self._job_finalizer.mark_running(job, session_id)
-                self._job_finalizer.publish_job_started(job, investigation_id)
-
-                raw_input = self._context_builder.job_input(job)
-                sanitized = self.sanitizer.sanitize(raw_input, source="external")
-                defn = self._resolve_defn(job, investigation_id)
-                if job.persona == "consultant" and not (defn.schema_name or "").strip():
-                    logger.warning(
-                        "consultant_missing_output_schema",
-                        job_id=job.job_id,
-                        engagement_id=investigation_id,
-                    )
-                profile_id = resolve_profile_id(payload=job.payload, catalog_entry=defn)
-                workspace_id = str(inv_ctx.get("workspace_id", "") or "")
-                sandbox_tools: list = []
-                if self.use_tool_gateway:
-                    sandbox_tools.extend(
-                        self.resolve_mcp_tools(
-                            defn.tools,
-                            creds.sandbox_id,
-                            persona=job.persona,
-                            job_id=job.job_id,
-                            correlation_id=job.correlation_id,
-                            profile_id=profile_id,
-                            workspace_id=workspace_id,
-                        )
-                    )
-                else:
-                    sandbox_tools.extend(self.resolve_legacy_tools(defn.tools))
-                if defn.skills:
-                    sandbox_tools.append(
-                        self.make_load_skill_tool(
-                            defn.skills,
-                            persona=job.persona,
-                            job_id=job.job_id,
-                            investigation_id=investigation_id,
-                            tenant_id=job.tenant_id,
-                        )
-                    )
-
+                creds = await self._create_sandbox(job, run_id, investigation_id, session_id)
+                sanitized, defn, profile_id, sandbox_tools = self._prepare_agent_inputs(
+                    job, investigation_id, inv_ctx, creds
+                )
                 prior = inv_ctx.get("prior_findings") or []
-                prompt = sanitized
-                planned_tool_calls = False
-                result: dict[str, Any] = {}
-                with self._worker_tracing.span(
-                    "worker.agent.run",
-                    persona=job.persona,
-                    job_id=job.job_id,
-                    engagement_id=investigation_id,
-                    tenant_id=job.tenant_id,
-                ):
-                    max_attempts = 2 if job.persona in _TRIAGE_PERSONAS else 3
-                for attempt in range(max_attempts):
-                        result = await self._agent_executor.run(
-                            job=job,
-                            sanitized=prompt,
-                            session_id=session_id,
-                            sandbox_tools=sandbox_tools,
-                            investigation_id=investigation_id,
-                            profile_id=profile_id,
-                            sandbox_id=creds.sandbox_id,
-                            prior_findings_count=len(prior),
-                        )
-                        result = await self._agent_executor.self_refine(
-                            job, prompt, result, session_id=session_id
-                        )
-                        planned_tool_calls = (
-                            has_planned_tool_calls(result) if isinstance(result, dict) else False
-                        )
-                        validated = self._result_validator.validate(
-                            result=result, schema_name=defn.schema_name or ""
-                        )
-                        result = validated if isinstance(validated, dict) else {"raw": validated}
-                        if finding_meets_minimum(
-                            job.persona,
-                            result,
-                            schema_name=defn.schema_name or None,
-                            job_id=job.job_id,
-                            investigation_id=investigation_id,
-                            phase=str(job.payload.get("phase", "")),
-                            specialist_findings=job.payload.get("findings_summary")
-                            if job.payload.get("phase") == "synthesis"
-                            else None,
-                        ):
-                            break
-                        grounding_gaps: list[str] | None = None
-                        if job.persona == "soc":
-                            grounding_gaps = soc_evidence_gaps(result, get_merged_manifest(job.job_id))
-                        tools_executed = get_tool_execution_count(job.job_id)
-                        nudge = self._retry_nudge(
-                            job,
-                            sanitized,
-                            attempt=attempt,
-                            planned_tool_calls=planned_tool_calls,
-                            tools_executed=tools_executed,
-                            grounding_gaps=grounding_gaps,
-                        )
-                        if nudge is not None:
-                            if planned_tool_calls and tools_executed == 0 and attempt == 0:
-                                clear_tool_execution_count(job.job_id)
-                                logger.info(
-                                    "worker_tool_retry",
-                                    job_id=job.job_id,
-                                    persona=job.persona,
-                                    engagement_id=investigation_id,
-                                )
-                            elif job.persona == "soc" and tool_succeeded(job.job_id, "investigate_incident"):
-                                logger.info(
-                                    "worker_siem_finding_nudge",
-                                    job_id=job.job_id,
-                                    persona=job.persona,
-                                    engagement_id=investigation_id,
-                                )
-                            elif job.persona == "intel":
-                                logger.info(
-                                    "worker_intel_finding_nudge",
-                                    job_id=job.job_id,
-                                    persona=job.persona,
-                                    engagement_id=investigation_id,
-                                    tools_executed=tools_executed,
-                                )
-                            else:
-                                logger.info(
-                                    "worker_emit_finding_nudge",
-                                    job_id=job.job_id,
-                                    persona=job.persona,
-                                    engagement_id=investigation_id,
-                                    tools_executed=tools_executed,
-                                )
-                            prompt = nudge
-                            continue
-                        break
 
-                if is_noop_finding(result):
-                    logger.info(
-                        "worker_noop_finding_skipped",
-                        job_id=job.job_id,
-                        persona=job.persona,
-                        engagement_id=investigation_id,
-                    )
-                    self._finding_publisher.record_noop(job=job, investigation_id=investigation_id)
-                    budget_state = JobBudgetTracker.get(session_id)
-                    if budget_state is not None:
-                        job.payload["estimated_cost_usd"] = budget_state.cost_usd
-                    job.payload["noop_finding"] = True
-                    if job.payload.get("phase") != "synthesis":
-                        self._job_finalizer.mark_persona_completed(job)
-                    await self._job_finalizer.mark_success(job, investigation_id)
-                    return RunResult(
-                        job_id=job.job_id,
-                        persona=job.persona,
-                        success=True,
-                        finding=result,
-                        sandbox_id=creds.sandbox_id,
-                    )
+                result, planned_tool_calls = await self._run_agent_with_retries(
+                    job,
+                    sanitized,
+                    session_id,
+                    sandbox_tools,
+                    investigation_id,
+                    profile_id,
+                    creds,
+                    prior,
+                    defn,
+                )
+
+                noop_result = await self._handle_noop_finding(job, result, session_id, investigation_id, creds)
+                if noop_result is not None:
+                    return noop_result
 
                 if (
                     job.persona == "consultant"
@@ -536,181 +816,16 @@ class RunWorkerJob:
                         else None,
                     )
                 if not meets_minimum:
-                    raw_text = str(
-                        result.get("raw")
-                        or result.get("raw_response")
-                        or result.get("summary")
-                        or result.get("error")
-                        or ""
-                    ).strip()
-                    if raw_text and (
-                        "cannot process" in raw_text.lower()
-                        or "operational guidelines" in raw_text.lower()
-                        or "i can't" in raw_text.lower()
-                        or "i cannot" in raw_text.lower()
-                    ):
-                        raise ValueError(f"model_refusal:{raw_text[:240]}")
-                    tools_executed = get_tool_execution_count(job.job_id)
-                    if planned_tool_calls and tools_executed == 0:
-                        raise ValueError(
-                            "tools_not_executed:model returned planned tool_calls JSON "
-                            "without native tool invocations; call SIEM/Veil tools directly"
-                        )
-                    if job.persona == "consultant" and not is_follow_up_orchestrator(job.payload):
-                        gaps = consultant_finding_gaps(result)
-                        if gaps:
-                            raise ValueError(f"empty_finding:{','.join(gaps)}")
-                    if is_follow_up_orchestrator(job.payload):
-                        result = prepare_follow_up_result(job, result)
-                        gaps = follow_up_answer_gaps(result)
-                        if gaps:
-                            raise ValueError(f"empty_finding:{','.join(gaps)}")
-                    if job.persona == "soc":
-                        gaps = soc_evidence_gaps(result, get_merged_manifest(job.job_id))
-                        if gaps:
-                            logger.warning(
-                                "worker_grounding_rejected",
-                                job_id=job.job_id,
-                                persona=job.persona,
-                                engagement_id=investigation_id,
-                                ungrounded_claims=gaps,
-                            )
-                            raise ValueError(f"ungrounded_finding:{','.join(gaps)}")
-                    if job.persona == "intel":
-                        salvaged = await self.try_salvage_partial(
-                            job,
-                            session_id,
-                            job_state,
-                            reason="empty_finding",
-                        )
-                        if salvaged is not None:
-                            return salvaged
-                    raise ValueError("empty_finding")
+                    return await self._handle_invalid_finding(
+                        job, result, planned_tool_calls, session_id, job_state, investigation_id
+                    )
 
                 if is_follow_up_orchestrator(job.payload):
-                    if (
-                        work_kind_from_payload(job.payload) == "follow_up_orchestrate"
-                        and self._follow_up_aggregator is not None
-                    ):
-                        child_ids = self._follow_up_aggregator.spawned_child_ids(
-                            job.tenant_id,
-                            investigation_id,
-                            orchestrator_job_id=job.job_id,
-                        )
-                        if not child_ids:
-                            raw_children = job.payload.get("spawned_job_ids")
-                            if isinstance(raw_children, list):
-                                child_ids = [str(item) for item in raw_children]
-                        if child_ids:
-                            await self._follow_up_aggregator.wait_for_children(child_ids)
-                            result = self._follow_up_aggregator.merge_child_findings(
-                                result,
-                                child_ids,
-                                tenant_id=job.tenant_id,
-                                investigation_id=investigation_id,
-                            )
-                    if self._follow_up_publisher is not None:
-                        self._follow_up_publisher.publish_success(
-                            job=job,
-                            result=result,
-                            investigation_id=investigation_id,
-                        )
-                    budget_state = JobBudgetTracker.get(session_id)
-                    if budget_state is not None:
-                        job.payload["estimated_cost_usd"] = budget_state.cost_usd
-                    if (
-                        work_kind_from_payload(job.payload) == "initial_qa"
-                        and isinstance(result, dict)
-                        and self._job_finalizer._engagement_store is not None
-                    ):
-                        from cys_core.application.findings.outcome_mapper import finding_to_operator_outcome
-
-                        outcome = finding_to_operator_outcome(result, kind="advisory")
-                        self._job_finalizer._engagement_store.set_final_report(
-                            job.tenant_id,
-                            investigation_id,
-                            outcome.to_final_report(),
-                        )
-                    await self._job_finalizer.mark_follow_up_success(job, investigation_id)
-                    return RunResult(
-                        job_id=job.job_id,
-                        persona=job.persona,
-                        success=True,
-                        finding=result,
-                        sandbox_id=creds.sandbox_id,
+                    return await self._complete_follow_up_orchestrator(
+                        job, result, session_id, investigation_id, creds
                     )
 
-                if job.payload.get("phase") != "synthesis":
-                    self._finding_publisher.append_engagement_finding(
-                        job=job,
-                        result=result,
-                        investigation_id=investigation_id,
-                        defn=defn,
-                    )
-                self._finding_publisher.persist_memory(job=job, result=result, investigation_id=investigation_id)
-                if job.payload.get("phase") == "synthesis":
-                    self._finding_publisher.publish_final_report(
-                        job=job,
-                        result=result,
-                        investigation_id=investigation_id,
-                    )
-                    follow_up_id = str(job.payload.get("follow_up_id", ""))
-                    if follow_up_id and self._follow_up_publisher is not None:
-                        engagement = None
-                        if self._job_finalizer._engagement_store is not None:
-                            engagement = self._job_finalizer._engagement_store.get(
-                                job.tenant_id, investigation_id
-                            )
-                        plan_snapshot: dict[str, Any] = {
-                            "summary": str(result.get("summary", result.get("finding", ""))),
-                            "final_report": result,
-                        }
-                        if engagement is not None and engagement.planner_plan:
-                            plan_snapshot["personas"] = list(engagement.planner_plan)
-                            plan_snapshot["sub_goals"] = dict(engagement.planner_sub_goals or {})
-                            plan_snapshot["rationale"] = engagement.planner_rationale
-                        synth_job = WorkerJob(
-                            job_id=job.job_id,
-                            event_id=job.event_id,
-                            persona=job.persona,
-                            correlation_id=job.correlation_id,
-                            tenant_id=job.tenant_id,
-                            payload={**job.payload, "work_kind": "follow_up_plan"},
-                        )
-                        self._follow_up_publisher.publish_success(
-                            job=synth_job,
-                            result=plan_snapshot,
-                            investigation_id=investigation_id,
-                        )
-                        if engagement is not None:
-                            engagement.close_after_follow_up()
-                            if self._job_finalizer._engagement_store is not None:
-                                self._job_finalizer._engagement_store.upsert(engagement)
-                else:
-                    if should_publish_finding_to_bus(persona=job.persona, role=getattr(defn, "role", None)):
-                        await self._finding_publisher.publish(
-                            job=job,
-                            defn=defn,
-                            result=result,
-                            sandbox_id=creds.sandbox_id,
-                            investigation_id=investigation_id,
-                        )
-
-                budget_state = JobBudgetTracker.get(session_id)
-                if budget_state is not None:
-                    job.payload["estimated_cost_usd"] = budget_state.cost_usd
-
-                if job.payload.get("phase") != "synthesis":
-                    self._job_finalizer.mark_persona_completed(job)
-                await self._job_finalizer.mark_success(job, investigation_id)
-
-                return RunResult(
-                    job_id=job.job_id,
-                    persona=job.persona,
-                    success=True,
-                    finding=result,
-                    sandbox_id=creds.sandbox_id,
-                )
+                return await self._publish_and_finalize(job, result, investigation_id, session_id, creds, defn)
             except JobBudgetExceeded as exc:
                 job_state["status"] = "error"
                 salvaged = await self.try_salvage_partial(

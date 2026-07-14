@@ -20,6 +20,7 @@ metadata:
     {{- include "egregore.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.api.replicas }}
+  revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -42,11 +43,20 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.topologySpread.maxSkew }}
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app: egregore-api
+      {{- end }}
       containers:
         - name: api
           image: {{ include "egregore.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/app/.venv/bin/egregore", "serve", "--host", "0.0.0.0", "--port", "{{ .Values.api.port }}"]
+          command: ["/app/.venv/bin/egregore", "serve", "--host", "0.0.0.0", "--port", "{{ .Values.api.port }}", "--workers", "{{ .Values.api.uvicornWorkers }}"]
           ports:
             - containerPort: {{ .Values.api.port }}
           envFrom:

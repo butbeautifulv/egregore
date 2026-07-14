@@ -17,6 +17,8 @@ def _resolve_source(binding_datasource_id: str) -> DataSource:
             return source
     except RuntimeError:
         pass
+    # FIXME: catalog lookup failure (outage/misconfig) falls through to an implicit GET+LIST grant
+    # instead of denying — a broken catalog should fail closed, not silently authorize access.
     return DataSource(
         id=binding_datasource_id,
         type=binding_datasource_id,

@@ -8,7 +8,7 @@ from cys_core.application.errors import PlanningFailedError
 from cys_core.application.use_cases.plan_investigation import PlanInvestigation
 from cys_core.domain.engagement.models import Engagement, EngagementStatus
 from cys_core.domain.events.models import SecurityEvent
-from tests.application.port_fakes import plan_investigation_port_kwargs
+from tests.application.port_fakes import fake_resource_source, plan_investigation_port_kwargs
 
 
 @pytest.mark.unit
@@ -59,14 +59,9 @@ async def test_plan_investigation_unparseable_llm_fails_fast() -> None:
         status=EngagementStatus.PLANNING,
         planner_status="planning",
     )
-    kwargs = plan_investigation_port_kwargs()
-    kwargs["resource_source"].list_worker_personas.return_value = [
-        "cloud",
-        "coding",
-        "compliance",
-        "consultant",
-        "soc",
-    ]
+    kwargs = plan_investigation_port_kwargs(
+        resource_source=fake_resource_source(personas=["cloud", "coding", "compliance", "consultant", "soc"])
+    )
     planner = PlanInvestigation(runtime=runtime, engagement_store=store, **kwargs)
     event = SecurityEvent(
         id="evt-fb",
@@ -108,9 +103,10 @@ async def test_plan_investigation_structured_output_ok() -> None:
         status=EngagementStatus.PLANNING,
         planner_status="planning",
     )
-    kwargs = plan_investigation_port_kwargs()
-    kwargs["resource_source"].list_worker_personas.return_value = ["network", "consultant", "soc"]
-    kwargs["persona_ranking"].rank.side_effect = lambda personas, **_: personas
+    # FakePersonaRanking.rank() already returns personas unchanged by default.
+    kwargs = plan_investigation_port_kwargs(
+        resource_source=fake_resource_source(personas=["network", "consultant", "soc"])
+    )
     planner = PlanInvestigation(runtime=runtime, engagement_store=store, **kwargs)
     event = SecurityEvent(
         id="evt-net",

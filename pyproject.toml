@@ -133,8 +133,8 @@ unmatched_ignore_imports_alerting = "none"
 ignore_imports = [
     "cys_core.application.use_cases.evaluate_trace_critic -> bootstrap",
     "cys_core.application.use_cases.run_step -> bootstrap",
-    "cys_core.application.use_cases.run_worker_job -> bootstrap",
     "cys_core.application.use_cases.seed_catalog -> bootstrap",
     "cys_core.application.use_cases.upsert_profile_policy -> bootstrap",
     "cys_core.application.tools.providers.sandbox -> bootstrap",
+    "cys_core.application.use_cases.enqueue_follow_up -> bootstrap",
 ]

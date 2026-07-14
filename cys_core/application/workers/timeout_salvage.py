@@ -19,7 +19,6 @@ _LADDER_BLOCK_MARKERS = (
     "SIEM ladder complete",
     "already completed",
     "SIEM/Veil ladder complete",
-    "No MITRE technique_id available",
     "Emit SocFinding JSON",
     "Emit the persona finding JSON",
 )

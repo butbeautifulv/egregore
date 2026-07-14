@@ -69,6 +69,18 @@ class FakeJobStore:
     def count_active_bus_jobs(self, tenant_id: str, engagement_id: str) -> int:
         return 0
 
+    def list_active_bus_jobs(self, tenant_id: str, engagement_id: str) -> list[JobRecordSummary]:
+        return []
+
+    def list_stale_bus_jobs(
+        self,
+        tenant_id: str,
+        engagement_id: str,
+        *,
+        older_than_s: float,
+    ) -> list[JobRecordSummary]:
+        return []
+
 
 class FakeJobQueue:
     """Implements JobQueueConnector for enqueue tests."""

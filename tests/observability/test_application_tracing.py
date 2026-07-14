@@ -7,7 +7,7 @@ from tests.support.recording_trace_backend import RecordingApplicationTracing, R
 
 
 class _FakeRouter:
-    def route(self, event: SecurityEvent):
+    def route(self, event: SecurityEvent, *, profile_id: str = "cybersec-soc"):
         from cys_core.domain.events.models import RoutingDecision
 
         return RoutingDecision(event_id=event.id, personas=["soc"], playbook_id="test")

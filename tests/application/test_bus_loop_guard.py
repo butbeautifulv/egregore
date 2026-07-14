@@ -397,6 +397,9 @@ async def test_finding_publisher_filters_off_plan_recipients() -> None:
     engagement.planner_plan = ["soc", "intel"]
     store = MagicMock()
     store.get.return_value = engagement
+    # No agent_catalog wired -> _resolve_control_plane_mode() falls back to GATE_ONLY,
+    # which strips "coordinator" by design (see test_filter_control_plane_gate_only in
+    # test_control_plane_cleanup.py: GATE_ONLY keeps critic, drops coordinator).
     publisher = WorkerFindingPublisher(bus=bus, transport=transport, engagement_store=store)
     job = MagicMock(
         persona="soc",
@@ -419,7 +422,7 @@ async def test_finding_publisher_filters_off_plan_recipients() -> None:
     recipients = [call.args[1] for call in bus.send_message.call_args_list]
     assert "network" not in recipients
     assert "critic" in recipients
-    assert "coordinator" in recipients
+    assert "coordinator" not in recipients
     assert transport.publish_delivery.await_count == len(recipients)
 
 
@@ -609,7 +612,6 @@ async def test_critic_auto_accepts_after_revision_cap(monkeypatch: pytest.Monkey
 
     settings = MagicMock()
     settings.bus_max_revisions_per_persona = 1
-    settings.critic_use_llm_judge = False
     container = MagicMock()
     container.settings = settings
     container.get_profile_policy_port.return_value = MagicMock()

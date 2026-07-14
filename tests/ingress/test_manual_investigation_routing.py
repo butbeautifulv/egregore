@@ -75,7 +75,11 @@ async def test_meta_llm_engagement_uses_planner_via_start_engagement(monkeypatch
     assert stored.job_ids == ["job-soc", "job-network"]
     assert engagement.planner_status == "ok"
     assert engagement.planner_plan == ["soc", "network"]
-    assert enqueued[0][2]["pipeline_staged"] is True
+    # get_planner_default_execution_mode() defaults to "parallel" (latency fix — multi-persona
+    # investigations dispatch in parallel by default now); _finalize_plan() sets
+    # plan.execution_mode=PARALLEL whenever the planner response omits it, so
+    # _pipeline_staged() (which requires ExecutionMode.STAGED) is False here.
+    assert enqueued[0][2]["pipeline_staged"] is False
     assert enqueued[0][2]["sequential"] is False
 
 

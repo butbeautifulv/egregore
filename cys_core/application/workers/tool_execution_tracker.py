@@ -116,6 +116,62 @@ def get_manifest_port() -> TrackerManifestAdapter:
     return TrackerManifestAdapter()
 
 
+# NOTE(evidence-grounding-consolidation, 2026-07-14): `get_merged_manifest(job_id)` and
+# `get_persona_manifests(investigation_id).get(persona)` are NOT interchangeable, and the
+# grounding logic that consumes them (run_worker_job._apply_soc_sparse_coerce vs.
+# process_finding_critic._structural_issues/_resolve_trust_score) was investigated for
+# consolidation onto a single lookup. Verified findings, so the next person doesn't have to
+# re-derive them:
+#
+# 1. Relationship between the two stores (this module):
+#    - `_manifests` (job_id -> list[EvidenceManifest]) is written live, during a job's tool
+#      calls, by `ingest_tool_output_manifest` (via cys_core/middleware/tool_coercion_middleware.py)
+#      and by `seed_job_from_persona_manifest`. `get_merged_manifest(job_id)` merges that list.
+#      This is what run_worker_job.py reads *during* a job (mid-retry-loop and in
+#      `_handle_invalid_finding`), before the finding has been accepted/published.
+#    - `_persona_manifests` (investigation_id -> {persona: EvidenceManifest}) is a *derived*
+#      snapshot: `WorkerFindingPublisher.append_engagement_finding` (finding_publisher.py)
+#      calls `get_merged_manifest(job.job_id)` for the job whose finding just passed
+#      `finding_meets_minimum`, then writes that exact manifest into `_persona_manifests` via
+#      `record_persona_manifest(investigation_id, persona, manifest)` (which further merges it
+#      with any prior manifest recorded for that persona in the same investigation). So within
+#      a single process, persona-manifest is a (possibly broader, multi-job) superset of the
+#      job's merged manifest as of the moment that job's finding was published — not
+#      independently-sourced data, but not a live mirror of the *current* job either.
+#
+# 2. Process locality (the actual blocker to unifying the lookups): both `_manifests` and
+#    `_persona_manifests` are plain module-level dicts guarded by an in-process `threading.Lock`
+#    — there is no Redis/Postgres/Kafka backing. The worker (`egregore worker --daemon`, its own
+#    container — see docker-compose.dev.yml `worker` service) and the critic (`egregore critic
+#    --daemon`, or instantiated in-process inside the `api` server when CONTROL_MODE=inprocess,
+#    the default — see interfaces/api/app.py, interfaces/control_plane/critic_daemon.py) run as
+#    SEPARATE OS processes in every real deployment topology in this repo. The worker's writes to
+#    `_manifests`/`_persona_manifests` therefore never reach the critic's copy of this module —
+#    `process_finding_critic._structural_issues`/`_resolve_trust_score` see an empty dict for
+#    `get_persona_manifests(investigation_id)` in that process almost always, meaning the SOC
+#    grounding gate the critic is supposed to run is effectively a silent no-op in a distributed
+#    deployment. This is NOT caught by tests because pytest runs producer and consumer in the
+#    same interpreter, so the module-level dicts happen to be shared there.
+#    -> Swapping the critic to call `get_merged_manifest(job_id)` instead would NOT fix this: that
+#       dict is populated only in the worker process and is equally invisible to the critic.
+#    -> Separately, `interfaces/control_plane/control_message_handler.py::extract_context`
+#       currently synthesizes `job_id` as `f"{sender}:{investigation_id}"` rather than reading the
+#       real `job.job_id` that `finding_publisher.publish()` already puts in the bus payload
+#       (`finding_payload["job_id"]`), so "just thread job_id through" is not a drop-in fix either.
+#    -> The one piece of this data that IS cross-process-safe already exists:
+#       `finding_publisher.append_engagement_finding` also persists
+#       `manifest.model_dump(mode="json")` into `engagement.evidence_manifests[persona]` via
+#       `EngagementStateStore` (Postgres-backed in prod — see
+#       cys_core/infrastructure/engagement/postgres_store.py). `process_finding_critic.py` does
+#       not currently read from that store at all.
+#
+# Given the above, consolidating the two call sites onto either existing lookup function would be
+# cosmetic at best and could mask the real bug (critic grounding gate not seeing worker evidence
+# cross-process) behind a false sense of "now they agree." Left unchanged pending a deliberate
+# fix: give `ProcessFindingCritic` access to `EngagementStateStore` and read
+# `engagement.evidence_manifests[persona]` (re-hydrated via `EvidenceManifest.model_validate`),
+# or carry the merged manifest directly on the bus finding payload. See also the mirrored note in
+# cys_core/application/use_cases/process_finding_critic.py.
 def record_evidence_manifest(job_id: str, tool_name: str, manifest: EvidenceManifest) -> None:
     if not job_id:
         return

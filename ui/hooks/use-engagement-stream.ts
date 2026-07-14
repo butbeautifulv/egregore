@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react"
 
 import {
-  apiAuthHeaders,
   createApiConnectTimeout,
   engagementStreamUrl,
   mergeAbortSignals,
+  streamRequestHeaders,
   type EngagementStreamEvent,
 } from "@/lib/api-client"
 
@@ -58,8 +58,9 @@ export function useEngagementStream(
         const response = await fetch(engagementStreamUrl(engagementId, tenantId), {
           headers: {
             Accept: "text/event-stream",
-            ...apiAuthHeaders(),
+            ...streamRequestHeaders(),
           },
+          credentials: "include",
           cache: "no-store",
           signal: mergeAbortSignals([abortController.signal, connectTimeout.signal]),
         })

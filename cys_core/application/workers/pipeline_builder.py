@@ -45,6 +45,7 @@ class WorkerPipelineDeps:
     make_load_skill_tool: Callable[..., Any]
     meta_planner: Any | None = None
     dispatch: Any | None = None
+    workspace_store: Any | None = None
 
 
 def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
@@ -71,6 +72,7 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         engagement_egress=deps.engagement_egress,
         bus_guard=deps.bus_guard,
         record_memory_write=deps.metrics.record_memory_write,
+        agent_catalog=deps.agent_catalog,
     )
     enqueue_follow_up = EnqueueFollowUp(
         engagement_store=deps.engagement_store,
@@ -105,6 +107,7 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         enqueue_synthesis_job=EnqueueSynthesisJob(
             engagement_store=deps.engagement_store,
             queue=deps.queue,
+            job_store=deps.job_store,
             engagement_egress=deps.engagement_egress,
         ),
         record_sanitizer_block=deps.metrics.record_sanitizer_block,
@@ -141,4 +144,5 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         resolve_legacy_tools=deps.resolve_legacy_tools,
         make_load_skill_tool=deps.make_load_skill_tool,
         plan_follow_up_runner=plan_follow_up_runner,
+        workspace_store=deps.workspace_store,
     )

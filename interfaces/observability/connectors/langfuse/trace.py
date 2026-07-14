@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from typing import Any, cast
 
 from bootstrap.settings import settings
@@ -47,22 +46,19 @@ def reset_langfuse_client_cache() -> None:
         _langfuse_init_ok = None
 
 
-def _ensure_langfuse_client_with_retry(*, attempts: int = 3, delay_s: float = 0.5) -> bool:
-    if _ensure_langfuse_client():
-        return True
-    for _ in range(max(0, attempts - 1)):
-        reset_langfuse_client_cache()
-        time.sleep(delay_s)
-        if _ensure_langfuse_client():
-            return True
-    return False
-
-
 class LangfuseTraceBackend:
     """Trace backend — single owner of Langfuse SDK lifecycle."""
 
     def get_callback_handler(self) -> Any | None:
-        if not _ensure_langfuse_client_with_retry():
+        # NOTE: this is on the hot path — called once per LLM invocation via
+        # model_connector.callbacks(). Must stay non-blocking: _ensure_langfuse_client()
+        # is cached and returns immediately. A previous version called a retry wrapper
+        # that reset the cache and did a blocking time.sleep() (up to 1.5s) on every
+        # single call for as long as Langfuse stayed unreachable — that stalled the
+        # asyncio event loop on every LLM turn during any Langfuse hiccup. Use
+        # reset_langfuse_client_cache() from a periodic health check if a retry is
+        # ever needed, not from this call path.
+        if not _ensure_langfuse_client():
             return None
         try:
             from langfuse.langchain import CallbackHandler

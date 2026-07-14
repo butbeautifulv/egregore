@@ -46,6 +46,8 @@ async def test_reconcile_enqueues_pending_synthesis() -> None:
 
     job_store = MagicMock()
     job_store.get.return_value = MagicMock(persona="soc")
+    job_store.list_active_bus_jobs.return_value = []
+    job_store.list_stale_bus_jobs.return_value = []
     enqueue = AsyncMock(return_value="consultant-eng-reconcile-synth")
     reconciler = ReconcileStuckEngagements(
         engagement_store=store,
@@ -58,3 +60,59 @@ async def test_reconcile_enqueues_pending_synthesis() -> None:
     enqueue.execute.assert_called_once()
     anchor: WorkerJob = enqueue.execute.call_args.args[0]
     assert anchor.persona == "soc"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_reconcile_fails_stale_bus_jobs_before_synthesis() -> None:
+    from datetime import timedelta
+    from unittest.mock import AsyncMock, MagicMock
+
+    from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
+    from cys_core.application.use_cases.reconcile_stuck_engagements import ReconcileStuckEngagements
+    from cys_core.domain.workers.models import WorkerJobStatus
+    from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
+    from cys_core.infrastructure.queue import InMemoryJobQueue
+
+    store = MemoryEngagementStateStore()
+    engagement = Engagement(
+        id="eng-bus-reconcile",
+        tenant_id="default",
+        goal="g",
+        status=EngagementStatus.RUNNING,
+        planner_plan=["soc", "intel"],
+        synthesis_persona="consultant",
+        completed_personas=["soc", "intel"],
+        failed_personas=[],
+        synthesis_status=SynthesisStatus.PENDING,
+        job_ids=["soc-eng-bus-reconcile-abc", "intel-eng-bus-reconcile-def", "soc-bus-stale"],
+        findings_summary=[
+            {"persona": "soc", "job_id": "soc-eng-bus-reconcile-abc", "finding": {"summary": "ok"}},
+            {"persona": "intel", "job_id": "intel-eng-bus-reconcile-def", "finding": {"summary": "ok"}},
+        ],
+    )
+    store.upsert(engagement)
+
+    job_store = InMemoryJobStore()
+    job_store.upsert_running(
+        "soc-bus-stale",
+        "worker:soc:soc-bus-stale",
+        "soc",
+        correlation_id="eng-bus-reconcile",
+    )
+    job_store._updated_at["soc-bus-stale"] = job_store._updated_at["soc-bus-stale"] - timedelta(seconds=600)
+
+    queue = InMemoryJobQueue()
+    synth = EnqueueSynthesisJob(engagement_store=store, queue=queue, job_store=job_store)
+    reconciler = ReconcileStuckEngagements(
+        engagement_store=store,
+        job_store=job_store,
+        enqueue_synthesis_job=synth,
+        default_job_timeout_s=300.0,
+    )
+
+    stats = await reconciler.execute()
+    assert stats["stale_failed"] == 1
+    assert stats["synthesis_enqueued"] == 1
+    assert job_store.get("soc-bus-stale").status == WorkerJobStatus.FAILED
+    assert any(job.job_id.endswith("-synth") for job in queue._queue)

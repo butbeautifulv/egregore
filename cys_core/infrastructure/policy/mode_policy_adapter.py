@@ -21,5 +21,7 @@ def allow_tool_for_profile(
 
             return allow_tool_pure(mode, tool_name, mode_policy=get_profile_policy(profile_id).mode_policy)
         except Exception:
+            # FIXME: masks real policy-loading bugs (bad config, backend errors) as "no per-profile
+            # policy configured" and silently falls back to DEFAULT_MODE_POLICY. Log at minimum.
             pass
     return allow_tool_pure(mode, tool_name, mode_policy=DEFAULT_MODE_POLICY)

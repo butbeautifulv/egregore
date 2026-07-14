@@ -70,5 +70,16 @@ def test_enqueue_follow_up_queues_consultant_job() -> None:
     assert result["job_id"].startswith("consultant-fu-")
     queue.enqueue.assert_called_once()
     turns = use_case.list_turns("default", "eng-closed")
-    assert len(turns) == 1
+    # list_turns() always synthesizes an "operator" turn from engagement.goal
+    # (follow_up_id=initial_follow_up_id(...)="wo-eng-closed") when no real memory entry
+    # carries that id — persist_operator_turn() only ever mints fresh "fu-<uuid>" ids, so
+    # this synthetic turn is a standing feature (shows the original goal as thread context),
+    # not a one-time bootstrap fallback. Its created_at is computed fresh at list_turns()
+    # call time, i.e. after execute() already persisted the real turn — so it sorts last here.
+    assert len(turns) == 2
     assert turns[0]["role"] == "operator"
+    assert turns[0]["follow_up_id"] == result["follow_up_id"]
+    assert turns[0]["text"] == "Explain the timeline"
+    assert turns[1]["role"] == "operator"
+    assert turns[1]["follow_up_id"] == "wo-eng-closed"
+    assert turns[1]["text"] == "done"

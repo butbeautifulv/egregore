@@ -136,13 +136,16 @@ def build_run_worker_job_for_tests(**overrides) -> RunWorkerJob:
         memory_writer=memory_writer,
         engagement_store=engagement_store,
     )
-    job_finalizer = WorkerJobFinalizer(
-        job_store=job_store,
-        queue=queue,
-        bus=bus,
-        agent_catalog=agent_catalog,
-        engagement_store=engagement_store,
-        engagement_egress=engagement_egress,
+    job_finalizer = overrides.pop(
+        "job_finalizer",
+        WorkerJobFinalizer(
+            job_store=job_store,
+            queue=queue,
+            bus=bus,
+            agent_catalog=agent_catalog,
+            engagement_store=engagement_store,
+            engagement_egress=engagement_egress,
+        ),
     )
     return RunWorkerJob(
         context_builder=context_builder,

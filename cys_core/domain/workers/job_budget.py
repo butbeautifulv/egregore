@@ -4,7 +4,9 @@ from dataclasses import dataclass
 
 from cys_core.domain.workers.exceptions import JobBudgetExceeded
 
-_cost_per_1k_tokens_usd: float = 0.003
+_DEFAULT_COST_PER_1K_TOKENS_USD = 0.003
+_cost_per_1k_tokens_usd: float = _DEFAULT_COST_PER_1K_TOKENS_USD
+_profile_costs: dict[str, float] = {}
 
 
 def configure_job_cost(cost_per_1k_tokens_usd: float, *, profile_id: str | None = None) -> None:
@@ -15,7 +17,13 @@ def configure_job_cost(cost_per_1k_tokens_usd: float, *, profile_id: str | None 
         _cost_per_1k_tokens_usd = cost_per_1k_tokens_usd
 
 
-_profile_costs: dict[str, float] = {}
+def reset_job_cost() -> None:
+    """Restore cost-rate config to defaults — used by JobBudgetTracker.clear_all() so a
+    profile-scoped rate set by one job/test can't silently leak into an unrelated one
+    (_profile_costs was previously never cleared by clear_all())."""
+    global _cost_per_1k_tokens_usd
+    _cost_per_1k_tokens_usd = _DEFAULT_COST_PER_1K_TOKENS_USD
+    _profile_costs.clear()
 
 
 def _cost_rate(profile_id: str | None = None) -> float:
@@ -69,6 +77,8 @@ class JobBudgetTracker:
     @classmethod
     def clear_all(cls) -> None:
         cls._states.clear()
+        cls._profile_ids.clear()
+        reset_job_cost()
 
     @classmethod
     def check_tool_call(cls, session_id: str) -> None:

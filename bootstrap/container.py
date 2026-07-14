@@ -360,6 +360,7 @@ class Container:
                 make_load_skill_tool=make_load_skill_tool,
                 meta_planner=self.get_meta_planner(),
                 dispatch=self.get_dispatch_event(),
+                workspace_store=self.get_workspace_store(),
             )
         )
 
@@ -449,6 +450,7 @@ class Container:
             enqueue_synthesis_job=EnqueueSynthesisJob(
                 engagement_store=self.get_engagement_state_store(),
                 queue=self.get_job_queue(),
+                job_store=self.get_job_store(),
                 engagement_egress=self.get_engagement_egress(),
             ),
             queue=self.get_job_queue(),

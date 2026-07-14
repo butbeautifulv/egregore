@@ -11,6 +11,7 @@ from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.ports.metrics import MetricsPort
+from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.engagement.models import EngagementStatus
 
 logger = structlog.get_logger(__name__)
@@ -78,11 +79,21 @@ class FailEngagementGuardrail:
         return True
 
     def _fail_pending_bus_jobs(self, tenant_id: str, engagement_id: str) -> None:
-        for summary in self._job_store.list_by_investigation(tenant_id, engagement_id):
-            if "-bus-" not in summary.job_id:
+        list_active = getattr(self._job_store, "list_active_bus_jobs", None)
+        summaries = (
+            list_active(tenant_id, engagement_id)
+            if list_active is not None
+            else self._job_store.list_by_investigation(tenant_id, engagement_id)
+        )
+        for summary in summaries:
+            if list_active is None and not is_bus_worker_job_id(summary.job_id):
                 continue
             if summary.status.value in ("pending", "running"):
-                self._job_store.mark_failed(summary.job_id)
+                self._job_store.mark_failed(
+                    summary.job_id,
+                    error="reconciled_orphan_bus_job",
+                    reason="cancelled",
+                )
 
     def _purge_queue_jobs(self, engagement_id: str) -> None:
         purge = getattr(self._queue, "purge_engagement_jobs", None) if self._queue is not None else None

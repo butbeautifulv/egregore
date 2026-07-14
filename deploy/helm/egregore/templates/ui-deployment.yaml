@@ -20,6 +20,7 @@ metadata:
     {{- include "egregore.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.ui.replicas }}
+  revisionHistoryLimit: 3
   strategy:
     type: Recreate
     rollingUpdate: null
@@ -39,6 +40,15 @@ spec:
       {{- with .Values.ui.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.topologySpread.maxSkew }}
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app: egregore-ui
       {{- end }}
       containers:
         - name: ui

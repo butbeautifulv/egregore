@@ -111,3 +111,18 @@ export function mergeFindingContext(
   }
   return merged
 }
+
+/** Keep the latest finding per persona (bus retries append newer entries). */
+export function dedupeFindingsByPersona(findings: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const result: Record<string, unknown>[] = []
+  for (let index = findings.length - 1; index >= 0; index -= 1) {
+    const item = findings[index]
+    const persona = typeof item.persona === "string" ? item.persona.trim() : ""
+    const key = persona || `__anonymous_${index}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.unshift(item)
+  }
+  return result
+}

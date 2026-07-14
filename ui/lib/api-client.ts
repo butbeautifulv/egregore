@@ -3,6 +3,7 @@ import { isControlPersona } from "@/lib/control-personas"
 import type { FollowUpListResult, FollowUpSendResult } from "@/lib/follow-up"
 
 import { DEFAULT_API_UPSTREAM, PROXY_BASE, WORKSPACE_HEADER } from "@/lib/api-upstream"
+import { buildStreamUrl } from "@/lib/stream-api-base"
 import { getSelectedWorkspaceId } from "@/lib/workspace"
 
 const DEFAULT_API_TIMEOUT_MS = 20_000
@@ -195,6 +196,15 @@ export function apiAuthHeaders(): Record<string, string> {
   }
 
   return result
+}
+
+/** Auth + workspace headers for direct gateway SSE (no Next.js proxy). */
+export function streamRequestHeaders(): Record<string, string> {
+  const workspaceId = typeof window !== "undefined" ? getSelectedWorkspaceId() : ""
+  return {
+    ...apiAuthHeaders(),
+    ...(workspaceId ? { [WORKSPACE_HEADER]: workspaceId } : {}),
+  }
 }
 
 function headers(): HeadersInit {
@@ -570,7 +580,9 @@ export function promoteEngagementPlan(
 
 export function engagementStreamUrl(engagementId: string, tenantId = "default") {
   const params = new URLSearchParams({ tenant_id: tenantId })
-  return `${PROXY_BASE}/v1/engagements/${encodeURIComponent(engagementId)}/stream?${params}`
+  return buildStreamUrl(
+    `/v1/engagements/${encodeURIComponent(engagementId)}/stream?${params}`,
+  )
 }
 
 export function subscribeEngagementStream(
@@ -824,7 +836,7 @@ export function resumeJob(
 }
 
 export function statusStreamUrl() {
-  return `${PROXY_BASE}/status/stream`
+  return buildStreamUrl("/status/stream")
 }
 
 export type CatalogAgent = {

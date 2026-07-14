@@ -13,12 +13,31 @@ function asStringList(value: unknown): string[] {
   return value.map(String).filter((item) => item.trim().length > 0)
 }
 
+type OutcomeSection = {
+  title: string
+  body: string
+  items: string[]
+}
+
+function parseOutcomeSections(value: unknown): OutcomeSection[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((section) => ({
+      title: String(section.title ?? "").trim(),
+      body: String(section.body ?? "").trim(),
+      items: asStringList(section.items),
+    }))
+    .filter((section) => section.title || section.body || section.items.length > 0)
+}
+
 export function OutcomeHero({ outcome }: { outcome: Record<string, unknown> }) {
   const summary = String(outcome.summary ?? "").trim()
   const title = String(outcome.title ?? outcome.topic ?? "Work order outcome").trim()
   const kind = String(outcome.kind ?? "advisory")
   const risk = outcome.risk_level ? String(outcome.risk_level) : ""
   const recommendations = asStringList(outcome.recommendations)
+  const sections = parseOutcomeSections(outcome.sections)
   const provenance = Array.isArray(outcome.provenance) ? outcome.provenance : []
   const degraded = Boolean(outcome.degraded)
 
@@ -33,6 +52,22 @@ export function OutcomeHero({ outcome }: { outcome: Record<string, unknown> }) {
       {summary ? (
         <p className="text-muted-foreground whitespace-pre-wrap text-sm leading-relaxed">{summary}</p>
       ) : null}
+      {sections.length > 0
+        ? sections.map((section, index) => (
+            <StructuredFieldRow key={`section-${index}`} title={section.title || `Section ${index + 1}`}>
+              {section.body ? (
+                <p className="text-muted-foreground whitespace-pre-wrap text-sm leading-relaxed">{section.body}</p>
+              ) : null}
+              {section.items.length > 0 ? (
+                <ul className="text-muted-foreground mt-2 list-disc space-y-1 pl-4 text-sm">
+                  {section.items.map((item, itemIndex) => (
+                    <li key={`section-${index}-item-${itemIndex}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </StructuredFieldRow>
+          ))
+        : null}
       {recommendations.length > 0 ? (
         <StructuredFieldRow title="Recommendations">
           <ul className="text-muted-foreground list-disc space-y-1 pl-4 text-sm">
@@ -70,6 +105,11 @@ export function outcomeCopyText(outcome: Record<string, unknown>): string {
   const lines = [String(outcome.title ?? outcome.topic ?? "Work order outcome").trim()]
   const summary = String(outcome.summary ?? "").trim()
   if (summary) lines.push("", summary)
+  for (const section of parseOutcomeSections(outcome.sections)) {
+    if (section.title) lines.push("", section.title)
+    if (section.body) lines.push(section.body)
+    for (const item of section.items) lines.push(`- ${item}`)
+  }
   const recommendations = asStringList(outcome.recommendations)
   if (recommendations.length) {
     lines.push("", "Recommendations:")

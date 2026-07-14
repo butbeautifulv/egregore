@@ -377,6 +377,8 @@ def build_manifest_from_investigation(
                 ),
             )
         except Exception:
+            # FIXME: swallows the validation error and silently discards the pre-existing (possibly
+            # forensically relevant) embedded manifest, rebuilding from scratch with no log/warning.
             pass
 
     return _finalize_manifest(

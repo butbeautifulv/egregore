@@ -25,10 +25,13 @@ def _settings_env_files() -> tuple[str, ...]:
     if override.name == ".env" and override.is_file() and str(override) not in files:
         files[0] = str(override)
 
-    repo_root = Path(__file__).resolve().parents[3]
-    local_secrets = repo_root / "deploy" / ".secrets" / "egregore-local.env"
-    if local_secrets.is_file():
-        files.append(str(local_secrets))
+    settings_path = Path(__file__).resolve()
+    # Monorepo dev checkout: .../cys_framework/projects/egregore/bootstrap/settings.py
+    if len(settings_path.parents) > 3:
+        repo_root = settings_path.parents[3]
+        local_secrets = repo_root / "deploy" / ".secrets" / "egregore-local.env"
+        if local_secrets.is_file():
+            files.append(str(local_secrets))
     return tuple(files)
 
 
@@ -181,7 +184,6 @@ class Settings(BaseSettings):
     obs_trace_backend: str = Field(default="langfuse", validation_alias="OBS_TRACE_BACKEND")
     obs_judge_backend: str = Field(default="noop", validation_alias="OBS_JUDGE_BACKEND")
     obs_eval_backend: str = Field(default="noop", validation_alias="OBS_EVAL_BACKEND")
-    critic_use_llm_judge: bool = Field(default=False, validation_alias="CRITIC_USE_LLM_JUDGE")
     use_conductor_for_events: bool = Field(default=False, validation_alias="USE_CONDUCTOR_FOR_EVENTS")
     max_spawn_depth: int = Field(default=5, validation_alias="MAX_SPAWN_DEPTH")
     egregore_json_tool_call_fallback: bool = Field(
@@ -230,6 +232,12 @@ class Settings(BaseSettings):
     sgr_iron_max_retries: int = Field(default=3, validation_alias="SGR_IRON_MAX_RETRIES")
     e2b_api_key: str = Field(default="", validation_alias="E2B_API_KEY")
     python_sandbox_timeout: float = Field(default=30.0, validation_alias="PYTHON_SANDBOX_TIMEOUT")
+    python_sandbox_image: str = Field(
+        default="python:3.12-slim",
+        validation_alias="PYTHON_SANDBOX_IMAGE",
+        description="Image for the local Docker sandbox fallback when E2B is not configured "
+        "(offline deployments must bundle/import this image — see k3s-offline-bundle-*.sh).",
+    )
 
     kafka_bootstrap_servers: str = Field(
         default="localhost:19092",

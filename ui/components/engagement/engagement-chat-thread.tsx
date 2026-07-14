@@ -6,6 +6,7 @@ import { ShieldAlertIcon } from "lucide-react"
 
 import { listPendingApprovals, type PendingApproval } from "@/lib/api-client"
 import { formatPlannerError } from "@/lib/format-api-error"
+import { dedupeFindingsByPersona } from "@/lib/finding-display"
 import {
   formatFollowUpMarkerLabel,
   splitInitialAndFollowUpPairs,
@@ -165,6 +166,8 @@ export function EngagementChatThread({
   const hasIntake = Boolean(intake && Object.keys(intake).length > 0)
   const hasFinalReport = Boolean(finalReport && Object.keys(finalReport).length > 0)
 
+  const displayFindings = useMemo(() => dedupeFindingsByPersona(findings), [findings])
+
   const findingsByJobId = useMemo(() => {
     const map = new Map<string, Record<string, unknown>>()
     for (const item of findings) {
@@ -247,9 +250,9 @@ export function EngagementChatThread({
         <div className="bg-muted/20 flex flex-col gap-2 border-b px-4 py-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium">Work order chat</p>
-            {findings.length > 0 ? (
+            {displayFindings.length > 0 ? (
               <StructuredFindingsDialog
-                findings={findings}
+                findings={displayFindings}
                 completedPersonas={completedPersonas}
                 jobs={jobs}
               />

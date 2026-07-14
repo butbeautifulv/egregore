@@ -115,6 +115,8 @@ class K8sSandboxConnector:
         try:
             self._delete_job(run_id)
         except Exception:
+            # FIXME: silent — a failed k8s Job deletion is invisible here and can leak orphaned Jobs.
+            # At least log the exception with run_id/job_name before falling through.
             pass
         self._fallback.destroy(run_id)
 

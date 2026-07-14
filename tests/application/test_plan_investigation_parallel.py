@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from cys_core.application.planning.catalog_planner_strategy import CatalogPlannerStrategy
 from cys_core.application.use_cases.plan_investigation import PlanInvestigation
 from cys_core.application.use_cases.start_engagement import _pipeline_staged
 from cys_core.domain.engagement.models import EngagementPlan, ExecutionMode
@@ -18,6 +19,14 @@ class _PlannerRuntime:
 
 def _planner() -> PlanInvestigation:
     return PlanInvestigation(
+        runtime=_PlannerRuntime(),
+        engagement_store=MemoryEngagementStateStore(),
+        **plan_investigation_port_kwargs(),
+    )
+
+
+def _strategy() -> CatalogPlannerStrategy:
+    return CatalogPlannerStrategy(
         runtime=_PlannerRuntime(),
         engagement_store=MemoryEngagementStateStore(),
         **plan_investigation_port_kwargs(),
@@ -41,13 +50,13 @@ def test_pipeline_staged_only_for_staged_mode() -> None:
 
 @pytest.mark.unit
 def test_finalize_plan_sets_synthesis_for_multi_persona() -> None:
-    planner = _planner()
+    strategy = _strategy()
     plan = EngagementPlan(personas=["soc", "intel", "hunter"])
-    finalized = planner._finalize_plan(plan)
+    finalized = strategy._finalize_plan(plan, synthesis_default="consultant")
     assert finalized.synthesis_persona == "consultant"
     assert finalized.execution_mode == ExecutionMode.PARALLEL
 
-    single = planner._finalize_plan(EngagementPlan(personas=["consultant"]))
+    single = strategy._finalize_plan(EngagementPlan(personas=["consultant"]), synthesis_default="consultant")
     assert single.synthesis_persona is None
 
 

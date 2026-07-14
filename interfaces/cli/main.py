@@ -80,6 +80,33 @@ def cmd_worker(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run_sandboxed_job(args: argparse.Namespace) -> int:
+    """Execute one already-dequeued WorkerJob directly, bypassing the queue.
+
+    Child-container entrypoint for delegated sandbox execution (see
+    DockerAgentSandboxConnector) — the dispatcher process already popped this
+    job off the queue, so this command must run it directly rather than
+    dequeuing again (which would race/duplicate). Not for interactive use.
+    """
+    get_container()
+    configure_logging("egregore-worker-sandboxed")
+    setup_otel(service_name="egregore-worker-sandboxed")
+    from cys_core.domain.workers.models import WorkerJob
+
+    raw = sys.stdin.read() if args.job_json == "-" else args.job_json
+    job = WorkerJob.model_validate_json(raw)
+
+    async def _run() -> dict:
+        orch = get_container().get_worker_orchestrator(persona=job.persona)
+        result = await orch.run_job(job)
+        return {"result": result.model_dump()}
+
+    out = asyncio.run(_run())
+    get_container().get_trace_backend().flush()
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 0 if out["result"]["success"] else 1
+
+
 def cmd_router(args: argparse.Namespace) -> int:
     from interfaces.ingress.router_consumer import run_router_consumer
 
@@ -114,10 +141,16 @@ def cmd_status(_args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
-    from interfaces.api.app import create_app
+    from cys_core.observability.prometheus_setup import cleanup_multiproc_dir_on_startup
 
-    get_container()
-    uvicorn.run(create_app(), host=args.host, port=args.port)
+    cleanup_multiproc_dir_on_startup()
+    uvicorn.run(
+        "interfaces.api.app:create_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+        workers=max(1, args.workers),
+    )
     return 0
 
 
@@ -262,6 +295,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     worker.set_defaults(func=cmd_worker)
 
+    run_sandboxed = sub.add_parser(
+        "run-sandboxed-job",
+        help="Execute one WorkerJob directly (child-container entrypoint, not for interactive use)",
+    )
+    run_sandboxed.add_argument(
+        "--job-json", default="-", help="WorkerJob as JSON, or '-' to read from stdin (default)"
+    )
+    run_sandboxed.set_defaults(func=cmd_run_sandboxed_job)
+
     router = sub.add_parser("router", help="Run Kafka router consumer daemon")
     router.add_argument("--idle-timeout", type=float, default=0.0, help="Exit after N seconds idle (0=run forever)")
     router.set_defaults(func=cmd_router)
@@ -282,6 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve = sub.add_parser("serve", help="Start FastAPI event/status server")
     serve.add_argument("--host", default="0.0.0.0")
     serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--workers", type=int, default=1)
     serve.set_defaults(func=cmd_serve)
 
     session = sub.add_parser("session", help="Manual investigation — enqueue all workers")

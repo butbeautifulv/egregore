@@ -80,6 +80,9 @@ async def run_step(
 ) -> RunOut:
     _deny_legacy_runs_in_enforce()
     tenant_id = require_tenant_match_http(_auth, tenant_id)
+    # FIXME: ignores the existing run identified by `run_id` — starts a brand-new engagement via
+    # _create_via_engagement() and just overwrites context_id on the response, instead of loading and
+    # continuing the run the caller asked to step (contrast with work_orders.py, which looks up by id).
     out = await _create_via_engagement(
         goal=body.message,
         profile_id="cybersec-soc",
@@ -98,6 +101,7 @@ async def approve_plan(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> RunOut:
     require_tenant_match_http(_auth, tenant_id)
+    # FIXME: routed, auth-gated endpoint that always 501s — engagement-queue approval was never wired up.
     raise HTTPException(status_code=501, detail="Plan approval via engagement queue not implemented")
 
 
@@ -156,6 +160,8 @@ async def upload_attachment(
     engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Run not found")
+    # TODO: no max-size or content-type validation before buffering the whole upload into memory —
+    # add a size cap (checked bootstrap/settings.py: no such setting exists yet) before this reaches prod.
     data = await file.read()
     saved_path = get_container().get_attachment_store().save(tenant_id, run_id, file.filename or "attachment.bin", data)
     return {"path": saved_path, "run_id": run_id}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 
-import { apiAuthHeaders, createApiConnectTimeout, mergeAbortSignals, statusStreamUrl } from "@/lib/api-client"
+import { createApiConnectTimeout, mergeAbortSignals, statusStreamUrl, streamRequestHeaders } from "@/lib/api-client"
 import type { StatusStreamEvent } from "@/lib/types"
 
 const INITIAL_BACKOFF_MS = 1000
@@ -46,8 +46,9 @@ export function useStatusStream(onEvent?: (event: StatusStreamEvent) => void) {
         const response = await fetch(statusStreamUrl(), {
           headers: {
             Accept: "text/event-stream",
-            ...apiAuthHeaders(),
+            ...streamRequestHeaders(),
           },
+          credentials: "include",
           cache: "no-store",
           signal: mergeAbortSignals([abortController.signal, connectTimeout.signal]),
         })

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import psycopg
 
 from cys_core.application.ports.job_store import JobRecord, JobRecordSummary
+from cys_core.domain.engagement.ids import normalize_correlation_id
+from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.workers.models import PendingHitlAction, WorkerJobStatus
 
 
@@ -93,6 +96,7 @@ class PostgresJobStore:
         preview = hitl_preview if hitl_preview is not None else (existing.hitl_preview if existing else {})
         pending_json = pending_hitl.model_dump(mode="json") if pending_hitl else None
         resolved_correlation = correlation_id or (existing.correlation_id if existing else "")
+        resolved_correlation = normalize_correlation_id(resolved_correlation)
         resolved_tenant = tenant_id or (existing.tenant_id if existing else "default")
         resolved_event = event_id or (existing.event_id if existing else "")
         resolved_error = last_error if last_error is not None else (existing.last_error if existing else "")
@@ -321,7 +325,7 @@ class PostgresJobStore:
                 """
                 SELECT COUNT(*) FROM worker_jobs
                 WHERE tenant_id = %s
-                  AND job_id LIKE '%%-bus-%%'
+                  AND job_id ~ '^[a-z][a-z0-9]*-bus-'
                   AND status IN (%s, %s)
                   AND correlation_id LIKE %s
                 """,
@@ -333,3 +337,71 @@ class PostgresJobStore:
                 ),
             ).fetchone()
         return int(row[0]) if row else 0
+
+    def _summary_from_bus_row(self, row: tuple[Any, ...]) -> JobRecordSummary:
+        return JobRecordSummary(
+            job_id=row[0],
+            session_id=row[1],
+            persona=row[2],
+            status=WorkerJobStatus(row[3]),
+            correlation_id=row[4] or "",
+            tenant_id=row[5] or "default",
+            event_id=row[6] or "",
+            created_at=row[7].isoformat() if row[7] is not None else "",
+            updated_at=row[8].isoformat() if row[8] is not None else "",
+            follow_up_id=_follow_up_id_from_payload(row[9]),
+            last_error=str(row[10] or ""),
+            failure_reason=str(row[11] or ""),
+        )
+
+    def list_active_bus_jobs(self, tenant_id: str, engagement_id: str) -> list[JobRecordSummary]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id,
+                       created_at, updated_at, payload_json, last_error, failure_reason
+                FROM worker_jobs
+                WHERE tenant_id = %s
+                  AND job_id ~ '^[a-z][a-z0-9]*-bus-'
+                  AND status IN (%s, %s)
+                  AND correlation_id LIKE %s
+                ORDER BY updated_at ASC
+                """,
+                (
+                    tenant_id,
+                    WorkerJobStatus.PENDING.value,
+                    WorkerJobStatus.RUNNING.value,
+                    f"%{engagement_id}%",
+                ),
+            ).fetchall()
+        return [self._summary_from_bus_row(row) for row in rows]
+
+    def list_stale_bus_jobs(
+        self,
+        tenant_id: str,
+        engagement_id: str,
+        *,
+        older_than_s: float,
+    ) -> list[JobRecordSummary]:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_s)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id,
+                       created_at, updated_at, payload_json, last_error, failure_reason
+                FROM worker_jobs
+                WHERE tenant_id = %s
+                  AND job_id ~ '^[a-z][a-z0-9]*-bus-'
+                  AND status IN (%s, %s)
+                  AND correlation_id LIKE %s
+                  AND updated_at < %s
+                """,
+                (
+                    tenant_id,
+                    WorkerJobStatus.PENDING.value,
+                    WorkerJobStatus.RUNNING.value,
+                    f"%{engagement_id}%",
+                    cutoff,
+                ),
+            ).fetchall()
+        return [self._summary_from_bus_row(row) for row in rows]

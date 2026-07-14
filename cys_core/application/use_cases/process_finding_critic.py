@@ -8,6 +8,7 @@ from cys_core.application.ports.tracing_ports import ApplicationTracingPort
 from cys_core.application.workers.evidence_gate import soc_evidence_gaps
 from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.application.workers.tool_execution_tracker import get_persona_manifests
+from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
 from cys_core.domain.evidence.models import EvidenceManifest
 
 logger = structlog.get_logger(__name__)
@@ -34,25 +35,35 @@ def record_critic_verdict(
 
 
 class ProcessFindingCritic:
-    """Validate specialist findings before downstream propagation."""
+    """Validate specialist findings before downstream propagation.
+
+    In-app LLM judge (runtime/use_llm_judge) was removed — see ADR-007 and
+    ADR-006: use Langfuse platform eval for LLM-quality monitoring instead.
+    This class only runs the local trust/evidence-gap heuristic gate.
+    """
 
     def __init__(
         self,
         *,
         policy_port: Any,
         application_tracing: ApplicationTracingPort | None = None,
-        runtime: Any | None = None,
-        use_llm_judge: bool = False,
         schema_registry: SchemaRegistryPort | None = None,
         trust_threshold: float = 0.5,
     ) -> None:
         self._policy_port = policy_port
         self._application_tracing = application_tracing
-        self._runtime = runtime
-        self._use_llm_judge = use_llm_judge
         self._schema_registry = schema_registry
         self.trust_threshold = trust_threshold
 
+    # NOTE(evidence-grounding-consolidation, 2026-07-14): this reads `get_persona_manifests`
+    # (investigation-keyed), while run_worker_job._apply_soc_sparse_coerce reads
+    # `get_merged_manifest` (job-keyed) from the same tool_execution_tracker module for the
+    # *same finding*. Investigated whether to unify these onto one lookup; deliberately left
+    # as-is. Full rationale — including why both lookups are process-local and typically empty
+    # in the critic's process in a real (multi-container) deployment, and why the fix is not a
+    # simple key swap — is documented above `record_evidence_manifest` in
+    # cys_core/application/workers/tool_execution_tracker.py. Do not "fix" this without reading
+    # that note first.
     def _resolve_trust_score(self, finding: dict[str, Any], persona: str, investigation_id: str | None) -> float:
         try:
             confidence = float(finding.get("confidence", finding.get("trust_score", 0.5)))
@@ -72,7 +83,9 @@ class ProcessFindingCritic:
         manifest = manifests.get(persona)
         if manifest is None:
             return []
-        return soc_evidence_gaps(finding, manifest)
+        normalized = dict(finding)
+        coerce_sparse_soc_finding(normalized, manifest)
+        return soc_evidence_gaps(normalized, manifest)
 
     def execute(
         self,

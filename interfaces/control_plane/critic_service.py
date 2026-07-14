@@ -9,8 +9,10 @@ from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.control_plane.critic_display import (
     critic_verdict_visible_to_operator,
     format_critic_operator_message,
+    format_soc_revision_manifest_hint,
 )
 from cys_core.application.workers.noop_finding import is_noop_finding
+from cys_core.application.workers.tool_execution_tracker import get_persona_manifests
 from cys_core.domain.security.bus_messages import BusMessageType
 from cys_core.infrastructure.bus_transport import get_bus_transport
 from interfaces.control_plane.control_message_handler import ControlMessageHandler
@@ -39,6 +41,15 @@ class CriticService(ControlMessageHandler):
             payload,
         )
         engagement_id = extract_engagement_id(correlation_id=correlation_id, payload=payload)
+        if persona == "soc" and engagement_id:
+            # NOTE(evidence-grounding-consolidation, 2026-07-14): this in-memory lookup is
+            # process-local and will generally be empty here in a real deployment (this
+            # CriticService instance runs in a different process/container than the worker
+            # that populated it). See the note above `record_evidence_manifest` in
+            # cys_core/application/workers/tool_execution_tracker.py. Not fixed here.
+            manifest = get_persona_manifests(engagement_id).get("soc")
+            if manifest is not None:
+                feedback = f"{feedback}{format_soc_revision_manifest_hint(manifest)}"
         settings = get_container().settings
         guard = get_engagement_bus_guard()
         if engagement_id and guard.revision_cap_exceeded(

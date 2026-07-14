@@ -157,6 +157,7 @@ class CatalogPlannerStrategy:
                 sub_goals = {persona: goal for persona in personas}
             synthesis_raw = result.get("synthesis_persona")
             synthesis_persona = str(synthesis_raw).strip() if synthesis_raw else None
+            reasoning_steps = result.get("reasoning_steps")
             return EngagementPlan(
                 personas=personas,
                 sub_goals=sub_goals,
@@ -164,6 +165,8 @@ class CatalogPlannerStrategy:
                 rationale=str(result.get("rationale", "")),
                 execution_mode=self._parse_execution_mode(result.get("execution_mode")),
                 synthesis_persona=synthesis_persona or None,
+                reasoning_steps=[str(step) for step in reasoning_steps] if isinstance(reasoning_steps, list) else [],
+                plan_status=str(result.get("plan_status", "")),
             )
         raw = result.get("raw_response", "")
         if raw:

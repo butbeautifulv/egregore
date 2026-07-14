@@ -210,10 +210,13 @@ async def test_planned_tool_calls_with_name_field_fails_as_tools_not_executed() 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_empty_consultant_finding_fails_job() -> None:
+    # No summary/answer/text/response/content/raw(_response): _extract_answer_text() is ""
+    # for every field coerce_consultant_advisory_result() checks, so it bails out instead
+    # of filling in filler recommendations/confidence — this finding stays genuinely empty
+    # and consultant_finding_gaps() keeps rejecting it through all retries.
     runtime = SimpleNamespace(
         arun=AsyncMock(
             return_value={
-                "summary": "Deploy antivirus only",
                 "recommendations": [],
                 "confidence": 0,
             }

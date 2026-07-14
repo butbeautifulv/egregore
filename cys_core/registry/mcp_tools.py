@@ -160,6 +160,9 @@ class McpToolRegistry:
                     metrics.record_tool_invocation(tool_name, success=result.get("success", True))
                     return result
                 except Exception:
+                    # FIXME: silently falls through to _local_invoke on ANY gateway error (auth failure,
+                    # network error, etc. are indistinguishable from "gateway disabled"), and local execution
+                    # may have different audit/authz characteristics than gateway-mediated. Log at minimum.
                     pass
             result = self._local_invoke(
                 tool_name,

@@ -20,8 +20,11 @@ _stage: str = "dev"
 _engagement_async_planning: bool = True
 _use_conductor_for_events: bool = False
 _max_spawn_depth: int = 5
-_use_dynamic_catalog: bool = False
+_use_dynamic_catalog: bool = True
 _use_memory_fallback: bool = False
+# FIXME: plaintext default credential. bootstrap/settings.py rejects the default DB password in prod,
+# but only inside Settings validation — anything that reads get_postgres_url() before
+# configure_from_settings() runs bypasses that guard entirely and gets this literal credential.
 _postgres_url: str = "postgresql://postgres:password@localhost:5432/cys_agi"
 _default_job_recursion_limit: int = 25
 _triage_recursion_limit: int = 22
@@ -35,7 +38,7 @@ _veil_mcp_enabled: bool = True
 _veil_mcp_timeout: float = 30.0
 _siem_mcp_url: str = "http://localhost:8094/mcp"
 _siem_mcp_enabled: bool = False
-_siem_mcp_timeout: float = 60.0
+_siem_mcp_timeout: float = 180.0
 _nessus_mcp_url: str = "http://localhost:8095/mcp"
 _nessus_mcp_enabled: bool = False
 _nessus_mcp_timeout: float = 180.0
@@ -75,6 +78,7 @@ _reasoning_temperature: float = 0.0
 _trace_critic_use_reasoning: bool = False
 _e2b_api_key: str = ""
 _python_sandbox_timeout: float = 30.0
+_python_sandbox_image: str = "python:3.12-slim"
 _use_sgr_reasoning: bool = True
 _sgr_default_mode: str = "off"
 _sgr_iron_max_retries: int = 3
@@ -95,7 +99,7 @@ def configure_from_settings(settings: Any) -> None:
     global _trace_critic_every_n_steps, _context_summary_max_messages, _task_hints_enabled
     global _web_search_provider, _serper_api_key, _run_attachments_dir
     global _context_summary_enabled, _trace_critic_rerun_max, _trace_critic_hitl_on_exhausted
-    global _reasoning_model, _reasoning_temperature, _e2b_api_key, _python_sandbox_timeout
+    global _reasoning_model, _reasoning_temperature, _e2b_api_key, _python_sandbox_timeout, _python_sandbox_image
     global _egregore_strict_plan, _keep_tool_results, _search_judge_llm, _self_consistency_n
     global _stream_agent_output, _stream_agent_tools, _stream_agent_token_streaming
     global _self_refine_max, _browser_enabled, _perplexity_api_key, _jina_api_key, _delegate_budget_fraction
@@ -161,6 +165,7 @@ def configure_from_settings(settings: Any) -> None:
     _trace_critic_use_reasoning = settings.trace_critic_use_reasoning
     _e2b_api_key = settings.e2b_api_key
     _python_sandbox_timeout = settings.python_sandbox_timeout
+    _python_sandbox_image = settings.python_sandbox_image
     _use_sgr_reasoning = settings.use_sgr_reasoning
     _sgr_default_mode = settings.sgr_default_mode
     from cys_core.application.reasoning.sgr_tooling import normalize_sgr_mode
@@ -410,6 +415,10 @@ def get_e2b_api_key() -> str:
 
 def get_python_sandbox_timeout() -> float:
     return _python_sandbox_timeout
+
+
+def get_python_sandbox_image() -> str:
+    return _python_sandbox_image
 
 
 def get_egregore_strict_plan() -> bool:

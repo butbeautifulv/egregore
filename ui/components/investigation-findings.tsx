@@ -1,5 +1,5 @@
 import { FindingContent } from "@/components/engagement/finding-content"
-import { findingEnvelope } from "@/lib/finding-display"
+import { dedupeFindingsByPersona, findingEnvelope } from "@/lib/finding-display"
 import type { JobSummary } from "@/lib/types"
 import { Badge } from "@/vendor/gui/ui/badge"
 import { CardContent, CardHeader, CardTitle } from "@/vendor/gui/ui/card"
@@ -21,7 +21,9 @@ function FindingsBody({
   completedPersonas = [],
   jobs = [],
 }: InvestigationFindingsProps) {
-  if (findings.length === 0) {
+  const displayFindings = dedupeFindingsByPersona(findings)
+
+  if (displayFindings.length === 0) {
     const personasFinished = completedPersonas.length > 0
     const completedJobs = jobs.filter((job) => job.status === "completed")
     return (
@@ -37,7 +39,7 @@ function FindingsBody({
 
   return (
     <div className="space-y-4">
-      {findings.map((item, index) => {
+      {displayFindings.map((item, index) => {
         const persona = asString(item.persona) || "agent"
         const { body, evidenceManifest } = findingEnvelope(item)
         return (

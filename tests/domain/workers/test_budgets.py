@@ -19,9 +19,11 @@ def test_enrich_job_budget_applies_persona_defaults():
     job = WorkerJob(job_id="j1", event_id="e1", persona="soc")
     budget = persona_budget("soc")
     enriched = enrich_job_budget(job, budget)
-    assert enriched.max_tokens == 50_000
+    # Tightened from 50k/50 as part of the SOC recursion-loop/timeout fix — see
+    # cys_core/domain/policy/defaults.py.
+    assert enriched.max_tokens == 40_000
     assert enriched.max_cost_usd == 2.0
-    assert enriched.max_tool_calls == 50
+    assert enriched.max_tool_calls == 6
 
 
 @pytest.mark.unit
