@@ -1,3 +1,5 @@
+imagePullSecrets: []
+
 image:
   repository: cxado/egregore
   tag: local
