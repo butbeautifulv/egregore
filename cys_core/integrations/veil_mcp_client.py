@@ -24,12 +24,11 @@ from cys_core.observability.tracing import inject_correlation_headers
 
 logger = structlog.get_logger(__name__)
 
-_DEFAULT_VEIL_MCP_URL = "http://localhost:8091/mcp"
-
-
 def _ensure_veil_runtime_config() -> None:
     """Load settings into runtime_config when MCP is called outside the composition root."""
-    if get_veil_mcp_url() != _DEFAULT_VEIL_MCP_URL:
+    from cys_core.application.runtime_config import get_postgres_url
+
+    if get_postgres_url():
         return
     from bootstrap.settings import get_settings
 

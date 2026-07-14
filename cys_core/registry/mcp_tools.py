@@ -268,7 +268,7 @@ class McpToolRegistry:
             response = self._client.post(f"{self.gateway_url}/invoke", json=body, headers=headers)
             response.raise_for_status()
             return response.json()
-        with sync_http_client(timeout=30.0, headers=headers) as client:
+        with sync_http_client(timeout=settings.veil_mcp_timeout, headers=headers) as client:
             response = client.post(f"{self.gateway_url}/invoke", json=body)
             response.raise_for_status()
             return response.json()

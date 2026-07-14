@@ -6,18 +6,28 @@ from typing import Any
 
 import httpx
 
-DEFAULT_CONNECT_TIMEOUT = 5.0
-DEFAULT_READ_TIMEOUT = 30.0
+
+def _connect_timeout() -> float:
+    from bootstrap.settings import get_settings
+
+    return get_settings().http_connect_timeout_s
+
+
+def _read_timeout() -> float:
+    from bootstrap.settings import get_settings
+
+    return get_settings().http_read_timeout_s
 
 
 def default_timeout(
     *,
     total: float | None = None,
-    connect: float = DEFAULT_CONNECT_TIMEOUT,
+    connect: float | None = None,
     read: float | None = None,
 ) -> httpx.Timeout:
-    read_timeout = read if read is not None else (total if total is not None else DEFAULT_READ_TIMEOUT)
-    return httpx.Timeout(connect=connect, read=read_timeout, write=read_timeout, pool=connect)
+    resolved_connect = connect if connect is not None else _connect_timeout()
+    read_timeout = read if read is not None else (total if total is not None else _read_timeout())
+    return httpx.Timeout(connect=resolved_connect, read=read_timeout, write=read_timeout, pool=resolved_connect)
 
 
 @contextmanager
