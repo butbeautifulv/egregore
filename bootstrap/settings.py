@@ -406,6 +406,170 @@ class Settings(BaseSettings):
     auth_broker_audience: str = Field(default="veil-api", validation_alias="BROKER_VEIL_AUDIENCE")
     use_auth_broker: bool = Field(default=False, validation_alias="USE_AUTH_BROKER")
 
+    api_gauge_refresh_interval_s: float = Field(
+        default=30.0, validation_alias="API_GAUGE_REFRESH_INTERVAL_S"
+    )
+    api_reconcile_leader_ttl_s: int = Field(
+        default=280, validation_alias="API_RECONCILE_LEADER_TTL_S"
+    )
+    api_reconcile_interval_s: float = Field(
+        default=300.0, validation_alias="API_RECONCILE_INTERVAL_S"
+    )
+    api_sse_queue_timeout_s: float = Field(
+        default=15.0, validation_alias="API_SSE_QUEUE_TIMEOUT_S"
+    )
+    api_sse_retry_sleep_s: float = Field(default=2.0, validation_alias="API_SSE_RETRY_SLEEP_S")
+    api_sse_idle_sleep_s: float = Field(default=15.0, validation_alias="API_SSE_IDLE_SLEEP_S")
+
+    http_connect_timeout_s: float = Field(default=5.0, validation_alias="HTTP_CONNECT_TIMEOUT_S")
+    http_read_timeout_s: float = Field(default=30.0, validation_alias="HTTP_READ_TIMEOUT_S")
+
+    worker_triage_max_attempts: int = Field(default=2, validation_alias="WORKER_TRIAGE_MAX_ATTEMPTS")
+    worker_max_attempts: int = Field(default=3, validation_alias="WORKER_MAX_ATTEMPTS")
+    worker_max_dependency_deferrals: int = Field(
+        default=10, validation_alias="WORKER_MAX_DEPENDENCY_DEFERRALS"
+    )
+    worker_soft_timeout_fraction: float = Field(
+        default=0.9, validation_alias="WORKER_SOFT_TIMEOUT_FRACTION"
+    )
+    worker_dequeue_timeout_s: float = Field(default=2.0, validation_alias="WORKER_DEQUEUE_TIMEOUT_S")
+
+    reconcile_synthesis_stale_multiplier: float = Field(
+        default=2.0, validation_alias="RECONCILE_SYNTHESIS_STALE_MULTIPLIER"
+    )
+    reconcile_scan_limit: int = Field(default=50, validation_alias="RECONCILE_SCAN_LIMIT")
+
+    bus_seen_ttl_seconds: int = Field(default=300, validation_alias="BUS_SEEN_TTL_SECONDS")
+    bus_redis_get_message_timeout_s: float = Field(
+        default=1.0, validation_alias="BUS_REDIS_GET_MESSAGE_TIMEOUT_S"
+    )
+    bus_redis_subscriber_join_timeout_s: float = Field(
+        default=2.0, validation_alias="BUS_REDIS_SUBSCRIBER_JOIN_TIMEOUT_S"
+    )
+
+    kafka_consume_timeout_s: float = Field(default=1.0, validation_alias="KAFKA_CONSUME_TIMEOUT_S")
+
+    k8s_sandbox_ready_poll_interval_s: float = Field(
+        default=0.5, validation_alias="K8S_SANDBOX_READY_POLL_INTERVAL_S"
+    )
+    docker_probe_timeout_s: float = Field(default=5.0, validation_alias="DOCKER_PROBE_TIMEOUT_S")
+    docker_kill_timeout_s: float = Field(default=10.0, validation_alias="DOCKER_KILL_TIMEOUT_S")
+
+    tool_output_preview_max: int = Field(default=16_384, validation_alias="TOOL_OUTPUT_PREVIEW_MAX")
+    tool_stored_outputs_max: int = Field(default=5, validation_alias="TOOL_STORED_OUTPUTS_MAX")
+    tool_siem_drilldown_max: int = Field(default=2, validation_alias="TOOL_SIEM_DRILLDOWN_MAX")
+
+    egress_batch_seconds: float = Field(default=0.05, validation_alias="EGRESS_BATCH_SECONDS")
+    egress_output_preview_max: int = Field(default=800, validation_alias="EGRESS_OUTPUT_PREVIEW_MAX")
+
+    timeout_salvage_summary_max: int = Field(
+        default=2000, validation_alias="TIMEOUT_SALVAGE_SUMMARY_MAX"
+    )
+
+    follow_up_conversation_query_limit: int = Field(
+        default=200, validation_alias="FOLLOW_UP_CONVERSATION_QUERY_LIMIT"
+    )
+    follow_up_history_limit: int = Field(default=100, validation_alias="FOLLOW_UP_HISTORY_LIMIT")
+    follow_up_aggregator_timeout_s: float = Field(
+        default=300.0, validation_alias="FOLLOW_UP_AGGREGATOR_TIMEOUT_S"
+    )
+    follow_up_aggregator_poll_s: float = Field(
+        default=2.0, validation_alias="FOLLOW_UP_AGGREGATOR_POLL_S"
+    )
+    follow_up_merge_query_limit: int = Field(default=30, validation_alias="FOLLOW_UP_MERGE_QUERY_LIMIT")
+    follow_up_merge_summary_max: int = Field(
+        default=400, validation_alias="FOLLOW_UP_MERGE_SUMMARY_MAX"
+    )
+
+    wayback_api_timeout_s: float = Field(default=20.0, validation_alias="WAYBACK_API_TIMEOUT_S")
+
+    critic_trust_threshold: float = Field(default=0.5, validation_alias="CRITIC_TRUST_THRESHOLD")
+    critic_default_confidence: float = Field(
+        default=0.5, validation_alias="CRITIC_DEFAULT_CONFIDENCE"
+    )
+
+    persona_budgets_overrides_json: str = Field(
+        default="", validation_alias="PERSONA_BUDGETS_OVERRIDES_JSON"
+    )
+    planner_default_post_processors: str = Field(
+        default="advisory_consultant_fallback,staged_soc_intel_for_incident",
+        validation_alias="PLANNER_DEFAULT_POST_PROCESSORS",
+    )
+    default_persona_max_tool_calls: int = Field(
+        default=50, validation_alias="DEFAULT_PERSONA_MAX_TOOL_CALLS"
+    )
+
+    engagement_egress_ttl_s: int = Field(default=86_400, validation_alias="ENGAGEMENT_EGRESS_TTL_S")
+    engagement_egress_max_events: int = Field(
+        default=200, validation_alias="ENGAGEMENT_EGRESS_MAX_EVENTS"
+    )
+    engagement_egress_pubsub_timeout_s: float = Field(
+        default=1.0, validation_alias="ENGAGEMENT_EGRESS_PUBSUB_TIMEOUT_S"
+    )
+    engagement_egress_pubsub_idle_sleep_s: float = Field(
+        default=0.05, validation_alias="ENGAGEMENT_EGRESS_PUBSUB_IDLE_SLEEP_S"
+    )
+
+    web_search_default_limit: int = Field(default=5, validation_alias="WEB_SEARCH_DEFAULT_LIMIT")
+    duckduckgo_api_url: str = Field(
+        default="https://api.duckduckgo.com/", validation_alias="DUCKDUCKGO_API_URL"
+    )
+    duckduckgo_api_timeout_s: float = Field(default=15.0, validation_alias="DUCKDUCKGO_API_TIMEOUT_S")
+    serper_api_url: str = Field(
+        default="https://google.serper.dev/search", validation_alias="SERPER_API_URL"
+    )
+    serper_api_timeout_s: float = Field(default=20.0, validation_alias="SERPER_API_TIMEOUT_S")
+
+    perplexity_api_url: str = Field(
+        default="https://api.perplexity.ai/chat/completions",
+        validation_alias="PERPLEXITY_API_URL",
+    )
+    perplexity_api_timeout_s: float = Field(
+        default=30.0, validation_alias="PERPLEXITY_API_TIMEOUT_S"
+    )
+    perplexity_search_default_limit: int = Field(
+        default=5, validation_alias="PERPLEXITY_SEARCH_DEFAULT_LIMIT"
+    )
+    jina_search_api_url: str = Field(
+        default="https://s.jina.ai/", validation_alias="JINA_SEARCH_API_URL"
+    )
+    jina_search_api_timeout_s: float = Field(
+        default=30.0, validation_alias="JINA_SEARCH_API_TIMEOUT_S"
+    )
+    jina_search_default_limit: int = Field(default=5, validation_alias="JINA_SEARCH_DEFAULT_LIMIT")
+    jina_search_snippet_max: int = Field(default=8000, validation_alias="JINA_SEARCH_SNIPPET_MAX")
+    search_judge_input_max: int = Field(default=2000, validation_alias="SEARCH_JUDGE_INPUT_MAX")
+    search_judge_prompt_max: int = Field(default=4000, validation_alias="SEARCH_JUDGE_PROMPT_MAX")
+
+    siem_search_max_limit: int = Field(default=100, validation_alias="SIEM_SEARCH_MAX_LIMIT")
+    siem_http_search_timeout_s: float = Field(
+        default=10.0, validation_alias="SIEM_HTTP_SEARCH_TIMEOUT_S"
+    )
+    siem_search_default_time_range: str = Field(
+        default="24h", validation_alias="SIEM_SEARCH_DEFAULT_TIME_RANGE"
+    )
+    siem_search_default_limit: int = Field(default=50, validation_alias="SIEM_SEARCH_DEFAULT_LIMIT")
+
+    evidence_event_text_max: int = Field(default=500, validation_alias="EVIDENCE_EVENT_TEXT_MAX")
+    evidence_max_confidence_metadata: float = Field(
+        default=0.3, validation_alias="EVIDENCE_MAX_CONFIDENCE_METADATA"
+    )
+    evidence_max_confidence_sparse: float = Field(
+        default=0.5, validation_alias="EVIDENCE_MAX_CONFIDENCE_SPARSE"
+    )
+    evidence_max_confidence_rich: float = Field(
+        default=1.0, validation_alias="EVIDENCE_MAX_CONFIDENCE_RICH"
+    )
+
+    noop_low_confidence_threshold: float = Field(
+        default=0.25, validation_alias="NOOP_LOW_CONFIDENCE_THRESHOLD"
+    )
+    noop_pending_trust_threshold: float = Field(
+        default=0.3, validation_alias="NOOP_PENDING_TRUST_THRESHOLD"
+    )
+
+    egregore_metrics_port: int = Field(default=9091, validation_alias="EGREGORE_METRICS_PORT")
+
     ui_cors_origins_raw: str = Field(
         default="http://localhost:3000,http://127.0.0.1:3000",
         validation_alias="UI_CORS_ORIGINS",
