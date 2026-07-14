@@ -86,7 +86,9 @@ class EnqueueFollowUp:
             raise FollowUpError("engagement_not_closed", status_code=409)
         if engagement.synthesis_status not in (SynthesisStatus.DONE, SynthesisStatus.SKIPPED, None):
             raise FollowUpError("synthesis_not_complete", status_code=409)
-        turns = self._memory_reader.query_conversation_turns(tenant_id, engagement_id, limit=200)
+        turns = self._memory_reader.query_conversation_turns(
+            tenant_id, engagement_id, limit=self._settings.follow_up_conversation_query_limit
+        )
         operator_turns = [
             t for t in turns
             if self._turn_role(t) == "operator" and is_follow_up_turn_id(self._turn_follow_up_id(t))
@@ -240,7 +242,9 @@ class EnqueueFollowUp:
         enqueue: bool = True,
     ) -> dict[str, Any]:
         engagement = self._validate_engagement(tenant_id, engagement_id)
-        turns = self._memory_reader.query_conversation_turns(tenant_id, engagement_id, limit=200)
+        turns = self._memory_reader.query_conversation_turns(
+            tenant_id, engagement_id, limit=self._settings.follow_up_conversation_query_limit
+        )
         prior_operator_turns = sum(1 for t in turns if self._turn_role(t) == "operator")
         work_kind = classify_follow_up_mode(
             message,
@@ -338,7 +342,9 @@ class EnqueueFollowUp:
         }
 
     def list_turns(self, tenant_id: str, engagement_id: str) -> list[dict[str, Any]]:
-        entries = self._memory_reader.query_conversation_turns(tenant_id, engagement_id, limit=100)
+        entries = self._memory_reader.query_conversation_turns(
+            tenant_id, engagement_id, limit=self._settings.follow_up_history_limit
+        )
         turns: list[dict[str, Any]] = []
         has_initial = False
         for entry in entries:
