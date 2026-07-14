@@ -57,10 +57,35 @@ def test_create_run_and_step(client):
     run_id = created.json()["run_context"]["context_id"]
     assert run_id == "eng-test-1"
     assert created.json()["result"]["engagement_id"] == run_id
+    # /runs/{run_id}/steps has no wired implementation for continuing an in-flight run
+    # (see FIXME history in interfaces/api/runs.py) — it must report that honestly (501)
+    # rather than silently creating an unrelated engagement mislabeled as this run.
     stepped = client.post(f"/runs/{run_id}/steps", json={"message": "continue"})
-    assert stepped.status_code == 200
+    assert stepped.status_code == 501
     fetched = client.get(f"/runs/{run_id}")
     assert fetched.status_code == 200
+
+
+@pytest.mark.unit
+def test_run_step_404s_for_unknown_run(client):
+    stepped = client.post("/runs/eng-unknown/steps", json={"message": "continue"})
+    assert stepped.status_code == 404
+
+
+@pytest.mark.unit
+def test_upload_attachment_rejects_oversized_file(client, monkeypatch):
+    """Regression: uploads must be rejected once they exceed the configured cap,
+    without buffering the whole oversized payload into memory first."""
+    from bootstrap.container import get_container
+
+    monkeypatch.setattr(get_container().settings, "run_attachment_max_bytes", 10)
+    created = client.post("/runs", json={"goal": "investigate", "persona": "conductor"})
+    run_id = created.json()["run_context"]["context_id"]
+    response = client.post(
+        f"/runs/{run_id}/attachments",
+        files={"file": ("evidence.txt", b"x" * 1000, "text/plain")},
+    )
+    assert response.status_code == 413
 
 
 @pytest.mark.unit

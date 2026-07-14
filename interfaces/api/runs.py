@@ -80,17 +80,21 @@ async def run_step(
 ) -> RunOut:
     _deny_legacy_runs_in_enforce()
     tenant_id = require_tenant_match_http(_auth, tenant_id)
-    # FIXME: ignores the existing run identified by `run_id` — starts a brand-new engagement via
-    # _create_via_engagement() and just overwrites context_id on the response, instead of loading and
-    # continuing the run the caller asked to step (contrast with work_orders.py, which looks up by id).
-    out = await _create_via_engagement(
-        goal=body.message,
-        profile_id="cybersec-soc",
+    require_engagement_relation(
+        auth=_auth,
         tenant_id=tenant_id,
-        persona="conductor",
+        engagement_id=run_id,
+        relation="can_operate",
     )
-    out["run_context"]["context_id"] = run_id
-    return RunOut(run_context=out["run_context"], result=out["result"])
+    engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    # Continuing an in-flight run (vs. the closed-engagement follow-up flow under
+    # /v1/engagements/{id}/follow-ups) has no wired implementation — cys_core.application
+    # .use_cases.run_step.RunStep exists and is unit-tested but was never connected to a
+    # container factory or this route. Report explicitly rather than silently creating an
+    # unrelated engagement and mislabeling it as this run (the previous behavior).
+    raise HTTPException(status_code=501, detail="Continuing an existing run via /runs/{run_id}/steps is not implemented")
 
 
 @router.post("/runs/{run_id}/approve-plan", response_model=RunOut)
@@ -160,8 +164,18 @@ async def upload_attachment(
     engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    # TODO: no max-size or content-type validation before buffering the whole upload into memory —
-    # add a size cap (checked bootstrap/settings.py: no such setting exists yet) before this reaches prod.
-    data = await file.read()
+    max_bytes = get_container().settings.run_attachment_max_bytes
+    chunks: list[bytes] = []
+    total = 0
+    chunk_size = 1024 * 1024
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail=f"Attachment exceeds max size of {max_bytes} bytes")
+        chunks.append(chunk)
+    data = b"".join(chunks)
     saved_path = get_container().get_attachment_store().save(tenant_id, run_id, file.filename or "attachment.bin", data)
     return {"path": saved_path, "run_id": run_id}

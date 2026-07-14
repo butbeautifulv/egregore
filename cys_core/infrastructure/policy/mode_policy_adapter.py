@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import structlog
+
 from cys_core.domain.catalog.models import ModePolicyPayload
 from cys_core.domain.policy.defaults import DEFAULT_MODE_POLICY
 from cys_core.domain.policy.pure import allow_tool_pure
 from cys_core.domain.runs.models import InteractionMode
+
+logger = structlog.get_logger(__name__)
 
 
 def allow_tool_for_profile(
@@ -20,8 +24,11 @@ def allow_tool_for_profile(
             from cys_core.infrastructure.catalog.profile_policy import get_profile_policy
 
             return allow_tool_pure(mode, tool_name, mode_policy=get_profile_policy(profile_id).mode_policy)
-        except Exception:
-            # FIXME: masks real policy-loading bugs (bad config, backend errors) as "no per-profile
-            # policy configured" and silently falls back to DEFAULT_MODE_POLICY. Log at minimum.
-            pass
+        except Exception as exc:
+            logger.warning(
+                "profile_mode_policy_load_failed",
+                profile_id=profile_id,
+                tool_name=tool_name,
+                error=str(exc),
+            )
     return allow_tool_pure(mode, tool_name, mode_policy=DEFAULT_MODE_POLICY)

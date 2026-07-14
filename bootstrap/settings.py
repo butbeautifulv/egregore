@@ -459,6 +459,8 @@ class Settings(BaseSettings):
     tool_stored_outputs_max: int = Field(default=5, validation_alias="TOOL_STORED_OUTPUTS_MAX")
     tool_siem_drilldown_max: int = Field(default=2, validation_alias="TOOL_SIEM_DRILLDOWN_MAX")
 
+    run_attachment_max_bytes: int = Field(default=25 * 1024 * 1024, validation_alias="RUN_ATTACHMENT_MAX_BYTES")
+
     egress_batch_seconds: float = Field(default=0.05, validation_alias="EGRESS_BATCH_SECONDS")
     egress_output_preview_max: int = Field(default=800, validation_alias="EGRESS_OUTPUT_PREVIEW_MAX")
 

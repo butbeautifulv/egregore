@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
+
 from cys_core.application.ports.metrics import MetricsPort
 from cys_core.domain.catalog.models import ProfilePolicyPayload
+
+logger = structlog.get_logger(__name__)
 
 _resolver: ProfilePolicyResolver | None = None
 
@@ -28,9 +32,12 @@ class ProfilePolicyResolver:
                 loaded = self._loader.get_policy(profile_id)
                 if loaded is not None:
                     return loaded
-            except Exception:
-                # FIXME: swallows the loader exception itself (only records a metric) — persistence/config
-                # errors here are indistinguishable from "no override configured" and fall through silently.
+            except Exception as exc:
+                logger.warning(
+                    "profile_policy_loader_failed",
+                    profile_id=profile_id,
+                    error=str(exc),
+                )
                 if self._metrics is not None:
                     try:
                         self._metrics.record_persistence_fallback("policy_loader")
@@ -71,10 +78,12 @@ class ProfilePolicyResolver:
         if self._loader is not None:
             try:
                 return self._loader.get_max_spawn_depth(profile_id)
-            except Exception:
-                # FIXME: no logging — a loader failure silently falls back to the policy default instead
-                # of surfacing that spawn-depth override lookup is broken.
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "max_spawn_depth_loader_failed",
+                    profile_id=profile_id,
+                    error=str(exc),
+                )
         return self.policy(profile_id).max_spawn_depth
 
     def planner_fallback_personas(
@@ -91,10 +100,12 @@ class ProfilePolicyResolver:
                 personas = self._loader.get_default_personas(profile_id)
                 if personas and len(personas) <= max_personas:
                     return personas
-            except Exception:
-                # FIXME: no logging — loader failure silently falls back to ["consultant"] instead of
-                # surfacing that default-personas lookup is broken.
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "planner_fallback_personas_loader_failed",
+                    profile_id=profile_id,
+                    error=str(exc),
+                )
         return ["consultant"]
 
     def sgr_policy(self, profile_id: str):

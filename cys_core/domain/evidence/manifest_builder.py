@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
+
 from cys_core.domain.evidence.incident_mitre import infer_suggested_mitre_techniques
 from cys_core.domain.evidence.observation_ids import build_obs_id
 from cys_core.domain.evidence.models import (
@@ -12,6 +14,8 @@ from cys_core.domain.evidence.models import (
     Observation,
     ObservationKind,
 )
+
+logger = structlog.get_logger(__name__)
 
 _FORENSIC_FIELD_PATHS: tuple[tuple[str, ObservationKind], ...] = (
     ("subject.process.cmdline", "process"),
@@ -382,10 +386,11 @@ def build_manifest_from_investigation(
                     recent_truncated=recent_truncated,
                 ),
             )
-        except Exception:
-            # FIXME: swallows the validation error and silently discards the pre-existing (possibly
-            # forensically relevant) embedded manifest, rebuilding from scratch with no log/warning.
-            pass
+        except Exception as exc:
+            logger.warning(
+                "embedded_evidence_manifest_validation_failed",
+                error=str(exc),
+            )
 
     return _finalize_manifest(
         observations,
