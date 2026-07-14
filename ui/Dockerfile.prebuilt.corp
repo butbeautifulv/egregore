@@ -1,0 +1,13 @@
+# Prebuilt UI — run `bun run build` on host, then Kaniko packages .next via Nexus base.
+ARG NEXUS_REGISTRY=nexus.svo.aero:8345
+ARG NEXUS_CXADO_REPO=cxado-docker
+ARG BUN_IMAGE=oven-bun:1-alpine
+
+FROM ${NEXUS_REGISTRY}/${NEXUS_CXADO_REPO}/${BUN_IMAGE} AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY .next/standalone ./
+COPY .next/static ./.next/static
+COPY public ./public
+EXPOSE 3000
+CMD ["bun", "server.js"]

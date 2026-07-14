@@ -48,7 +48,8 @@ export function eventDedupeKey(event: EngagementStreamEvent): string {
   const payload = eventPayload(event)
   const type = event.type ?? ""
   if (type === "assistant_delta") {
-    return [type, payload.job_id ?? "", payload.seq ?? "", payload.delta ?? ""].join("|")
+    const seq = payload.seq ?? ""
+    return [type, payload.job_id ?? "", seq, payload.delta ?? ""].join("|")
   }
   if (type === "reasoning_delta") {
     return [
@@ -198,6 +199,38 @@ export function formatJobError(err: string): string {
   return `Job failed: ${err}`
 }
 
+function findToolByCallId(entry: AgentChatEntry, toolCallId: string): ChatToolCall | undefined {
+  if (!toolCallId) return undefined
+  return entry.tools.find((tool) => tool.tool_call_id === toolCallId)
+}
+
+function findStartedTool(
+  entry: AgentChatEntry,
+  toolCallId: string,
+  toolName: string,
+): ChatToolCall | undefined {
+  if (toolCallId) {
+    const byId = findToolByCallId(entry, toolCallId)
+    if (byId) return byId
+  }
+  return entry.tools.find(
+    (tool) => tool.status === "started" && tool.name.startsWith(toolName),
+  )
+}
+
+function upsertToolStart(entry: AgentChatEntry, tool: ChatToolCall): void {
+  if (tool.tool_call_id) {
+    const existing = findToolByCallId(entry, tool.tool_call_id)
+    if (existing) {
+      existing.name = tool.name
+      existing.status = "started"
+      if (tool.tool_args) existing.tool_args = tool.tool_args
+      return
+    }
+  }
+  entry.tools.push(tool)
+}
+
 export function applyChatEvent(
   state: ChatStateMap,
   event: EngagementStreamEvent,
@@ -240,18 +273,42 @@ export function applyChatEvent(
   }
 
   if (type === "assistant_delta") {
-    entry.buffer += String(payload.delta ?? "")
+    const delta = String(payload.delta ?? "")
+    if (!delta) return false
+    const seqRaw = payload.seq
+    const seq = seqRaw != null && seqRaw !== "" ? Number(seqRaw) : null
+    if (seq != null && !Number.isNaN(seq)) {
+      const last = entry.lastAssistantSeq ?? 0
+      if (seq <= last) return false
+      entry.lastAssistantSeq = seq
+    } else if (entry.buffer.endsWith(delta)) {
+      return false
+    }
+    entry.buffer += delta
     entry.streaming = true
     return true
   }
 
   if (type === "assistant_snapshot") {
     const text = String(payload.text ?? "")
-    if (text && entry.buffer === text) {
+    if (!text) {
       entry.streaming = false
       return false
     }
-    if (!entry.buffer && text) {
+    if (entry.buffer === text) {
+      entry.streaming = false
+      return false
+    }
+    if (entry.buffer && text.includes(entry.buffer)) {
+      entry.buffer = text
+      entry.streaming = false
+      return true
+    }
+    if (entry.buffer && entry.buffer.includes(text)) {
+      entry.streaming = false
+      return false
+    }
+    if (!entry.buffer) {
       entry.buffer = text
     }
     entry.streaming = false
@@ -293,10 +350,10 @@ export function applyChatEvent(
       payload.tool_args && typeof payload.tool_args === "object"
         ? (payload.tool_args as ChatToolCall["tool_args"])
         : undefined
-    entry.tools.push({
+    upsertToolStart(entry, {
       name: label,
       status: "started",
-      tool_call_id: toolCallId,
+      tool_call_id: toolCallId || undefined,
       tool_args: toolArgs,
     })
     return true
@@ -304,7 +361,11 @@ export function applyChatEvent(
 
   if (type === "skill_loaded") {
     const skill = String(payload.skill_name ?? payload.skill ?? "skill")
-    entry.tools.push({ name: `load_skill → ${skill}`, status: "done" })
+    const label = `load_skill → ${skill}`
+    const duplicate = entry.tools.some((tool) => tool.name === label && tool.status === "done")
+    if (!duplicate) {
+      entry.tools.push({ name: label, status: "done" })
+    }
     return true
   }
 
@@ -312,11 +373,7 @@ export function applyChatEvent(
     const toolCallId = String(payload.tool_call_id ?? "")
     const toolName = String(payload.tool_name ?? "tool")
     const outputPreview = payload.output_preview ? String(payload.output_preview) : ""
-    const match = entry.tools.find(
-      (tool) =>
-        tool.status === "started" &&
-        (tool.tool_call_id === toolCallId || tool.name.startsWith(toolName)),
-    )
+    const match = findStartedTool(entry, toolCallId, toolName)
     if (match) {
       match.status = payload.ok === false ? "error" : "done"
       if (outputPreview) {
@@ -328,6 +385,8 @@ export function applyChatEvent(
           match.playbook_result = parsed
         }
       }
+    } else if (toolCallId && findToolByCallId(entry, toolCallId)) {
+      // Replay after tool_done already applied — no-op.
     } else {
       const tool: ChatToolCall = {
         name: toolName,
@@ -350,14 +409,12 @@ export function applyChatEvent(
     const toolCallId = String(payload.tool_call_id ?? "")
     const toolName = String(payload.tool_name ?? "tool")
     const errorMessage = String(payload.error ?? "tool error")
-    const match = entry.tools.find(
-      (tool) =>
-        tool.status === "started" &&
-        (tool.tool_call_id === toolCallId || tool.name.startsWith(toolName)),
-    )
+    const match = findStartedTool(entry, toolCallId, toolName)
     if (match) {
       match.status = "error"
       match.error_message = errorMessage
+    } else if (toolCallId && findToolByCallId(entry, toolCallId)) {
+      // Replay after tool_error already applied — no-op.
     } else {
       entry.tools.push({
         name: toolName,
@@ -421,7 +478,11 @@ export function hydrateChatFromDetail(
   }
   const plannerId = plannerJobId(engagementId)
   const plannerEntry = ensureChatEntry(state, plannerId, "planner")
-  if (!plannerEntry.buffer && (plannerPlan?.length || plannerRationale)) {
+  if (
+    !plannerEntry.buffer &&
+    !plannerEntry.streaming &&
+    (plannerPlan?.length || plannerRationale)
+  ) {
     plannerEntry.buffer = JSON.stringify(
       plannerPlanFromDetail({
         planner_plan: plannerPlan,

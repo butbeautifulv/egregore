@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from cys_core.application.workers.timeout_salvage import build_salvage_finding
+from cys_core.application.workers.finding_quality import finding_meets_minimum
 from cys_core.application.workers.tool_execution_tracker import (
     clear_tool_execution_count,
     get_tool_outputs,
@@ -111,3 +112,26 @@ def test_build_salvage_finding_skips_ladder_block_messages() -> None:
     assert finding is not None
     assert "Port scan" in finding["summary"]
     assert "already completed" not in finding["summary"]
+
+
+@pytest.mark.unit
+def test_build_salvage_finding_consultant_recursion() -> None:
+    outputs = [
+        ("playbook_search", '{"count":2,"skills":[{"name":"malware-defense"}]}'),
+        ("load_skill", "Loaded veil-knowledge skill with deployment guidance."),
+    ]
+    finding = build_salvage_finding(
+        "consultant",
+        outputs,
+        salvage_reason="recursion_limit_exhausted",
+        goal="Как защититься от вирусов?",
+    )
+    assert finding is not None
+    assert finding["topic"] == "Как защититься от вирусов?"
+    assert finding["summary"]
+    assert len(finding["recommendations"]) >= 2
+    assert finding_meets_minimum(
+        "consultant",
+        finding,
+        schema_name="ConsultantFinding",
+    )

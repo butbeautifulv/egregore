@@ -96,6 +96,12 @@ _INTEL_HARD_NUDGE = (
     "Return IntelFinding JSON immediately using data already collected."
 )
 
+_CONSULTANT_FINDING_NUDGE = (
+    "\n\n[System] load_skill/playbook_search complete. "
+    "Emit ConsultantFinding JSON now: topic, summary, "
+    "at least 2 recommendations, confidence."
+)
+
 
 class RunWorkerJob:
     """Coordinate worker pipeline: sandbox → agent → publish → finalize."""
@@ -219,6 +225,11 @@ class RunWorkerJob:
                 return f"{sanitized}{_INTEL_FINDING_NUDGE}"
             if tools_executed >= 4:
                 return f"{sanitized}{_INTEL_HARD_NUDGE}"
+        if job.persona == "consultant":
+            if tool_succeeded(job.job_id, "load_skill"):
+                return f"{sanitized}{_CONSULTANT_FINDING_NUDGE}"
+            if tools_executed >= 4:
+                return f"{sanitized}{_EMIT_FINDING_NUDGE}"
         return None
 
     async def try_salvage_partial(
@@ -236,6 +247,7 @@ class RunWorkerJob:
             outputs,
             job_id=job.job_id,
             salvage_reason=reason,
+            goal=str(job.payload.get("goal") or ""),
         )
         if salvage is None:
             return None
@@ -523,6 +535,14 @@ class RunWorkerJob:
                     elif job.persona == "intel":
                         logger.info(
                             "worker_intel_finding_nudge",
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            engagement_id=investigation_id,
+                            tools_executed=tools_executed,
+                        )
+                    elif job.persona == "consultant":
+                        logger.info(
+                            "worker_consultant_finding_nudge",
                             job_id=job.job_id,
                             persona=job.persona,
                             engagement_id=investigation_id,

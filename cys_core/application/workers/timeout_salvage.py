@@ -15,12 +15,16 @@ _IOC_PATTERN = re.compile(
 
 _SOC_SUMMARY_TOOLS = ("investigate_incident", "get_incident", "search_events", "list_incident_events")
 _INTEL_SUMMARY_TOOLS = ("enrich_ioc", "ti_search_in_category", "playbook_search", "investigate_incident")
+_CONSULTANT_SUMMARY_TOOLS = ("load_skill", "playbook_search", "playbook_get", "enrich_ioc")
 _LADDER_BLOCK_MARKERS = (
     "SIEM ladder complete",
     "already completed",
     "SIEM/Veil ladder complete",
+    "Consultant ladder complete",
     "Emit SocFinding JSON",
+    "Emit ConsultantFinding JSON",
     "Emit the persona finding JSON",
+    "load_skill/playbook_search complete",
 )
 
 
@@ -88,12 +92,33 @@ def _manifest_grounded_soc(
     }
 
 
+def _recommendations_from_outputs(tool_outputs: list[tuple[str, str]]) -> list[str]:
+    recs: list[str] = []
+    for tool_name, preview in tool_outputs:
+        if tool_name not in ("playbook_search", "load_skill", "playbook_get"):
+            continue
+        cleaned = preview.strip()
+        if not cleaned or _is_ladder_block_output(cleaned):
+            continue
+        recs.append(_truncate_summary(cleaned))
+        if len(recs) >= 2:
+            break
+    while len(recs) < 2:
+        fillers = [
+            "Review the guidance collected from playbooks and skills above.",
+            "Ask a follow-up for environment-specific implementation details.",
+        ]
+        recs.append(fillers[len(recs)])
+    return recs[:2]
+
+
 def build_salvage_finding(
     persona: str,
     tool_outputs: list[tuple[str, str]],
     *,
     job_id: str = "",
     salvage_reason: str = "worker_job_timeout",
+    goal: str = "",
 ) -> dict[str, Any] | None:
     """Build a minimal partial finding from cached tool previews after timeout or recursion."""
     if not tool_outputs:
@@ -133,6 +158,18 @@ def build_salvage_finding(
         if not summary:
             return None
         return {**base, "hypothesis": summary, "summary": summary}
+
+    if persona == "consultant":
+        summary = _summary_from_outputs(tool_outputs, _CONSULTANT_SUMMARY_TOOLS)
+        if not summary:
+            summary = f"Partial advisory context salvaged from {len(tool_outputs)} tool(s)."
+        topic = (goal or "Advisory").strip()[:120] or "Advisory"
+        return {
+            **base,
+            "topic": topic,
+            "summary": summary,
+            "recommendations": _recommendations_from_outputs(tool_outputs),
+        }
 
     # Generic fallback for other personas with schema output
     summary = _summary_from_outputs(tool_outputs, _SOC_SUMMARY_TOOLS + _INTEL_SUMMARY_TOOLS)

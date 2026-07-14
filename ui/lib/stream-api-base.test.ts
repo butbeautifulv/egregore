@@ -20,10 +20,31 @@ describe("streamApiBase", () => {
     expect(streamApiBase()).toBe("")
   })
 
-  test("defaults to local API in development", () => {
+  test("defaults to local API in development on the server", () => {
     delete process.env.NEXT_PUBLIC_STREAM_API_BASE
     process.env.NODE_ENV = "development"
     expect(streamApiBase()).toBe("http://127.0.0.1:8080")
+  })
+})
+
+describe("streamApiBase in browser", () => {
+  const originalWindow = globalThis.window
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      // @ts-expect-error test cleanup
+      delete globalThis.window
+    } else {
+      globalThis.window = originalWindow
+    }
+  })
+
+  test("uses same-origin API proxy in the browser", () => {
+    // @ts-expect-error minimal browser stub for streamApiBase
+    globalThis.window = {}
+    delete process.env.NEXT_PUBLIC_STREAM_API_BASE
+    process.env.NODE_ENV = "development"
+    expect(streamApiBase()).toBe("/api/egregore")
   })
 })
 

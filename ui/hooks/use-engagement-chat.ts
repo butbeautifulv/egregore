@@ -65,10 +65,6 @@ export function useEngagementChatState(
       setEntries([])
     }
     if (!detail) {
-      if (engagementIdRef.current === engagementId) {
-        stateRef.current = new Map()
-        setEntries([])
-      }
       return
     }
     hydrateChatFromDetail(

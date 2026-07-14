@@ -17,6 +17,7 @@ _persona_manifests: dict[str, dict[str, EvidenceManifest]] = {}
 
 _veil_counts: dict[str, int] = {}
 _siem_drilldown_counts: dict[str, int] = {}
+_tool_call_counts: dict[str, dict[str, int]] = {}
 
 
 def record_tool_execution(job_id: str) -> None:
@@ -33,6 +34,27 @@ def get_tool_execution_count(job_id: str) -> int:
         return _counts.get(job_id, 0)
 
 
+def record_tool_call(job_id: str, tool_name: str) -> None:
+    """Unbounded per-tool-name call counter for ladder/budget checks.
+
+    Unlike `get_tool_outputs`, which is trimmed to `tool_stored_outputs_max`
+    entries for preview/salvage purposes, this counter never evicts — budget
+    enforcement must see every call, not just the trailing window.
+    """
+    if not job_id or not tool_name:
+        return
+    with _lock:
+        bucket = _tool_call_counts.setdefault(job_id, {})
+        bucket[tool_name] = bucket.get(tool_name, 0) + 1
+
+
+def get_tool_call_count(job_id: str, tool_name: str) -> int:
+    if not job_id or not tool_name:
+        return 0
+    with _lock:
+        return _tool_call_counts.get(job_id, {}).get(tool_name, 0)
+
+
 def clear_tool_execution_count(job_id: str) -> None:
     if not job_id:
         return
@@ -43,6 +65,7 @@ def clear_tool_execution_count(job_id: str) -> None:
         _manifests.pop(job_id, None)
         _veil_counts.pop(job_id, None)
         _siem_drilldown_counts.pop(job_id, None)
+        _tool_call_counts.pop(job_id, None)
         from cys_core.application.workers.tool_result_cache import clear_tool_result_cache
         from cys_core.middleware.tool_dedup_middleware import clear_tool_dedup
 

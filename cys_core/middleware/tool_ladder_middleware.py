@@ -13,6 +13,7 @@ from langgraph.types import Command
 from cys_core.application.tools.providers.siem import SIEM_TOOL_NAMES
 from cys_core.application.workers.tool_execution_tracker import (
     get_merged_manifest,
+    get_tool_call_count,
     get_veil_tool_count,
     is_siem_telemetry_sparse,
     siem_drilldown_budget_exhausted,
@@ -25,6 +26,16 @@ from cys_core.middleware._framework_casts import cast_tool_result
 logger = structlog.get_logger(__name__)
 
 _TRIAGE_PERSONAS = frozenset({"soc", "intel"})
+_CONSULTANT_PERSONA = "consultant"
+_MAX_CONSULTANT_PLAYBOOK_SEARCH = 2
+_CONSULTANT_BLOCKED_AFTER_SKILL = frozenset(
+    {
+        "playbook_search",
+        "playbook_get",
+        "playbook_procedure",
+        "load_skill",
+    }
+)
 _VEIL_LADDER_TOOLS = frozenset({"enrich_ioc"})
 _MAX_VEIL_TOOLS = 2
 _SIEM_DRILLDOWN_WHEN_SPARSE = frozenset({"search_events", "get_event_by_uuid"})
@@ -54,6 +65,14 @@ _MSG_SIEM_LADDER_COMPLETE = (
 _MSG_VEIL_BUDGET_EXHAUSTED = (
     f"Veil tool budget exhausted ({_MAX_VEIL_TOOLS} max). Emit the persona finding JSON now."
 )
+_MSG_CONSULTANT_LADDER_COMPLETE = (
+    "Consultant ladder complete. Emit ConsultantFinding JSON now with topic, summary, "
+    "at least 2 recommendations, and confidence."
+)
+
+
+def _completed_tool_count(job_id: str, tool_name: str) -> int:
+    return get_tool_call_count(job_id, tool_name)
 
 
 def _is_veil_ladder_tool(tool_name: str) -> bool:
@@ -61,7 +80,7 @@ def _is_veil_ladder_tool(tool_name: str) -> bool:
 
 
 class ToolLadderMiddleware(AgentMiddleware):
-    """Enforce SIEM/Veil tool budgets for triage personas (soc, intel)."""
+    """Enforce SIEM/Veil tool budgets for triage personas and consultant advisory loops."""
 
     def __init__(self, *, persona: str) -> None:
         super().__init__()
@@ -89,13 +108,40 @@ class ToolLadderMiddleware(AgentMiddleware):
             status="error",
         )
 
+    def _check_consultant(self, request: ToolCallRequest, tool_name: str, job_id: str) -> ToolMessage | None:
+        if tool_succeeded(job_id, "load_skill"):
+            if tool_name in _CONSULTANT_BLOCKED_AFTER_SKILL or is_veil_tool(tool_name):
+                logger.info(
+                    "tool_ladder_consultant_blocked",
+                    tool=tool_name,
+                    persona=self.persona,
+                    job_id=job_id,
+                    reason="load_skill_complete",
+                )
+                return self._blocked(request, _MSG_CONSULTANT_LADDER_COMPLETE)
+        if tool_name == "playbook_search":
+            if _completed_tool_count(job_id, "playbook_search") >= _MAX_CONSULTANT_PLAYBOOK_SEARCH:
+                logger.info(
+                    "tool_ladder_consultant_blocked",
+                    tool=tool_name,
+                    persona=self.persona,
+                    job_id=job_id,
+                    reason="playbook_search_budget",
+                )
+                return self._blocked(request, _MSG_CONSULTANT_LADDER_COMPLETE)
+        return None
+
     def _check(self, request: ToolCallRequest) -> ToolMessage | None:
-        if self.persona not in _TRIAGE_PERSONAS:
-            return None
         tool_name = str(request.tool_call.get("name", ""))
         if not tool_name:
             return None
         job_id = self._job_id()
+
+        if self.persona == _CONSULTANT_PERSONA:
+            return self._check_consultant(request, tool_name, job_id)
+
+        if self.persona not in _TRIAGE_PERSONAS:
+            return None
 
         if self.persona == "soc" and tool_name in SIEM_TOOL_NAMES:
             if self._siem_investigate_done(job_id):

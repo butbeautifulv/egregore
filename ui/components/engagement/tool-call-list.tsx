@@ -110,10 +110,21 @@ function PlaybookSearchDetails({ tool }: { tool: ChatToolCall }) {
   )
 }
 
+function loadSkillSummary(tool: ChatToolCall): string {
+  if (tool.status === "started") return "Loading skill…"
+  if (tool.status === "error") return tool.error_message ?? "Skill load failed"
+  return "Skill loaded"
+}
+
 function ToolCallAttachment({ tool, index }: { tool: ChatToolCall; index: number }) {
   const playbook = isPlaybookSearchTool(tool.name)
+  const loadSkill = tool.name.startsWith("load_skill")
   const title = playbook ? "playbook_search" : tool.name
-  const description = playbook ? playbookSummary(tool) : tool.status
+  const description = playbook
+    ? playbookSummary(tool)
+    : loadSkill
+      ? loadSkillSummary(tool)
+      : tool.status
 
   return (
     <Attachment
@@ -140,7 +151,7 @@ export const ToolCallList = memo(function ToolCallList({ tools }: { tools: ChatT
     <AttachmentGroup className="w-full max-w-full flex-wrap">
       {tools.map((tool, index) => (
         <ToolCallAttachment
-          key={`${tool.name}-${tool.tool_call_id ?? index}`}
+          key={`${tool.tool_call_id ?? tool.name}-${index}`}
           tool={tool}
           index={index}
         />

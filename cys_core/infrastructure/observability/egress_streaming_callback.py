@@ -170,6 +170,9 @@ class EgressStreamingCallback(AsyncCallbackHandler):
         if not get_stream_agent_output():
             return
         self._streamed_this_turn = True
+        if get_settings().egress_batch_seconds <= 0:
+            self._publish_text_delta(token)
+            return
         async with self._lock:
             self._buffer += token
             if self._flush_task is None or self._flush_task.done():

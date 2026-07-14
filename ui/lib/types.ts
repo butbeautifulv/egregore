@@ -76,4 +76,6 @@ export type AgentChatEntry = {
   agentExpanded: boolean
   jobError: string
   isControlError: boolean
+  /** Highest assistant_delta seq applied for this job (SSE replay idempotency). */
+  lastAssistantSeq?: number
 }
