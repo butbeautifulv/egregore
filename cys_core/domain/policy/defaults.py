@@ -166,7 +166,7 @@ def gaia_profile_policy_payload() -> ProfilePolicyPayload:
     return _gaia()
 
 
-PERSONA_BUDGETS: dict[str, PersonaBudget] = {
+_BASE_PERSONA_BUDGETS: dict[str, PersonaBudget] = {
     "soc": PersonaBudget(max_tokens=40_000, max_cost_usd=2.0, max_tool_calls=6),
     "network": PersonaBudget(max_tokens=50_000, max_cost_usd=2.0),
     "compliance": PersonaBudget(max_tokens=40_000, max_cost_usd=1.5),
@@ -183,6 +183,14 @@ PERSONA_BUDGETS: dict[str, PersonaBudget] = {
     "research": PersonaBudget(max_tokens=55_000, max_cost_usd=2.5),
     "coding": PersonaBudget(max_tokens=70_000, max_cost_usd=3.5),
 }
+
+PERSONA_BUDGETS = _BASE_PERSONA_BUDGETS
+
+
+def get_persona_budgets() -> dict[str, PersonaBudget]:
+    from bootstrap.persona_budget_loader import get_loaded_persona_budgets
+
+    return get_loaded_persona_budgets()
 
 PERSONA_CLEARANCE: dict[str, str] = {
     "soc": "confidential",

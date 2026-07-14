@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bootstrap.settings import get_settings
 from cys_core.domain.policy.defaults import DEFAULT_PROFILE_ID, default_profile_policy_payload
 
 
@@ -22,7 +23,11 @@ def default_profile_pack(*, id: str, default_personas: list[str], control_plane_
         global_rules="",
         policy=default_profile_policy(),
         planner=PlannerPack(
-            post_processors=["advisory_consultant_fallback", "staged_soc_intel_for_incident"],
+            post_processors=[
+                p.strip()
+                for p in get_settings().planner_default_post_processors.split(",")
+                if p.strip()
+            ],
             synthesis_default="consultant",
         ),
         intake_schema={
