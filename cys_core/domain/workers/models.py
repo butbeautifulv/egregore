@@ -25,10 +25,19 @@ _ALLOWED_TRANSITIONS: dict[WorkerJobStatus, frozenset[WorkerJobStatus]] = {
 }
 
 
+def _default_max_tool_calls() -> int:
+    try:
+        from bootstrap.settings import get_settings
+
+        return get_settings().default_persona_max_tool_calls
+    except Exception:
+        return 50
+
+
 class PersonaBudget(BaseModel):
     max_tokens: int
     max_cost_usd: float
-    max_tool_calls: int = 50
+    max_tool_calls: int = Field(default_factory=_default_max_tool_calls)
 
 
 DEFAULT_BUDGET = PersonaBudget(max_tokens=40_000, max_cost_usd=2.0)
