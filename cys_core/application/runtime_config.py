@@ -23,10 +23,7 @@ _use_conductor_for_events: bool = False
 _max_spawn_depth: int = 5
 _use_dynamic_catalog: bool = True
 _use_memory_fallback: bool = False
-# FIXME: plaintext default credential. bootstrap/settings.py rejects the default DB password in prod,
-# but only inside Settings validation — anything that reads get_postgres_url() before
-# configure_from_settings() runs bypasses that guard entirely and gets this literal credential.
-_postgres_url: str = "postgresql://postgres:password@localhost:5432/cys_agi"
+_postgres_url: str = ""
 _default_job_recursion_limit: int = 25
 _triage_recursion_limit: int = 22
 _llm_model: str = "anthropic/claude-sonnet-4"
@@ -86,6 +83,8 @@ _sgr_default_mode: str = "off"
 _sgr_iron_max_retries: int = 3
 _use_run_kernel: bool = False
 _budget_use_api_usage: bool = True
+
+
 def configure_from_settings(settings: Any) -> None:
     global _stage, _engagement_async_planning, _use_conductor_for_events
     global _max_spawn_depth, _use_dynamic_catalog, _use_memory_fallback
