@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 
 import httpx
 import pytest
@@ -12,14 +11,14 @@ from interfaces.gateways.tool.adapters.siem_mcp import call_siem_tool
 from interfaces.gateways.tool.server import create_app
 
 
-def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
-    @contextmanager
-    def _fake_sync_http_client(**_kwargs: object):
-        yield mock_client
+def _patch_invoke_mcp_sync(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
+    def _fake_invoke_mcp_sync(**kwargs: object) -> dict:
+        response = mock_client.post(kwargs.get("url", ""), json=kwargs.get("payload"))
+        return response.json()
 
     monkeypatch.setattr(
-        "cys_core.integrations.siem_mcp_client.sync_http_client",
-        _fake_sync_http_client,
+        "cys_core.integrations.siem_mcp_client.invoke_mcp_sync",
+        _fake_invoke_mcp_sync,
     )
 
 
@@ -50,7 +49,7 @@ def test_call_siem_mcp_tool_success(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     mock_client = httpx.Client(transport=httpx.MockTransport(handler))
-    _patch_sync_http_client(monkeypatch, mock_client)
+    _patch_invoke_mcp_sync(monkeypatch, mock_client)
     result = call_siem_mcp_tool("investigate_incident", {"incident_id": "INC-42"})
     assert result["success"] is True
     assert result["source"] == "siem-mcp"
@@ -88,7 +87,7 @@ def test_gateway_invoke_investigate_incident(monkeypatch: pytest.MonkeyPatch) ->
         )
 
     mock_client = httpx.Client(transport=httpx.MockTransport(handler))
-    _patch_sync_http_client(monkeypatch, mock_client)
+    _patch_invoke_mcp_sync(monkeypatch, mock_client)
 
     client = TestClient(create_app())
     response = client.post(

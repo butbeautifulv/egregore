@@ -25,6 +25,13 @@ class AgentRegistry:
         root: Path | None = None,
         loader: AgentDefinitionsLoaderPort | None = None,
     ) -> AgentRegistry:
+        if root is not None:
+            definitions_loader = loader
+            if definitions_loader is None:
+                from bootstrap.agent_definitions_loader import get_default_agent_definitions_loader
+
+                definitions_loader = get_default_agent_definitions_loader()
+            return cls(definitions_loader.load(root))
         if get_use_dynamic_catalog():
             from cys_core.infrastructure.catalog.catalog_registry import load_catalog_registry
 

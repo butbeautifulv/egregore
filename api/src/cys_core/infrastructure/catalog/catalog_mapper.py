@@ -28,6 +28,7 @@ def entry_to_definition(entry: AgentCatalogEntry) -> AgentDefinition:
         bus_recipients=entry.bus_recipients,
         capabilities=entry.capabilities,
         persona_prompt=persona,
+        sample_input=entry.sample_input,
         language=entry.language,
     )
 
@@ -50,6 +51,7 @@ def definition_to_entry(defn: AgentDefinition, *, profile_id: str = DEFAULT_PROF
         trust_level=defn.trust_level,
         bus_recipients=defn.bus_recipients,
         persona_prompt=persona_prompt,
+        sample_input=defn.sample_input,
         language=defn.language,
         system_prompt="",
         system_prompt_digest=defn.system_prompt_digest,

@@ -123,6 +123,7 @@ class AgentCatalogEntry(BaseModel):
     trust_level: str = "internal"
     bus_recipients: list[str] = Field(default_factory=list)
     persona_prompt: str = ""
+    sample_input: str | None = None
     language: str = "ru"
     system_prompt: str = ""
     system_prompt_digest: str = ""

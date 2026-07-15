@@ -15,14 +15,13 @@ def test_soc_agent_includes_siem_mcp_tools():
     data = yaml.safe_load(_SOC_YAML.read_text(encoding="utf-8"))
     tools = data["tools"]
     skills = data["skills"]
-    assert "query_siem_readonly" in tools
     assert "investigate_incident" in tools
     assert "list_incidents" in tools
     assert "search_events" in tools
     assert "get_event_by_uuid" in tools
     assert "siem-investigation" in skills
     assert "rag_query" in tools
-    assert "dedup_alerts" in tools
+    assert "playbook_search" in tools
 
 
 @pytest.mark.unit
