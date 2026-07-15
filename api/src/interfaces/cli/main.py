@@ -145,8 +145,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     cleanup_multiproc_dir_on_startup()
     uvicorn.run(
-        "interfaces.api.app:create_app",
-        factory=True,
+        "main:app",
         host=args.host,
         port=args.port,
         workers=max(1, args.workers),

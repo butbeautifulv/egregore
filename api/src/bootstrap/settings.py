@@ -19,21 +19,36 @@ _DEFAULT_BUS_SIGNING_KEY = "cys-agi-bus-key"
 
 
 def _settings_env_files() -> tuple[str, ...]:
-    """Load repo-local secrets after .env (same file sourced by scripts/dev.sh)."""
-    files: list[str] = [".env"]
-    override = (Path.cwd() / ".env").resolve()
-    if override.name == ".env" and override.is_file() and str(override) not in files:
-        files[0] = str(override)
+    """Load api/.env, optional repo-root .env, then deploy/.secrets."""
+    from bootstrap.paths import find_api_root, find_repo_root
 
-    settings_path = Path(__file__).resolve()
-    # Monorepo dev checkout: .../cys_framework/projects/egregore/src/bootstrap/settings.py
-    for depth in (4, 3):
-        if len(settings_path.parents) > depth:
-            repo_root = settings_path.parents[depth]
-            local_secrets = repo_root / "deploy" / ".secrets" / "egregore-local.env"
-            if local_secrets.is_file():
-                files.append(str(local_secrets))
-                break
+    files: list[str] = []
+    seen: set[str] = set()
+
+    def _add(path: Path) -> None:
+        if path.is_file():
+            resolved = str(path.resolve())
+            if resolved not in seen:
+                seen.add(resolved)
+                files.append(resolved)
+
+    _add(Path.cwd() / ".env")
+
+    try:
+        api_root = find_api_root(Path(__file__).resolve().parent)
+        repo_root = find_repo_root(Path(__file__).resolve().parent)
+    except RuntimeError:
+        api_root = None
+        repo_root = None
+
+    if api_root is not None:
+        _add(api_root / ".env")
+    if repo_root is not None:
+        _add(repo_root / ".env")
+        _add(repo_root / "deploy" / ".secrets" / "egregore-local.env")
+
+    if not files:
+        files.append(".env")
     return tuple(files)
 
 
