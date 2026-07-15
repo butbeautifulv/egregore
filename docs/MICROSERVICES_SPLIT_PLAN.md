@@ -3,6 +3,24 @@
 > Черновой план, не ADR. Цель — зафиксировать текущее состояние, целевую архитектуру
 > и открытые вопросы для дальнейшего обсуждения. Ничего здесь не implementation-ready
 > без отдельного review шагов 1–2 (см. §7).
+>
+> **Обновление.** Изначально этот документ был только про API/Worker/Agent Runtime
+> split (§0–§7). По итогам дополнительного review добавлены три требования, которые
+> должны выполняться параллельно с этим split, а не после него — иначе разбиение на
+> микросервисы просто зацементирует текущие проблемы в новых границах процессов:
+>
+> - **§8** — ядро должно стать domain-agnostic (сегодня SOC жёстко зашит в `cys_core`,
+>   не только в контент-пакетах, где это нормально).
+> - **§9** — модель памяти агента: honest gap-анализ (не "только findings", как
+>   казалось на первый взгляд, но реального semantic/long-term слоя нет).
+> - **§10** — validation & hardening baseline на основе OWASP Cheat Sheet Series
+>   (`refs/CheatSheetSeries-master/cheatsheets/`, в первую очередь
+>   `AI_Agent_Security_Cheat_Sheet.md`), чтобы Dispatcher/Runtime split не создавал
+>   новую границу без соответствующих проверок на ней.
+> - **§11** — AuthN/AuthZ отдельно и подробно: OIDC (Keycloak) + ReBAC (OpenFGA),
+>   короткоживущие credentials и TTL агента, read-only по умолчанию для важных
+>   ресурсов, санитизация всех входов. Самый критичный раздел документа — без него
+>   всё остальное исполняется от имени "кого угодно" и "куда угодно".
 
 ## 0. Задача одной фразой
 
@@ -274,6 +292,14 @@ Kubernetes (`deploy/k8s/worker-job-template.yaml`, `K8sSandboxConnector` уже 
 
 ## 7. Фазы (черновые, для обсуждения, не commitment)
 
+> Подробная разбивка каждой фазы на под-фазы с маленьким diff'ом —
+> [`MICROSERVICES_SPLIT_PHASES_DETAIL.md`](MICROSERVICES_SPLIT_PHASES_DETAIL.md).
+> Там же — три конкретных архитектурных находки (process-local state в
+> `tool_execution_tracker.py`, HITL resume уже сегодня исполняется мимо Dispatcher'а
+> без sandboxing, и коллизия двойного `SandboxConnector.create()` для одного `run_id`),
+> которые не были видны на уровне этого документа и меняют порядок работ внутри
+> Phase 2/3/6.
+
 1. **Phase 1 — extract port, no behavior change.** В `WorkerOrchestrator` выделить
    `ExecutionBackend` порт с единственной реализацией `InProcessExecutionBackend`,
    которая делает то же, что сегодня (`self._run_worker_job.execute(...)`). Ничего не
@@ -304,3 +330,442 @@ Kubernetes (`deploy/k8s/worker-job-template.yaml`, `K8sSandboxConnector` уже 
 Каждая фаза независимо откатываема (feature flag на `ExecutionBackend`), Phase 1-2
 не требуют инфраструктурных изменений вообще и могут быть сделаны для валидации
 подхода до любого разговора про Kata/Firecracker.
+
+---
+
+## 8. Требование: ядро должно быть domain-agnostic, а не SOC-only
+
+### 8.1. Честно про текущее состояние
+
+`docs/NON_SOC_DOMAIN.md` и `docs/NON_SOC_DOMAIN_PACK_GUIDE.md` уже существуют и прямо
+признают: это **цель, не реализация**. Guide пишет буквально "Current catalog policy
+defaults are still SOC-shaped (`DEFAULT_PROFILE_ID=cybersec-soc`)" и описывает миграцию
+в `cys_core/domain/catalog/product_packs.py` как **target**, а не сделанную работу.
+Ни один код в `cys_core` сегодня не читает non-SOC профиль-пак сквозно — есть только
+`cybersec-soc`.
+
+### 8.2. Конкретные точки жёсткой SOC-связанности в core (блокируют non-SOC домен)
+
+| Где | Что не так |
+|---|---|
+| `cys_core/domain/events/models.py:7-28` | `EventType` — закрытый `Literal[...]` из SOC-строк (`siem.alert`, `edr.alert`, `netflow.beacon`, ...). `SecurityEvent.type` и `RoutingRule.event_types` структурно не пускают новый тип события без правки core-файла. |
+| `cys_core/domain/findings/models.py:19-33,36-190` | `WorkerAgentName` — закрытый `Literal` из 13 SOC-персон (`redteam`, `soc`, `dfir`, ...), плюс 9 конкретных SOC `Finding`-классов (`RedTeamFinding`, `SocFinding`, `DfirFinding`, ...) с ATT&CK-полями (`KillChainFields`) прямо в core domain. Персона объявляет `output_schema: SocFinding` в YAML — значит, новая non-SOC персона требует **нового Python-класса в core**, что прямо противоречит заявлению guide "just add YAML". |
+| `cys_core/domain/policy/defaults.py:11-16+` | `ESCALATION_ONLY_PATHS` хардкодит пары SOC-персон (`("soc","redteam")`, ...), `READ_ONLY_TOOLS` хардкодит десятки SIEM/threat-intel имён инструментов как core-константы, а не catalog-контент. |
+| `cys_core/registry/tools.py:632-634,666-668` | `ToolRegistry` безусловно делает `_ALL_TOOLS.extend(build_siem_tools())` при импорте/reload — SIEM-инструменты вшиты в глобальный реестр, а не регистрируются по активному профиль-паку. |
+| `cys_core/domain/catalog/profile_id.py:5`, `engagement/models.py` | `DEFAULT_PROFILE_ID = "cybersec-soc"` — мягкая, но вездесущая связанность (fallback, если профиль не указан явно). |
+| `src/connectors/` | Единственный коннектор ingest — `siem_poll`. `EventIngress` (`interfaces/ingress/router.py`) сам по себе домен-агностичен (`event_type`/`payload`/`severity`), просто больше ничего не реализовано. |
+
+### 8.3. Что уже нормально (не трогать ради самого разделения)
+
+`EventIngress`, `AgentRegistryPort`, `catalog/models.py` (`ProfilePack`, `AgentCatalogEntry`
+— в основном общие имена полей), `catalog/product_packs.py` (`ProductProfilePack`,
+`DomainPack`, `PersonaPack` — уже написан generic, просто никуда не подключён),
+механика `Engagement`/`EngagementPlan` (используется как единственная единица работы
+везде — это нормализуемо переименованием, не редизайном).
+
+### 8.4. Целевая модель и рефактор-цели
+
+1. `EventType`/`WorkerAgentName`: заменить закрытые `Literal` на `str` + валидацию
+   через каталог активного профиль-пака (профиль-пак объявляет разрешённый список,
+   а не core).
+2. 9 SOC-специфичных `Finding`-классов и `KillChainFields` — вынести из
+   `cys_core/domain/findings` в модуль профиль-пака (например,
+   `packs/cybersec_soc/findings.py`), в core оставить только generic
+   `FindingEnvelope` с произвольным структурным payload.
+3. `ESCALATION_ONLY_PATHS`/`READ_ONLY_TOOLS` — перенести из `policy/defaults.py` в
+   policy-payload профиль-пака `cybersec-soc` (механизм для этого уже есть —
+   `ProfilePolicyPayload`/`get_profile_policy_port()`, нужно просто туда переложить
+   значения, а не изобретать новый).
+4. `registry/tools.py` — сделать регистрацию `build_siem_tools()` условной (по
+   активному профиль-паку), а не безусловной при импорте модуля.
+5. Подключить уже написанный, но неиспользуемый `product_packs.py` как реальный
+   механизм загрузки профиль-паков в рантайме, вместо параллельного SOC-only пути.
+6. **Критерий приёмки, а не просто рефактор ради рефактора**: написать второй,
+   настоящий non-SOC профиль-пак (пусть игрушечный — например,
+   "general-assistant"/"customer-support") и убедиться, что для этого **не нужно
+   трогать `cys_core/domain`**. Если нужно — ядро всё ещё не domain-agnostic, и это
+   единственный надёжный способ проверить факт, а не декларацию.
+
+Это отдельный, самостоятельный трек работы — не блокирует и не блокируется §1–§7
+(Dispatcher/Agent Runtime split), но должен идти параллельно, иначе SOC-специфика
+просто "зацементируется" внутри нового `RUNTIME`-плейна (например, если 9 SOC
+`Finding`-классов останутся в core, любой non-SOC агент, порождённый Dispatcher'ом,
+всё равно будет вынужден работать через SOC-типизированный output).
+
+---
+
+## 9. Требование: память агента — persistent + episodic + semantic, а не только findings
+
+### 9.1. Честно про текущее состояние (опровергает исходное предположение)
+
+Память — **не** "только findings". Уже реализован Postgres-backed episodic слой:
+`cys_core/domain/memory/models.py` (`MemoryEntry{scope, content, memory_type, source_agent,
+source_job_id, trust_score, checksum}`, `memory_type ∈ {finding, pending_finding, ioc,
+lesson, preference, conversation, intake}`), `domain/memory/services.py`
+(`MemoryWriteService.append_finding/append_pending_finding/append_conversation_turn`,
+`MemoryReadService.query_investigation/query_conversation_turns/list_by_tenant`, TTL
+24×7 часов), backend — `PostgresEpisodicMemoryStore`
+(`cys_core/infrastructure/memory/stores.py`, таблица `agent_memory_entries`, миграция
+`migrations/001_memory_tables.sql`). Это реально хранит findings, pending findings, IOC
+**и conversation turns** — шире, чем казалось на первый взгляд. Плюс отдельно —
+рабочая память треда: LangGraph `PostgresSaver`/`PostgresStore`
+(`cys_core/persistence.py:18-113`), это то, что в `MASTER_PLAN_SECURE_PLATFORM.md`
+названо `SessionMem[Postgres_Checkpointer]` — тоже реально, не аспирационно.
+
+### 9.2. Реальные, точные пробелы (а не общее "памяти мало")
+
+1. **Semantic/long-term память объявлена в схеме, но мертва.** `memory_type` содержит
+   `"lesson"` и `"preference"`, но **ни один вызов в `src/` не создаёт запись с таким
+   типом** — это declared-but-dead schema slot, не реализованный функционал.
+2. **Нет cross-engagement памяти по персоне+тенанту.** `MemoryScope` имеет
+   опциональное поле `persona`, но и `MemoryReadService.list_by_tenant`, и API-эндпоинт
+   `GET /v1/memory?tenant_id=` (`interfaces/api/engagements.py:160-233`) фильтруют
+   только по `tenant_id` — агент не может спросить "что я (эта персона) узнал на
+   прошлых engagement'ах для этого тенанта".
+3. **`SecureAgentMemory` (`cys_core/security/memory.py`) — мёртвый код, а не episodic
+   слой.** Используется только в тестах (`tests/infrastructure/test_memory.py`,
+   `tests/adversarial/conftest.py`). `MASTER_PLAN_SECURE_PLATFORM.md` (узел
+   `AgentMem[SecureAgentMemory]`) описывает его как основной episodic-слой — это
+   устаревшее место в документе; реальная реализация — `domain/memory` из §9.1.
+   Нужно либо подключить `SecureAgentMemory` реально, либо (проще и правильнее)
+   поправить документ, чтобы не вводил в заблуждение.
+4. **Reflexion "lessons" не переживают рестарт.** `infrastructure/reflexion/memory.py`
+   (`InMemoryReflexionStore`) — process-local список без Postgres-бэкенда и TTL,
+   теряется при рестарте пода.
+5. **RAG/Qdrant — только внешние знания, не память агента.** `infrastructure/rag/store.py`
+   хранит `RagChunk` с tenant ACL, но ничего не пишет туда из опыта агента; сам
+   `MASTER_PLAN_SECURE_PLATFORM.md:187` признаёт этот ряд как "Нет — Phase 4".
+
+### 9.3. Целевая модель памяти (три яруса, стандартная для агентных систем)
+
+| Ярус | Что | Статус | Что нужно сделать |
+|---|---|---|---|
+| Working (текущий run/thread) | LangGraph checkpointer | ✅ есть | ничего |
+| Episodic (что было в этом investigation/session) | `domain/memory` Postgres-стек | ✅ есть, но без persona-индекса | добавить `persona` в ключ выборки (`list_by_tenant` → `list_by_tenant_and_persona`), индекс `(tenant_id, persona)` в миграции |
+| Semantic/long-term (переживает engagement, доступен той же persona+tenant в будущих engagement'ах) | нет | ❌ нет | добавить `MemoryWriteService.append_lesson/append_preference`, шаг дистилляции в конце engagement (summarizer-джоб в `application/workers/*`), путь чтения в `context_builder.py` при старте нового engagement для той же persona+tenant |
+
+### 9.4. Требования безопасности к новому semantic-ярусу (это прямое применение
+`AI_Agent_Security_Cheat_Sheet.md`, раздел "Memory & Context Security" — не общие слова,
+а конкретные требования к тому, что строится в 9.3)
+
+- Валидация/санитайз перед записью — переиспользовать `InputSanitizer`
+  (`get_input_sanitizer()`, уже используется в `agent_bus.py`), не изобретать новый.
+- Явный, но **длиннее**, чем у episodic-яруса TTL (episodic — 24×7ч; semantic по
+  определению должен жить дольше одного engagement, но не "вечно" — нужна явная
+  политика истечения, а не отсутствие TTL).
+- Лимиты размера/количества записей на persona+tenant (по аналогии с
+  `MAX_MEMORY_ITEMS`/`MAX_ITEM_LENGTH` из cheat sheet — сегодня в `domain/memory` таких
+  лимитов на уровне semantic-яруса ещё нет, добавить вместе с новым функционалом).
+- Checksum/integrity-проверка — по образцу уже существующего паттерна в
+  `infrastructure/memory/stores.py`, не с нуля.
+- **Изоляция по tenant_id+persona обязательна с первого дня** — это тот же урок, что
+  в `Multi_Tenant_Security_Cheat_Sheet.md`: ключи памяти/кэша всегда должны быть
+  tenant+persona-scoped и не угадываемыми, иначе semantic-память станет каналом
+  cross-tenant утечки данных расследований.
+- **Каскадное удаление.** Semantic-ярус — это новое долгоживущее состояние про
+  тенанта, значит он расширяет поверхность retention/GDPR. Удаление тенанта должно
+  каскадно удалять его semantic-память (тот же принцип, что в
+  `RAG_Security_Cheat_Sheet.md`, секция "Data Deletion and Retention": удаление
+  источника обязано явно распространяться на все производные, а не считаться
+  автоматическим).
+
+---
+
+## 10. Требование: validation & hardening baseline (чтобы систему не пвнили в проде)
+
+Собрано из `AI_Agent_Security_Cheat_Sheet.md`, `MCP_Security_Cheat_Sheet.md`,
+`LLM_Prompt_Injection_Prevention_Cheat_Sheet.md`, `RAG_Security_Cheat_Sheet.md`,
+`Secure_AI_Model_Ops_Cheat_Sheet.md`, `Secure_Coding_with_AI_Cheat_Sheet.md`,
+`Multi_Tenant_Security_Cheat_Sheet.md`, `Zero_Trust_Architecture_Cheat_Sheet.md`,
+`Secrets_Management_Cheat_Sheet.md` и широкого прохода по остальным cheat sheet'ам
+(Authorization, JWT, OAuth2, Session Management, SSRF, Deserialization, Mass Assignment,
+IDOR, DoS, Kubernetes/Docker Security, Network Segmentation, Logging, Key Management,
+Software Supply Chain, REST/WebSocket Security, Business Logic Security). Формат —
+там, где контроль уже есть в коде, помечено **[есть]** с указанием, что именно нужно
+доусилить; там, где контроля нет — **[нет]**.
+
+### 10.1. A2A-шина и сообщения между агентами
+
+- **[есть]** `SecureAgentBus` — HMAC-подпись, trust levels, escalation gates, replay-окно
+  5 минут (`agent_bus.py`). **Доусилить**: MCP cheat sheet §7 требует ещё и nonce-based
+  dedup (не только временное окно) — в коде уже есть `infrastructure/bus_dedup_store.py`,
+  нужно **проверить**, что он реализует именно nonce+timestamp защиту от replay, а не
+  предполагать это по названию файла.
+- **[нет]** Pinning схемы/типов сообщений по хэшу с алертом на rug-pull (MCP §2, §7) —
+  сегодня допустимые `message_type` статичны в `_allowed_types()`, но нет механизма
+  "зафиксировать хэш и алертить на изменение" для inter-agent контрактов при апдейте
+  персон.
+
+### 10.2. MCP Tool Gateway (уже PEP, но не полный)
+
+- **[есть]** `interfaces/gateways/tool/{policy,sanitize,approval,audit}.py` — отдельный
+  сервис, авторизация (`require_gateway_role`), `sandbox_id`-scoped policy.
+- **[нет]** SSRF-защита для tool'ов, которые фетчат URL: MCP §5 и
+  `Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md` требуют allowlist по
+  **резолвленному IP**, не по hostname (иначе DNS-rebinding обходит allowlist) —
+  нужно **проверить**, есть ли это уже в `tool/adapters/*`, и добавить, если нет.
+- **[нет/проверить]** Pin tool-схем по SHA-256 с проверкой перед каждым вызовом
+  (rug-pull detection, MCP §2/§7) — не обнаружено в `tool/policy.py`/`tool/mappers.py`
+  на момент этого review, нужна отдельная точка проверки.
+
+### 10.3. High-impact actions / HITL
+
+- **[есть, частично]** `interfaces/gateways/tool/approval.py` уже использует
+  `params_hash` (привязка approval к конкретным параметрам) — это ровно паттерн
+  из `AI_Agent_Security_Cheat_Sheet.md` §4 ("bind approval to the exact action").
+  **Доусилить**: при переходе на sandboxed execution (§1–§7) убедиться, что этот
+  approval переживает то, что agent исполняется в отдельном под/VM, а не только
+  в текущем in-process сценарии (`hitl_resume.py` сегодня подразумевает runtime
+  рядом — см. риск в §5).
+- **[нет]** Fail-closed явно на всех уровнях: если approval validation/policy lookup/
+  audit logging падает — действие должно быть отклонено, а не пропущено. Нужно явно
+  проверить каждый из этих путей в `approval.py`/`policy.py`, а не полагаться на
+  "исключение всплывёт само".
+
+### 10.4. Multi-tenant изоляция
+
+Развёрнуто отдельно и подробно в **§11** (AuthN/AuthZ — там же ReBAC, OIDC,
+короткоживущие credentials, TTL агента, read-only-by-default, санитизация всех
+входов) — это оказалось достаточно большим и важным треком, чтобы не сжимать его в
+один пункт чеклиста. Коротко: `tenant_id` уже выводится из проверенных JWT-claims
+(`require_tenant_match`, ADR-005), но с конкретной дырой (§11.3), и применимо
+напрямую к §9 (semantic-память) — ключи должны быть tenant+persona-scoped, не по
+одному tenant_id (см. §9.4).
+
+### 10.5. RAG/Qdrant
+
+- Fail-closed на retrieval failure — не отвечать "из памяти модели", если Qdrant
+  недоступен (`RAG_Security_Cheat_Sheet.md`, Section 14).
+- Per-chunk ACL + tenant namespace isolation в Qdrant, не только на уровне документа
+  (Section 4, 6) — нужно явно проверить `rag/store.py` на это, т.к. эта cheat sheet
+  прямо предупреждает, что post-retrieval фильтрация (fetch all → filter) слабее, чем
+  pre-retrieval.
+
+### 10.6. Prompt injection / output validation
+
+- **[есть]** `MemoryContextMiddleware` уже оборачивает retrieved-контент как untrusted
+  `USER_DATA` (`middleware/memory_context_middleware.py`) — ровно паттерн из MCP §12 /
+  LLM Prompt Injection cheat sheet ("tool response is untrusted data"). **Доусилить**:
+  применить тот же паттерн равномерно ко всем tool outputs, не только к memory context.
+- **[нет]** Абьюз-кейс матрица как обязательный CI-гейт (`AI_Agent_Security_Cheat_Sheet.md`
+  §9: prompt override, tool misuse, privilege escalation, memory poisoning, data
+  exfiltration, recursive tool abuse, approval bypass, multi-agent chaining). Директория
+  `tests/adversarial/` уже существует — расширить её именно до этой матрицы и сделать
+  обязательным CI-гейтом при изменении tool policy/approval logic/credential scopes,
+  а не оставлять как обычные тесты.
+
+### 10.7. DoW / бюджеты (уже сильная сторона, не трогать)
+
+`JobBudgetTracker`, `worker_max_dependency_deferrals`, per-profile
+`job_cost_per_1k_tokens_usd`, soft/hard job timeouts — это уже покрывает большую часть
+`AI_Agent_Security_Cheat_Sheet.md` §"Denial of Wallet". Ничего добавлять не нужно, кроме
+переноса той же дисциплины на Agent Execution plane (§1–§7), если бюджет считается
+иначе при исполнении в отдельном поде/VM.
+
+### 10.8. Container/K8s hardening (применимо напрямую к §3)
+
+- Pod Security Admission уровня `restricted` для новых Agent Runtime подов: non-root,
+  read-only rootfs, drop all capabilities (`Kubernetes_Security_Cheat_Sheet.md`,
+  `Docker_Security_Cheat_Sheet.md`).
+- NetworkPolicy трёхуровневой сегментации, чтобы скомпрометированный Agent Runtime под
+  не мог достучаться до Postgres/Qdrant напрямую, только через MCP Tool Gateway
+  (`Network_Segmentation_Cheat_Sheet.md`) — расширяет то, что уже описано в §2/§4.
+
+### 10.9. Secrets
+
+- **[проверить]** `bus_signing_key_bytes`/секрет для `mint_sandbox_token` — в проде
+  должны приходить из secrets manager/Vault, а не из plain env var в `bootstrap/settings.py`
+  (`Secrets_Management_Cheat_Sheet.md`, §2.5, §4).
+
+### 10.10. Supply chain
+
+- SBOM (CycloneDX/SPDX, cosign/Sigstore) для образа Agent Runtime — это тот образ,
+  который реально исполняет LLM-направленный код, поэтому к нему нужна та же
+  строгость, что уже применяется к skill supply chain
+  (`agents/skills/skill-supply-chain`) — распространить на container image.
+
+### 10.11. Логирование/ошибки
+
+- **[проверить]** Формат ошибок API (`interfaces/api/{errors,llm_errors,run_errors}.py`)
+  на соответствие RFC 7807 (problem-details), без утечки stack trace/внутренних путей
+  в 5xx (`Error_Handling_Cheat_Sheet.md`).
+- Никогда не логировать секреты/session id/полные tool-промпты — только
+  идентификаторы правил и token count (`Logging_Cheat_Sheet.md`).
+
+Пункты §10 — не отдельная фаза, а checklist, который должен закрываться **вместе** с
+фазами §7 и треками §8–§9: каждая новая граница (Dispatcher↔Runtime, новый non-SOC
+профиль-пак, новый semantic memory tier) должна сразу проходить через этот список, а
+не быть добавлена "потом". Один из пунктов чеклиста (AuthN/AuthZ, §10.4) развёрнут
+отдельно и подробно ниже, в §11 — без него весь остальной план бессмысленен в проде.
+
+---
+
+## 11. Требование: AuthN/AuthZ — OIDC + ReBAC, короткоживущие credentials, TTL агента,
+## sandboxing, read-only по умолчанию, санитизация всех входов
+
+Это самый критичный раздел из всех: без правильной модели идентичности и авторизации
+всё остальное в этом документе (Dispatcher/Runtime split, domain-agnostic ядро, память,
+hardening-чеклист) исполняется от имени "кого угодно" и "куда угодно". Хорошая новость
+— фундамент уже заложен и он неплохой; плохая — три ключевых переключателя выключены
+по умолчанию, и ReBAC сегодня защищает только человеческую/workspace-сторону, но не
+агента как исполнителя.
+
+### 11.1. Что уже есть — не изобретать заново
+
+- **OIDC (Keycloak)**: `KeycloakJwtVerifier` (`cys_core/infrastructure/auth/keycloak.py`)
+  — настоящая проверка через JWKS (`PyJWKClient`, кэш 300с), белый список алгоритмов
+  `RS256/384/512, ES256/384/512` (никакого `none`, никакой HS256-confusion-атаки),
+  обязательные `exp`/`sub`/`iss`, отдельная проверка `aud`/`azp`. Это не заглушка —
+  реальная, аккуратно написанная реализация.
+- **ReBAC (OpenFGA)**: `src/authz/model.fga` — Zanzibar-стиль отношений:
+  `organization`(admin/member/platform_admin) → `workspace`(owner/editor/viewer/
+  can_create_agent/can_run/can_admin) → `workspace_agent`(can_view/can_edit/
+  can_delete/can_run) → `datasource`(consumer/can_query) → `engagement`(can_view/
+  can_operate). Это **настоящая ReBAC-модель**, которую вы просили, а не RBAC —
+  разрешения выводятся из графа отношений (organization → workspace → agent), а не
+  из плоского списка ролей. Не нужно строить новую модель — нужно её **расширить**
+  (см. §11.4) и **включить** (см. §11.2).
+- **`AuthzService`** (`cys_core/application/authz/service.py`) — режимы
+  `off|shadow|enforce`, fail-closed на ошибках порта именно в `enforce`, метрики
+  `authz_check_total/deny_total/error_total` в Prometheus.
+- **Tenant binding**: `require_tenant_match` (`tenant_bind.py`) привязывает
+  `tenant_id` к JWT `organization_id`, а не к клиентскому заголовку.
+- **Уже есть готовый rollout-план** — `docs/auth/shadow-to-enforce-rollout.md`,
+  `docs/auth/role-matrix-as-is.md`, `docs/auth/oidc-openfga.md`, ADR-005 (статус
+  Accepted). Этот документ (§11) не заменяет их, а фокусируется на том, что рядом с
+  ADR-005 ещё не закрыто — особенно на стороне агента/раннтайма, а не человека.
+
+### 11.2. Критическая находка: все три переключателя выключены по умолчанию
+
+`bootstrap/settings.py`: `AUTH_ENABLED=False`, `RBAC_ENABLED=False`,
+`AUTHZ_MODE="off"` — это **дефолты**. В режиме `off` `AuthzService.check()` **всегда**
+возвращает `True` безусловно (`service.py:53-54`), а `require_role_setting(...)`
+(`interfaces/api/auth.py:22-23`) вообще пропускает проверку токена, если
+`auth_enabled` ложно. То есть **из коробки, без явной конфигурации, API не
+аутентифицирует и не авторизует вообще никого** — любой может дёрнуть любой
+эндпоинт, представившись любым tenant'ом.
+
+Это обязан быть жёсткий release-gate: любой deploy-манифест (docker-compose/K8s) для
+окружения, достижимого не только с localhost, должен явно выставлять
+`AUTH_ENABLED=1`, `RBAC_ENABLED=1`, `AUTHZ_MODE=enforce` (после прохождения стадий из
+`shadow-to-enforce-rollout.md`). Рекомендация: добавить startup-assertion — при
+`STAGE=prod` и `AUTH_ENABLED=0`/`AUTHZ_MODE!=enforce` процесс должен **отказываться
+стартовать** без явного override-флага, чтобы это не могло тихо уехать в прод
+незамеченным.
+
+### 11.3. Конкретная дыра в tenant-binding: пустой `organization_id` обходит проверку
+
+`require_tenant_match` (`tenant_bind.py:40-44`): если в JWT нет claim'а
+`organization_id`, функция возвращает **запрошенный** `tenant_id` без каких-либо
+проверок ("legacy tokens... empty org allows any tenant for backward compat"). Это
+явно признанный временный escape hatch. До того как `enforce` реально пойдёт в прод
+с настоящими данными клиентов — либо требовать от IdP всегда эмитить `organization_id`
+(и отклонять токены без него), либо явно ограничить этот escape hatch окном миграции
+через отдельный флаг, а не оставлять его постоянным поведением.
+
+### 11.4. Ключевой пробел: ReBAC защищает людей/workspace, но не агента-исполнителя
+
+`model.fga` — про объекты, видимые человеку: `workspace`, `workspace_agent` (это
+записи каталога персон, не runtime-инстанс агента), `datasource`, `engagement`. А
+авторизация MCP Tool Gateway (`interfaces/gateways/tool/auth.py`) — это **только**
+грубая проверка одной общей роли `egregore-gateway` через `require_role_setting`, без
+единого обращения к OpenFGA. Отношение `datasource#can_query` в модели **уже
+объявлено**, но **не используется** в пути реального вызова инструмента.
+
+Это значит: сегодня один JWT с ролью gateway может дёрнуть **любой** tool/datasource,
+который резолвится для вызывающей персоны — нет per-request, per-persona,
+per-datasource ReBAC-проверки именно там, где она нужнее всего (в момент вызова
+инструмента). Целевое состояние: `interfaces/gateways/tool/policy.py`/`handler.py`
+должны на каждый tool-call вызывать `AuthzService.check(f"workspace_agent:{persona}",
+"can_query"/аналог, f"datasource:{name}")` — переиспользуя **тот же** OpenFGA-сервис,
+что уже построен для человеческой стороны, а не изобретая параллельный механизм.
+
+### 11.5. Короткоживущие credentials — скелет есть, но не enforced (это и есть TTL агента)
+
+`mint_sandbox_token` (`cys_core/domain/security/sandbox_tokens.py:33-48`) — уже
+подписанный, TTL-ограниченный токен на `run_id + persona + tenant_id + job_id`.
+Собственный docstring функции честно признаёт: *"Not a capability token by itself...
+Verifying it at the MCP Tool Gateway (reject tool calls from an expired or mismatched
+run_id) is the next hardening step, not yet wired."*
+
+Это и есть точный ответ на "agent ttl" из вашего запроса: TTL уже заложен в токен, но
+**никто его не проверяет**. Tool Gateway обязан на каждый вызов валидировать этот
+токен — отклонять вызовы от `run_id`, чей job уже завершился/протаймаутил или чей TTL
+истёк. Это прямо стыкуется с §1–§7 (Dispatcher/Runtime split): когда агент
+исполняется в отдельном поде/VM (Phase 3), именно этот токен — единственное, что
+доказывает "этот конкретный эфемерный процесс имеет право быть на этом job'е, в этом
+временном окне". Без верификации на Gateway изоляция через sandboxing — это
+"security theater": процесс изолирован, но его credentials никто не проверяет, так
+что скомпрометированный/переживший свой TTL процесс всё ещё может дёргать
+инструменты.
+
+Отдельно стоит явно решить (не в этом документе — отдельный вопрос для обсуждения):
+`bus_signing_key` — один статический HMAC-ключ на все agent'ы/персоны/тенанты. Нет
+механизма ротации на несколько активных версий ключа (нужен для zero-downtime
+rotation, см. `Secrets_Management_Cheat_Sheet.md` §2.4). Один долгоживущий общий
+секрет — больший blast radius при утечке, чем per-tenant/per-persona ключи; это
+осознанный компромисс сегодняшней архитектуры, менять не обязательно прямо сейчас, но
+стоит держать в списке решений, а не считать закрытым вопросом.
+
+### 11.6. Read-only по умолчанию для важных ресурсов
+
+- `READ_ONLY_TOOLS` (core policy constant, см. §8.2) — правильное направление
+  (default-deny на запись), но сегодня зашито в core как SOC-специфичный список; сам
+  принцип "read-only по умолчанию" должен остаться сквозным даже после переноса
+  списка в профиль-пак (§8.4.3) — не потерять его при рефакторинге.
+- **[нет]** Отдельная read-only роль БД. В `bootstrap/settings.py` есть только один
+  `postgres_user` (`settings.py:151`) — единая учётка и для чтения (episodic memory
+  reads, RAG retrieval, status/job queries), и для записи. Нужна отдельная
+  least-privilege read-only Postgres-роль для всех путей чтения, не переиспользующая
+  учётку с правами записи (`Database_Security_Cheat_Sheet.md`).
+- Инструменты, которые по названию/назначению read-only (`query_siem_readonly`,
+  `investigate_incident` и т.п.) должны быть read-only **на уровне транспорта/драйвера**
+  (read-only DB-роль, read-only Qdrant API-ключ/scope), а не только "по конвенции
+  имени" — сегодня это гарантируется только договорённостью, не механизмом.
+- Sandboxed Agent Runtime поды (§3, §10.8) — read-only root filesystem по умолчанию;
+  это тот же принцип "read-only by default", просто на уровне ОС/контейнера, а не
+  данных — уже учтено в §10.8, здесь просто явная перекрёстная ссылка, чтобы принцип
+  был виден в одном месте целиком.
+
+### 11.7. Санитизация всех входов
+
+- `InputSanitizer`/`get_input_sanitizer()` уже подключён в 14 местах:
+  `agent_bus.py` (inter-agent сообщения), `domain/memory/validator.py` (запись в
+  память), `infrastructure/reflexion/memory.py`, `middleware/prompt_context_middleware.py`,
+  `interfaces/rag/ingest/scanner.py`, `connectors/siem_poll/client.py`,
+  `infrastructure/catalog/catalog_write_gate.py`, `interfaces/api/workspaces.py` и
+  другие. Покрытие уже достаточно широкое — это база, не с нуля.
+- **[нет] Пробел именно на входной границе API.** `interfaces/api/engagement_ingress.py`,
+  `work_orders.py`, `engagements.py` — **ни один** из них не вызывает sanitizer
+  (проверено прямым поиском по коду). Сегодня санитизация происходит только ниже по
+  потоку, внутри воркера, **после** того как job уже дошёл до dequeue. Это значит:
+  между ingress и обработкой несанитизированный payload лежит в очереди/Kafka-топике
+  и в `job_store` — любой потребитель, читающий сырое сообщение раньше, чем worker
+  до него доберётся (дашборды, другие подписчики того же топика, replay/debug
+  инструменты), видит несанитизированный контент.
+- Pydantic-валидация на входе (`engagement_schemas.py`, `work_order_schemas.py`) —
+  это проверка **формы/типов**, не то же самое, что санитизация **контента** (снятие
+  injection-паттернов). Сегодня на границе есть только первое, второе — только
+  глубоко внутри пайплайна. Рекомендация: добавить санитизацию (или как минимум
+  явную пометку "не просканировано" с fail-closed поведением у любого потребителя,
+  который её не учитывает) прямо на входной границе API, а не только в момент
+  потребления воркером — это прямое применение принципа "validate as early as
+  possible, at the trust boundary" из `Input_Validation_Cheat_Sheet.md`, и то же
+  самое, что уже частично сделано для RAG-контента (`rag/ingest/scanner.py`), но не
+  для engagement/event ingestion.
+
+### 11.8. Как это связано с остальным планом
+
+- **§1–7 (Dispatcher/Runtime split)**: credentials эфемерного агента (§11.5) — это
+  ровно то, что доказывает его право быть на гриде. Не пропускать верификацию токена
+  на Tool Gateway только потому, что контейнеризация в Phase 3 уже "работает" —
+  "изолирован, но с непроверяемым токеном" не даёт реальной security-гарантии.
+- **§8 (domain-agnostic ядро)**: перенос `READ_ONLY_TOOLS`/`ESCALATION_ONLY_PATHS` в
+  профиль-пак (§8.4.3) должен происходить **вместе** с переносом ReBAC-проверки
+  datasource/tool в тот же профиль-пак-driven механизм (§11.4) — иначе non-SOC пак
+  снова не сможет определить свои правила без правки core.
+- **§9 (память)**: semantic-память должна проверять tenant+persona через тот же
+  ReBAC-механизм, что и остальные объекты (§9.4 уже требует tenant+persona-scoping —
+  здесь это тот же принцип, применённый на уровне авторизации, а не только на уровне
+  ключей хранения).
+- **§10 (hardening-чеклист)**: §10.4 теперь — короткая ссылка сюда, не дублирует.
