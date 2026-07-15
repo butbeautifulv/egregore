@@ -22,9 +22,22 @@ jobs:
       - name: Gate check
         run: |
           mkdir -p reports
-          [ -f reports/checkov.sarif ] || echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > reports/checkov.sarif
+          SARIF="reports/checkov.sarif"
+          if [ -d "$SARIF" ]; then
+            FOUND="$(find "$SARIF" -type f -name '*.sarif' | head -1)"
+            if [ -n "$FOUND" ]; then
+              mv "$FOUND" reports/checkov-gate.sarif
+              rm -rf "$SARIF"
+              SARIF="reports/checkov-gate.sarif"
+              mv "$SARIF" reports/checkov.sarif
+              SARIF="reports/checkov.sarif"
+            fi
+          fi
+          if [ ! -f "$SARIF" ]; then
+            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > "$SARIF"
+          fi
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control iac --report reports/checkov.sarif --policy "$POLICY"
+          python scripts/gate-check.py --control iac --report "$SARIF" --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
