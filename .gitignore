@@ -16,7 +16,17 @@ wheels/
 # Test / tooling
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
+.ruff_cache/
+.import_linter_cache/
+.ty_cache/
+.mypy_cache/
+
+# Post-split legacy root debris (pyc-only ghosts)
+/cys_core/
+/bootstrap/
 
 # IDE / local agent tooling
 .cursor/
