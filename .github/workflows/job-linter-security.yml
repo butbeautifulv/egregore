@@ -24,7 +24,7 @@ jobs:
         run: |
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control linters --report linter.sarif --policy "$POLICY"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: linter.sarif
