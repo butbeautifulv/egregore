@@ -1,9 +1,10 @@
+# SUPERSEDED by release-gate.yml's `arch-lint` job (2026-07-15): this ran as a
+# second, independent, uncoordinated copy of the same import-linter check
+# ci.yml already had inline. Kept for manual/debug use only; not auto-triggered.
 name: Architecture Gate
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   arch-lint:

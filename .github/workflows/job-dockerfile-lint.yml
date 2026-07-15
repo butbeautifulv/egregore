@@ -19,5 +19,5 @@ jobs:
         if: always()
         run: |
           echo '{"runs":[{"results":[]}]}' > hadolint.sarif
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control dockerfile --report hadolint.sarif --policy "$POLICY"

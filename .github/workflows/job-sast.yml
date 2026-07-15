@@ -34,7 +34,7 @@ jobs:
           done
           [ -f "$REPORT" ] || echo '{"runs":[{"results":[]}]}' > codeql-results.sarif
           [ -f "$REPORT" ] || REPORT=codeql-results.sarif
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
 
   semgrep:
@@ -52,7 +52,7 @@ jobs:
         run: |
           REPORT=semgrep.sarif
           [ -f "$REPORT" ] || echo '{"runs":[{"results":[]}]}' > "$REPORT"
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v3
         if: always()

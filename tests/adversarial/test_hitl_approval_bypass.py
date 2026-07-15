@@ -2,6 +2,7 @@
 
 import pytest
 
+from bootstrap.container import get_container
 from cys_core.domain.workers.models import JobResumeRequest, PendingHitlAction
 from interfaces.control_plane.job_store import JobStore
 from interfaces.gateways.tool.approval import params_hash
@@ -12,7 +13,7 @@ from interfaces.worker.hitl_resume import HitlResumeError, resume_worker_job
 @pytest.mark.asyncio
 async def test_resume_blocks_approval_id_bypass(monkeypatch):
     store = JobStore()
-    monkeypatch.setattr("interfaces.worker.hitl_resume.get_job_store", lambda: store)
+    monkeypatch.setattr(get_container(), "get_job_store", lambda: store)
 
     args = {"target": "production"}
     pending = PendingHitlAction(
