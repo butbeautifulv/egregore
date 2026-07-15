@@ -20,6 +20,7 @@ def _settings_stub(**overrides):
         k8s_sandbox_ready_timeout_s=30.0,
         k8s_sandbox_ready_poll_interval_s=0.5,
         k8s_sandbox_credentials_only=False,
+        k8s_runtime_class=None,
         bus_signing_key_bytes=_SECRET,
     )
     defaults.update(overrides)
@@ -251,3 +252,41 @@ def test_k8s_sandbox_credentials_only_constructor_override_wins_over_settings():
     assert connector._batch_api is None
     creds = connector.create("run-11", "soc")
     assert creds.token
+
+
+@pytest.mark.unit
+def test_k8s_sandbox_sets_runtime_class_when_configured():
+    """Phase 4: settings.k8s_runtime_class propagates onto the Job's pod
+    spec so gVisor (or any other RuntimeClass) can be requested."""
+    batch_api = MagicMock()
+    connector = K8sSandboxConnector(
+        namespace="cys-agi",
+        batch_api=batch_api,
+        settings=_settings_stub(k8s_runtime_class="gvisor"),
+        ready_poll_interval_s=0.0,
+    )
+
+    connector._create_job("run-12", "soc", "default")
+
+    _, kwargs = batch_api.create_namespaced_job.call_args
+    pod_spec = kwargs["body"]["spec"]["template"]["spec"]
+    assert pod_spec["runtimeClassName"] == "gvisor"
+
+
+@pytest.mark.unit
+def test_k8s_sandbox_omits_runtime_class_when_unset():
+    """Zero behavior change when k8s_runtime_class is unset — no
+    runtimeClassName key at all, i.e. today's runc default."""
+    batch_api = MagicMock()
+    connector = K8sSandboxConnector(
+        namespace="cys-agi",
+        batch_api=batch_api,
+        settings=_settings_stub(k8s_runtime_class=None),
+        ready_poll_interval_s=0.0,
+    )
+
+    connector._create_job("run-13", "soc", "default")
+
+    _, kwargs = batch_api.create_namespaced_job.call_args
+    pod_spec = kwargs["body"]["spec"]["template"]["spec"]
+    assert "runtimeClassName" not in pod_spec

@@ -52,6 +52,7 @@ class K8sExecutionBackend:
         batch_api: Any = None,
         poll_interval_s: float = 1.0,
         tool_gateway_url: str = "",
+        runtime_class: str | None = None,
     ) -> None:
         """``job_timeout_resolver(job) -> float`` resolves the per-persona/
         per-phase job timeout (Settings.resolve_worker_job_timeout) — injected
@@ -59,6 +60,11 @@ class K8sExecutionBackend:
         import bootstrap.settings directly (same hexagon-inversion rule as
         Discovery D's fix in budget_adapter.py); only the interfaces-layer
         caller has a Settings instance to build this closure from.
+
+        ``runtime_class`` (Phase 4, e.g. "gvisor") requires the containerd
+        shim + RuntimeClass CR already installed on the cluster (ops, not
+        this repo) — when unset, no runtimeClassName field is added at all,
+        i.e. today's runc behavior, unchanged.
         """
         self._job_store = job_store
         self.namespace = namespace
@@ -67,6 +73,7 @@ class K8sExecutionBackend:
         self._batch_api = batch_api if batch_api is not None else self._load_batch_api()
         self._poll_interval_s = poll_interval_s
         self._tool_gateway_url = tool_gateway_url
+        self._runtime_class = runtime_class
 
     def _load_batch_api(self) -> Any:
         try:
@@ -105,6 +112,9 @@ class K8sExecutionBackend:
         if self._tool_gateway_url:
             env.append({"name": "USE_TOOL_GATEWAY", "value": "true"})
             env.append({"name": "TOOL_GATEWAY_URL", "value": self._tool_gateway_url})
+        pod_spec: dict[str, Any] = {"restartPolicy": "Never"}
+        if self._runtime_class:
+            pod_spec["runtimeClassName"] = self._runtime_class
         return {
             "apiVersion": "batch/v1",
             "kind": "Job",
@@ -120,7 +130,7 @@ class K8sExecutionBackend:
                 "template": {
                     "metadata": {"labels": {"app": "egregore-worker", "persona": persona}},
                     "spec": {
-                        "restartPolicy": "Never",
+                        **pod_spec,
                         "containers": [
                             {
                                 "name": "worker",

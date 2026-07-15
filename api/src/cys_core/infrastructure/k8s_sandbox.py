@@ -56,9 +56,13 @@ class K8sSandboxConnector:
         ready_timeout_s: float | None = None,
         ready_poll_interval_s: float | None = None,
         credentials_only: bool | None = None,
+        runtime_class: str | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self.namespace = namespace or self._settings.k8s_namespace
+        self._runtime_class = (
+            runtime_class if runtime_class is not None else self._settings.k8s_runtime_class
+        )
         self._credentials_only = (
             credentials_only if credentials_only is not None else self._settings.k8s_sandbox_credentials_only
         )
@@ -109,6 +113,9 @@ class K8sSandboxConnector:
 
     def _create_job(self, run_id: str, persona: str, policy: str) -> str:
         job_name = self._job_name(run_id, persona)
+        pod_spec: dict[str, Any] = {"restartPolicy": "Never"}
+        if self._runtime_class:
+            pod_spec["runtimeClassName"] = self._runtime_class
         body = {
             "apiVersion": "batch/v1",
             "kind": "Job",
@@ -131,7 +138,7 @@ class K8sSandboxConnector:
                 "template": {
                     "metadata": {"labels": {"app": "cys-agi-worker", "persona": persona}},
                     "spec": {
-                        "restartPolicy": "Never",
+                        **pod_spec,
                         "containers": [
                             {
                                 "name": "worker",

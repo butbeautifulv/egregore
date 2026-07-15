@@ -162,6 +162,7 @@ class EngagementContainer:
                             persona=job.persona, phase=str(job.payload.get("phase") or "")
                         ),
                         tool_gateway_url=settings.tool_gateway_url,
+                        runtime_class=settings.k8s_runtime_class,
                     ),
                 )
             elif backend_kind == "docker":

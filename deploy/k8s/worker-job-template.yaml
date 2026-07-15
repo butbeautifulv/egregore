@@ -19,6 +19,13 @@ spec:
         app: egregore-worker
         persona: "{{ persona }}"
     spec:
+      # Optional (Phase 4, e.g. "gvisor") — omitted entirely for runc, today's default.
+      # Templated per-deploy (dev/staging/prod can differ), not hardcoded; set from
+      # K8S_RUNTIME_CLASS on the Dispatcher (K8sExecutionBackend), same env var this
+      # illustrative template's other {{ }} placeholders stand in for. Requires the
+      # containerd shim + RuntimeClass CR already installed on the cluster (Phase 4.1,
+      # ops, not this repo).
+      runtimeClassName: "{{ runtime_class }}"
       restartPolicy: Never
       containers:
         - name: worker

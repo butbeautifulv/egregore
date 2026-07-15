@@ -123,3 +123,36 @@ def test_no_batch_api_raises_instead_of_running_unsandboxed():
     )
     with pytest.raises(RuntimeError, match="unavailable"):
         backend._run_sync(_job(), _job(), "session-1", job_timeout=1.0)
+
+
+@pytest.mark.unit
+def test_sets_runtime_class_when_configured():
+    batch_api = MagicMock()
+    job_store = _FakeJobStore([_FakeJobRecord(WorkerJobStatus.COMPLETED)])
+    backend = K8sExecutionBackend(
+        job_store=job_store,
+        namespace="egregore",
+        image="egregore-worker:latest",
+        job_timeout_resolver=lambda job: 1.0,
+        batch_api=batch_api,
+        runtime_class="gvisor",
+    )
+
+    backend._run_sync(_job(), _job(), "session-1", job_timeout=1.0)
+
+    _, kwargs = batch_api.create_namespaced_job.call_args
+    pod_spec = kwargs["body"]["spec"]["template"]["spec"]
+    assert pod_spec["runtimeClassName"] == "gvisor"
+
+
+@pytest.mark.unit
+def test_omits_runtime_class_when_unset():
+    batch_api = MagicMock()
+    job_store = _FakeJobStore([_FakeJobRecord(WorkerJobStatus.COMPLETED)])
+    backend = _backend(job_store=job_store, batch_api=batch_api)
+
+    backend._run_sync(_job(), _job(), "session-1", job_timeout=1.0)
+
+    _, kwargs = batch_api.create_namespaced_job.call_args
+    pod_spec = kwargs["body"]["spec"]["template"]["spec"]
+    assert "runtimeClassName" not in pod_spec

@@ -395,6 +395,14 @@ class Settings(BaseSettings):
         "already created doesn't spawn a second, parasitic Job for the same run_id "
         "(Discovery F, docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md).",
     )
+    k8s_runtime_class: str | None = Field(
+        default=None,
+        validation_alias="K8S_RUNTIME_CLASS",
+        description="RuntimeClass name (e.g. 'gvisor') set on worker Job pods when "
+        "present — requires the containerd shim + RuntimeClass CR already installed "
+        "on the cluster (Phase 4.1, infra-only, not this repo). Unset means no "
+        "runtimeClassName field at all, i.e. today's runc behavior, unchanged.",
+    )
 
     qdrant_url: str = Field(default="http://localhost:6333", validation_alias="QDRANT_URL")
     use_qdrant: bool = Field(default=False, validation_alias="USE_QDRANT")
