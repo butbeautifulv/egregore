@@ -22,6 +22,6 @@ jobs:
     steps:
       - run: echo hi
 
-  secret-scan:
-    uses: ./.github/workflows/job-secret-scan.yml
+  sast:
+    uses: ./.github/workflows/job-sast.yml
     secrets: inherit
