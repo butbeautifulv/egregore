@@ -18,6 +18,7 @@ from cys_core.application.runs.tool_coercion import (
 from cys_core.application.workers.tool_execution_tracker import (
     ingest_tool_output_manifest,
     record_siem_drilldown,
+    record_tool_call,
     record_tool_execution,
     record_tool_output,
     record_tool_success,
@@ -63,10 +64,11 @@ def _tool_result_ok(result: Any) -> bool:
 class ToolCoercionMiddleware(AgentMiddleware):
     """Coerce tool call arguments before handler execution."""
 
-    def _record(self) -> None:
+    def _record(self, tool_name: str) -> None:
         job_id = structlog.contextvars.get_contextvars().get("job_id")
         if isinstance(job_id, str) and job_id:
             record_tool_execution(job_id)
+            record_tool_call(job_id, tool_name)
 
     def _normalize_args(self, request: ToolCallRequest) -> None:
         raw_args = request.tool_call.get("args", {})
@@ -94,7 +96,7 @@ class ToolCoercionMiddleware(AgentMiddleware):
         if tool_name == "investigate_incident":
             record_tool_success(job_id, tool_name)
             return
-        if tool_name in _INTEL_SUCCESS_TOOLS or is_veil_tool(tool_name) or tool_name == "enrich_ioc":
+        if tool_name in _INTEL_SUCCESS_TOOLS or tool_name == "load_skill" or is_veil_tool(tool_name) or tool_name == "enrich_ioc":
             record_tool_success(job_id, tool_name)
         if is_veil_tool(tool_name) or tool_name == "enrich_ioc":
             record_veil_tool(job_id)
@@ -105,8 +107,8 @@ class ToolCoercionMiddleware(AgentMiddleware):
         handler: Callable[[ToolCallRequest], Any],
     ) -> Any:
         self._normalize_args(request)
-        self._record()
         tool_name = str(request.tool_call.get("name", ""))
+        self._record(tool_name)
         result = handler(request)
         self._record_success(tool_name, result)
         return result
@@ -117,8 +119,8 @@ class ToolCoercionMiddleware(AgentMiddleware):
         handler: Callable[[ToolCallRequest], Awaitable[Any] | Any],
     ) -> Any:
         self._normalize_args(request)
-        self._record()
         tool_name = str(request.tool_call.get("name", ""))
+        self._record(tool_name)
         result = handler(request)
         if hasattr(result, "__await__"):
             result = await result

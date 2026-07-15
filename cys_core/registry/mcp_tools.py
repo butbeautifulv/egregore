@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import httpx
+import structlog
 from langchain_core.tools import BaseTool, StructuredTool
 
 from bootstrap.settings import settings
@@ -13,6 +14,8 @@ from cys_core.infrastructure.http_client import sync_http_client
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
 from cys_core.registry.tools import tool_registry
+
+logger = structlog.get_logger(__name__)
 
 
 def require_sandbox(sandbox_id: str) -> None:
@@ -159,11 +162,14 @@ class McpToolRegistry:
                     )
                     metrics.record_tool_invocation(tool_name, success=result.get("success", True))
                     return result
-                except Exception:
-                    # FIXME: silently falls through to _local_invoke on ANY gateway error (auth failure,
-                    # network error, etc. are indistinguishable from "gateway disabled"), and local execution
-                    # may have different audit/authz characteristics than gateway-mediated. Log at minimum.
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "mcp_gateway_invoke_failed_falling_back_to_local",
+                        tool_name=tool_name,
+                        persona=persona,
+                        job_id=job_id,
+                        error=str(exc),
+                    )
             result = self._local_invoke(
                 tool_name,
                 sandbox_id,

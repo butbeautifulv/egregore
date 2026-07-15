@@ -212,12 +212,6 @@ export function InvestigationDetailView({
     return () => clearInterval(timer)
   }, [detail, terminal, refresh, engagementStreamStatus])
 
-  useEffect(() => {
-    if (engagementStreamStatus !== "error") return
-    seenKeysRef.current = new Set()
-    void replayEngagementEvents()
-  }, [engagementStreamStatus, replayEngagementEvents])
-
   const followUpJobMap = useMemo(
     () => {
       const merged = buildFollowUpJobMap(jobs, followUps)
@@ -335,7 +329,11 @@ export function InvestigationDetailView({
               <Badge variant="default">Completed</Badge>
             ) : (
               <Badge variant={streamConnected ? "secondary" : "outline"}>
-                {streamConnected ? "Stream connected" : "Stream reconnecting"}
+                {streamConnected
+                  ? "Stream connected"
+                  : engagementStreamStatus === "connecting"
+                    ? "Stream connecting"
+                    : "Stream reconnecting"}
               </Badge>
             )}
           </div>

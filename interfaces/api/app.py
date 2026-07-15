@@ -127,7 +127,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.ui_cors_origins,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Workspace-Id"],
     )
 
     @app.middleware("http")

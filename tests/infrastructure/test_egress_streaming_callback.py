@@ -29,6 +29,12 @@ async def test_egress_streaming_callback_batches_deltas(monkeypatch: pytest.Monk
         "cys_core.infrastructure.observability.egress_streaming_callback.get_stream_agent_output",
         lambda: True,
     )
+    settings = MagicMock()
+    settings.egress_batch_seconds = 0.05
+    monkeypatch.setattr(
+        "cys_core.infrastructure.observability.egress_streaming_callback.get_settings",
+        lambda: settings,
+    )
     egress = _RecordingEgress()
     ctx = StreamContext(
         engagement_id="eng-1",
@@ -68,6 +74,33 @@ async def test_egress_streaming_callback_noop_when_disabled(monkeypatch: pytest.
     await callback.on_llm_end(MagicMock(generations=[[MagicMock(generation_info={})]]))
 
     assert egress.events == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_egress_streaming_callback_publishes_each_token_when_batch_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "cys_core.infrastructure.observability.egress_streaming_callback.get_stream_agent_output",
+        lambda: True,
+    )
+    settings = MagicMock()
+    settings.egress_batch_seconds = 0.0
+    monkeypatch.setattr(
+        "cys_core.infrastructure.observability.egress_streaming_callback.get_settings",
+        lambda: settings,
+    )
+    egress = _RecordingEgress()
+    ctx = StreamContext(engagement_id="eng-1", job_id="job-1", persona="soc", tenant_id="default")
+    callback = EgressStreamingCallback(ctx, egress=egress)
+
+    await callback.on_llm_new_token("a")
+    await callback.on_llm_new_token("b")
+
+    delta_events = [e for e in egress.events if e[1] == "assistant_delta"]
+    assert len(delta_events) == 2
+    assert [e[2]["delta"] for e in delta_events] == ["a", "b"]
 
 
 @pytest.mark.unit
