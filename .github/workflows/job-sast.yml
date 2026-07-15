@@ -26,6 +26,24 @@ jobs:
         with:
           category: "/language:python"
           output: codeql-sarif
+      - name: DIAGNOSTIC dump raw SARIF result shape
+        if: always()
+        run: |
+          python3 -c "
+import json
+d = json.load(open('codeql-sarif/python.sarif'))
+print('num runs:', len(d.get('runs', [])))
+for i, run in enumerate(d.get('runs', [])):
+    results = run.get('results', [])
+    print(f'run[{i}] results count:', len(results))
+    if results:
+        print(f'run[{i}] results[0] keys:', list(results[0].keys()))
+        print(json.dumps(results[0], indent=2)[:1500])
+    rules = run.get('tool', {}).get('driver', {}).get('rules', [])
+    print(f'run[{i}] rules count:', len(rules))
+    for r in rules[:3]:
+        print(' rule:', r.get('id'), 'defaultConfiguration:', r.get('defaultConfiguration'), 'properties.security-severity:', r.get('properties', {}).get('security-severity'))
+"
       - name: Gate check CodeQL
         if: always()
         run: |
