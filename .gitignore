@@ -18,15 +18,9 @@ wheels/
 .coverage
 htmlcov/
 
-# IDE
+# IDE / local agent tooling
 .cursor/
-.idea/
-.vscode/
-
-# .agents/rules are committed (Cursor workflow). Core rules via make rules-link symlinks.
-.agents/*
-!.agents/rules/
-!.agents/rules/**
+.agents/
 
 # Local jailbreak/injection corpus (threat intel only, never runtime)
 docs/injections/
