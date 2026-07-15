@@ -26,3 +26,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo hi
+
+  secret-scan:
+    uses: ./.github/workflows/job-secret-scan.yml
+    secrets: inherit
+
+  sast:
+    uses: ./.github/workflows/job-sast.yml
+    secrets: inherit
+
+  osa:
+    uses: ./.github/workflows/job-osa.yml
+    secrets: inherit
+
+  iac-scan:
+    uses: ./.github/workflows/job-iac-scan.yml
+    secrets: inherit
+
+  dockerfile-lint:
+    uses: ./.github/workflows/job-dockerfile-lint.yml
+    secrets: inherit
+
+  linter-security:
+    uses: ./.github/workflows/job-linter-security.yml
+    secrets: inherit
+
+  skill-scanner:
+    uses: ./.github/workflows/job-skill-scanner.yml
+    secrets: inherit
