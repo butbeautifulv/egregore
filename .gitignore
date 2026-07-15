@@ -19,6 +19,8 @@ wheels/
 .coverage.*
 coverage.xml
 htmlcov/
+reports/
+*.sarif
 .ruff_cache/
 .import_linter_cache/
 .ty_cache/

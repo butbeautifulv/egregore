@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from cys_core.domain.evidence.models import EvidenceManifest
 from cys_core.domain.findings.quality_gates import (
     coerce_consultant_advisory_result,
     consultant_finding_gaps,
@@ -48,6 +49,33 @@ def test_finding_meets_minimum_soc_missing_summary() -> None:
 @pytest.mark.unit
 def test_finding_meets_minimum_consultant_incomplete() -> None:
     assert finding_meets_minimum("consultant", {"summary": "only one"}, schema_name="ConsultantFinding") is False
+
+
+@pytest.mark.unit
+def test_finding_meets_minimum_soc_without_manifest() -> None:
+    assert finding_meets_minimum("soc", {"summary": "ok"}, schema_name="SocFinding", manifest=None) is True
+
+
+@pytest.mark.unit
+def test_finding_meets_minimum_consultant_synthesis_phase() -> None:
+    manifest = EvidenceManifest(telemetry_level="rich", max_confidence=1.0)
+    result = {
+        "topic": "Wrap",
+        "summary": "No new entities.",
+        "recommendations": ["A", "B"],
+        "confidence": 0.8,
+    }
+    assert (
+        finding_meets_minimum(
+            "consultant",
+            result,
+            schema_name="ConsultantFinding",
+            upstream_manifests={"soc": manifest},
+            phase="synthesis",
+            specialist_findings=[],
+        )
+        is True
+    )
 
 
 @pytest.mark.unit

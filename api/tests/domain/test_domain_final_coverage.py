@@ -15,6 +15,7 @@ from cys_core.domain.evidence.manifest_builder import build_manifest_from_invest
 from cys_core.domain.evidence.models import EvidenceManifest, EvidenceRef, Observation
 from cys_core.domain.evidence.resolver import entity_grounded, resolve_observation
 from cys_core.domain.follow_up.models import is_follow_up_plan_iteration
+from cys_core.domain.findings.quality_gates import finding_meets_minimum
 from cys_core.domain.policy.pure import mode_sets_from_policy
 from cys_core.domain.policy.pure import allow_tool_pure
 from cys_core.domain.runs.plan_models import EngagementPlannerOutput
@@ -55,22 +56,22 @@ def test_consultant_synthesis_gaps_entity_backed_via_specialist_ref() -> None:
         max_confidence=0.6,
         observations=[
             Observation(
-                obs_id="obs:evt:1:process:malware.exe",
-                kind="process",
-                value="malware.exe",
+                obs_id="obs:text:pid",
+                kind="event_text",
+                value="parent pid 1234 spawned child",
                 source_tool="siem",
                 source_path="events",
-            )
+            ),
         ],
     )
     gaps = consultant_synthesis_gaps(
-        {"topic": "Wrap", "summary": "malware.exe seen during wrap-up", "confidence": 0.5},
+        {"topic": "Wrap", "summary": "Suspicious pid 1234 activity", "confidence": 0.5},
         {"soc": manifest},
         specialist_findings=[
             {
                 "finding": {
                     "evidence": [
-                        {"obs_id": "obs:evt:1:process:malware.exe", "excerpt": "malware.exe"},
+                        {"obs_id": "obs:text:pid", "excerpt": "pid 1234"},
                     ],
                 },
             },
@@ -175,12 +176,20 @@ def test_engagement_model_remaining_branches() -> None:
         status=EngagementStatus.RUNNING,
         planner_plan=["soc"],
         synthesis_persona="consultant",
+        failed_personas=["soc"],
+        completed_personas=[],
+    )
+    engagement.record_persona_completed("soc")
+    assert "soc" not in engagement.failed_personas
+    engagement = Engagement(
+        id="e3",
+        goal="g",
+        status=EngagementStatus.RUNNING,
+        planner_plan=["soc"],
+        synthesis_persona="consultant",
         completed_personas=["soc"],
     )
-    engagement.record_persona_completed("consultant")
-    assert "consultant" not in engagement.completed_personas
-    engagement = Engagement(id="e3", goal="g", status=EngagementStatus.RUNNING, planner_plan=["soc"])
-    engagement.record_persona_failed("consultant", plan_personas=["soc"])
+    engagement.record_persona_failed("consultant")
     engagement = Engagement(id="e4", goal="g")
     engagement.apply_planner_result(["soc"], status="ready", synthesis_persona="consultant")
     assert engagement.synthesis_status == SynthesisStatus.PENDING
@@ -216,12 +225,10 @@ def test_policy_pure_default_mode_sets_and_mutating_prefix() -> None:
 
 @pytest.mark.unit
 def test_engagement_planner_output_non_dict_and_non_list_sub_goals() -> None:
-    from pydantic import ValidationError
-
     parsed = EngagementPlannerOutput.model_validate({"personas": ["soc"], "sub_goals": {"soc": "x"}})
     assert parsed.sub_goals == {"soc": "x"}
-    with pytest.raises(ValidationError):
-        EngagementPlannerOutput.model_validate({"personas": ["soc"], "sub_goals": "not-a-list"})
+    coerced = EngagementPlannerOutput._coerce_sub_goals({"personas": ["soc"], "sub_goals": "not-a-list"})
+    assert coerced["sub_goals"] == "not-a-list"
     assert EngagementPlannerOutput._coerce_sub_goals("not-a-dict") == "not-a-dict"
 
 
@@ -320,3 +327,101 @@ def test_evidence_manifest_observation_index() -> None:
         ]
     )
     assert manifest.observation_index()["obs:1"].value == "host-a"
+    assert manifest.observation_values() == {"host-a"}
+    assert EvidenceManifest(
+        observations=[
+            Observation(
+                obs_id="obs:2",
+                kind="host",
+                value="",
+                source_tool="siem",
+                source_path="events",
+            )
+        ]
+    ).observation_values() == set()
+
+
+@pytest.mark.unit
+def test_remaining_small_domain_branches() -> None:
+    from cys_core.domain.engagement.bus_routing import off_plan_bus_enqueue_reason
+    from cys_core.domain.evidence.coercion import coerce_data_gaps
+    from cys_core.domain.evidence.resolver import resolve_observation
+    from cys_core.domain.findings.models import ConductorStepResult, SocFinding
+    from cys_core.domain.policy.defaults import get_persona_budgets
+    from cys_core.domain.policy.pure import allow_tool_pure
+    from cys_core.domain.runs.models import InteractionMode
+    from cys_core.domain.security.sandbox_tokens import verify_sandbox_token
+    from cys_core.domain.security.system_prompt_assembler import (
+        LANGUAGE_SUFFIX,
+        assemble_trusted_system_context,
+        strip_language_suffix,
+    )
+    from cys_core.domain.tools.coercion import coerce_tool_args, normalize_technique_id, normalize_ti_category
+
+    assert off_plan_bus_enqueue_reason("soc", ["soc"], msg_type="finding") is None
+    assert off_plan_bus_enqueue_reason("soc", ["soc"], msg_type="delegate") is None
+    assert coerce_data_gaps({"data_gaps": "not-list"}) == []
+    assert normalize_technique_id("   ") == ""
+    assert normalize_technique_id("INVALID") == "INVALID"
+    assert normalize_ti_category(7) == ""
+    assert normalize_ti_category("   ") == ""
+    assert coerce_tool_args({"x": "not-json["})["x"] == "not-json["
+    finding = SocFinding.model_validate(
+        {
+            "summary": "ok",
+            "evidence": None,
+            "data_gaps": None,
+        }
+    )
+    assert finding.evidence == []
+    assert finding.data_gaps == []
+    finding2 = SocFinding.model_validate(
+        {
+            "summary": "ok",
+            "data_gaps": [{"field": "subject.process.cmdline", "reason": "not_in_siem"}],
+        }
+    )
+    assert finding2.data_gaps[0].field == "subject.process.cmdline"
+    assert ConductorStepResult.model_validate({"reasoning_steps": None, "remaining_steps": None}).reasoning_steps == []
+    assert allow_tool_pure(InteractionMode.PLAN, "spawn_worker") is False
+    assert get_persona_budgets()["soc"].max_tokens > 0
+    assert verify_sandbox_token("bad.token", secret=b"key") is None
+    assert strip_language_suffix(f"Body{LANGUAGE_SUFFIX}") == "Body"
+    assert assemble_trusted_system_context(f"Body{LANGUAGE_SUFFIX}", language="ru").persona.endswith(LANGUAGE_SUFFIX)
+    manifest = EvidenceManifest(
+        observations=[
+            Observation(
+                obs_id="obs:evt:full-uuid-9999:pid:1",
+                kind="pid",
+                value="1",
+                source_tool="siem",
+                source_path="events",
+                event_uuid="full-uuid-9999",
+            )
+        ]
+    )
+    assert (
+        resolve_observation(
+            EvidenceRef(obs_id="obs:evt:uuid-9999:pid:1", excerpt="1"),
+            manifest,
+        )
+        is not None
+    )
+    sparse = EvidenceManifest(telemetry_level="sparse", max_confidence=0.5)
+    result = {
+        "topic": "Wrap",
+        "summary": "No new hosts.",
+        "recommendations": ["A", "B"],
+        "confidence": 0.4,
+    }
+    assert (
+        finding_meets_minimum(
+            "consultant",
+            result,
+            schema_name="ConsultantFinding",
+            upstream_manifests={"soc": sparse},
+            phase="synthesis",
+            specialist_findings=[],
+        )
+        is True
+    )

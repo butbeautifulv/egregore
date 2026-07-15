@@ -28,13 +28,10 @@ kept), `verify_import_boundaries.py`, `verify_no_langfuse_in_core.sh`, and
 `tests/architecture/` all green. `continue-on-error` removed from `arch-lint`
 job in `release-gate.yml`.
 
-### `domain-coverage` — 100% target, ~78% actual
+### `domain-coverage` — resolved (100% on `src/cys_core/domain`)
 
-`src/cys_core/domain` coverage gate is set to `--cov-fail-under=100` but current
-coverage is ~78%. Whole files are at 0% (e.g. `workers/continuation.py`,
-`workspace/models.py`). Aspirational target predates this workflow; needs
-either a real push to 100% or a documented, intentional ratchet baseline
-instead of an unenforced 100% that nothing has met.
+`tests/domain/` with `--cov=src/cys_core/domain --cov-fail-under=100` exits 0.
+`continue-on-error` removed from `domain-coverage` job in `release-gate.yml`.
 
 ## xfailed adversarial tests
 
