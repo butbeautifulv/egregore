@@ -31,5 +31,5 @@ jobs:
           USE_MEMORY_FALLBACK: "true"
         run: |
           uv run pytest tests/ -q \
-            --cov=cys_core/domain --cov-fail-under=100 \
+            --cov=src/cys_core/domain --cov-fail-under=100 \
             --cov-report=term-missing:skip-covered

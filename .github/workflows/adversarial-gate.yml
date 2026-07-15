@@ -32,4 +32,4 @@ jobs:
           STAGE: test
           USE_MEMORY_FALLBACK: "true"
         run: |
-          uv run pytest tests/domain/ -q --cov=cys_core/domain --cov-report=term-missing --cov-fail-under=100
+          uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-report=term-missing --cov-fail-under=100

@@ -20,7 +20,7 @@ jobs:
     steps:
       - run: echo hi
 
-  ui:
+  web-ui:
     runs-on: ubuntu-latest
     steps:
       - run: echo hi

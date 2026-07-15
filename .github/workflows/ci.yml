@@ -30,7 +30,7 @@ jobs:
           enable-cache: true
       - run: uv sync
       - name: Ruff
-        run: uv run ruff check cys_core interfaces bootstrap tests
+        run: uv run ruff check src tests
 
   unit-batches:
     runs-on: ubuntu-latest
