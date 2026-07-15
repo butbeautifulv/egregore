@@ -127,7 +127,7 @@ if [[ "$DOMAIN_GATE" == 1 ]]; then
     echo "pytest_batches: missing .coverage (run with --cov first)" >&2
     FAILED=$((FAILED + 1))
   elif ! uv run coverage report \
-    --include="cys_core/domain/runs/*,cys_core/domain/catalog/*,cys_core/domain/observability/*" \
+    --include="src/cys_core/domain/runs/*,src/cys_core/domain/catalog/*,src/cys_core/domain/observability/*" \
     --fail-under=100; then
     FAILED=$((FAILED + 1))
   fi

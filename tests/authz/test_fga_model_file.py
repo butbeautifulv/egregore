@@ -17,7 +17,7 @@ def test_fga_model_contains_workspace_edit_permission() -> None:
 
 
 def test_fga_model_yaml_contract() -> None:
-    data = yaml.safe_load(Path("authz/model.fga.yaml").read_text(encoding="utf-8"))
+    data = yaml.safe_load(Path("src/authz/model.fga.yaml").read_text(encoding="utf-8"))
 
     assert data["model_file"] == "model.fga"
     assert data["tuples"]
@@ -29,6 +29,6 @@ def test_fga_model_cli_validate() -> None:
     if shutil.which("fga") is None:
         return
     subprocess.run(
-        ["fga", "model", "validate", "--file", "authz/model.fga"],
+        ["fga", "model", "validate", "--file", "src/authz/model.fga"],
         check=True,
     )
