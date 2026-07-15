@@ -99,46 +99,82 @@ reset. Needs tracing before un-xfailing.
   still exists in ~8 other workflow files not in this PR's call graph
   (`job-ml-model-scan.yml`, `nightly-sast.yml`, the `job-oss-*` variants,
   etc.) — same fix, just out of scope tonight.
-- **`osa / dependency-review`** still fails: `Dependency review is not
+- **`osa / dependency-review`**: was failing with `Dependency review is not
   supported on this repository. Please ensure that Dependency graph is
-  enabled` — a repo setting (Settings → Security → Dependency graph), not
-  a code fix. Left for a human to enable; not something to toggle
+  enabled` — a repo setting (Settings → Security → Dependency graph), not a
+  code fix. Enabled by a human mid-session; not something toggled
   unilaterally from an agent session.
 - **`sast / codeql` was silently reporting `findings=0` on every run despite
-  CodeQL genuinely finding 3 real `py/path-injection` results** (see
-  "Real finding" below) — the single worst bug found tonight, because it
-  made the SAST gate decorative rather than blocking. `codeql-action/analyze`
-  writes its SARIF to `$RUNNER_WORKSPACE/results/<language>.sarif` (one
-  directory *above* the checkout) by default; the gate-check step was
-  checking the relative path `results/python.sarif` (*inside* the
-  checkout) — never matched, so it silently fell through to the empty
-  placeholder and always passed. Fixed by pinning `analyze`'s `output:` to
-  a known path (`codeql-sarif/`) and — more importantly — changed the
-  gate-check step to **fail loudly if the real report is missing**,
-  instead of silently substituting an empty one. Same audit found
-  `job-linter-security.yml` gating its real `ruff` scan behind
-  `$ENABLE_REAL_LINTERS`, an env var that can never reach it (the same
-  `env:`-doesn't-propagate-into-`uses:` limitation noted for
-  `SECURITY_POLICY` above) — it was defaulting to `false` and always
-  writing the empty stub. Now always runs the real scan.
-  `job-dockerfile-lint.yml`'s gate-check step is *still* purely decorative
-  (`echo '{"runs":[{"results":[]}]}' > hadolint.sarif` runs unconditionally,
-  never reads hadolint's actual output) — not fixed here since
-  `hadolint-action` itself still fails the job on real findings via its own
-  exit code and this control is warn-only, but the gate-check step's own
-  verdict should not be trusted.
-- **Real finding, not fixed here**: CodeQL flagged `py/path-injection`
-  (severity: error) three times in
-  `cys_core/infrastructure/runs/attachment_store.py` (now at
-  `src/cys_core/infrastructure/runs/attachment_store.py`), lines 24/26/27 —
-  `tenant_id` and `run_id` go straight into `Path` construction with no
-  sanitization, unlike `filename` which already goes through
-  `_safe_filename()`. Both values originate from
-  `interfaces/api/runs.py`'s `upload_attachment` (`run_id` from the URL
-  path, `tenant_id` from the request). This is a real, unaddressed path
-  traversal risk — surfaced by this PR's SAST fix, deliberately not fixed
-  in the same PR as the CI/CD mechanism itself so the fix gets its own
-  reviewable diff. Do this next.
+  CodeQL genuinely finding 3 real `py/path-injection` results** — the
+  single worst bug found tonight, because it made the SAST gate decorative
+  rather than blocking.
+  - Root cause #1: `codeql-action/analyze` writes its SARIF to
+    `$RUNNER_WORKSPACE/results/<language>.sarif` (one directory *above*
+    the checkout) by default; the gate-check step checked the relative
+    path `results/python.sarif` (*inside* the checkout) — never matched,
+    silently fell through to an empty placeholder, always passed. Fixed by
+    pinning `analyze`'s `output:` to a known path (`codeql-sarif/`) and
+    changing the gate-check step to **fail loudly if the real report is
+    missing** instead of silently substituting one.
+  - Root cause #2, found *after* fixing #1: the local SARIF `analyze`
+    writes has **no severity information in it at all** —
+    `tool.driver.rules` is an empty array and `results[].level` is
+    entirely absent (confirmed by dumping the raw file's structure in CI).
+    GitHub only attaches `rule.defaultConfiguration.level` /
+    `security-severity` server-side, after ingesting the upload. No amount
+    of local JSON parsing can recover severity that structurally isn't in
+    the file gate-check.py reads.
+  - Tried fixing #2 by querying the Code Scanning Alerts API instead
+    (`GET /repos/{repo}/code-scanning/alerts`, which does have real
+    `rule.security_severity_level`) — but it consistently returned **0
+    alerts** even for commits where `/code-scanning/analyses` confirmed 3
+    real results were uploaded and fully processed
+    (`analysis upload status is complete`). Didn't chase this further
+    (possibly branch/ref-association timing, possibly something else) —
+    shipping an unverified "fix" here risks silently reintroducing exactly
+    the same failure mode via a different path.
+  - **Final state**: any CodeQL finding blocks the job (no severity
+    grading). Coarser than the policy's intended `severity_block:
+    [critical, high]`, but it can no longer silently pass a real
+    vulnerability. File:line + rule + message are printed to the job log
+    for every finding either way. Proper severity-aware CodeQL gating is
+    real follow-up work — start from why the Alerts API showed 0 results.
+  - Same audit found `job-linter-security.yml` gating its real `ruff` scan
+    behind `$ENABLE_REAL_LINTERS`, an env var that can never reach it (the
+    same `env:`-doesn't-propagate-into-`uses:` limitation noted for
+    `SECURITY_POLICY` above) — it was defaulting to `false` and always
+    writing the empty stub. Now always runs the real scan.
+  - `job-dockerfile-lint.yml`'s gate-check step is *still* purely
+    decorative (`echo '{"runs":[{"results":[]}]}' > hadolint.sarif` runs
+    unconditionally, never reads hadolint's actual output) — not fixed
+    here since `hadolint-action` itself still fails the job on real
+    findings via its own exit code and this control is warn-only, but the
+    gate-check step's own verdict should not be trusted.
+- **`osa / trivy-fs`**: correctly found 2 real HIGH-severity dependency
+  vulnerabilities (`langsmith` 0.8.5, GHSA-f4xh-w4cj-qxq8; `starlette`
+  1.3.0, CVE-2026-54283) among 18 total findings (the other 16 are
+  medium/low/unknown — `severity: CRITICAL,HIGH` on the trivy-action step
+  controls trivy's own reporting threshold, not what ends up in the SARIF,
+  so lower-severity findings still show up for visibility). This gate was
+  working correctly. Fixed via `uv lock --upgrade-package langsmith
+  --upgrade-package starlette` (langsmith → 0.10.5, starlette → 1.3.1).
+  Added a "Print findings" step so future runs show file/rule/severity
+  directly in the job log instead of only a pass/fail count.
+- **Real finding, fixed**: CodeQL's `py/path-injection` in
+  `src/cys_core/infrastructure/runs/attachment_store.py` — `tenant_id` and
+  `run_id` went straight into `Path` construction with no sanitization,
+  unlike `filename` which already went through `_safe_filename()`. Both
+  values originate from `interfaces/api/runs.py`'s `upload_attachment`
+  (`run_id` from the URL path, `tenant_id` from the request body). Fixed
+  with `_safe_path_segment()`, the same character-allowlist approach
+  already used for filenames, plus a regression test. Note: CodeQL's own
+  taint tracker does *not* recognize this custom sanitizer as a valid
+  taint barrier and keeps flagging the same data flow — a known class of
+  CodeQL limitation (custom sanitizers need explicit query-model
+  annotations to be recognized); the runtime behavior is fixed and tested,
+  even though CodeQL will likely keep reporting it until that's addressed
+  too, which is part of why "any finding blocks" (see above) needs
+  triage-and-dismiss workflow, not blind trust, once enabled.
 
 ## Note for future readers
 

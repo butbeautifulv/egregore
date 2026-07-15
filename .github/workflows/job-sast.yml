@@ -26,31 +26,47 @@ jobs:
         with:
           category: "/language:python"
           output: codeql-sarif
-      - name: DIAGNOSTIC dump raw SARIF result shape
-        if: always()
-        run: |
-          python3 - <<'PYEOF'
-          import json
-          d = json.load(open('codeql-sarif/python.sarif'))
-          print('num runs:', len(d.get('runs', [])))
-          for i, run in enumerate(d.get('runs', [])):
-              results = run.get('results', [])
-              print(f'run[{i}] results count:', len(results))
-              if results:
-                  print(f'run[{i}] results[0] keys:', list(results[0].keys()))
-                  print(json.dumps(results[0], indent=2)[:1500])
-              rules = run.get('tool', {}).get('driver', {}).get('rules', [])
-              print(f'run[{i}] rules count:', len(rules))
-              for r in rules[:3]:
-                  print(' rule:', r.get('id'), 'defaultConfiguration:', r.get('defaultConfiguration'), 'security-severity:', r.get('properties', {}).get('security-severity'))
-          PYEOF
       - name: Gate check CodeQL
         if: always()
         run: |
           REPORT="codeql-sarif/python.sarif"
           [ -f "$REPORT" ] || { echo "::error::CodeQL did not produce $REPORT — check the analyze step above; refusing to silently pass a SAST gate with no real report." >&2; exit 1; }
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
+
+          # CodeQL's local SARIF has no rule/severity metadata at all (GitHub
+          # only attaches rule.defaultConfiguration.level / security-severity
+          # server-side, after processing the upload) — confirmed by direct
+          # inspection: tool.driver.rules is an empty array in the raw file,
+          # and results[].level is absent too. gate-check.py's severity-based
+          # evaluation can't recover data that structurally isn't there.
+          #
+          # Tried querying the Code Scanning Alerts API instead (which does
+          # have real severity, via rule.security_severity_level) but it
+          # consistently returned 0 alerts even for commits where the
+          # analyses endpoint confirmed 3 real results were uploaded and
+          # processed — an unverified, possibly branch/ref-timing-related
+          # gap not worth shipping as a silent-pass risk in its own right.
+          #
+          # Until that's root-caused (see docs/CI_CD_KNOWN_GAPS.md), any
+          # CodeQL finding blocks — coarser than proper severity grading,
+          # but never silently passes a real vulnerability the way the
+          # previous wrong-file-path bug did.
+          python3 - <<'PYEOF'
+          import json
+          d = json.load(open("codeql-sarif/python.sarif"))
+          for run in d.get("runs", []):
+              for r in run.get("results", []):
+                  loc = r.get("locations", [{}])[0].get("physicalLocation", {}).get("artifactLocation", {}).get("uri", "?")
+                  line = r.get("locations", [{}])[0].get("physicalLocation", {}).get("region", {}).get("startLine", "?")
+                  msg = (r.get("message", {}).get("text") or "").splitlines()[0][:160]
+                  print(f"[{r.get('ruleId', '?')}] {loc}:{line} — {msg}")
+          PYEOF
+          COUNT=$(python3 -c "import json; d=json.load(open('$REPORT')); print(sum(len(r.get('results', [])) for r in d.get('runs', [])))")
+          echo "[sast-codeql] findings=${COUNT}"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::${COUNT} CodeQL finding(s) present — see above for file:line and message"
+            exit 1
+          fi
+          echo "[sast-codeql] ok"
 
   semgrep:
     runs-on: ubuntu-latest
