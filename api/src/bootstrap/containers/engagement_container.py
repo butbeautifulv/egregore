@@ -148,11 +148,34 @@ class EngagementContainer:
                 self._worker_orchestrators[persona] = WorkerOrchestrator(
                     persona=persona, execution_backend=SubprocessExecutionBackend()
                 )
+            elif backend_kind == "k8s":
+                from cys_core.infrastructure.execution.k8s_backend import K8sExecutionBackend
+
+                settings = self.settings
+                self._worker_orchestrators[persona] = WorkerOrchestrator(
+                    persona=persona,
+                    execution_backend=K8sExecutionBackend(
+                        job_store=self._container.get_job_store(),
+                        namespace=settings.k8s_namespace,
+                        image=settings.k8s_worker_image,
+                        job_timeout_resolver=lambda job: settings.resolve_worker_job_timeout(
+                            persona=job.persona, phase=str(job.payload.get("phase") or "")
+                        ),
+                        tool_gateway_url=settings.tool_gateway_url,
+                    ),
+                )
+            elif backend_kind == "docker":
+                from cys_core.infrastructure.execution.docker_backend import DockerExecutionBackend
+
+                self._worker_orchestrators[persona] = WorkerOrchestrator(
+                    persona=persona,
+                    execution_backend=DockerExecutionBackend(image=self.settings.docker_worker_image),
+                )
             else:
                 raise NotImplementedError(
                     f"execution_backend={backend_kind!r} is not wired yet "
                     "(planned for Phase 3 of docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md); "
-                    "only 'in_process' and 'subprocess' are available today"
+                    "only 'in_process', 'subprocess', 'k8s', and 'docker' are available today"
                 )
         return self._worker_orchestrators[persona]
 

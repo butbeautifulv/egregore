@@ -366,6 +366,12 @@ class Settings(BaseSettings):
         default="cys-agi-worker:latest",
         validation_alias="K8S_WORKER_IMAGE",
     )
+    docker_worker_image: str = Field(
+        default="egregore-worker:latest",
+        validation_alias="DOCKER_WORKER_IMAGE",
+        description="Image DockerExecutionBackend runs via `docker run` for dev/CI "
+        "job execution without a real Kubernetes cluster.",
+    )
     k8s_sandbox_ttl_seconds: float = Field(
         default=600.0,
         validation_alias="K8S_SANDBOX_TTL_SECONDS",
@@ -379,6 +385,15 @@ class Settings(BaseSettings):
         description="Max time to wait for the sandbox Job's pod to be admitted/running "
         "before create() fails closed instead of handing back credentials for a sandbox "
         "that never actually started.",
+    )
+    k8s_sandbox_credentials_only: bool = Field(
+        default=False,
+        validation_alias="K8S_SANDBOX_CREDENTIALS_ONLY",
+        description="When true, K8sSandboxConnector.create()/acreate() skip Job creation "
+        "entirely and just mint+return credentials — set by K8sExecutionBackend in the "
+        "pod's own env, so RunWorkerJob.execute() running inside a pod that backend "
+        "already created doesn't spawn a second, parasitic Job for the same run_id "
+        "(Discovery F, docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md).",
     )
 
     qdrant_url: str = Field(default="http://localhost:6333", validation_alias="QDRANT_URL")

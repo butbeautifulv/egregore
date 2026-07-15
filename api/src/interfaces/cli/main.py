@@ -101,7 +101,16 @@ def cmd_run_sandboxed_job(args: argparse.Namespace) -> int:
     from cys_core.infrastructure.execution.envelope import SubprocessJobEnvelope
     from cys_core.infrastructure.execution.sandboxed_entrypoint import execute_sandboxed_job
 
-    raw = sys.stdin.read() if args.job_json == "-" else args.job_json
+    if args.job_json == "-":
+        raw = sys.stdin.read()
+    elif args.job_json.startswith("env:"):
+        # K8s/Docker pods can't be piped stdin after creation (Discovery E) —
+        # K8sExecutionBackend/DockerExecutionBackend pass the envelope as an
+        # env var instead and point --job-json at its name.
+        env_var = args.job_json.removeprefix("env:")
+        raw = os.environ[env_var]
+    else:
+        raw = args.job_json
     envelope = SubprocessJobEnvelope.model_validate_json(raw)
     job = envelope.job
 
@@ -322,7 +331,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_sandboxed.add_argument(
         "--job-json",
         default="-",
-        help="SubprocessJobEnvelope as JSON, or '-' to read from stdin (default)",
+        help="SubprocessJobEnvelope as JSON, '-' to read from stdin (default), "
+        "or 'env:VAR_NAME' to read from that env var (K8s/Docker backends)",
     )
     run_sandboxed.set_defaults(func=cmd_run_sandboxed_job)
 

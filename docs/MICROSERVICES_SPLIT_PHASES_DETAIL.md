@@ -337,24 +337,46 @@ K8s env, обычно да для одного job'а) или (б) короче:
 продолжает как раньше вызывать `sandbox.acreate()` **один раз**, изнутри — никакого
 двойного вызова, т.к. под больше не порождается через тот же порт.
 
-**3.3.** Написать `DockerAgentSandboxConnector`/`DockerExecutionBackend`
-(`cys_core/infrastructure/execution/docker_backend.py`) — локальный аналог 3.2 через
-`docker run` вместо Batch API, для dev/CI без реального K8s. Переиспользует тот же
-`--job-id` режим `cmd_run_sandboxed_job`, что и K8s-путь.
+**3.3. (Реализовано иначе, чем в изначальной формулировке.)** `DockerExecutionBackend`
+(`cys_core/infrastructure/execution/docker_backend.py`) написан как тонкая обёртка
+**вокруг `SubprocessExecutionBackend`** (композиция), а не независимая копия его логики.
+Причина: в отличие от K8s-пода, `docker run -i ...` (без `-d`) форвардит stdin/stdout
+контейнера в процесс `docker` CLI буквально так же, как обычный subprocess — то есть
+Docker-путь может и должен переиспользовать stdin-envelope-in/stdout-RunResult-out
+контракт из Phase 2 **напрямую**, без envelope-через-env-var трюка, нужного только для
+K8s (там пода стандартный stdout-пайплинг с Batch API недоступен). Никакого
+`K8S_SANDBOX_CREDENTIALS_ONLY`-аналога Docker-пути тоже не нужно — этот флаг существует
+только потому, что `K8sSandboxConnector.create()` иначе породил бы второй Kubernetes Job
+(Открытие F); у Docker-sandbox-коннектора нет такого побочного эффекта размещения, с
+которым нужно бороться.
 
-**3.4.** `K8sExecutionBackend`/`DockerExecutionBackend` — результат читается через
-`job_store` (уже написанный write-path для timeout/salvage-сценариев,
-`orchestrator.py:180-221`) поллингом со стороны Dispatcher, а не через stdout (в
-контейнерах stdout не читается родителем так же просто, как в subprocess).
+**3.4. (Реализовано только для K8s; для Docker — сознательное отклонение.)**
+`K8sExecutionBackend` читает результат через `job_store` поллингом (метод `.get(job_id)`,
+терминальные статусы `COMPLETED`/`FAILED`/`AWAITING_APPROVAL`) — как и планировалось,
+т.к. Batch API не даёт простого способа получить stdout пода синхронно. Но по пути
+нашлось ещё одно: `JobStorePort`/`JobRecord` не хранит сам `RunResult.finding` — только
+статус/ошибку (тот же класс проблемы, что Открытие E). Реконструированный `RunResult`
+для K8s поэтому даёт `finding={}` — не "finding потерялся", а именно "это поле не
+проезжает через это конкретное значение порта для этого backend'а": сам finding уже
+проходит через agent bus/engagement store независимо от `ExecutionBackend`, как и для
+всех остальных backend'ов. Docker, поскольку читает результат через stdout (3.3), **не**
+имеет этого ограничения — `RunResult.finding` доезжает так же полно, как у
+`SubprocessExecutionBackend`.
 
-**3.5.** Тесты: расширить существующие тесты `K8sSandboxConnector` (конструктор уже
-принимает `batch_api: Any = None` для инъекции мока — переиспользовать этот паттерн)
-проверкой, что теперь Job-спека содержит `run-sandboxed-job`/`--job-id`, а не
-`worker.daemon`. Docker-путь — интеграционный тест, skip если Docker недоступен в CI.
+**3.5.** Тесты: `tests/infrastructure/test_k8s_execution_backend.py` — тот же паттерн
+инъекции мока (`batch_api`), что уже был у `K8sSandboxConnector`-тестов, плюс fake
+`job_store`; проверяет, что Job-спека теперь содержит `uv run egregore
+run-sandboxed-job --job-json env:JOB_PAYLOAD_JSON`, а не `worker.daemon`, плюс
+успех/фейл/таймаут поллинга и отсутствие batch API → RuntimeError.
+`tests/infrastructure/test_docker_execution_backend.py` — **настоящий** интеграционный
+тест (не мок): собирает лёгкий stand-in Docker-образ (`python:3.13-slim` + фейковый `uv`
+shim поверх уже существующей subprocess-фикстуры `fake_sandboxed_job_child.py`) и реально
+гоняет `docker run` через `DockerExecutionBackend`; `pytest.mark.skipif`, если Docker
+недоступен.
 
-Acceptance: реальный job реально исполняется в отдельном поде/контейнере, Dispatcher
-узнаёт о завершении через `job_store`, Открытия A и C закрыты явно (не "получилось
-случайно").
+Acceptance: реальный job реально исполняется в отдельном поде/контейнере (K8s — через
+job_store, подтверждено моками; Docker — подтверждено реальным `docker run` в тесте),
+Открытия A, C, F закрыты явно (не "получилось случайно").
 
 ---
 

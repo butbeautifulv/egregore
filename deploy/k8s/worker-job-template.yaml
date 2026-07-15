@@ -8,6 +8,10 @@ metadata:
     persona: "{{ persona }}"
 spec:
   ttlSecondsAfterFinished: 300
+  # activeDeadlineSeconds is set per-job by K8sExecutionBackend (job_timeout + margin),
+  # not hardcoded here — this template is illustrative of the shape K8sExecutionBackend
+  # generates programmatically (cys_core/infrastructure/execution/k8s_backend.py), not
+  # rendered directly by anything today.
   backoffLimit: 0
   template:
     metadata:
@@ -19,11 +23,26 @@ spec:
       containers:
         - name: worker
           image: egregore-worker:latest
-          command: ["python", "-m", "interfaces.worker.daemon"]
-          args: ["--persona", "{{ persona }}", "--max-jobs", "1"]
+          # Runs *this specific* job — not a queue-draining daemon (Phase 3.0 fix:
+          # the previous `worker.daemon --persona X --max-jobs 1` picked up whatever
+          # was next in the shared queue, not necessarily this run_id). "uv run
+          # egregore ..." not bare "egregore" — the image doesn't export the venv's
+          # bin/ onto PATH, only `uv run` resolves it (see deploy/Dockerfile CMD).
+          args: ["uv", "run", "egregore", "run-sandboxed-job", "--job-json", "env:JOB_PAYLOAD_JSON"]
           env:
             - name: RUN_ID
               value: "{{ run_id }}"
+            # Full SubprocessJobEnvelope (job/budgeted/session_id) as JSON — env var
+            # rather than stdin, since K8s pods can't be piped stdin after creation
+            # (Discovery E, docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md).
+            - name: JOB_PAYLOAD_JSON
+              value: "{{ job_payload_json }}"
+            # RunWorkerJob.execute() running in this pod still calls
+            # K8sSandboxConnector.create() for token minting — this tells it to just
+            # mint the token instead of creating a second, parasitic Job for the same
+            # run_id (Discovery F).
+            - name: K8S_SANDBOX_CREDENTIALS_ONLY
+              value: "true"
             - name: USE_TOOL_GATEWAY
               value: "true"
             - name: TOOL_GATEWAY_URL

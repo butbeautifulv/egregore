@@ -19,6 +19,7 @@ def _settings_stub(**overrides):
         k8s_sandbox_ttl_seconds=600.0,
         k8s_sandbox_ready_timeout_s=30.0,
         k8s_sandbox_ready_poll_interval_s=0.5,
+        k8s_sandbox_credentials_only=False,
         bus_signing_key_bytes=_SECRET,
     )
     defaults.update(overrides)
@@ -212,4 +213,41 @@ async def test_k8s_sandbox_async_lifecycle():
 
     await connector.adestroy("run-9")
     assert not connector.is_active("run-9")
+    assert creds.token
+
+
+@pytest.mark.unit
+def test_k8s_sandbox_credentials_only_skips_job_creation():
+    """Discovery F: RunWorkerJob.execute() running inside a pod that
+    K8sExecutionBackend already created for this run_id must not create a
+    second, parasitic Job when it calls sandbox.acreate() for token minting."""
+    batch_api = MagicMock()
+    connector = K8sSandboxConnector(
+        namespace="cys-agi",
+        batch_api=batch_api,
+        settings=_settings_stub(k8s_sandbox_credentials_only=True),
+    )
+
+    creds = connector.create("run-10", "soc")
+
+    batch_api.create_namespaced_job.assert_not_called()
+    assert creds.token
+    assert creds.sandbox_id == "k8s-worker-soc-run-10"
+    assert not connector.is_active("run-10")
+
+
+@pytest.mark.unit
+def test_k8s_sandbox_credentials_only_does_not_load_batch_api():
+    connector = K8sSandboxConnector(settings=_settings_stub(k8s_sandbox_credentials_only=True))
+    assert connector._batch_api is None
+
+
+@pytest.mark.unit
+def test_k8s_sandbox_credentials_only_constructor_override_wins_over_settings():
+    connector = K8sSandboxConnector(
+        settings=_settings_stub(k8s_sandbox_credentials_only=False),
+        credentials_only=True,
+    )
+    assert connector._batch_api is None
+    creds = connector.create("run-11", "soc")
     assert creds.token

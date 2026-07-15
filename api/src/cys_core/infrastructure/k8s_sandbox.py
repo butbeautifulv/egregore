@@ -25,17 +25,23 @@ class K8sSandboxConnector:
     this connector used to do exactly that (fall back to ``LocalSandboxConnector`` on
     *any* exception), which was the original bug.
 
-    Known remaining gap (backlog Q2-1, not closed by this change): the agent's LLM/tool
-    loop still executes in the calling worker process, not inside the Job's pod — tool
-    calls are routed through the MCP Tool Gateway bound to ``sandbox_id`` rather than
-    literally running inside the container this class creates. This class now genuinely
-    waits for the pod to be admitted/running (and fails closed if it never is) and
-    enforces a hard TTL via ``activeDeadlineSeconds``, closing the original "create()
-    fires-and-forgets, caller never checks" bug. Moving actual agent execution into the
-    pod (dispatcher pattern: the pod runs ``interfaces.worker.daemon`` against a single
-    ``RUN_ID`` env var — already wired into the Job spec below — and the result comes
-    back over the bus/job store instead of a direct Python return value) is a separate,
-    larger architectural change left for a follow-up session.
+    Historical gap (backlog Q2-1): the agent's LLM/tool loop used to always execute in
+    the calling worker process, never inside the Job's pod this class creates — the pod
+    ran an unrelated queue-draining ``worker.daemon`` (Discovery A/Phase 3.0 in
+    docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md). That's now solved for jobs dispatched via
+    ``K8sExecutionBackend`` (``cys_core.infrastructure.execution.k8s_backend``), which
+    places the pod directly through the Batch API (not through this class's ``create()``)
+    running ``run-sandboxed-job`` for that *specific* job. This class's own ``create()``/
+    ``_create_job`` below is unchanged and still creates its own Job when called directly
+    (``credentials_only=False``, the default) — that path is only actually exercised
+    today for token-minting on the in_process/subprocess backends, where the agent loop
+    runs in the calling process regardless, per the sandbox_tokens gap in §11 of
+    docs/MICROSERVICES_SPLIT_PLAN.md. When ``credentials_only=True`` (set by
+    ``K8sExecutionBackend`` in the pod's own env), ``create()``/``acreate()`` skip Job
+    creation and just mint a token instead — the pod calling this already *is* the Job
+    that backend placed for this run_id; creating another one would be a second,
+    parasitic Job the same-run_id guard below can't catch, since it's a fresh process
+    with an empty ``_job_names`` (Discovery F).
     """
 
     name = "k8s"
@@ -49,10 +55,23 @@ class K8sSandboxConnector:
         ttl_seconds: float | None = None,
         ready_timeout_s: float | None = None,
         ready_poll_interval_s: float | None = None,
+        credentials_only: bool | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self.namespace = namespace or self._settings.k8s_namespace
-        self._batch_api = batch_api if batch_api is not None else self._load_batch_api()
+        self._credentials_only = (
+            credentials_only if credentials_only is not None else self._settings.k8s_sandbox_credentials_only
+        )
+        # In credentials_only mode (set by K8sExecutionBackend in the pod's own
+        # env — Discovery F) this connector never creates/waits/deletes a Job,
+        # so it has no need for a Batch API client at all; skip loading one
+        # (avoids requiring kube-apiserver RBAC access from inside the pod
+        # just to mint a token for the Job that's already running it).
+        self._batch_api: Any = (
+            None
+            if self._credentials_only
+            else (batch_api if batch_api is not None else self._load_batch_api())
+        )
         self._job_names: dict[str, str] = {}
         self._ttl_seconds = (
             ttl_seconds if ttl_seconds is not None else self._settings.k8s_sandbox_ttl_seconds
@@ -179,6 +198,25 @@ class K8sSandboxConnector:
         *,
         tenant_id: str = "default",
     ) -> SandboxCredentials:
+        if self._credentials_only:
+            # The pod running this code is the Job K8sExecutionBackend already
+            # created for this exact run_id (Discovery F) — creating another
+            # one here would be a second, parasitic Job that the same-run_id
+            # guard below can't catch (fresh process, empty _job_names). Just
+            # mint the token; there is nothing to place.
+            token = mint_sandbox_token(
+                run_id=run_id,
+                persona=persona,
+                tenant_id=tenant_id,
+                job_id=run_id,
+                ttl_s=self._ttl_seconds,
+                secret=self._settings.bus_signing_key_bytes,
+            )
+            return SandboxCredentials(
+                sandbox_id=f"k8s-{self._job_name(run_id, persona)}",
+                endpoint=f"kubernetes://{self.namespace}/job/{self._job_name(run_id, persona)}",
+                token=token,
+            )
         if self._batch_api is None:
             raise RuntimeError(
                 "kubernetes sandbox unavailable — batch API client is not configured; "
