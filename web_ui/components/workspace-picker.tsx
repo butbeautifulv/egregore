@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 
-import { listWorkspaces, type WorkspaceSummary } from "@/lib/api-client"
+import { useWorkspaces } from "@/hooks/use-workspaces"
 import {
   getSelectedTenantId,
   getSelectedWorkspaceId,
@@ -17,48 +17,22 @@ import {
 } from "@/vendor/gui/ui/select"
 
 export function WorkspacePicker() {
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
-  const [selected, setSelected] = useState("")
-  const [loading, setLoading] = useState(true)
+  const tenantId = getSelectedTenantId()
+  const { workspaces, loading } = useWorkspaces(tenantId)
+  const [selected, setSelected] = useState(() => getSelectedWorkspaceId())
 
   useEffect(() => {
-    let cancelled = false
-    const tenantId = getSelectedTenantId()
-    setSelected(getSelectedWorkspaceId())
-    void listWorkspaces(tenantId)
-      .then((data) => {
-        if (cancelled) {
-          return
-        }
-        setWorkspaces(data.workspaces)
-        const current = getSelectedWorkspaceId()
-        if (!current && data.workspaces.length > 0) {
-          const defaultWs =
-            data.workspaces.find((ws) => ws.id.endsWith("-default")) ?? data.workspaces[0]
-          setSelected(defaultWs.id)
-          setSelectedWorkspaceId(defaultWs.id)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setWorkspaces([])
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    if (!workspaces || workspaces.length === 0 || getSelectedWorkspaceId()) return
+    const defaultWs = workspaces.find((ws) => ws.id.endsWith("-default")) ?? workspaces[0]
+    setSelectedWorkspaceId(defaultWs.id)
+    setSelected(defaultWs.id)
+  }, [workspaces])
 
-  if (loading && workspaces.length === 0) {
+  if (loading && !workspaces) {
     return null
   }
 
-  if (workspaces.length === 0) {
+  if (!workspaces || workspaces.length === 0) {
     return null
   }
 

@@ -27,6 +27,7 @@ export type EgregoreRouteSkeletonVariant =
   | "catalog-memory"
   | "catalog-memory-feed"
   | "table"
+  | "workspace"
   | "login"
 
 export function EgregoreRouteSkeleton({ variant }: { variant: EgregoreRouteSkeletonVariant }) {
@@ -36,7 +37,10 @@ export function EgregoreRouteSkeleton({ variant }: { variant: EgregoreRouteSkele
         <LoginFormSkeleton />
       ) : (
         <>
-          {variant === "investigation" || variant === "catalog-agent" || variant === "catalog-memory" ? (
+          {variant === "investigation" ||
+          variant === "catalog-agent" ||
+          variant === "catalog-memory" ||
+          variant === "workspace" ? (
             <PageHeaderWithActionsSkeleton />
           ) : (
             <PageHeaderSkeleton />
@@ -106,6 +110,22 @@ export function EgregoreRouteSkeleton({ variant }: { variant: EgregoreRouteSkele
             <>
               <TableToolbarSkeleton />
               <TableRowsSkeleton rows={8} />
+            </>
+          ) : null}
+
+          {variant === "workspace" ? (
+            <>
+              <TwoColumnCardsSkeleton />
+              <div className="flex flex-col gap-3 border p-4">
+                <Skeleton className="h-5 w-40" />
+                <div className="flex flex-wrap gap-2">
+                  <Skeleton className="h-8 w-24" />
+                  <Skeleton className="h-8 w-24" />
+                  <Skeleton className="h-8 w-24" />
+                </div>
+                <TableToolbarSkeleton />
+                <TableRowsSkeleton rows={6} />
+              </div>
             </>
           ) : null}
         </>
