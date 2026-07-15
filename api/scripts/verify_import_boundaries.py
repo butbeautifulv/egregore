@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -310,7 +309,11 @@ def main() -> int:
         ("bootstrap/interfaces in cys_core", check_bootstrap_interfaces(), len(ALLOWLIST_BOOTSTRAP_INTERFACES)),
         ("application → interfaces", check_application_no_interfaces(), len(ALLOWLIST_APPLICATION_INTERFACES)),
         ("application → bootstrap", check_application_no_bootstrap(), len(ALLOWLIST_APPLICATION_BOOTSTRAP)),
-        ("application → infrastructure", check_application_no_infrastructure(), len(ALLOWLIST_APPLICATION_INFRASTRUCTURE)),
+        (
+            "application → infrastructure",
+            check_application_no_infrastructure(),
+            len(ALLOWLIST_APPLICATION_INFRASTRUCTURE),
+        ),
         ("application → registry", check_application_no_registry(), len(ALLOWLIST_APPLICATION_REGISTRY)),
         ("application → observability", check_application_no_observability(), len(ALLOWLIST_APPLICATION_OBSERVABILITY)),
         ("application → runtime", check_application_no_runtime(), len(ALLOWLIST_APPLICATION_RUNTIME)),
