@@ -22,24 +22,22 @@ jobs:
       - name: Gate check
         run: |
           mkdir -p reports
-          SARIF="reports/checkov.sarif"
-          if [ -d "$SARIF" ]; then
-            FOUND="$(find "$SARIF" -type f -name '*.sarif' | head -1)"
+          FLAT="reports/checkov-report.sarif"
+          if [ -d reports/checkov.sarif ]; then
+            FOUND="$(find reports/checkov.sarif -type f -name '*.sarif' | head -1)"
             if [ -n "$FOUND" ]; then
-              mv "$FOUND" reports/checkov-gate.sarif
-              rm -rf "$SARIF"
-              SARIF="reports/checkov-gate.sarif"
-              mv "$SARIF" reports/checkov.sarif
-              SARIF="reports/checkov.sarif"
+              cat "$FOUND" > "$FLAT"
             fi
+          elif [ -f reports/checkov.sarif ]; then
+            FLAT="reports/checkov.sarif"
           fi
-          if [ ! -f "$SARIF" ]; then
-            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > "$SARIF"
+          if [ ! -f "$FLAT" ]; then
+            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > "$FLAT"
           fi
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control iac --report "$SARIF" --policy "$POLICY"
+          python scripts/gate-check.py --control iac --report "$FLAT" --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: reports/checkov.sarif
+          sarif_file: reports/checkov-report.sarif
           category: iac
