@@ -29,11 +29,10 @@ Verify: `npx shadcn@latest preset resolve` → `b3Rq8QejA`.
 
 | Source | Style | Activation |
 |--------|-------|------------|
-| `shared/gui` | semantic tokens | default nova; lyra via `data-gui-style` |
-| Egregore `vendor/gui` | same code as shared/gui | `data-gui-style="lyra"` on `<html>` |
+| Egregore `vendor/gui` (own code) | semantic tokens | `data-gui-style="lyra"` on `<html>` |
 | FSTEC | radix-nova | no attribute |
 
-Lyra geometry and control typography come from [`shared/gui/gui-style-profiles.css`](../../../../shared/gui/gui-style-profiles.css), vendored to `vendor/gui-style-profiles.css` and imported in `app/globals.css`. **No post-sync regex adaptation.**
+Lyra geometry and control typography live in `vendor/gui-style-profiles.css`, imported in `app/globals.css`. **No post-sync regex adaptation.**
 
 ## Setup
 
@@ -47,18 +46,17 @@ Lyra geometry and control typography come from [`shared/gui/gui-style-profiles.c
 @import "../vendor/gui-style-profiles.css";
 ```
 
-## Re-sync policy
+## If you ever pull an update from `shared/gui`
 
-After **every** `./scripts/vendor-gui.sh`:
+`vendor/gui` is first-party code now (see [GUI_VENDOR.md](GUI_VENDOR.md)) — this is not a routine step. If you do deliberately run `./scripts/vendor-gui.sh`:
 
 1. `node scripts/rewrite-vendor-imports.mjs` (run automatically by `vendor-gui.sh`)
-2. Confirm `vendor/gui-style-profiles.css` was copied from `shared/gui`
+2. Confirm `vendor/gui-style-profiles.css` was copied correctly
+3. Review the diff — `rsync --delete` can remove local edits that don't exist upstream
 
 Do **not** run `apply-vendor-lyra-adaptation.mjs` for token mapping — it is a deprecated no-op.
 
-## Semantic tokens (shared/gui)
-
-See [`shared/gui/docs/gui-style-profiles.md`](../../../../shared/gui/docs/gui-style-profiles.md).
+## Semantic tokens
 
 | Nova | Lyra | Token |
 |------|------|-------|

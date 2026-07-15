@@ -68,9 +68,9 @@ curl -k -sf "$BASE/api/egregore/v1/work-orders?tenant_id=default&limit=1" | head
 
 In browser DevTools → Network: `engagements` should return 200 within ~20s, not stay pending forever.
 
-## GUI vendor sync
+## GUI component library
 
-See [docs/GUI_VENDOR.md](docs/GUI_VENDOR.md). DataTable modules come from `shared/gui`.
+See [docs/GUI_VENDOR.md](docs/GUI_VENDOR.md) — `vendor/gui` is Egregore's own component library, DataTable included.
 
 ## Navigation
 

@@ -1,50 +1,33 @@
-# GUI vendor sync
+# GUI component library (`vendor/gui`)
 
-Egregore UI copies a minimal subset of [`shared/gui`](../../../../shared/gui) into `vendor/gui/`. We do **not** use `file:../../shared/gui` as a bun `file:` dependency.
+`vendor/gui` is Egregore's own component library — first-party code that lives and is edited directly in this repo, not a package we depend on or keep in sync with anything external. It originated as a cherry-picked copy of `shared/gui` (the meta-repo's component kit), but that lineage is history at this point: there is no `file:../../shared/gui` dependency, no expectation that `vendor/gui` mirrors upstream, and no requirement to re-sync after changes land in `shared/gui`.
 
-## Why vendor-copy
+Screen components import from `@/vendor/gui/ui/*` (not `@/components/ui/*`). Use `PageHeader` for page titles.
 
-- Avoids import resolution issues in Next.js builds and tests
-- Keeps the operator UI self-contained for deployment
-- Allows cherry-picking only the components we need
+## Pulling in a change from `shared/gui` (rare, opt-in)
 
-## Sync workflow
-
-From `projects/egregore/web_ui` (meta-repo checkout required for `shared/gui`):
+If you deliberately want to pull a specific update from `shared/gui` — e.g. a new primitive that doesn't exist here yet — `scripts/vendor-gui.sh` can still do that one-off import. It is **not** part of the normal workflow and should not be run reflexively.
 
 ```bash
+# From projects/egregore/web_ui, with a meta-repo checkout available:
 ./scripts/vendor-gui.sh
 ```
 
-This runs, in order: rsync from `shared/gui` → copy `gui-style-profiles.css` → `rewrite-vendor-imports.mjs`.
+This runs, in order: rsync from `shared/gui` (with `--delete`) → copy `gui-style-profiles.css` → `rewrite-vendor-imports.mjs` (rewrites `@cxado/gui/` → `@/vendor/gui/`).
 
-Manual import rewrite (if not using `vendor-gui.sh`):
+**This is destructive to local edits.** Because `vendor/gui` is now hand-edited, `vendor-gui.sh` refuses to run if `vendor/gui` has uncommitted changes — commit or stash them first, then review the diff after running it like any other change, since `rsync --delete` will happily remove local additions that don't exist upstream.
 
-```bash
-node scripts/rewrite-vendor-imports.mjs
-```
-
-See [VENDOR_GUI_LYRA_LOG.md](VENDOR_GUI_LYRA_LOG.md) for the Lyra profile (`data-gui-style="lyra"`).
-
-Override source path when needed:
+Override the source path when needed:
 
 ```bash
 GUI_SRC=/path/to/shared/gui/src ./scripts/vendor-gui.sh
 ```
 
-`vendor-gui.sh` rsyncs these paths from `shared/gui/src/`:
-
-- `shell/`, `theme/`, `motion/`, `hooks/`, `ui/`, `layout/`
-- `data-table/`, `lib/data-table/`, `lib/datetime/`
-- `utils.ts`
-
-Also copies `shared/gui/gui-style-profiles.css` → `vendor/gui-style-profiles.css`.
-
-Then `rewrite-vendor-imports.mjs` rewrites `@cxado/gui/` → `@/vendor/gui/`.
+It rsyncs these paths from `shared/gui/src/`: `shell/`, `theme/`, `motion/`, `hooks/`, `ui/`, `layout/`, `data-table/`, `lib/data-table/`, `lib/datetime/`, `utils.ts`.
 
 ## Style profile (Lyra)
 
-`shared/gui` uses semantic style tokens (`rounded-gui-control`, `ring-gui-focus`, …). Egregore activates **radix-lyra** via:
+The component kit uses semantic style tokens (`rounded-gui-control`, `ring-gui-focus`, …). Egregore activates **radix-lyra** via:
 
 ```tsx
 <html data-gui-style="lyra">
@@ -52,11 +35,11 @@ Then `rewrite-vendor-imports.mjs` rewrites `@cxado/gui/` → `@/vendor/gui/`.
 
 and `@import "../vendor/gui-style-profiles.css"` in `app/globals.css`.
 
-No post-sync `apply-vendor-lyra-adaptation.mjs` token mapping.
+See [VENDOR_GUI_LYRA_LOG.md](VENDOR_GUI_LYRA_LOG.md) for the Lyra profile background. No post-sync `apply-vendor-lyra-adaptation.mjs` token mapping — that script is a deprecated no-op.
 
 ## Theme / colors
 
-**Do not** `@import` `shared/gui/tailwind.preset.css` as the canonical color source. That preset only defines `@theme inline` tokens without full `:root` values.
+**Do not** `@import` a `tailwind.preset.css` as the canonical color source — that preset only defines `@theme inline` tokens without full `:root` values.
 
 Canonical theme is preset **`b3Rq8QejA`** (Lyra + neutral baseColor + lime theme). Apply with:
 
@@ -66,13 +49,14 @@ bunx shadcn@latest apply b3Rq8QejA --yes
 
 `app/globals.css` and `components.json` are updated by the CLI.
 
-## What to cherry-pick
+## Adding components
 
-Copy only modules required by current screens. Prefer adding directories to `vendor-gui.sh` over copying all of `src/`.
+Add new components directly under `vendor/gui/` like any other first-party module — there's no "cherry-pick from upstream" ceremony required. Use the `shadcn` CLI (see [`.agents/skills/shadcn`](../.agents/skills/shadcn/SKILL.md)) or write them by hand, matching the existing token conventions.
 
-After sync, run:
+After any change here, run:
 
 ```bash
 bun run typecheck
+bun run lint
 bun run build
 ```
