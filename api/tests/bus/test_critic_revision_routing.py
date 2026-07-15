@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -26,7 +26,9 @@ async def test_critic_revision_routes_to_queue(monkeypatch):
     transport.subscribe(DELIVERY_TOPIC, router.route_envelope)
 
     mock_critic = MagicMock()
-    mock_critic.execute.return_value = {"passed": False, "reason": "low_quality"}
+    mock_critic.execute_async = AsyncMock(
+        return_value={"passed": False, "reason": "low_quality"},
+    )
     mock_bus = MagicMock()
     mock_bus.send_message.return_value = {
         "recipient": "soc",
@@ -43,7 +45,10 @@ async def test_critic_revision_routes_to_queue(monkeypatch):
         patch("interfaces.control_plane.critic_service.build_agent_bus", return_value=mock_bus),
         patch(
             "interfaces.control_plane.critic_service.get_container",
-            lambda: MagicMock(get_engagement_egress=lambda: MagicMock()),
+            lambda: MagicMock(
+                get_engagement_egress=lambda: MagicMock(),
+                settings=MagicMock(bus_max_revisions_per_persona=10),
+            ),
         ),
     ):
         from interfaces.control_plane.critic_service import CriticService

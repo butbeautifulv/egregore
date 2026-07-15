@@ -12,6 +12,17 @@ from tests.application.fakes.job_queue import FakeJobQueue, FakeJobStore
 from tests.application.workers.factory import build_run_worker_job_for_tests
 
 
+def _worker_settings(**overrides):
+    defaults = {
+        "worker_max_dependency_deferrals": 10,
+        "worker_soft_timeout_fraction": 0.9,
+        "resolve_worker_job_timeout": lambda **kwargs: 300.0,
+        "job_cost_per_1k_tokens_usd": 0.01,
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_dependency_not_ready_requeues_to_front(monkeypatch):
@@ -44,6 +55,10 @@ async def test_dependency_not_ready_requeues_to_front(monkeypatch):
 
         def get_metrics_port(self):
             return MagicMock()
+
+        @property
+        def settings(self):
+            return _worker_settings()
 
     class EngagementStore:
         def get(self, tenant_id: str, engagement_id: str):
@@ -181,10 +196,7 @@ async def test_failed_upstream_unblocks_sequential_downstream(monkeypatch):
 
         @property
         def settings(self):
-            return SimpleNamespace(
-                resolve_worker_job_timeout=lambda **kwargs: 300.0,
-                job_cost_per_1k_tokens_usd=0.01,
-            )
+            return _worker_settings()
 
         def get_profile_policy_port(self):
             return MagicMock(get_cost_per_1k_tokens=MagicMock(return_value=0.01))
