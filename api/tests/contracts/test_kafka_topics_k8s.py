@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-TOPICS_JOB = REPO_ROOT / "deploy" / "k8s" / "cxado-offline" / "15-redpanda-topics-job.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+TOPICS_JOB = REPO_ROOT / "contracts" / "k8s" / "cxado-offline" / "15-redpanda-topics-job.yaml"
 
 
 @pytest.mark.unit

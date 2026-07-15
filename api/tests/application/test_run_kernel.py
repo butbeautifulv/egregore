@@ -13,7 +13,7 @@ from cys_core.application.runs.kernel_mappers import (
 from cys_core.application.runs.kernel_memory import record_memory_write
 from cys_core.application.runs.kernel_tool_capture import capture_tool_traces
 from cys_core.domain.runs.kernel_models import RunKernelMode
-from cys_core.domain.runs.models import ContextKind, InteractionMode, RunContext
+from cys_core.domain.runs.models import InteractionMode, RunContext
 from cys_core.domain.runs.state_models import RunState
 from cys_core.domain.workers.models import WorkerJob
 
@@ -109,6 +109,15 @@ def test_interactive_and_worker_share_trajectory_schema() -> None:
     traj_w = new_trajectory(worker)
     record_memory_write(traj_i, interactive, memory_type="finding", size=10)
     capture_tool_traces({"reasoning_steps": [{"tool": "t", "args": {}}]}, traj_w)
-    shared_keys = {"trajectory_id", "context_id", "tenant_id", "profile_id", "persona", "correlation_id", "run_id", "events"}
+    shared_keys = {
+        "trajectory_id",
+        "context_id",
+        "tenant_id",
+        "profile_id",
+        "persona",
+        "correlation_id",
+        "run_id",
+        "events",
+    }
     assert shared_keys <= set(traj_i.model_dump().keys())
     assert shared_keys <= set(traj_w.model_dump().keys())

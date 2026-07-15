@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Callable
 
+from cys_core.application.catalog_mutation_service import CatalogMutationService
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.schema_registry import SchemaRegistryPort
-from cys_core.application.catalog_mutation_service import CatalogMutationService
 from cys_core.domain.catalog.models import AgentCatalogEntry, CatalogSource, PersonaQuality
 
 
@@ -64,7 +64,10 @@ class UpsertCatalogAgent:
             source=CatalogSource.API,
             budget_max_tokens=body.get("budget_max_tokens", existing.budget_max_tokens if existing else None),
             budget_max_cost_usd=body.get("budget_max_cost_usd", existing.budget_max_cost_usd if existing else None),
-            budget_max_tool_calls=body.get("budget_max_tool_calls", existing.budget_max_tool_calls if existing else None),
+            budget_max_tool_calls=body.get(
+                "budget_max_tool_calls",
+                existing.budget_max_tool_calls if existing else None,
+            ),
             data_clearance=body.get("data_clearance", existing.data_clearance if existing else "internal"),
         )
         if self._mutation is not None:

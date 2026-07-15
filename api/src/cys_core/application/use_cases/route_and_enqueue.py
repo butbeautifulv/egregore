@@ -4,10 +4,10 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, CorrelationIdPort, NOOP_APPLICATION_TRACING
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort, CorrelationIdPort
+from cys_core.application.routing.event_router import EventRouter
 from cys_core.application.use_cases.dispatch_event import DispatchEvent
 from cys_core.application.use_cases.route_event import RouteEvent
-from cys_core.application.routing.event_router import EventRouter
 from cys_core.domain.events.models import EventType, RoutingDecision, SecurityEvent, Severity
 
 
@@ -44,6 +44,10 @@ class RouteAndEnqueueEvent:
             enqueuer=enqueuer,
             application_tracing=self._tracing,
         )
+
+    @property
+    def router(self) -> EventRouter:
+        return self._route_event._router
 
     def _build_event(
         self,

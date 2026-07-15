@@ -7,10 +7,8 @@ import pytest
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
 from cys_core.domain.catalog.models import (
     AgentCatalogEntry,
-    PersonaQuality,
     ProfilePack,
     ProfilePolicyPayload,
-    TraceCriticPolicy,
 )
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.infrastructure.catalog.memory import InMemoryAgentCatalog
@@ -143,10 +141,12 @@ def _reset_container_and_memory_catalog(monkeypatch: pytest.MonkeyPatch) -> None
     """Use in-memory catalog and reset DI container between tests."""
     import bootstrap.container as container_mod
     from bootstrap.settings import get_settings
+    from cys_core.application.runtime_config import configure_from_settings
 
     monkeypatch.setenv("AUTH_ENABLED", "0")
     monkeypatch.setenv("USE_MEMORY_FALLBACK", "true")
     get_settings.cache_clear()
+    configure_from_settings(get_settings())
     container_mod._container = None
     from cys_core.infrastructure.catalog.catalog_singletons import CatalogSingletons
 
@@ -157,6 +157,14 @@ def _reset_container_and_memory_catalog(monkeypatch: pytest.MonkeyPatch) -> None
         "cys_core.infrastructure.catalog.registry_factory._use_postgres",
         lambda: False,
     )
+    from bootstrap.paths import find_api_root
+    from cys_core.application.skills.catalog import configure_skills_agents_root
+
+    class _AgentsRoot:
+        def agents_root(self):
+            return find_api_root() / "agents"
+
+    configure_skills_agents_root(_AgentsRoot())
     yield
     container_mod._container = None
     CatalogSingletons.reset()
@@ -165,9 +173,9 @@ def _reset_container_and_memory_catalog(monkeypatch: pytest.MonkeyPatch) -> None
 @pytest.fixture
 def reset_infra_caches() -> None:
     """Reset singleton infrastructure connectors between tests."""
+    from cys_core.infrastructure.bus_transport import reset_bus_transport_cache
     from cys_core.infrastructure.kafka_publisher import reset_kafka_publisher_cache
     from cys_core.infrastructure.queue import reset_job_queue_cache
-    from cys_core.infrastructure.bus_transport import reset_bus_transport_cache
 
     reset_job_queue_cache()
     reset_kafka_publisher_cache()
@@ -181,9 +189,10 @@ def reset_infra_caches() -> None:
 @pytest.fixture
 async def fastapi_app(monkeypatch: pytest.MonkeyPatch):
     """FastAPI app with lifespan for API integration tests."""
-    from unittest.mock import MagicMock
+    from unittest.mock import AsyncMock, MagicMock
 
     from httpx import ASGITransport, AsyncClient
+
     from interfaces.api.app import create_app
 
     ingress = MagicMock()
@@ -197,6 +206,8 @@ async def fastapi_app(monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 async def kafka_queue(reset_infra_caches, monkeypatch: pytest.MonkeyPatch):
     """Isolated KafkaJobQueue with broker calls patched out."""
+    from unittest.mock import AsyncMock, MagicMock
+
     from cys_core.infrastructure.kafka_queue import KafkaJobQueue
 
     queue = KafkaJobQueue(persona="consultant", bootstrap_servers="localhost:19092")

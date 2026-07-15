@@ -15,7 +15,7 @@ from cys_core.domain.security.factory import get_input_sanitizer, get_output_gua
 from cys_core.domain.security.guardrails import OutputGuardrails
 from cys_core.domain.security.prompt_context import format_system_prompt
 from cys_core.domain.security.redaction import RedactionService
-from cys_core.domain.security.sanitizer import FUZZY_KEYWORDS, InputSanitizer, InjectionVerdict
+from cys_core.domain.security.sanitizer import FUZZY_KEYWORDS, InjectionVerdict, InputSanitizer
 from cys_core.domain.security.scope import ScopePolicy
 from cys_core.domain.workers.job_budget import JobBudgetTracker
 

@@ -7,7 +7,10 @@ import structlog
 from langchain_core.tools import BaseTool, StructuredTool, tool
 
 from cys_core.application.ports.tool_backend import ToolBackend
-from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID, resolve_profile_id
+from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+from cys_core.registry.nessus_tools import build_nessus_tools
+from cys_core.registry.siem_tools import build_siem_tools
+from cys_core.registry.veil_tools import build_veil_tools
 
 _tool_backend: ToolBackend | None = None
 
@@ -290,6 +293,7 @@ def reasoning_check(goal: str, trace_json: str) -> str:
 @tool
 async def extract_structured_output(goal: str, agent_summary: str, schema_type: str = "") -> str:
     """Extract structured deliverable with confidence and weaknesses."""
+    from bootstrap.settings import get_settings
     from cys_core.application.runtime_config import get_self_consistency_n
     from cys_core.application.use_cases.extract_structured_output import (
         build_structured_extraction_prompt,
@@ -297,7 +301,6 @@ async def extract_structured_output(goal: str, agent_summary: str, schema_type: 
         parse_structured_output,
     )
     from cys_core.security.monitor import AgentMonitor
-    from bootstrap.settings import get_settings
 
     AgentMonitor("conductor").log_orchestration_tool(
         "extract",
@@ -626,16 +629,8 @@ _ALL_TOOLS: list[BaseTool] = [
 
 _BUILTIN_TOOL_NAMES: list[str] = [tool.name for tool in _ALL_TOOLS]
 
-from cys_core.registry.veil_tools import build_veil_tools
-
 _ALL_TOOLS.extend(build_veil_tools())
-
-from cys_core.registry.siem_tools import build_siem_tools
-
 _ALL_TOOLS.extend(build_siem_tools())
-
-from cys_core.registry.nessus_tools import build_nessus_tools
-
 _ALL_TOOLS.extend(build_nessus_tools())
 
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from cys_core.application.plans.plan_loader import load_plans_from_dir
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
 from cys_core.application.ports.registry_catalogs import PlanCatalogPort
 from cys_core.application.runtime_config import get_use_dynamic_catalog
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
-from cys_core.application.plans.plan_loader import load_plans_from_dir
 from cys_core.domain.events.plans import PlanRoutingConfig, parse_rule, rule_matches
 
 

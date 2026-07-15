@@ -10,7 +10,9 @@ from interfaces.api.follow_ups import router
 
 
 def _follow_up_app(monkeypatch, use_case: MagicMock) -> FastAPI:
-    monkeypatch.setattr("interfaces.api.follow_ups._get_enqueue_follow_up", lambda: use_case)
+    container = MagicMock()
+    container.get_enqueue_follow_up.return_value = use_case
+    monkeypatch.setattr("interfaces.api.follow_ups.get_container", lambda: container)
     app = FastAPI()
     app.include_router(router)
     return app

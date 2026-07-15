@@ -4,13 +4,13 @@ from typing import Any
 
 from bootstrap.container import get_container
 from cys_core.application.bus_engagement import extract_engagement_id, normalize_correlation_id
-from cys_core.application.engagement_bus_guard import get_engagement_bus_guard
-from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.control_plane.critic_display import (
     critic_verdict_visible_to_operator,
     format_critic_operator_message,
     format_soc_revision_manifest_hint,
 )
+from cys_core.application.engagement_bus_guard import get_engagement_bus_guard
+from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.application.workers.tool_execution_tracker import get_persona_manifests
 from cys_core.domain.security.bus_messages import BusMessageType
@@ -68,7 +68,7 @@ class CriticService(ControlMessageHandler):
 
     async def handle_message(self, envelope: dict[str, Any]) -> dict[str, Any]:
         context = self.extract_context(envelope)
-        payload = context["payload"]
+        context["payload"]
         finding = context["finding"]
         persona = context["sender"]
         tenant_id = context["tenant_id"]
@@ -81,7 +81,6 @@ class CriticService(ControlMessageHandler):
             investigation_id=engagement_id,
             tenant_id=tenant_id,
         )
-        revision_enqueued = False
         if not result.get("passed", True) and not is_noop_finding(finding if isinstance(finding, dict) else {}):
             settings = get_container().settings
             guard = get_engagement_bus_guard()
@@ -102,7 +101,6 @@ class CriticService(ControlMessageHandler):
             else:
                 feedback = format_critic_operator_message(result, source_persona=persona)
                 if await self._enqueue_revision(envelope, feedback=feedback):
-                    revision_enqueued = True
                     result = {**result, "revision_enqueued": True}
                 else:
                     result = {

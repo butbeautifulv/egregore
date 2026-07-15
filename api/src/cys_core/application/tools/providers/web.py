@@ -21,6 +21,16 @@ WEB_TOOL_DEFINITIONS: list[ToolDefinitionView] = [
         status=ToolStatus.REAL,
         description="Archived webpage lookup",
     ),
-    ToolDefinitionView(name="vision_analyze", module="web", status=ToolStatus.REAL, description="Vision / image analysis"),
-    ToolDefinitionView(name="transcribe_audio", module="web", status=ToolStatus.REAL, description="Audio transcription"),
+    ToolDefinitionView(
+        name="vision_analyze",
+        module="web",
+        status=ToolStatus.REAL,
+        description="Vision / image analysis",
+    ),
+    ToolDefinitionView(
+        name="transcribe_audio",
+        module="web",
+        status=ToolStatus.REAL,
+        description="Audio transcription",
+    ),
 ]

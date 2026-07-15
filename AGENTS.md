@@ -175,6 +175,8 @@ cd api && ./scripts/pytest_batches.sh
 cd api && ./scripts/pytest_batches.sh --cov --domain-gate
 make -C api domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
 make -C api verify-architecture  # import boundaries + lint-imports + tests/architecture
+checkov -d deploy --framework helm,dockerfile --config-file .checkov.yaml --soft-fail \
+  --output sarif --output-file-path reports/checkov.sarif  # IaC gate smoke (from repo root)
 cd api && ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
 cd api && USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
 ```

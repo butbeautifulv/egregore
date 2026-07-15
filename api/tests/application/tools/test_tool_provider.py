@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.application.tools.registry_provider import RegistryToolProvider, get_default_tool_provider
+from cys_core.application.tools.registry_provider import RegistryToolProvider
 from cys_core.application.tools.tool_schema_exporter import ToolSchemaExporter
 from cys_core.domain.datasources.schema_models import ModelFamily
 from cys_core.domain.tools.models import ToolInvokeCommand, ToolStatus

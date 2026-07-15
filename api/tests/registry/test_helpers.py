@@ -3,7 +3,9 @@ from __future__ import annotations
 import pytest
 
 from bootstrap import product_loader
+from bootstrap.agent_definitions_loader import get_default_agent_definitions_loader
 from cys_core.registry import agents
+from cys_core.registry.agents import configure_agent_definitions_loader
 
 
 @pytest.mark.unit
@@ -58,6 +60,9 @@ def test_registry_helpers_and_temp_agent_loading(tmp_path, monkeypatch):
         registry.get("missing")
 
     agents.get_agent_registry.cache_clear()
+
+    monkeypatch.setattr("cys_core.registry.agents.get_use_dynamic_catalog", lambda: False)
+    configure_agent_definitions_loader(get_default_agent_definitions_loader())
     monkeypatch.setattr(product_loader, "default_agents_root", lambda: root)
     try:
         assert agents.get_agent_registry().names() == ["alpha"]

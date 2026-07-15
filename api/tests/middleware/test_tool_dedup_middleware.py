@@ -6,7 +6,6 @@ import pytest
 import structlog
 from langchain_core.messages import ToolMessage
 
-from cys_core.application.workers.tool_execution_tracker import clear_tool_execution_count
 from cys_core.middleware.tool_dedup_middleware import ToolDedupMiddleware, clear_tool_dedup
 
 
@@ -21,7 +20,8 @@ def _request(tool_name: str, args: dict | None = None, job_id: str = "job-dedup"
 def test_tool_dedup_blocks_third_identical_call() -> None:
     clear_tool_dedup("job-dedup")
     middleware = ToolDedupMiddleware(persona="soc")
-    handler = lambda req: ToolMessage(content="ok", tool_call_id="call-1")
+    def handler(req):
+        return ToolMessage(content="ok", tool_call_id="call-1")
     assert middleware.wrap_tool_call(_request("investigate_incident"), handler).content == "ok"
     assert middleware.wrap_tool_call(_request("investigate_incident"), handler).content == "ok"
     blocked = middleware.wrap_tool_call(_request("investigate_incident"), handler)

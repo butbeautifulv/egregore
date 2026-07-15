@@ -2,19 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
-
 from bootstrap.settings import get_settings
+from cys_core.application.plans.plan_loader import load_plan_routing
 from cys_core.domain.catalog.models import (
     CatalogSource,
     McpServerEntry,
     PlanCatalogEntry,
-    StagingStatus,
     SkillCatalogEntry,
+    StagingStatus,
 )
-from cys_core.application.plans.plan_loader import load_plan_routing
 from cys_core.registry.product_context import default_agents_root
-from cys_core.registry.skill_registry import SkillRegistry, compute_skill_hash, _parse_skill_md
+from cys_core.registry.skill_registry import SkillRegistry, _parse_skill_md, compute_skill_hash
 
 
 def load_skills_for_seed(profile_id: str = "cybersec-soc") -> list[SkillCatalogEntry]:

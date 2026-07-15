@@ -5,14 +5,27 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from bootstrap.settings import get_settings
-from cys_core.application.runtime_config import get_serper_api_key, get_web_search_provider, get_perplexity_api_key, get_jina_api_key
-from cys_core.infrastructure.tools.adapters.search_stack import enhance_query, judge_search_relevance, jina_search, perplexity_search
+from cys_core.application.runtime_config import (
+    get_duckduckgo_api_timeout_s,
+    get_duckduckgo_api_url,
+    get_jina_api_key,
+    get_perplexity_api_key,
+    get_serper_api_key,
+    get_serper_api_timeout_s,
+    get_serper_api_url,
+    get_web_search_default_limit,
+    get_web_search_provider,
+)
+from cys_core.infrastructure.tools.adapters.search_stack import (
+    enhance_query,
+    jina_search,
+    judge_search_relevance,
+    perplexity_search,
+)
 
 
 def web_search(query: str, *, limit: int | None = None) -> dict[str, Any]:
-    settings = get_settings()
-    resolved_limit = limit if limit is not None else settings.web_search_default_limit
+    resolved_limit = limit if limit is not None else get_web_search_default_limit()
     meta = enhance_query(query)
     enhanced = meta["enhanced_query"]
     engines: list[str] = []
@@ -48,13 +61,12 @@ def web_search(query: str, *, limit: int | None = None) -> dict[str, Any]:
 
 
 def _duckduckgo_search(query: str, *, limit: int) -> dict[str, Any]:
-    settings = get_settings()
-    base = settings.duckduckgo_api_url.rstrip("/?")
+    base = get_duckduckgo_api_url().rstrip("/?")
     url = base + "/?" + urllib.parse.urlencode(
         {"q": query, "format": "json", "no_redirect": "1", "no_html": "1"}
     )
     try:
-        with urllib.request.urlopen(url, timeout=settings.duckduckgo_api_timeout_s) as resp:
+        with urllib.request.urlopen(url, timeout=get_duckduckgo_api_timeout_s()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         return {"success": False, "error": str(exc), "results": [], "provider": "duckduckgo"}
@@ -64,21 +76,26 @@ def _duckduckgo_search(query: str, *, limit: int) -> dict[str, Any]:
         results.append({"title": data.get("Heading", ""), "snippet": abstract, "url": data.get("AbstractURL", "")})
     for topic in (data.get("RelatedTopics") or [])[:limit]:
         if isinstance(topic, dict) and "Text" in topic:
-            results.append({"title": topic.get("Text", "")[:80], "snippet": topic.get("Text", ""), "url": topic.get("FirstURL", "")})
+            results.append(
+                {
+                    "title": topic.get("Text", "")[:80],
+                    "snippet": topic.get("Text", ""),
+                    "url": topic.get("FirstURL", ""),
+                }
+            )
     return {"success": True, "provider": "duckduckgo", "results": results[:limit]}
 
 
 def _serper_search(query: str, *, limit: int) -> dict[str, Any]:
-    settings = get_settings()
     payload = json.dumps({"q": query, "num": limit}).encode("utf-8")
     req = urllib.request.Request(
-        settings.serper_api_url,
+        get_serper_api_url(),
         data=payload,
         headers={"X-API-KEY": get_serper_api_key(), "Content-Type": "application/json"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=settings.serper_api_timeout_s) as resp:
+        with urllib.request.urlopen(req, timeout=get_serper_api_timeout_s()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         return {"success": False, "error": str(exc), "results": [], "provider": "serper"}

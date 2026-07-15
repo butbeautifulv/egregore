@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-from typing import Any
+from cys_core.application.ports.engagement_store import EngagementStateStore
 
 
 class CoordinatorProgressTracker:
     """Debounce coordinator narratives to engagement-level milestones."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, engagement_store: EngagementStateStore | None = None) -> None:
         self._fingerprints: dict[str, str] = {}
+        self._engagement_store = engagement_store
 
     def _fingerprint(self, tenant_id: str, investigation_id: str) -> str | None:
-        from bootstrap.container import get_container
-
-        store = get_container().get_engagement_state_store()
+        if self._engagement_store is None:
+            return None
+        store = self._engagement_store
         engagement = store.get(tenant_id, investigation_id)
         if engagement is None:
             return None
@@ -47,8 +48,13 @@ class CoordinatorProgressTracker:
 _tracker: CoordinatorProgressTracker | None = None
 
 
-def get_coordinator_progress_tracker() -> CoordinatorProgressTracker:
+def get_coordinator_progress_tracker(
+    *,
+    engagement_store: EngagementStateStore | None = None,
+) -> CoordinatorProgressTracker:
     global _tracker
     if _tracker is None:
-        _tracker = CoordinatorProgressTracker()
+        _tracker = CoordinatorProgressTracker(engagement_store=engagement_store)
+    elif engagement_store is not None and _tracker._engagement_store is None:
+        _tracker._engagement_store = engagement_store
     return _tracker

@@ -4,8 +4,6 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-import httpx
-
 from cys_core.infrastructure.http_client import async_http_client, sync_http_client
 
 

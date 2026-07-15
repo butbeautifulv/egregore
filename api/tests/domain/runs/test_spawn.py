@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from cys_core.domain.runs.models import InteractionMode, RunContext
 from cys_core.domain.runs.spawn import MAX_SPAWN_DEPTH, SpawnWorkerPayload, sanitize_persona_overlay
-from cys_core.domain.runs.models import RunContext, InteractionMode
 
 
 @pytest.mark.unit

@@ -1,0 +1,11 @@
+skip-check:
+  # Chart-level / platform-level — cannot fix in template without env-specific values
+  - CKV_K8S_21   # namespace set via helm install -n
+  - CKV_K8S_35   # secrets via envFrom — external Secret + ConfigMap pattern
+  - CKV_K8S_14   # image tag from values (local/dev)
+  - CKV_K8S_15   # pullPolicy IfNotPresent for dev loop
+  - CKV_K8S_43   # image digest pinned at deploy/Nexus tag, not in chart
+  - CKV2_K8S_6   # NetworkPolicy — enforced at platform/nginx layer
+
+skip-path:
+  - deploy/Dockerfile.corp   # offline/Kaniko path, separate lifecycle

@@ -5,9 +5,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.application.port_fakes import fake_correlation_id_port
 from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
+from cys_core.domain.events.models import RoutingDecision
 from interfaces.ingress.router import EventIngress
+from tests.application.port_fakes import fake_correlation_id_port
 
 
 @pytest.mark.integration
@@ -16,7 +17,12 @@ def test_ingest_enqueues_worker_jobs():
     orchestration.enqueue_from_routing_sync.return_value = ["soc-e1-abc"]
 
     router = SimpleNamespace(
-        route=lambda event: SimpleNamespace(personas=["soc"], playbook_id="incident-triage", notify_control=False)
+        route=lambda event, profile_id=None: RoutingDecision(
+            event_id=event.id,
+            personas=["soc"],
+            playbook_id="incident-triage",
+            notify_control=False,
+        )
     )
     route_and_enqueue = RouteAndEnqueueEvent(
         router=router,

@@ -15,16 +15,15 @@ def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.
         yield mock_client
 
     monkeypatch.setattr(
-        "cys_core.integrations.veil_mcp_client.sync_http_client",
+        "cys_core.infrastructure.http_client.sync_http_client",
         _fake_sync_http_client,
     )
 
 
 @pytest.mark.unit
 def test_invoke_tool_routes_playbook_search(monkeypatch: pytest.MonkeyPatch) -> None:
-    from bootstrap.container import get_container
-
     import cys_core.application.runtime_config as rc
+    from bootstrap.container import get_container
 
     monkeypatch.setattr(rc, "_veil_mcp_enabled", True)
 
@@ -60,9 +59,8 @@ def test_invoke_tool_routes_playbook_search(monkeypatch: pytest.MonkeyPatch) -> 
 
 @pytest.mark.unit
 def test_invoke_tool_routes_ti_search(monkeypatch: pytest.MonkeyPatch) -> None:
-    from bootstrap.container import get_container
-
     import cys_core.application.runtime_config as rc
+    from bootstrap.container import get_container
 
     monkeypatch.setattr(rc, "_veil_mcp_enabled", True)
 

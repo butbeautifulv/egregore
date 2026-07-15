@@ -8,6 +8,8 @@ import httpx
 from cys_core.application.runtime_config import (
     get_veneno_mcp_timeout,
     get_veneno_mcp_url,
+)
+from cys_core.application.runtime_config import (
     veneno_mcp_enabled as _veneno_mcp_enabled,
 )
 from cys_core.infrastructure.http_client import sync_http_client

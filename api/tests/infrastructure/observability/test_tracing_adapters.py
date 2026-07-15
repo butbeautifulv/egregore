@@ -61,7 +61,9 @@ def test_worker_tracing_adapter_yields_span(monkeypatch):
         "cys_core.infrastructure.observability.worker_tracing_adapter.observability_span",
         lambda name, **attrs: _fake_span_ctx(sentinel),
     )
-    port = build_worker_tracing_port()
+    backend = MagicMock()
+    backend.start_span.return_value = "span-1"
+    port = build_worker_tracing_port(lambda: backend)
     with port.span("worker.run", persona="soc") as span:
         assert span is sentinel
 

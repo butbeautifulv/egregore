@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import json
 from collections.abc import Callable
 from typing import Any, Awaitable
 
@@ -14,7 +13,6 @@ from cys_core.application.reasoning.sgr_policy import ResolvedSgrPolicy
 from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL, SchemaGuidedReasoningStep
 from cys_core.middleware._framework_casts import cast_model_response, cast_tool_result
 from cys_core.middleware.sgr_session import SgrSessionState
-
 
 _REASONING_REMINDER = (
     "Before any action tool, you MUST call reasoning_step with structured fields: "
@@ -34,6 +32,18 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
     def session(self) -> SgrSessionState:
         return self._session
 
+    def _prepend_reasoning_reminder(self, request: ModelRequest) -> ModelRequest:
+        from langchain_core.messages import SystemMessage
+
+        if request.system_message is not None:
+            content = str(request.system_message.content or "")
+            return request.override(
+                system_message=SystemMessage(content=f"{_REASONING_REMINDER}\n\n{content}"),
+            )
+        messages = list(request.messages)
+        messages.insert(0, SystemMessage(content=_REASONING_REMINDER))
+        return request.override(messages=messages)
+
     def wrap_model_call(
         self,
         request: ModelRequest,
@@ -41,11 +51,7 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
     ) -> ModelResponse | AIMessage:
         self._session.reset_turn()
         if self._policy.enabled and self._policy.require_before_action:
-            from langchain_core.messages import SystemMessage
-
-            messages = list(request.messages)
-            messages.insert(0, SystemMessage(content=_REASONING_REMINDER))
-            request = request.override(messages=messages)
+            request = self._prepend_reasoning_reminder(request)
         return handler(request)
 
     async def awrap_model_call(
@@ -55,11 +61,7 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
     ) -> ModelResponse | AIMessage:
         self._session.reset_turn()
         if self._policy.enabled and self._policy.require_before_action:
-            from langchain_core.messages import SystemMessage
-
-            messages = list(request.messages)
-            messages.insert(0, SystemMessage(content=_REASONING_REMINDER))
-            request = request.override(messages=messages)
+            request = self._prepend_reasoning_reminder(request)
         result = handler(request)
         if inspect.isawaitable(result):
             return cast_model_response(await result)

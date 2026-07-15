@@ -4,7 +4,6 @@ import hashlib
 import re
 from pathlib import Path
 
-from cys_core.application.ports.attachment_store import AttachmentStorePort
 from cys_core.application.runtime_config import get_run_attachments_dir
 
 

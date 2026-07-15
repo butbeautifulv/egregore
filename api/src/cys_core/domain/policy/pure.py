@@ -4,11 +4,11 @@ from cys_core.domain.catalog.models import AgentCatalogEntry, ModePolicyPayload,
 from cys_core.domain.policy.defaults import (
     ACTION_RISK_MAPPING,
     DEFAULT_MODE_POLICY,
+    MUTATING_TOOLS,
     PERSONA_CLEARANCE,
     PLAN_BLOCKED_TOOLS,
     PROFILE_TOOL_ALLOWLIST,
     READ_ONLY_TOOLS,
-    MUTATING_TOOLS,
     get_persona_budgets,
 )
 from cys_core.domain.runs.models import InteractionMode
@@ -28,7 +28,9 @@ def classify_tool_risk_pure(tool_name: str, policy: ProfilePolicyPayload | None 
     return RiskLevel(raw)
 
 
-def mode_sets_from_policy(policy: ModePolicyPayload | None = None) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+def mode_sets_from_policy(
+    policy: ModePolicyPayload | None = None,
+) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
     if policy and (policy.read_only_tools or policy.plan_blocked_tools):
         read_only = frozenset(policy.read_only_tools) if policy.read_only_tools else READ_ONLY_TOOLS
         plan_blocked = frozenset(policy.plan_blocked_tools) if policy.plan_blocked_tools else PLAN_BLOCKED_TOOLS

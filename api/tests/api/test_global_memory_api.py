@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from cys_core.domain.memory.services import MemoryReadService, MemoryWriteService

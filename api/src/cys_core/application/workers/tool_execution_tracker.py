@@ -3,7 +3,11 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-from bootstrap.settings import get_settings
+from cys_core.application.runtime_config import (
+    get_tool_output_preview_max,
+    get_tool_siem_drilldown_max,
+    get_tool_stored_outputs_max,
+)
 from cys_core.domain.evidence.manifest_builder import build_manifest_from_tool_output, merge_manifests
 from cys_core.domain.evidence.models import EvidenceManifest
 from cys_core.domain.parsing.json_text import parse_json_text
@@ -93,12 +97,12 @@ def record_tool_output(job_id: str, tool_name: str, preview: str) -> None:
     text = (preview or "").strip()
     if not text:
         return
-    if len(text) > get_settings().tool_output_preview_max:
-        text = text[: get_settings().tool_output_preview_max] + "…"
+    if len(text) > get_tool_output_preview_max():
+        text = text[: get_tool_output_preview_max()] + "…"
     with _lock:
         entries = _outputs.setdefault(job_id, [])
         entries.append((tool_name, text))
-        max_stored = get_settings().tool_stored_outputs_max
+        max_stored = get_tool_stored_outputs_max()
         if len(entries) > max_stored:
             del entries[: len(entries) - max_stored]
 
@@ -278,7 +282,7 @@ def siem_drilldown_budget_exhausted(job_id: str) -> bool:
     if not job_id:
         return True
     with _lock:
-        return _siem_drilldown_counts.get(job_id, 0) >= get_settings().tool_siem_drilldown_max
+        return _siem_drilldown_counts.get(job_id, 0) >= get_tool_siem_drilldown_max()
 
 
 def is_siem_telemetry_sparse(job_id: str) -> bool:

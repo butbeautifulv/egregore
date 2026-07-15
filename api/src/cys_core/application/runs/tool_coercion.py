@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import structlog
 from typing import Any
+
+import structlog
 
 from cys_core.application.tools.manifest_enrichment import enrich_technique_id_from_manifest
 from cys_core.domain.tools.coercion import (

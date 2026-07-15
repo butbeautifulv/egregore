@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from cys_core.application.bus_ingress_router import BusIngressRouter
 from cys_core.application.bus_engagement import normalize_correlation_id
+from cys_core.application.bus_ingress_router import BusIngressRouter
 
 if TYPE_CHECKING:
     from bootstrap.container import Container
 
 
 def build_bus_ingress_router(container: Container) -> BusIngressRouter:
-    from interfaces.control_plane.critic_handler import CriticHandler
     from interfaces.control_plane.coordinator_handler import CoordinatorHandler
+    from interfaces.control_plane.critic_handler import CriticHandler
 
     critic = CriticHandler()
     coordinator = CoordinatorHandler()

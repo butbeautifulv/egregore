@@ -12,7 +12,6 @@ from cys_core.application.workers.finding_quality import (
     normalize_consultant_lists,
     normalize_list_field,
 )
-from cys_core.application.workers.tool_execution_tracker import record_tool_execution
 from cys_core.domain.workers.models import WorkerJob
 from cys_core.registry.schemas import schema_registry
 from tests.application.workers.factory import build_run_worker_job_for_tests

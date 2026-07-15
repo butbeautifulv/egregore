@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from cys_core.runtime.agent import AgentRuntime
 from cys_core.registry.agents import AgentDefinition as RegistryAgentDefinition
+from cys_core.runtime.agent import AgentRuntime
 
 
 class _FakeRegistry:

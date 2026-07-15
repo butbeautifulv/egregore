@@ -5,13 +5,12 @@ from typing import TYPE_CHECKING
 from bootstrap.settings import Settings
 
 if TYPE_CHECKING:
+    from bootstrap.container import Container
     from cys_core.application.ports import PersistenceContext
     from cys_core.application.ports.bus import AgentTransportConnector
     from cys_core.application.ports.job_queue import JobQueueConnector
     from cys_core.application.ports.memory import EpisodicMemoryStore
     from cys_core.application.ports.sandbox import SandboxConnector
-
-    from bootstrap.container import Container
 
 
 class PersistenceContainer:

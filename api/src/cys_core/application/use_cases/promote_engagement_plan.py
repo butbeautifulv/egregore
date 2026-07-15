@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from cys_core.application.catalog_mutation_service import CatalogMutationService
 from cys_core.application.ports.engagement_store import EngagementStateStore
-from cys_core.domain.catalog.models import PlanCatalogEntry, CatalogSource
+from cys_core.domain.catalog.models import CatalogSource, PlanCatalogEntry
 
 
 class PromoteEngagementPlanError(Exception):

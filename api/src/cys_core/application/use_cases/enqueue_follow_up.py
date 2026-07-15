@@ -6,7 +6,6 @@ from typing import Any
 
 import structlog
 
-from bootstrap.settings import Settings, get_settings
 from cys_core.application.follow_up.intent import classify_follow_up_mode, orchestrator_persona_for
 from cys_core.application.operator_messages.service import (
     is_follow_up_turn_id,
@@ -18,6 +17,7 @@ from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.ports.metrics import MetricsPort
+from cys_core.application.runtime_config import FollowUpSettings, get_follow_up_settings
 from cys_core.domain.engagement.models import EngagementStatus, SynthesisStatus
 from cys_core.domain.follow_up.models import FOLLOW_UP_PHASE, initial_follow_up_id
 from cys_core.domain.memory.services import MemoryReadService, MemoryWriteService
@@ -46,7 +46,7 @@ class EnqueueFollowUp:
         run_state_store=None,
         engagement_egress: EngagementEgressPort | None = None,
         metrics: MetricsPort | None = None,
-        settings: Settings | None = None,
+        follow_up_settings: FollowUpSettings | None = None,
     ) -> None:
         self._engagement_store = engagement_store
         self._memory_writer = memory_writer
@@ -56,7 +56,7 @@ class EnqueueFollowUp:
         self._run_state_store = run_state_store
         self._engagement_egress = engagement_egress
         self._metrics = metrics
-        self._settings = settings or get_settings()
+        self._settings = follow_up_settings or get_follow_up_settings()
 
     def _ensure_run_context(self, tenant_id: str, engagement_id: str) -> None:
         if self._run_state_store is None:
@@ -248,7 +248,7 @@ class EnqueueFollowUp:
         prior_operator_turns = sum(1 for t in turns if self._turn_role(t) == "operator")
         work_kind = classify_follow_up_mode(
             message,
-            mode=mode,  # type: ignore[arg-type]
+            mode=mode if mode in ("auto", "qa", "orchestrate", "plan") else "auto",
             prior_operator_turns=prior_operator_turns,
         )
         if work_kind == "follow_up_plan":

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -43,7 +41,7 @@ async def test_redis_async_handler_logs_error_when_main_loop_missing_in_prod(mon
     transport._redis = None
 
     async def handler(_message: dict) -> None:
-        return None
+        pass
 
-    transport._run_async_handler("bus.deliveries", handler({}))  # noqa: B012 — tests sync dispatch path
+    transport._run_async_handler("bus.deliveries", handler({}))
     assert "redis_bus_main_loop_not_set" in logged

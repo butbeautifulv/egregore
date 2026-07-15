@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from cys_core.application.ports.reflexion import ReflexionLesson, ReflexionStorePort
-from cys_core.domain.security.factory import get_input_sanitizer
 from cys_core.domain.security.exceptions import SecurityViolation
+from cys_core.domain.security.factory import get_input_sanitizer
 
 
 class InMemoryReflexionStore:

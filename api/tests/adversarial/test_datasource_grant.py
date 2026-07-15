@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cys_core.application.authz.service import AuthzDenied, AuthzService
+from cys_core.application.authz.service import AuthzService
 from cys_core.application.use_cases.invoke_tool import InvokeTool
 from cys_core.domain.tools.models import ToolInvokeCommand
 
@@ -26,8 +26,26 @@ class _DenyAuthzPort:
         return True
 
 
+class _FakeDatasourceCatalog:
+    def get(self, datasource_id: str):
+        from cys_core.domain.datasources.models import DataSource, DataSourceCapability
+
+        return DataSource(
+            id=datasource_id,
+            type=datasource_id,
+            capabilities=[
+                DataSourceCapability.GET,
+                DataSourceCapability.LIST,
+                DataSourceCapability.QUERY,
+            ],
+        )
+
+
 @pytest.mark.unit
-def test_invoke_tool_denies_siem_without_workspace_grant() -> None:
+def test_invoke_tool_denies_siem_without_workspace_grant(monkeypatch: pytest.MonkeyPatch) -> None:
+    from cys_core.application.datasources import providers
+
+    monkeypatch.setattr(providers, "_catalog", _FakeDatasourceCatalog())
     authz = AuthzService(_DenyAuthzPort(), mode="enforce")
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,

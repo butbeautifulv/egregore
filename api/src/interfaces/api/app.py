@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import cys_core.observability.prometheus_setup  # noqa: F401 — multiprocess atexit
 import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
+import structlog
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -14,14 +14,15 @@ from pydantic import BaseModel, Field
 
 from bootstrap.container import get_container
 from bootstrap.settings import get_settings
-from cys_core.infrastructure.redis_leader import redis_leader
 from cys_core.domain.security.auth_models import AuthClaims
 from cys_core.domain.workers.models import JobResumeRequest
+from cys_core.infrastructure.redis_leader import redis_leader
 from cys_core.observability.http import mount_metrics
 from cys_core.observability.metrics import metrics, seed_agent_trust_gauges
-from cys_core.observability.platform_gauges import refresh_platform_gauges
 from cys_core.observability.otel import instrument_fastapi, setup_otel
-from interfaces.api.tenant_deps import require_tenant_match_http
+from cys_core.observability.platform_gauges import refresh_platform_gauges
+from cys_core.observability.prometheus_setup import register_multiprocess_shutdown
+from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
 from interfaces.api.authz_helpers import (
     require_engagement_relation,
     require_workspace_relation,
@@ -29,9 +30,6 @@ from interfaces.api.authz_helpers import (
     visible_workspace_ids,
     workspace_id_for_job,
 )
-from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
-from interfaces.api.tracing_middleware import tracing_middleware
-from interfaces.api.task_supervisor import BackgroundTaskSupervisor
 from interfaces.api.engagements import _latest_egress_phase
 from interfaces.api.schemas import (
     InvestigationDetailOut,
@@ -40,12 +38,13 @@ from interfaces.api.schemas import (
     InvestigationSummaryOut,
     JobSummaryOut,
 )
+from interfaces.api.task_supervisor import BackgroundTaskSupervisor
+from interfaces.api.tenant_deps import require_tenant_match_http
+from interfaces.api.tracing_middleware import tracing_middleware
 from interfaces.control_plane.postgres_status_store import PostgresStatusStore
 from interfaces.control_plane.status_store import MemoryStatusStore, get_status_store
 from interfaces.ingress.router import EventIngress, get_event_ingress
 from interfaces.worker.hitl_resume import HitlResumeError, resume_worker_job
-
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -61,8 +60,8 @@ class EventIn(BaseModel):
 
 def create_app(ingress: EventIngress | None = None) -> FastAPI:
     """FastAPI app for event ingest and user status."""
-    from bootstrap.container import get_container
 
+    register_multiprocess_shutdown()
     get_container()
 
     @asynccontextmanager
@@ -158,9 +157,9 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
     seed_agent_trust_gauges()
 
     from interfaces.api.catalog import router as catalog_router
-    from interfaces.api.runs import router as runs_router
     from interfaces.api.engagements import router as engagements_router
     from interfaces.api.follow_ups import router as follow_ups_router
+    from interfaces.api.runs import router as runs_router
     from interfaces.api.work_orders import router as work_orders_router
     from interfaces.api.workspaces import router as workspaces_router
 
@@ -313,10 +312,10 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
 
     @app.get("/investigations", response_model=InvestigationsListOut)
     async def list_investigations(
+        response: Response,
         tenant_id: str = "default",
         limit: int = 20,
         cursor: str | None = None,
-        response: Response = None,
         _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     ) -> InvestigationsListOut:
         from cys_core.infrastructure.engagement.list_cursor import InvalidListCursor

@@ -19,6 +19,8 @@ wheels/
 .coverage.*
 coverage.xml
 htmlcov/
+reports/
+*.sarif
 .ruff_cache/
 .import_linter_cache/
 .ty_cache/
@@ -31,6 +33,7 @@ htmlcov/
 # IDE / local agent tooling
 .cursor/
 .agents/
+.claude/worktrees/
 
 # Local jailbreak/injection corpus (threat intel only, never runtime)
 docs/injections/

@@ -1,4 +1,4 @@
-from cys_core.domain.findings.noop import (  # noqa: F401
+from cys_core.domain.findings.noop import (
     NoopClass,
     classify_finding,
     is_noop_finding,

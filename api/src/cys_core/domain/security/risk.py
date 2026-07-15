@@ -30,4 +30,11 @@ def parse_threshold(value: str) -> RiskLevel:
         return RiskLevel.LOW
 
 
-__all__ = ["ACTION_RISK_MAPPING", "RiskLevel", "SEVERITY_RISK", "classify_tool_risk", "classify_severity", "parse_threshold"]
+__all__ = [
+    "ACTION_RISK_MAPPING",
+    "RiskLevel",
+    "SEVERITY_RISK",
+    "classify_tool_risk",
+    "classify_severity",
+    "parse_threshold",
+]

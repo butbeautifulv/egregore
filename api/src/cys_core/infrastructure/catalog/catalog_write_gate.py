@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import threading
-from typing import Callable, cast
+from typing import Callable
 
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.catalog_audit import CatalogAuditPort
@@ -10,15 +11,14 @@ from cys_core.application.ports.registry_catalogs import (
     PlanCatalogPort,
     SkillCatalogPort,
 )
+from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.catalog.models import (
     AgentCatalogEntry,
-    CatalogSource,
     McpServerEntry,
     PlanCatalogEntry,
     SkillCatalogEntry,
     StagingStatus,
 )
-from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.catalog.validation import CrossRefValidator
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.factory import get_input_sanitizer
@@ -29,6 +29,7 @@ from cys_core.domain.security.system_prompt_assembler import (
     had_embedded_rule_sections,
     resolve_persona_prompt,
 )
+from cys_core.infrastructure.catalog.profile_policy import get_profile_policy
 
 
 class CatalogWriteGate:
@@ -94,7 +95,11 @@ class CatalogWriteGate:
         if is_control_persona(entry.name):
             raise SecurityViolation(f"Control persona '{entry.name}' is immutable")
         entry = self._normalize_agent_entry(entry, actor=actor)
-        validator = CrossRefValidator(known_skill_ids=self._skill_ids(), known_tool_names=self._tool_names())
+        validator = CrossRefValidator(
+            known_skill_ids=self._skill_ids(),
+            known_tool_names=self._tool_names(),
+            policy_getter=get_profile_policy,
+        )
         validator.validate_agent(entry)
         with self._lock:
             saved = self._agents.upsert_agent(entry)

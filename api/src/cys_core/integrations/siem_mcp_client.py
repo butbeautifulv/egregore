@@ -6,12 +6,14 @@ from typing import Any
 import httpx
 import structlog
 
+from cys_core.application.runs.tool_coercion import normalize_siem_tool_args
 from cys_core.application.runtime_config import (
     get_siem_mcp_timeout,
     get_siem_mcp_url,
+)
+from cys_core.application.runtime_config import (
     siem_mcp_enabled as _siem_mcp_enabled,
 )
-from cys_core.application.runs.tool_coercion import normalize_siem_tool_args
 from cys_core.domain.tools.catalog.siem import SIEM_TOOL_NAMES as FALLBACK_SIEM_TOOL_NAMES
 from cys_core.integrations.mcp_http import (
     build_tools_call_payload,
@@ -51,8 +53,16 @@ def siem_mcp_enabled() -> bool:
     return _siem_mcp_enabled()
 
 
+def _mcp_content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if content is not None:
+        return json.dumps(content, ensure_ascii=False)
+    return ""
+
+
 def _mcp_validation_error_message(content: Any) -> str | None:
-    text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False) if content is not None else ""
+    text = _mcp_content_text(content)
     if "validation error for call[" in text.lower():
         return text
     return None
@@ -62,7 +72,7 @@ def _mcp_tool_error_message(content: Any) -> str | None:
     validation = _mcp_validation_error_message(content)
     if validation is not None:
         return validation
-    text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False) if content is not None else ""
+    text = _mcp_content_text(content)
     lower = text.lower()
     if "error calling tool" in lower or "siem api error" in lower:
         return text
@@ -152,7 +162,13 @@ def call_siem_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
     except httpx.HTTPError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
         logger.warning("siem_mcp_http_error", tool=tool_name, source="siem-mcp", error=str(exc))
-        return {"success": False, "error": f"SIEM MCP HTTP error: {exc}{_siem_pdql_hint(tool_name, str(exc))}", "source": "siem-mcp", "tool": tool_name}
+        hint = _siem_pdql_hint(tool_name, str(exc))
+        return {
+            "success": False,
+            "error": f"SIEM MCP HTTP error: {exc}{hint}",
+            "source": "siem-mcp",
+            "tool": tool_name,
+        }
     except json.JSONDecodeError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
         logger.warning("siem_mcp_invalid_json", tool=tool_name, source="siem-mcp", error=str(exc))
@@ -180,7 +196,13 @@ async def acall_siem_mcp_tool(tool_name: str, arguments: dict[str, Any] | None =
     except httpx.HTTPError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
         logger.warning("siem_mcp_http_error", tool=tool_name, source="siem-mcp", error=str(exc))
-        return {"success": False, "error": f"SIEM MCP HTTP error: {exc}{_siem_pdql_hint(tool_name, str(exc))}", "source": "siem-mcp", "tool": tool_name}
+        hint = _siem_pdql_hint(tool_name, str(exc))
+        return {
+            "success": False,
+            "error": f"SIEM MCP HTTP error: {exc}{hint}",
+            "source": "siem-mcp",
+            "tool": tool_name,
+        }
     except json.JSONDecodeError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
         logger.warning("siem_mcp_invalid_json", tool=tool_name, source="siem-mcp", error=str(exc))

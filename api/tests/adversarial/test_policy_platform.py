@@ -12,9 +12,14 @@ from cys_core.infrastructure.catalog.policy_merge import merge_profile_policy
 from cys_core.infrastructure.catalog.profile_policy import ProfilePolicyLoader
 
 
-def _patch_catalog_policy(monkeypatch, catalog: InMemoryAgentCatalog) -> None:
+def _patch_catalog_policy(monkeypatch, catalog: InMemoryAgentCatalog) -> ProfilePolicyLoader:
     loader = ProfilePolicyLoader(lambda: catalog)
     monkeypatch.setattr("cys_core.infrastructure.catalog.profile_policy._loader", lambda: loader)
+    return loader
+
+
+def _policy_getter(loader: ProfilePolicyLoader):
+    return loader.get_policy
 
 
 @pytest.mark.unit
@@ -24,10 +29,14 @@ def test_profile_tool_block_validation(monkeypatch):
     )
     catalog = InMemoryAgentCatalog()
     catalog.upsert_profile(ProfilePack(id="cybersec-soc", name="SOC", policy=policy))
-    _patch_catalog_policy(monkeypatch, catalog)
+    loader = _patch_catalog_policy(monkeypatch, catalog)
     entry = AgentCatalogEntry(name="soc", tools=["execute_command"], profile_id="cybersec-soc")
     with pytest.raises(CatalogValidationError, match="blocked by profile"):
-        CrossRefValidator(known_skill_ids=set(), known_tool_names={"execute_command"}).validate_agent(entry)
+        CrossRefValidator(
+            known_skill_ids=set(),
+            known_tool_names={"execute_command"},
+            policy_getter=_policy_getter(loader),
+        ).validate_agent(entry)
 
 
 @pytest.mark.unit
@@ -39,8 +48,8 @@ def test_risk_downgrade_blocked_by_merge():
 
 @pytest.mark.unit
 def test_mode_policy_blocks_spawn_in_plan():
-    assert ModePolicy.allow_tool(InteractionMode.PLAN, "spawn_worker", "cybersec-soc") is False
-    assert ModePolicy.allow_tool(InteractionMode.ASK, "execute_command", "cybersec-soc") is False
+    assert ModePolicy.allow_tool(InteractionMode.PLAN, "spawn_worker") is False
+    assert ModePolicy.allow_tool(InteractionMode.ASK, "execute_command") is False
 
 
 @pytest.mark.unit
@@ -51,4 +60,4 @@ def test_classify_tool_risk_from_profile(monkeypatch):
     catalog = InMemoryAgentCatalog()
     catalog.upsert_profile(ProfilePack(id="cybersec-soc", name="SOC", policy=policy))
     _patch_catalog_policy(monkeypatch, catalog)
-    assert classify_tool_risk("custom_tool", "cybersec-soc") == RiskLevel.LOW
+    assert classify_tool_risk("custom_tool", policy) == RiskLevel.LOW

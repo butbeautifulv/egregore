@@ -4,8 +4,8 @@ import pytest
 
 from cys_core.application.workers.result_validator import WorkerResultValidator
 from cys_core.domain.findings.models import ConsultantFinding, SocFinding
-from cys_core.domain.security.guardrails import OutputGuardrails
 from cys_core.domain.security.exceptions import SecurityViolation
+from cys_core.domain.security.guardrails import OutputGuardrails
 
 
 class _SchemaRegistry:
@@ -21,7 +21,14 @@ class _SchemaRegistry:
 def test_result_validator_attaches_sgr_metadata():
     validator = WorkerResultValidator(schema_registry=_SchemaRegistry(), guardrails=OutputGuardrails())
     result = validator.validate(
-        result={"reasoning_steps": ["a"], "plan_status": "ok", "incident_id": "i1", "priority": "high", "confidence": 0.8, "summary": "s"},
+        result={
+            "reasoning_steps": ["a"],
+            "plan_status": "ok",
+            "incident_id": "i1",
+            "priority": "high",
+            "confidence": 0.8,
+            "summary": "s",
+        },
         schema_name="SocFinding",
     )
     assert result["sgr_metadata"]["reasoning_steps"] == ["a"]

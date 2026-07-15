@@ -7,7 +7,7 @@ from typing import Any
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.persona_ranking import PersonaRankingPort
 from cys_core.application.ports.resource_source import ResourceSourcePort
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort
 from cys_core.application.use_cases.plan_investigation import PlanInvestigation, PlannerRuntime
 from cys_core.domain.engagement.models import EngagementPlan
 from cys_core.domain.events.models import SecurityEvent

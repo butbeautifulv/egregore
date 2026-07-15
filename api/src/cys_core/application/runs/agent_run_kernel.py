@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from cys_core.application.runs.kernel_budget import kernel_budget
-from cys_core.application.runs.kernel_memory import record_memory_read
 from cys_core.application.runs.kernel_mappers import new_trajectory
+from cys_core.application.runs.kernel_memory import record_memory_read
 from cys_core.application.runs.kernel_tool_capture import capture_tool_traces
 from cys_core.domain.runs.kernel_models import RunKernelRequest, RunKernelResult
 from cys_core.domain.runs.trace_models import ModelCallTraceFields, model_call_trace
@@ -69,4 +69,9 @@ class AgentRunKernel:
             capture_tool_traces(output, trajectory)
         success = isinstance(output, dict) and "error" not in output
         error = str(output.get("error", "")) if isinstance(output, dict) else ""
-        return RunKernelResult(success=success, output=output if isinstance(output, dict) else {"raw": output}, trajectory=trajectory, error=error)
+        return RunKernelResult(
+            success=success,
+            output=output if isinstance(output, dict) else {"raw": output},
+            trajectory=trajectory,
+            error=error,
+        )

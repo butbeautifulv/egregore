@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from cys_core.domain.events.models import SecurityEvent
 from cys_core.domain.work_order.intake import WorkOrderIntake
 
 

@@ -6,11 +6,11 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from cys_core.application.ports.stream_context import StreamContext
+from cys_core.infrastructure.config.infra_settings import EgressStreamingSettings
 from cys_core.infrastructure.observability.egress_streaming_callback import EgressStreamingCallback
 
 
@@ -29,11 +29,9 @@ async def test_egress_streaming_callback_batches_deltas(monkeypatch: pytest.Monk
         "cys_core.infrastructure.observability.egress_streaming_callback.get_stream_agent_output",
         lambda: True,
     )
-    settings = MagicMock()
-    settings.egress_batch_seconds = 0.05
     monkeypatch.setattr(
-        "cys_core.infrastructure.observability.egress_streaming_callback.get_settings",
-        lambda: settings,
+        "cys_core.infrastructure.observability.egress_streaming_callback.get_egress_streaming_settings",
+        lambda: EgressStreamingSettings(batch_seconds=0.05),
     )
     egress = _RecordingEgress()
     ctx = StreamContext(
@@ -85,11 +83,9 @@ async def test_egress_streaming_callback_publishes_each_token_when_batch_disable
         "cys_core.infrastructure.observability.egress_streaming_callback.get_stream_agent_output",
         lambda: True,
     )
-    settings = MagicMock()
-    settings.egress_batch_seconds = 0.0
     monkeypatch.setattr(
-        "cys_core.infrastructure.observability.egress_streaming_callback.get_settings",
-        lambda: settings,
+        "cys_core.infrastructure.observability.egress_streaming_callback.get_egress_streaming_settings",
+        lambda: EgressStreamingSettings(batch_seconds=0.0),
     )
     egress = _RecordingEgress()
     ctx = StreamContext(engagement_id="eng-1", job_id="job-1", persona="soc", tenant_id="default")

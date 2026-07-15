@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cys_core.domain.events.models import SecurityEvent
 from cys_core.infrastructure.kafka_publisher import KafkaPublisher, reset_kafka_publisher_cache
 
 

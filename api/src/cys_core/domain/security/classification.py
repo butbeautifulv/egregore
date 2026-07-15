@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -9,7 +8,6 @@ from cys_core.domain.catalog.models import AgentCatalogEntry
 from cys_core.domain.policy.defaults import PERSONA_CLEARANCE
 from cys_core.domain.policy.pure import persona_clearance_pure
 from cys_core.domain.security.data_classification import DataClassification
-
 
 _CLASS_ORDER = [
     DataClassification.PUBLIC,

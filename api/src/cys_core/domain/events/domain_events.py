@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.domain.events.models import SecurityEvent, Severity
+from cys_core.domain.events.models import Severity
 
 TaskKind = Literal["investigation", "consultation", "benchmark", "generic"]
 

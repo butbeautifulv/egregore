@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 
-import httpx
 import pytest
 
 from cys_core.integrations import nessus_mcp_client as nmc

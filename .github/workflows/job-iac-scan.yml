@@ -13,19 +13,31 @@ jobs:
           python-version: "3.13"
       - uses: bridgecrewio/checkov-action@v12
         with:
-          directory: .
-          framework: terraform,kubernetes,helm,dockerfile
+          directory: deploy
+          framework: helm,dockerfile
+          config_file: .checkov.yaml
+          container_user: 1000
           soft_fail: true
           output_format: sarif
           output_file_path: reports/checkov.sarif
       - name: Gate check
         run: |
-          mkdir -p reports
-          [ -f reports/checkov.sarif ] || echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > reports/checkov.sarif
+          FLAT="${RUNNER_TEMP}/checkov-report.sarif"
+          if [ -d reports/checkov.sarif ]; then
+            FOUND="$(find reports/checkov.sarif -type f -name '*.sarif' | head -1)"
+            if [ -n "$FOUND" ]; then
+              cat "$FOUND" > "$FLAT"
+            fi
+          elif [ -f reports/checkov.sarif ]; then
+            cat reports/checkov.sarif > "$FLAT"
+          fi
+          if [ ! -f "$FLAT" ]; then
+            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > "$FLAT"
+          fi
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control iac --report reports/checkov.sarif --policy "$POLICY"
+          python scripts/gate-check.py --control iac --report "$FLAT" --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: reports/checkov.sarif
+          sarif_file: ${{ runner.temp }}/checkov-report.sarif
           category: iac

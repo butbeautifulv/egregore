@@ -71,7 +71,6 @@ async def test_reconcile_enqueues_pending_synthesis() -> None:
 @pytest.mark.asyncio
 async def test_reconcile_fails_stale_bus_jobs_before_synthesis() -> None:
     from datetime import timedelta
-    from unittest.mock import AsyncMock, MagicMock
 
     from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
     from cys_core.application.use_cases.reconcile_stuck_engagements import ReconcileStuckEngagements

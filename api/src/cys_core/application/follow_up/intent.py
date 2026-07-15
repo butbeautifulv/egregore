@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from bootstrap.settings import get_settings
+from cys_core.application.runtime_config import get_follow_up_plan_enabled
 from cys_core.domain.follow_up.models import FollowUpMode
 
 _REINVESTIGATE_PATTERNS = (
@@ -40,8 +40,7 @@ def classify_follow_up_mode(
     prior_operator_turns: int = 0,
 ) -> str:
     """Return follow_up work_kind string."""
-    settings = get_settings()
-    plan_enabled = getattr(settings, "follow_up_plan_enabled", False)
+    plan_enabled = get_follow_up_plan_enabled()
 
     if mode == "plan" and plan_enabled:
         return "follow_up_plan"

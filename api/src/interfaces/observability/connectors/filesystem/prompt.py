@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from cys_core.application.ports.observability.prompt_backend import PromptBackendPort
 from cys_core.domain.observability.models import PromptRef, ResolvedPrompt
 
 

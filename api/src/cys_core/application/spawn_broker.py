@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from cys_core.application.policy_resolver import get_profile_policy_resolver
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
 from cys_core.application.ports.workspace_store import WorkspaceStorePort
-from cys_core.domain.runs.mode_policy import ModePolicy
-from cys_core.domain.runs.models import InteractionMode, RunContext
-from cys_core.domain.runs.plan_models import WorkPlan
 from cys_core.domain.agents.control import is_platform_readonly_persona
+from cys_core.domain.runs.mode_policy import ModePolicy
+from cys_core.domain.runs.models import InteractionMode
 from cys_core.domain.runs.spawn import MAX_SPAWN_DEPTH, SpawnWorkerPayload
-from cys_core.domain.runs.state_models import RunState, RunStatus
 from cys_core.domain.workers.models import WorkerJob
 
 

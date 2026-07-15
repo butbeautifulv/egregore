@@ -9,6 +9,8 @@ import structlog
 from cys_core.application.runtime_config import (
     get_nessus_mcp_timeout,
     get_nessus_mcp_url,
+)
+from cys_core.application.runtime_config import (
     nessus_mcp_enabled as _nessus_mcp_enabled,
 )
 from cys_core.infrastructure.http_client import sync_http_client
@@ -62,8 +64,16 @@ def nessus_mcp_enabled() -> bool:
     return _nessus_mcp_enabled()
 
 
+def _mcp_content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if content is not None:
+        return json.dumps(content, ensure_ascii=False)
+    return ""
+
+
 def _mcp_tool_error_message(content: Any) -> str | None:
-    text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False) if content is not None else ""
+    text = _mcp_content_text(content)
     lower = text.lower()
     if "validation error for call[" in lower:
         return text

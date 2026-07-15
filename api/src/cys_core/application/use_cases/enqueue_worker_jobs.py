@@ -6,15 +6,15 @@ from typing import Any
 import structlog
 
 from cys_core.application.bus_engagement import extract_engagement_id, normalize_correlation_id
-from cys_core.application.bus_planner_gate import off_plan_bus_enqueue_reason
 from cys_core.application.bus_fingerprint import envelope_fingerprint
+from cys_core.application.bus_planner_gate import off_plan_bus_enqueue_reason
 from cys_core.application.engagement_bus_guard import EngagementBusGuard, get_engagement_bus_guard
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.ports.metrics import MetricsPort
-from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.application.use_cases.fail_engagement_guardrail import maybe_trip_engagement
+from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.domain.engagement.models import EngagementStatus
 from cys_core.domain.workers.job_factory import jobs_for_routing
 from cys_core.domain.workers.models import WorkerJob
@@ -231,7 +231,11 @@ class EnqueueWorkerJobs:
 
         if self._engagement_store is not None:
             engagement = self._engagement_store.get(tenant_id, engagement_id)
-            if engagement is not None and isinstance(engagement.status, EngagementStatus) and engagement.status.is_terminal():
+            if (
+                engagement is not None
+                and isinstance(engagement.status, EngagementStatus)
+                and engagement.status.is_terminal()
+            ):
                 logger.warning(
                     "bus_enqueue_rejected_closed",
                     engagement_id=engagement_id,

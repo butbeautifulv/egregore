@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from cys_core.domain.datasources.eval_outcome import OutcomeEvalConfig, OutcomeEvalResult
 
 

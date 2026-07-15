@@ -6,6 +6,7 @@ from typing import Any
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel
 
+from cys_core.domain.tools.catalog.siem import SIEM_TOOL_DESCRIPTIONS as _SIEM_TOOL_DESCRIPTIONS
 from cys_core.integrations.siem_mcp_client import get_siem_allowed_tools
 from cys_core.registry.siem_tool_schemas import (
     GenericSiemToolInput,
@@ -14,8 +15,6 @@ from cys_core.registry.siem_tool_schemas import (
     ListIncidentsInput,
     SearchEventsInput,
 )
-
-from cys_core.domain.tools.catalog.siem import SIEM_TOOL_DESCRIPTIONS as _SIEM_TOOL_DESCRIPTIONS
 
 _SIEM_TOOL_SCHEMAS: dict[str, type[BaseModel]] = {
     "investigate_incident": InvestigateIncidentInput,

@@ -3,10 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from cys_core.application.runtime_config import (
+    get_follow_up_aggregator_poll_s,
+    get_follow_up_aggregator_timeout_s,
+    get_self_refine_max,
+    get_use_run_kernel,
+)
 from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp
-from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.use_cases.enqueue_next_planned_persona import EnqueueNextPlannedPersona
 from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
+from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.use_cases.run_worker_job import RunWorkerJob
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
@@ -15,8 +21,6 @@ from cys_core.application.workers.follow_up_aggregator import FollowUpAggregator
 from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher
 from cys_core.application.workers.job_finalizer import WorkerJobFinalizer
 from cys_core.application.workers.result_validator import WorkerResultValidator
-from bootstrap.settings import get_settings
-from cys_core.application.runtime_config import get_self_refine_max, get_use_run_kernel
 from cys_core.domain.security.factory import get_output_guardrails
 
 
@@ -47,6 +51,7 @@ class WorkerPipelineDeps:
     meta_planner: Any | None = None
     dispatch: Any | None = None
     workspace_store: Any | None = None
+    build_job_trace_metadata: Callable[..., dict[str, Any]] | None = None
 
 
 def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
@@ -115,13 +120,12 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         record_worker_job_failure=deps.metrics.record_worker_job_failure,
         follow_up_publisher=follow_up_publisher,
     )
-    follow_up_settings = get_settings()
     follow_up_aggregator = FollowUpAggregator(
         deps.job_store,
         memory_reader=deps.memory_reader,
         engagement_store=deps.engagement_store,
-        timeout_s=follow_up_settings.follow_up_aggregator_timeout_s,
-        poll_s=follow_up_settings.follow_up_aggregator_poll_s,
+        timeout_s=get_follow_up_aggregator_timeout_s(),
+        poll_s=get_follow_up_aggregator_poll_s(),
     )
     plan_follow_up_runner = None
     if deps.meta_planner is not None and deps.dispatch is not None:
@@ -149,4 +153,6 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         make_load_skill_tool=deps.make_load_skill_tool,
         plan_follow_up_runner=plan_follow_up_runner,
         workspace_store=deps.workspace_store,
+        metrics=deps.metrics,
+        build_job_trace_metadata=deps.build_job_trace_metadata,
     )

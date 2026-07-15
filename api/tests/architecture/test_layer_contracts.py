@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Shrink-only allowlist regression tests for architecture import boundaries."""
+
+from __future__ import annotations
 
 import scripts.verify_import_boundaries as boundaries
 
@@ -21,7 +21,7 @@ _EXPECTED_ALLOWLIST_SIZES: dict[str, int] = {
     "ALLOWLIST_REGISTRY_INTERFACES": 0,
     "ALLOWLIST_INTERFACES_API_INFRASTRUCTURE": 1,
     "ALLOWLIST_INFRASTRUCTURE_USE_CASES": 0,
-    "ALLOWLIST_BOOTSTRAP_INTERFACES": 40,
+    "ALLOWLIST_BOOTSTRAP_INTERFACES": 31,
 }
 
 

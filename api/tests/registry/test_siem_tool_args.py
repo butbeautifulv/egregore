@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 
 import httpx
 import pytest
@@ -39,6 +38,17 @@ def test_normalize_siem_tool_args_preserves_incident_id() -> None:
     assert result["events_limit"] == 10
 
 
+def _patch_invoke_mcp_sync(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
+    def _fake_invoke_mcp_sync(**kwargs: object) -> dict:
+        response = mock_client.post(kwargs.get("url", ""), json=kwargs.get("payload"))
+        return response.json()
+
+    monkeypatch.setattr(
+        "cys_core.integrations.siem_mcp_client.invoke_mcp_sync",
+        _fake_invoke_mcp_sync,
+    )
+
+
 @pytest.mark.unit
 def test_call_siem_tool_normalizes_kwargs_before_mcp(monkeypatch: pytest.MonkeyPatch) -> None:
     import cys_core.application.runtime_config as rc
@@ -58,14 +68,7 @@ def test_call_siem_tool_normalizes_kwargs_before_mcp(monkeypatch: pytest.MonkeyP
             },
         )
 
-    @contextmanager
-    def _fake_sync_http_client(**_kwargs: object):
-        yield httpx.Client(transport=httpx.MockTransport(handler))
-
-    monkeypatch.setattr(
-        "cys_core.integrations.siem_mcp_client.sync_http_client",
-        _fake_sync_http_client,
-    )
+    _patch_invoke_mcp_sync(monkeypatch, httpx.Client(transport=httpx.MockTransport(handler)))
 
     result = call_siem_tool(
         "investigate_incident",
@@ -73,17 +76,6 @@ def test_call_siem_tool_normalizes_kwargs_before_mcp(monkeypatch: pytest.MonkeyP
     )
     assert result["success"] is True
     assert captured["arguments"] == {"incident_id": "024526f2-f434-4d60-a22f-e5ef6efc9212"}
-
-
-def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
-    @contextmanager
-    def _fake_sync_http_client(**_kwargs: object):
-        yield mock_client
-
-    monkeypatch.setattr(
-        "cys_core.integrations.siem_mcp_client.sync_http_client",
-        _fake_sync_http_client,
-    )
 
 
 @pytest.mark.unit
@@ -107,7 +99,7 @@ def test_call_siem_mcp_tool_marks_validation_error_as_failure(monkeypatch: pytes
             },
         )
 
-    _patch_sync_http_client(monkeypatch, httpx.Client(transport=httpx.MockTransport(handler)))
+    _patch_invoke_mcp_sync(monkeypatch, httpx.Client(transport=httpx.MockTransport(handler)))
     result = call_siem_mcp_tool("investigate_incident", {"incident_id": "INC-42"})
     assert result["success"] is False
     assert "validation error for call[" in result["error"]
@@ -136,7 +128,7 @@ def test_call_siem_mcp_tool_marks_siem_api_error_as_failure(monkeypatch: pytest.
             },
         )
 
-    _patch_sync_http_client(monkeypatch, httpx.Client(transport=httpx.MockTransport(handler)))
+    _patch_invoke_mcp_sync(monkeypatch, httpx.Client(transport=httpx.MockTransport(handler)))
     result = call_siem_mcp_tool("investigate_incident", {"incident_id": "INC-42"})
     assert result["success"] is False
     assert "SIEM API error" in result["error"]

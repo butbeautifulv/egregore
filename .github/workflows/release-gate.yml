@@ -15,23 +15,8 @@ name: Release Gate
 # scripts/gate-check.py + config/security-gate-policy.yaml mechanism and the
 # same blocker/warn split (GitLab's `.egregore_blocker` / `.egregore_warn`).
 #
-# Known pre-existing gaps intentionally left warn-only (continue-on-error)
-# rather than either silently dropped or left permanently red — see the
-# TODO on each job and docs/CI_CD_KNOWN_GAPS.md for the tracked follow-up:
-#   - lint: 367 pre-existing ruff findings (same command ci.yml's own lint
-#     job already used — this predates tonight, ci.yml's `lint` job has
-#     apparently never gone green)
-#   - unit-tests: ~60 pre-existing failures across 15/29 pytest_batches.sh
-#     batches, unrelated to this PR (confirmed via git-stash bisection)
-#   - arch-lint: 8 files import `bootstrap` from domain/application layers
-#     (real import-boundary violations, predate this workflow)
-#   - domain-coverage: 100% target, ~78% actual today
-#
-# These four are exactly why this gate exists: nothing currently stops any
-# of this from reaching `main` today. Fixing them is real, separate work —
-# each is flipped from warn to blocking independently once addressed, same
-# as security-gate-policy.yaml's own documented "warn → block after
-# stabilization" precedent (see its changelog, phase B5).
+# All quality and security jobs below are blocking (no continue-on-error).
+# Historical remediation notes: docs/CI_CD_KNOWN_GAPS.md (resolved).
 
 on:
   pull_request:
@@ -96,14 +81,8 @@ jobs:
     uses: ./.github/workflows/job-osa.yml
     secrets: inherit
 
-  # ---------------------------------------------------------------------
-  # Warn-only — runs and reports on every PR, does not block merge yet.
-  # Flip continue-on-error off once the underlying debt is paid down.
-  # ---------------------------------------------------------------------
-
   lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: api
@@ -120,7 +99,6 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: api
@@ -130,12 +108,13 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Pytest batches
         run: ./scripts/pytest_batches.sh
 
   arch-lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: api
@@ -151,12 +130,13 @@ jobs:
         run: uv run python scripts/verify_import_boundaries.py
       - name: No langfuse in core
         run: bash scripts/verify_no_langfuse_in_core.sh
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Architecture contract tests
         run: uv run pytest tests/architecture/ -q
 
   domain-coverage:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: api
@@ -170,6 +150,10 @@ jobs:
         run: |
           uv run pytest tests/domain/ -q \
             --cov=src/cys_core/domain --cov-report=term-missing --cov-fail-under=100
+
+  # ---------------------------------------------------------------------
+  # Warn-only — runs and reports on every PR, does not block merge yet.
+  # ---------------------------------------------------------------------
 
   iac-scan:
     uses: ./.github/workflows/job-iac-scan.yml
@@ -189,8 +173,6 @@ jobs:
 
   # ---------------------------------------------------------------------
   # Aggregate gate — THE status check to require in branch protection.
-  # Fails if any blocking job above didn't succeed; warn-only jobs are
-  # deliberately excluded from this list.
   # ---------------------------------------------------------------------
 
   release-gate:
@@ -202,6 +184,14 @@ jobs:
       - secret-scan
       - sast
       - osa
+      - lint
+      - unit-tests
+      - arch-lint
+      - domain-coverage
+      - iac-scan
+      - dockerfile-lint
+      - linter-security
+      - skill-scanner
     steps:
       - name: Evaluate required checks
         run: |
@@ -213,6 +203,14 @@ jobs:
             [secret-scan]="${{ needs['secret-scan'].result }}"
             [sast]="${{ needs.sast.result }}"
             [osa]="${{ needs.osa.result }}"
+            [lint]="${{ needs.lint.result }}"
+            [unit-tests]="${{ needs['unit-tests'].result }}"
+            [arch-lint]="${{ needs['arch-lint'].result }}"
+            [domain-coverage]="${{ needs['domain-coverage'].result }}"
+            [iac-scan]="${{ needs['iac-scan'].result }}"
+            [dockerfile-lint]="${{ needs['dockerfile-lint'].result }}"
+            [linter-security]="${{ needs['linter-security'].result }}"
+            [skill-scanner]="${{ needs['skill-scanner'].result }}"
           )
           for job in "${!results[@]}"; do
             r="${results[$job]}"

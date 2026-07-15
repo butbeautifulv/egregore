@@ -22,7 +22,7 @@ def authorize_tool(
     Returns None when allowed.
     """
     decision = authorize_tool_datasource(
-        command.tool_name,
+        tool_name=command.tool_name,
         profile_id=command.profile_id,
         persona=command.persona,
     )

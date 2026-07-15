@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
 import structlog
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from bootstrap.container import get_container

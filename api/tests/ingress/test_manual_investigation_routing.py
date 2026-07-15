@@ -5,15 +5,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from cys_core.application.routing.event_router import EventRouter
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
-from tests.application.port_fakes import fake_correlation_id_port, plan_investigation_port_kwargs
 from cys_core.application.use_cases.meta_planner import MetaPlanner
 from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
 from cys_core.application.use_cases.start_engagement import StartEngagement, engagement_request_to_security_event
-from cys_core.application.routing.event_router import EventRouter
-from tests.conftest import default_policy_port
-from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
+from cys_core.domain.engagement.models import EngagementRequest, PlanStrategy
 from cys_core.infrastructure.engagement.memory_store import MemoryEngagementStateStore
+from tests.application.port_fakes import fake_correlation_id_port, plan_investigation_port_kwargs
+from tests.conftest import default_policy_port
 
 
 @pytest.mark.unit

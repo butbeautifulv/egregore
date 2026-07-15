@@ -20,7 +20,6 @@ def refresh_platform_gauges(*, tenant_id: str = "default", engagement_store=None
 
         engagement_store = get_container().get_engagement_state_store()
     try:
-        from cys_core.domain.engagement.models import EngagementStatus
 
         states = engagement_store.list_recent(tenant_id, limit=500)
         active = sum(

@@ -3,13 +3,12 @@
 # npm proxy once: ./scripts/k8s/nexus-npm-go-proxy-setup.sh --ssh bbv-p30-wifi
 ARG NEXUS_REGISTRY=nexus.svo.aero:8345
 ARG NEXUS_CXADO_REPO=cxado-docker
-ARG BUN_IMAGE=oven-bun:1-alpine
 ARG NEXUS_NPM_HOST=nexus.svo.aero:8443
 ARG NEXUS_NPM_REPO=npm-proxy
 ARG NEXUS_USER
 ARG NEXUS_PASSWORD
 
-FROM ${NEXUS_REGISTRY}/${NEXUS_CXADO_REPO}/${BUN_IMAGE} AS deps
+FROM ${NEXUS_REGISTRY}/${NEXUS_CXADO_REPO}/oven-bun:1-alpine AS deps
 WORKDIR /app
 ARG NEXUS_NPM_HOST
 ARG NEXUS_NPM_REPO
@@ -19,7 +18,7 @@ ENV BUN_CONFIG_REGISTRY=https://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_NPM_HOST
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-FROM ${NEXUS_REGISTRY}/${NEXUS_CXADO_REPO}/${BUN_IMAGE} AS build
+FROM ${NEXUS_REGISTRY}/${NEXUS_CXADO_REPO}/oven-bun:1-alpine AS build
 WORKDIR /app
 ARG NEXT_PUBLIC_LANGFUSE_HOST=https://localhost:3001
 ARG NEXT_PUBLIC_EGRESS_SSE=1
@@ -32,11 +31,15 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN bun run build
 
-FROM ${NEXUS_REGISTRY}/${NEXUS_CXADO_REPO}/${BUN_IMAGE} AS runtime
+FROM ${NEXUS_REGISTRY}/${NEXUS_CXADO_REPO}/oven-bun:1-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
+RUN addgroup -g 10001 app && adduser -u 10001 -G app -D app && chown -R app:app /app
+USER 10001
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1
 CMD ["bun", "server.js"]

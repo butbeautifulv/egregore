@@ -3,8 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from bootstrap.settings import get_settings, settings
-from cys_core.application.ports.observability.trace_backend import TraceBackendPort
+from bootstrap.settings import settings
 from cys_core.domain.observability.models import TraceContext
 from cys_core.observability.otel_bootstrap import instrument_dependencies
 from cys_core.observability.otel_provider import ensure_tracer_provider, flush_tracer_provider

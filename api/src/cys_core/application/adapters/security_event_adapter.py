@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID, resolve_profile_id
+from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.events.domain_events import DomainEvent, TaskEvent
 from cys_core.domain.events.models import SecurityEvent
 

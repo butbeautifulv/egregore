@@ -20,11 +20,12 @@ class ToolsContainer:
         return self._container.settings
 
     def get_tool_chain_policy(self):
-        if self._tool_chain_policy is not None:
-            return self._tool_chain_policy
         from cys_core.application.tools.tool_chain_policy import ToolChainPolicy
 
-        self._tool_chain_policy = ToolChainPolicy(max_high_risk_depth=self.settings.max_high_risk_tool_chain_depth)
+        depth = self.settings.max_high_risk_tool_chain_depth
+        policy = self._tool_chain_policy
+        if policy is None or policy._max_high_risk_depth != depth:
+            self._tool_chain_policy = ToolChainPolicy(max_high_risk_depth=depth)
         return self._tool_chain_policy
 
     def get_invoke_tool(self):
@@ -40,7 +41,7 @@ class ToolsContainer:
         container = self._container
         self._invoke_tool = InvokeTool(
             require_sandbox=require_sandbox,
-            check_tool_chain=self.get_tool_chain_policy().check,
+            check_tool_chain=lambda cmd: self.get_tool_chain_policy().check(cmd),
             invoke_adapter=invoke_adapter,
             tool_registry=container.get_tool_registry_port(),
             sanitize_tool_output_or_raise=sanitize_tool_output_or_raise,

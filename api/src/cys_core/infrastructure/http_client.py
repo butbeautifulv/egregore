@@ -8,15 +8,15 @@ import httpx
 
 
 def _connect_timeout() -> float:
-    from bootstrap.settings import get_settings
+    from cys_core.infrastructure.config.infra_settings import get_http_timeouts
 
-    return get_settings().http_connect_timeout_s
+    return get_http_timeouts().connect_s
 
 
 def _read_timeout() -> float:
-    from bootstrap.settings import get_settings
+    from cys_core.infrastructure.config.infra_settings import get_http_timeouts
 
-    return get_settings().http_read_timeout_s
+    return get_http_timeouts().read_s
 
 
 def default_timeout(

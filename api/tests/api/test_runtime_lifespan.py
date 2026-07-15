@@ -5,9 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from interfaces.api.task_supervisor import BackgroundTaskSupervisor
-
 from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
+from interfaces.api.task_supervisor import BackgroundTaskSupervisor
 
 
 @pytest.mark.unit

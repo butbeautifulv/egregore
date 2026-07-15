@@ -23,3 +23,23 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "egregore.uiImage" -}}
 {{- printf "%s:%s" .Values.ui.image.repository .Values.ui.image.tag }}
 {{- end }}
+
+{{- define "egregore.podSecurityContext" -}}
+automountServiceAccountToken: false
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10000
+  runAsGroup: 10000
+  fsGroup: 10000
+  seccompProfile:
+    type: RuntimeDefault
+{{- end }}
+
+{{- define "egregore.containerSecurityContext" -}}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+{{- end }}

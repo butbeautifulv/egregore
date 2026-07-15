@@ -5,16 +5,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
+from cys_core.domain.engagement.models import EngagementMode, PlanStrategy
 from cys_core.domain.events.models import RoutingDecision
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_post_engagement_returns_job_ids(monkeypatch):
-    from interfaces.api.app import create_app
-
     from cys_core.domain.engagement.models import Engagement, EngagementStatus
+    from interfaces.api.app import create_app
 
     engagement = Engagement(
         id="eng-1",
@@ -60,11 +59,10 @@ async def test_post_engagement_returns_job_ids(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_engagements_returns_recent(monkeypatch):
+    from cys_core.domain.engagement.models import Engagement, EngagementStatus
     from interfaces.api.app import create_app
 
-    from cys_core.domain.engagement.models import Engagement, EngagementStatus
-
-    store = MagicMock()
+    store = MagicMock(spec=["list_recent"])
     store.list_recent.return_value = [
         Engagement(
             id="eng-1",
@@ -95,9 +93,8 @@ async def test_list_engagements_returns_recent(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_get_engagement_preserves_closed_status_with_egress(monkeypatch):
-    from interfaces.api.app import create_app
-
     from cys_core.domain.engagement.models import Engagement, EngagementStatus
+    from interfaces.api.app import create_app
 
     engagement = Engagement(
         id="eng-closed",
@@ -107,7 +104,7 @@ async def test_get_engagement_preserves_closed_status_with_egress(monkeypatch):
         completed_personas=["consultant"],
         planner_plan=["consultant"],
     )
-    fake_start = MagicMock()
+    MagicMock()
     egress = MagicMock()
     egress.snapshot.return_value = [{"phase": "job_finished", "payload": {"persona": "consultant"}}]
     monkeypatch.setattr(
@@ -136,9 +133,8 @@ async def test_get_engagement_preserves_closed_status_with_egress(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_engagement_events_returns_snapshot(monkeypatch):
-    from interfaces.api.app import create_app
-
     from cys_core.domain.engagement.models import Engagement, EngagementStatus
+    from interfaces.api.app import create_app
 
     engagement = Engagement(
         id="eng-events",
@@ -175,11 +171,10 @@ async def test_list_engagement_events_returns_snapshot(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_get_engagement_memory_empty(monkeypatch):
-    from interfaces.api.app import create_app
-
     from cys_core.domain.engagement.models import Engagement, EngagementStatus
     from cys_core.domain.memory.services import MemoryReadService
     from cys_core.infrastructure.memory.stores import InMemoryEpisodicMemoryStore
+    from interfaces.api.app import create_app
 
     engagement = Engagement(
         id="eng-mem",
@@ -210,11 +205,10 @@ async def test_get_engagement_memory_empty(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_get_engagement_memory_filters_by_agent(monkeypatch):
-    from interfaces.api.app import create_app
-
     from cys_core.domain.engagement.models import Engagement, EngagementStatus
     from cys_core.domain.memory.services import MemoryReadService, MemoryWriteService
     from cys_core.infrastructure.memory.stores import InMemoryEpisodicMemoryStore
+    from interfaces.api.app import create_app
 
     engagement = Engagement(
         id="eng-mem-filter",

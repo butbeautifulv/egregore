@@ -5,7 +5,7 @@ from typing import Any
 
 from cys_core.application.ports.observability.judge_backend import JudgeBackendPort
 from cys_core.application.ports.trace_callbacks import get_trace_callbacks
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort
 from cys_core.domain.observability.models import JudgeRequest, PromptRef
 from cys_core.domain.runs.trace_models import TraceVerdict
 

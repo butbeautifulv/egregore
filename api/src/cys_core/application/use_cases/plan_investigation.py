@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
-from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.planning.catalog_planner_strategy import CatalogPlannerStrategy
 from cys_core.application.planning.runtime import PlannerRuntime
 from cys_core.application.ports.catalog import AgentCatalogPort
@@ -10,8 +10,8 @@ from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.persona_ranking import PersonaRankingPort
 from cys_core.application.ports.resource_source import ResourceSourcePort
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
-from cys_core.domain.engagement.models import Engagement, EngagementPlan, EngagementStatus, ExecutionMode
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort
+from cys_core.domain.engagement.models import Engagement, EngagementPlan, EngagementStatus
 from cys_core.domain.events.models import SecurityEvent
 
 
@@ -30,6 +30,7 @@ class PlanInvestigation:
         profile_id: str = "cybersec-soc",
         application_tracing: ApplicationTracingPort | None = None,
         engagement_egress: EngagementEgressPort | None = None,
+        reload_personas: Callable[[], None] | None = None,
     ) -> None:
         self._strategy = CatalogPlannerStrategy(
             runtime=runtime,
@@ -41,6 +42,7 @@ class PlanInvestigation:
             profile_id=profile_id,
             application_tracing=application_tracing or NOOP_APPLICATION_TRACING,
             engagement_egress=engagement_egress,
+            reload_personas=reload_personas,
         )
         self.runtime = runtime
         self.engagement_store = engagement_store

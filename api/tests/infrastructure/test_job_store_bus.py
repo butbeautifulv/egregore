@@ -4,7 +4,6 @@ from datetime import timedelta
 
 import pytest
 
-from cys_core.domain.workers.models import WorkerJobStatus
 from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
 
 

@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bootstrap.settings import get_settings
-from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
 from cys_core.domain.engagement.models import Engagement, EngagementMode, EngagementStatus, PlanStrategy
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
+from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
 
 
 @pytest.mark.unit

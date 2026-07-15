@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from cys_core.domain.workers.models import JobResumeRequest, PendingHitlAction, WorkerJobStatus
@@ -23,11 +25,10 @@ async def test_hitl_resume_rejects_forged_approval(monkeypatch):
         ),
         {"params_hash": "abc"},
     )
-    monkeypatch.setattr("interfaces.worker.hitl_resume.get_job_store", lambda: store)
-    monkeypatch.setattr(
-        "interfaces.worker.hitl_resume.get_runtime",
-        lambda: __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(),
-    )
+    container = MagicMock()
+    container.get_job_store.return_value = store
+    monkeypatch.setattr("interfaces.worker.hitl_resume.get_container", lambda: container)
+    monkeypatch.setattr("interfaces.worker.hitl_resume.get_runtime", lambda: MagicMock())
     with pytest.raises(HitlResumeError, match="approval_id"):
         await resume_worker_job(
             "job-bad",

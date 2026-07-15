@@ -9,8 +9,10 @@ import urllib.request
 def enhance_query(query: str) -> dict[str, str]:
     text = query.strip()
     lower = text.lower()
-    query_type = "multi-step" if any(w in lower for w in ("compare", "analyze", "why", "how many", "list all")) else "factual"
-    query_topic = "academic" if any(w in lower for w in ("paper", "research", "arxiv", "study", "theorem")) else "general"
+    multi_step_words = ("compare", "analyze", "why", "how many", "list all")
+    query_type = "multi-step" if any(w in lower for w in multi_step_words) else "factual"
+    academic_words = ("paper", "research", "arxiv", "study", "theorem")
+    query_topic = "academic" if any(w in lower for w in academic_words) else "general"
     enhanced = text
     if len(text.split()) <= 3 and "?" not in text:
         enhanced = f"What is {text}?"
@@ -72,7 +74,6 @@ def perplexity_search(query: str, *, limit: int | None = None) -> dict:
     from cys_core.application.runtime_config import get_perplexity_api_key
 
     settings = get_settings()
-    resolved_limit = limit if limit is not None else settings.perplexity_search_default_limit
     key = get_perplexity_api_key()
     if not key:
         return {"success": False, "error": "PERPLEXITY_API_KEY not set", "results": []}

@@ -57,7 +57,8 @@ class FollowUpToolMiddleware(AgentMiddleware):
         if tool_name in SIEM_TOOL_NAMES or is_veil_tool(tool_name):
             return self._blocked(request, "Follow-up orchestrator cannot call SIEM/Veil tools directly.")
         if work_kind == "follow_up_qa" and tool_name not in _ALLOWED_ORCHESTRATE_TOOLS:
-            if tool_name.startswith("investigate_") or tool_name.startswith("get_") or tool_name.startswith("search_events"):
+            siem_prefixes = ("investigate_", "get_", "search_events")
+            if any(tool_name.startswith(prefix) for prefix in siem_prefixes):
                 return self._blocked(request, "Follow-up Q&A is read-only; cite existing evidence only.")
         return None
 

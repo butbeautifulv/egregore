@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.application.workers.timeout_salvage import build_salvage_finding
 from cys_core.application.workers.finding_quality import finding_meets_minimum
+from cys_core.application.workers.timeout_salvage import build_salvage_finding
 from cys_core.application.workers.tool_execution_tracker import (
     clear_tool_execution_count,
     get_tool_outputs,

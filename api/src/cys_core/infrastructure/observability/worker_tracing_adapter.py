@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING, WorkerTracingPort
+from cys_core.application.ports.tracing_ports import ApplicationTracingPort, WorkerTracingPort
 from cys_core.domain.observability.models import TraceContext
 from cys_core.observability.worker_spans import observability_span
 

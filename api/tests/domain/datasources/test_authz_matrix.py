@@ -28,12 +28,57 @@ def _req(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("persona", "profile_id", "capability", "classification", "source_caps", "policy", "expected_allowed", "expected_reason"),
+    (
+        "persona",
+        "profile_id",
+        "capability",
+        "classification",
+        "source_caps",
+        "policy",
+        "expected_allowed",
+        "expected_reason",
+    ),
     [
-        ("consultant", "general-assistant", DataSourceCapability.GET, DataClassification.INTERNAL, [DataSourceCapability.GET], None, True, "allowed"),
-        ("consultant", "general-assistant", DataSourceCapability.MUTATE, DataClassification.INTERNAL, [DataSourceCapability.GET], None, False, "capability_not_granted"),
-        ("consultant", "general-assistant", DataSourceCapability.GET, DataClassification.RESTRICTED, [DataSourceCapability.GET], None, False, "classification_denied"),
-        ("critic", DEFAULT_PROFILE_ID, DataSourceCapability.GET, DataClassification.INTERNAL, [DataSourceCapability.GET], None, True, "allowed"),
+        (
+            "consultant",
+            "general-assistant",
+            DataSourceCapability.GET,
+            DataClassification.INTERNAL,
+            [DataSourceCapability.GET],
+            None,
+            True,
+            "allowed",
+        ),
+        (
+            "consultant",
+            "general-assistant",
+            DataSourceCapability.MUTATE,
+            DataClassification.INTERNAL,
+            [DataSourceCapability.GET],
+            None,
+            False,
+            "capability_not_granted",
+        ),
+        (
+            "consultant",
+            "general-assistant",
+            DataSourceCapability.GET,
+            DataClassification.RESTRICTED,
+            [DataSourceCapability.GET],
+            None,
+            False,
+            "classification_denied",
+        ),
+        (
+            "critic",
+            DEFAULT_PROFILE_ID,
+            DataSourceCapability.GET,
+            DataClassification.INTERNAL,
+            [DataSourceCapability.GET],
+            None,
+            True,
+            "allowed",
+        ),
         (
             "consultant",
             "general-assistant",
@@ -122,7 +167,12 @@ def test_product_policy_grants_siem_query_for_soc() -> None:
     policy = datasource_policy_for(DEFAULT_PROFILE_ID)
     source = DataSource(id="siem-readonly", type="siem", capabilities=[DataSourceCapability.GET])
     decision = authorize_datasource_access(
-        _req(persona="soc", profile_id=DEFAULT_PROFILE_ID, datasource_id="siem-readonly", capability=DataSourceCapability.QUERY),
+        _req(
+            persona="soc",
+            profile_id=DEFAULT_PROFILE_ID,
+            datasource_id="siem-readonly",
+            capability=DataSourceCapability.QUERY,
+        ),
         source,
         policy=policy,
     )

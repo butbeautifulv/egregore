@@ -4,8 +4,8 @@ from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from cys_core.application.ports.trace_callbacks import get_trace_callbacks
 from cys_core.application.ports import ModelConnector
+from cys_core.application.ports.trace_callbacks import get_trace_callbacks
 from cys_core.application.runtime_config import get_default_job_recursion_limit, get_recursion_limit_for_persona
 from cys_core.llm.litellm_provider import LiteLLMProvider
 from cys_core.llm.protocol import ChatModelProvider

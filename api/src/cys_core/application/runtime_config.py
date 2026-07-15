@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass
 from typing import Any, TypedDict
+
+from cys_core.application.catalog_singletons import rebind_catalog_singletons_if_needed
 
 
 class LlmSettings(TypedDict):
@@ -83,9 +86,36 @@ _sgr_default_mode: str = "off"
 _sgr_iron_max_retries: int = 3
 _use_run_kernel: bool = False
 _budget_use_api_usage: bool = True
+_runtime_configured: bool = False
+_bus_seen_ttl_seconds: int = 300
+_planner_default_post_processors: str = "advisory_consultant_fallback,staged_soc_intel_for_incident"
+_follow_up_enabled: bool = True
+_follow_up_plan_enabled: bool = True
+_follow_up_conversation_query_limit: int = 200
+_max_follow_ups_per_engagement: int = 10
+_max_follow_up_plans_per_engagement: int = 3
+_follow_up_history_limit: int = 100
+_follow_up_aggregator_timeout_s: float = 300.0
+_follow_up_aggregator_poll_s: float = 2.0
+_follow_up_merge_query_limit: int = 30
+_follow_up_merge_summary_max: int = 400
+_tool_output_preview_max: int = 16_384
+_tool_stored_outputs_max: int = 5
+_tool_siem_drilldown_max: int = 2
+_timeout_salvage_summary_max: int = 2000
+_critic_trust_threshold: float = 0.5
+_critic_default_confidence: float = 0.5
+_worker_max_attempts: int = 3
+_worker_triage_max_attempts: int = 2
+_web_search_default_limit: int = 5
+_duckduckgo_api_url: str = "https://api.duckduckgo.com/"
+_duckduckgo_api_timeout_s: float = 15.0
+_serper_api_url: str = "https://google.serper.dev/search"
+_serper_api_timeout_s: float = 20.0
 
 
 def configure_from_settings(settings: Any) -> None:
+    global _runtime_configured
     global _stage, _engagement_async_planning, _use_conductor_for_events
     global _max_spawn_depth, _use_dynamic_catalog, _use_memory_fallback
     global _postgres_url, _default_job_recursion_limit, _triage_recursion_limit
@@ -107,6 +137,16 @@ def configure_from_settings(settings: Any) -> None:
     global _self_refine_max, _browser_enabled, _perplexity_api_key, _jina_api_key, _delegate_budget_fraction
     global _trace_critic_use_reasoning
     global _use_sgr_reasoning, _sgr_default_mode, _sgr_iron_max_retries, _use_run_kernel, _budget_use_api_usage
+    global _bus_seen_ttl_seconds, _planner_default_post_processors
+    global _follow_up_enabled, _follow_up_plan_enabled, _follow_up_conversation_query_limit
+    global _max_follow_ups_per_engagement, _max_follow_up_plans_per_engagement, _follow_up_history_limit
+    global _follow_up_aggregator_timeout_s, _follow_up_aggregator_poll_s
+    global _follow_up_merge_query_limit, _follow_up_merge_summary_max
+    global _tool_output_preview_max, _tool_stored_outputs_max, _tool_siem_drilldown_max
+    global _timeout_salvage_summary_max, _critic_trust_threshold, _critic_default_confidence
+    global _worker_max_attempts, _worker_triage_max_attempts
+    global _web_search_default_limit, _duckduckgo_api_url, _duckduckgo_api_timeout_s
+    global _serper_api_url, _serper_api_timeout_s
     prev_use_postgres = _use_dynamic_catalog and not _use_memory_fallback
     _stage = settings.stage
     _engagement_async_planning = settings.engagement_async_planning
@@ -177,27 +217,40 @@ def configure_from_settings(settings: Any) -> None:
     _sgr_iron_max_retries = settings.sgr_iron_max_retries
     _use_run_kernel = getattr(settings, "use_run_kernel", False)
     _budget_use_api_usage = settings.budget_use_api_usage
-    _rebind_catalog_singletons_if_needed(
+    _bus_seen_ttl_seconds = settings.bus_seen_ttl_seconds
+    _planner_default_post_processors = settings.planner_default_post_processors
+    _follow_up_enabled = settings.follow_up_enabled
+    _follow_up_plan_enabled = settings.follow_up_plan_enabled
+    _follow_up_conversation_query_limit = settings.follow_up_conversation_query_limit
+    _max_follow_ups_per_engagement = settings.max_follow_ups_per_engagement
+    _max_follow_up_plans_per_engagement = settings.max_follow_up_plans_per_engagement
+    _follow_up_history_limit = settings.follow_up_history_limit
+    _follow_up_aggregator_timeout_s = settings.follow_up_aggregator_timeout_s
+    _follow_up_aggregator_poll_s = settings.follow_up_aggregator_poll_s
+    _follow_up_merge_query_limit = settings.follow_up_merge_query_limit
+    _follow_up_merge_summary_max = settings.follow_up_merge_summary_max
+    _tool_output_preview_max = settings.tool_output_preview_max
+    _tool_stored_outputs_max = settings.tool_stored_outputs_max
+    _tool_siem_drilldown_max = settings.tool_siem_drilldown_max
+    _timeout_salvage_summary_max = settings.timeout_salvage_summary_max
+    _critic_trust_threshold = settings.critic_trust_threshold
+    _critic_default_confidence = settings.critic_default_confidence
+    _worker_max_attempts = settings.worker_max_attempts
+    _worker_triage_max_attempts = settings.worker_triage_max_attempts
+    _web_search_default_limit = settings.web_search_default_limit
+    _duckduckgo_api_url = settings.duckduckgo_api_url
+    _duckduckgo_api_timeout_s = settings.duckduckgo_api_timeout_s
+    _serper_api_url = settings.serper_api_url
+    _serper_api_timeout_s = settings.serper_api_timeout_s
+    rebind_catalog_singletons_if_needed(
         prev_use_postgres=prev_use_postgres,
         new_use_postgres=_use_dynamic_catalog and not _use_memory_fallback,
     )
+    _runtime_configured = True
 
 
-def _rebind_catalog_singletons_if_needed(*, prev_use_postgres: bool, new_use_postgres: bool) -> None:
-    """Drop catalog singletons when backend mode changes (import may pin in-memory too early)."""
-    if prev_use_postgres == new_use_postgres:
-        return
-    from cys_core.infrastructure.catalog.catalog_singletons import CatalogSingletons
-
-    CatalogSingletons.reset(
-        "agent_catalog",
-        "tool_catalog",
-        "skill_catalog",
-        "plan_catalog",
-        "mcp_catalog",
-        "catalog_audit",
-        "catalog_write_gate",
-    )
+def is_runtime_configured() -> bool:
+    return _runtime_configured
 
 
 def get_stage() -> str:
@@ -484,3 +537,102 @@ def get_use_run_kernel() -> bool:
 
 def get_budget_use_api_usage() -> bool:
     return _budget_use_api_usage
+
+
+@dataclass(frozen=True)
+class FollowUpSettings:
+    follow_up_enabled: bool
+    follow_up_conversation_query_limit: int
+    max_follow_ups_per_engagement: int
+    max_follow_up_plans_per_engagement: int
+    follow_up_history_limit: int
+
+
+def get_bus_seen_ttl_seconds() -> int:
+    return _bus_seen_ttl_seconds
+
+
+def get_planner_default_post_processors() -> str:
+    return _planner_default_post_processors
+
+
+def get_follow_up_settings() -> FollowUpSettings:
+    return FollowUpSettings(
+        follow_up_enabled=_follow_up_enabled,
+        follow_up_conversation_query_limit=_follow_up_conversation_query_limit,
+        max_follow_ups_per_engagement=_max_follow_ups_per_engagement,
+        max_follow_up_plans_per_engagement=_max_follow_up_plans_per_engagement,
+        follow_up_history_limit=_follow_up_history_limit,
+    )
+
+
+def get_follow_up_plan_enabled() -> bool:
+    return _follow_up_plan_enabled
+
+
+def get_follow_up_aggregator_timeout_s() -> float:
+    return _follow_up_aggregator_timeout_s
+
+
+def get_follow_up_aggregator_poll_s() -> float:
+    return _follow_up_aggregator_poll_s
+
+
+def get_follow_up_merge_query_limit() -> int:
+    return _follow_up_merge_query_limit
+
+
+def get_follow_up_merge_summary_max() -> int:
+    return _follow_up_merge_summary_max
+
+
+def get_tool_output_preview_max() -> int:
+    return _tool_output_preview_max
+
+
+def get_tool_stored_outputs_max() -> int:
+    return _tool_stored_outputs_max
+
+
+def get_tool_siem_drilldown_max() -> int:
+    return _tool_siem_drilldown_max
+
+
+def get_timeout_salvage_summary_max() -> int:
+    return _timeout_salvage_summary_max
+
+
+def get_critic_trust_threshold() -> float:
+    return _critic_trust_threshold
+
+
+def get_critic_default_confidence() -> float:
+    return _critic_default_confidence
+
+
+def get_worker_max_attempts() -> int:
+    return _worker_max_attempts
+
+
+def get_worker_triage_max_attempts() -> int:
+    return _worker_triage_max_attempts
+
+
+def get_web_search_default_limit() -> int:
+    return _web_search_default_limit
+
+
+def get_duckduckgo_api_url() -> str:
+    return _duckduckgo_api_url
+
+
+def get_duckduckgo_api_timeout_s() -> float:
+    return _duckduckgo_api_timeout_s
+
+
+def get_serper_api_url() -> str:
+    return _serper_api_url
+
+
+def get_serper_api_timeout_s() -> float:
+    return _serper_api_timeout_s

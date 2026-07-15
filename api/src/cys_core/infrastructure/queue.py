@@ -8,7 +8,6 @@ import structlog
 
 from bootstrap.settings import Settings
 from cys_core.application.ports.job_queue import JobQueueConnector
-from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.domain.workers.models import WorkerJob
 from cys_core.infrastructure.redis_client import ResilientRedisClient
 from cys_core.observability.metrics import metrics

@@ -8,7 +8,6 @@ import psycopg
 
 from cys_core.application.ports.job_store import JobRecord, JobRecordSummary
 from cys_core.domain.engagement.ids import normalize_correlation_id
-from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.workers.models import PendingHitlAction, WorkerJobStatus
 
 

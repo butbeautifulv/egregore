@@ -5,7 +5,6 @@ from typing import Any
 import structlog
 
 from cys_core.domain.evidence.incident_mitre import infer_suggested_mitre_techniques
-from cys_core.domain.evidence.observation_ids import build_obs_id
 from cys_core.domain.evidence.models import (
     DataGap,
     EvidenceManifest,
@@ -14,6 +13,7 @@ from cys_core.domain.evidence.models import (
     Observation,
     ObservationKind,
 )
+from cys_core.domain.evidence.observation_ids import build_obs_id
 
 logger = structlog.get_logger(__name__)
 
@@ -156,9 +156,7 @@ def _scan_event_fields(
             event_uuid=event_uuid,
         )
     if event.get("text"):
-        from bootstrap.settings import get_settings
-
-        text_max = get_settings().evidence_event_text_max
+        text_max = 500
         _add_observation(
             observations,
             kind="event_text",
@@ -260,7 +258,7 @@ def _finalize_manifest(
     )
     has_account = any(fa.present for fp, fa in availability.items() if "account" in fp)
     has_pipe = availability.get("object.name", FieldAvailability(field_path="object.name", present=False)).present
-    has_pid = any(fa.present for fp, fa in availability.items() if fp.endswith(".id"))
+    any(fa.present for fp, fa in availability.items() if fp.endswith(".id"))
     kata_taa = _kata_taa_detected(rules, incident_body)
 
     data_gaps: list[DataGap] = []
@@ -293,24 +291,21 @@ def _finalize_manifest(
     if kata_taa and (not has_cmdline or not has_pipe):
         required_external.append("kata_taa_console")
 
-    from bootstrap.settings import get_settings
-
-    evidence = get_settings()
     if not observations:
         telemetry_level = "metadata_only"
-        max_confidence = evidence.evidence_max_confidence_metadata
+        max_confidence = 0.3
     elif kata_taa and not has_cmdline:
         telemetry_level = "sparse"
-        max_confidence = evidence.evidence_max_confidence_sparse
+        max_confidence = 0.5
     elif not has_cmdline and not has_account:
         telemetry_level = "sparse"
-        max_confidence = evidence.evidence_max_confidence_sparse
+        max_confidence = 0.5
     elif recent_truncated and not include_raw_events:
         telemetry_level = "sparse"
-        max_confidence = evidence.evidence_max_confidence_sparse
+        max_confidence = 0.5
     else:
         telemetry_level = "rich"
-        max_confidence = evidence.evidence_max_confidence_rich
+        max_confidence = 1.0
 
     for fp, _kind in _FORENSIC_FIELD_PATHS:
         if fp not in availability:

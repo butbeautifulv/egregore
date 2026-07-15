@@ -8,10 +8,9 @@ from langchain.agents.middleware.types import AgentMiddleware, ModelRequest, Mod
 from langchain_core.messages import AIMessage, AnyMessage
 
 from cys_core.application.ports.context_summarizer import ContextSummarizerPort
-from cys_core.middleware._framework_casts import cast_model_response
-from cys_core.application.runs.message_trim import heal_orphaned_tool_messages
-from cys_core.application.runs.message_trim import trim_tool_results
+from cys_core.application.runs.message_trim import heal_orphaned_tool_messages, trim_tool_results
 from cys_core.application.runtime_config import get_context_summary_max_messages, get_keep_tool_results
+from cys_core.middleware._framework_casts import cast_model_response
 
 
 class ContextSummaryMiddleware(AgentMiddleware):

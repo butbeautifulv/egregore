@@ -7,8 +7,8 @@ from fastapi.responses import JSONResponse
 
 from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
-from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
 from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
+from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
 from interfaces.api.planner_tasks import spawn_engagement_planner
 
 
@@ -44,7 +44,12 @@ async def handle_engagement_ingress(
     }
 
 
-def engagement_request_from_event(event_type: str, payload: dict[str, Any], *, correlation_id: str = "") -> EngagementRequest | None:
+def engagement_request_from_event(
+    event_type: str,
+    payload: dict[str, Any],
+    *,
+    correlation_id: str = "",
+) -> EngagementRequest | None:
     if event_type != "engagement.start":
         return None
     goal = str(payload.get("goal", payload.get("message", payload.get("query", ""))))

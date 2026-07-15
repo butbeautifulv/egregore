@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 

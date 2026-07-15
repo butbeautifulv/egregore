@@ -62,6 +62,8 @@ def _mcp_call(url: str, tool_name: str, arguments: dict[str, Any] | None = None)
 
 
 def _live_veil_url() -> str | None:
+    if os.environ.get("VEIL_MCP_LIVE", "").lower() not in ("1", "true", "yes"):
+        return None
     url = os.environ.get("VEIL_MCP_URL", "").strip()
     if not url:
         return None

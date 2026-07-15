@@ -3,8 +3,8 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from cys_core.application.runtime_config import get_use_dynamic_catalog
 from cys_core.application.ports.agent_definitions import AgentDefinitionsLoaderPort
+from cys_core.application.runtime_config import get_use_dynamic_catalog
 from cys_core.domain.agents.models import AgentDefinition
 
 _loader: AgentDefinitionsLoaderPort | None = None
@@ -25,6 +25,11 @@ class AgentRegistry:
         root: Path | None = None,
         loader: AgentDefinitionsLoaderPort | None = None,
     ) -> AgentRegistry:
+        if root is not None:
+            definitions_loader = loader or _loader
+            if definitions_loader is None:
+                raise RuntimeError("Agent definitions loader not configured")
+            return cls(definitions_loader.load(root))
         if get_use_dynamic_catalog():
             from cys_core.infrastructure.catalog.catalog_registry import load_catalog_registry
 

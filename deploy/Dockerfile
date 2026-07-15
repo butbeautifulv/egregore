@@ -21,6 +21,12 @@ ENV PYTHONUNBUFFERED=1
 ENV STAGE=prod
 ENV USE_MEMORY_FALLBACK=false
 
+RUN groupadd -g 10001 app && useradd -u 10001 -g app -m app && chown -R app:app /app
+USER 10001
+
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)" || exit 1
 
 CMD ["uv", "run", "egregore", "serve", "--host", "0.0.0.0", "--port", "8080"]

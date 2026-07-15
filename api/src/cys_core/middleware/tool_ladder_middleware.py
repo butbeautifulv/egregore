@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import inspect
-import structlog
 from collections.abc import Callable
 from typing import Any, Awaitable
 
+import structlog
 from langchain.agents.middleware.types import AgentMiddleware
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest

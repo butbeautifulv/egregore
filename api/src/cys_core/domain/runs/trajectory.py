@@ -5,7 +5,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 TraceEventType = Literal["model", "tool", "memory", "eval", "policy", "system"]
 
 

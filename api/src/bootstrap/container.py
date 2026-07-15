@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bootstrap.persona_budget_loader import load_persona_budgets
-from bootstrap.settings import Settings, get_settings
 from bootstrap.containers.auth_container import AuthContainer
 from bootstrap.containers.catalog_container import CatalogContainer
 from bootstrap.containers.engagement_container import EngagementContainer
@@ -11,10 +9,14 @@ from bootstrap.containers.observability_container import ObservabilityContainer
 from bootstrap.containers.persistence_container import PersistenceContainer
 from bootstrap.containers.policy_container import PolicyContainer
 from bootstrap.containers.tools_container import ToolsContainer
+from bootstrap.persona_budget_loader import load_persona_budgets
+from bootstrap.settings import Settings
+from cys_core.application.catalog_singletons import configure_catalog_singleton_rebind
 from cys_core.application.policy_enforcement import PolicyEnforcementService
 from cys_core.application.policy_resolver import ProfilePolicyResolver
 from cys_core.application.runtime_config import configure_from_settings
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+from cys_core.domain.policy.defaults import configure_persona_budgets
 from cys_core.domain.workers.job_budget import configure_job_cost
 from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog, reload_agent_registry
 from cys_core.infrastructure.catalog.profile_policy import (
@@ -29,14 +31,18 @@ from cys_core.infrastructure.catalog.profile_policy import (
     get_profile_policy,
     get_trust_floor,
 )
-from cys_core.infrastructure.catalog.registry_factory import (
-    get_catalog_audit,
-    get_catalog_write_gate,
-    get_mcp_catalog,
-    get_plan_catalog,
-    get_skill_catalog,
-    get_tool_catalog,
+from cys_core.infrastructure.config.infra_settings import (
+    configure_docker_sandbox_settings,
+    configure_egress_streaming_settings,
+    configure_http_timeouts,
+    configure_wayback_settings,
 )
+
+
+def get_settings() -> Settings:
+    from bootstrap.settings import get_settings as _settings_get_settings
+
+    return _settings_get_settings()
 
 if TYPE_CHECKING:
     from cys_core.application.ports import PersistenceContext
@@ -64,10 +70,12 @@ class Container:
     """
 
     def __init__(self, settings: Settings | None = None) -> None:
-        self.settings = settings or get_settings()
+        self.settings = settings if settings is not None else get_settings()
         configure_from_settings(self.settings)
         configure_job_cost(self.settings.job_cost_per_1k_tokens_usd)
-        load_persona_budgets(self.settings)
+        configure_persona_budgets(load_persona_budgets(self.settings))
+        self._wire_infra_settings(self.settings)
+        self._wire_catalog_singleton_rebind()
 
         self._policy = PolicyContainer(self.settings)
         self._catalog = CatalogContainer(self)
@@ -160,9 +168,6 @@ class Container:
 
     def get_plan_investigation(self):
         return self._engagement.get_plan_investigation()
-
-    def wire_bus_reload(self) -> None:
-        self._engagement.wire_bus_reload()
 
     # ------------------------------------------------------------------
     # Persistence / queue / transport / sandbox / memory
@@ -356,11 +361,98 @@ class Container:
     def get_profile_policy_port(self) -> ProfilePolicyLoader:
         return self._policy.get_profile_policy_port()
 
+    def get_run_state_store(self):
+        from cys_core.infrastructure.runs.factory import get_run_state_store
+
+        return get_run_state_store()
+
+    def get_work_order_store(self):
+        from cys_core.infrastructure.work_order.adapter import WorkOrderStore
+
+        return WorkOrderStore(self.get_engagement_state_store())
+
+    def get_enqueue_follow_up(self):
+        from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp
+
+        return EnqueueFollowUp(
+            engagement_store=self.get_engagement_state_store(),
+            memory_writer=self.get_memory_write_service(),
+            memory_reader=self.get_memory_read_service(),
+            job_store=self.get_job_store(),
+            queue=self.get_job_queue(),
+            run_state_store=self.get_run_state_store(),
+            engagement_egress=self.get_engagement_egress(),
+            metrics=self.get_metrics_port(),
+        )
+
+    def get_start_work_order(self):
+        from cys_core.application.use_cases.start_work_order import StartWorkOrder
+
+        authz = self.get_authz_service()
+
+        def _write_authz_tuples(tuples):
+            authz.write_tuples(tuples)
+
+        return StartWorkOrder(
+            work_order_store=self.get_work_order_store(),
+            start_engagement=self.get_start_engagement(),
+            memory_writer=self.get_memory_write_service(),
+            memory_reader=self.get_memory_read_service(),
+            agent_catalog=self.get_agent_catalog(),
+            metrics=self.get_metrics_port(),
+            job_store=self.get_job_store(),
+            queue=self.get_job_queue(),
+            engagement_egress=self.get_engagement_egress(),
+            engagement_store=self.get_engagement_state_store(),
+            workspace_store=self.get_workspace_store(),
+            authz_tuple_writer=_write_authz_tuples if authz.mode != "off" else None,
+        )
+
+    def get_build_job_trace_metadata(self):
+        from cys_core.observability.trace_attributes import build_job_trace_metadata
+
+        return build_job_trace_metadata
+
     def get_policy_resolver(self) -> ProfilePolicyResolver:
         return self._policy.get_policy_resolver()
 
     def get_policy_enforcement(self) -> PolicyEnforcementService:
         return self._policy.get_policy_enforcement()
+
+    @staticmethod
+    def _wire_infra_settings(settings: Settings) -> None:
+        configure_http_timeouts(
+            connect_s=settings.http_connect_timeout_s,
+            read_s=settings.http_read_timeout_s,
+        )
+        configure_docker_sandbox_settings(
+            probe_timeout_s=settings.docker_probe_timeout_s,
+            kill_timeout_s=settings.docker_kill_timeout_s,
+        )
+        configure_egress_streaming_settings(
+            output_preview_max=settings.egress_output_preview_max,
+            batch_seconds=settings.egress_batch_seconds,
+        )
+        configure_wayback_settings(api_timeout_s=settings.wayback_api_timeout_s)
+
+    @staticmethod
+    def _wire_catalog_singleton_rebind() -> None:
+        def _rebind(prev_use_postgres: bool, new_use_postgres: bool) -> None:
+            if prev_use_postgres == new_use_postgres:
+                return
+            from cys_core.infrastructure.catalog.catalog_singletons import CatalogSingletons
+
+            CatalogSingletons.reset(
+                "agent_catalog",
+                "tool_catalog",
+                "skill_catalog",
+                "plan_catalog",
+                "mcp_catalog",
+                "catalog_audit",
+                "catalog_write_gate",
+            )
+
+        configure_catalog_singleton_rebind(_rebind)
 
     # ------------------------------------------------------------------
     # Cross-cutting bootstrap wiring (touches multiple sub-containers)

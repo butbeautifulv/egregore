@@ -99,12 +99,4 @@ def entity_grounded(entity_type: str, value: str, manifest: EvidenceManifest) ->
     for obs in manifest.observations:
         if obs.kind == entity_type and needle in obs.value.lower():
             return True
-        if entity_type == "process" and obs.kind == "process" and needle in obs.value.lower():
-            return True
-        if entity_type == "pid" and obs.kind == "pid" and needle in obs.value.lower():
-            return True
-        if entity_type == "pipe" and obs.kind == "pipe" and needle in obs.value.lower():
-            return True
-        if entity_type == "account" and obs.kind == "account" and needle in obs.value.lower():
-            return True
     return False

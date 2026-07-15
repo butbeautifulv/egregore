@@ -3,13 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 from cys_core.application.ports.orchestration import OrchestrationPort
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
-from cys_core.application.use_cases.route_event import RouteEvent
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort
 from cys_core.application.routing.event_router import EventRouter
 from cys_core.application.runtime_config import get_use_conductor_for_events
+from cys_core.application.use_cases.route_event import RouteEvent
 from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
 from cys_core.domain.runs.models import RunContext
+
 
 def enrich_payload_with_run_context(event: SecurityEvent, payload: dict[str, Any]) -> dict[str, Any]:
     """Attach RunContext(kind=event) — no session required."""

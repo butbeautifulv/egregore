@@ -26,6 +26,12 @@ async def test_critic_flags_low_trust_finding(monkeypatch):
         "interfaces.control_plane.critic_service.build_agent_bus",
         lambda *a, **k: MagicMock(send_message=lambda *a, **k: {"signature": "s"}),
     )
+    guard = MagicMock()
+    guard.revision_cap_exceeded.return_value = False
+    monkeypatch.setattr(
+        "interfaces.control_plane.critic_service.get_engagement_bus_guard",
+        lambda: guard,
+    )
     critic = CriticService()
 
     result = await critic.handle_message(

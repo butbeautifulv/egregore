@@ -153,7 +153,7 @@ class Settings(BaseSettings):
         default=SecretStr(_DEFAULT_POSTGRES_PASSWORD),
         validation_alias="POSTGRES_PASSWORD",
     )
-    postgres_db: str = Field(default="cys_agi", validation_alias="POSTGRES_DB")
+    postgres_db: str = Field(default="egregore", validation_alias="POSTGRES_DB")
 
     langfuse_public_key: str = Field(default="", validation_alias="LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: str = Field(default="", validation_alias="LANGFUSE_SECRET_KEY")

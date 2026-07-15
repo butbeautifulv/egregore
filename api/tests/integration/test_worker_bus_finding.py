@@ -103,4 +103,5 @@ async def test_consultant_publishes_to_critic_and_coordinator():
     result = await orch.run_job(job)
     assert result.success is True
     recipients = {msg["recipient"] for msg in published}
-    assert recipients == {"critic", "coordinator"}
+    # Default GATE_ONLY control-plane mode keeps critic but drops coordinator.
+    assert recipients == {"critic"}

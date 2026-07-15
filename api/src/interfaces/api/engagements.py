@@ -9,10 +9,13 @@ from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
 from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
 from cys_core.domain.parsing.json_text import parse_json_text
-from interfaces.api.tenant_deps import require_tenant_match_http
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_ingress_role, require_reader_role
-from interfaces.api.authz_helpers import filter_by_visible_workspaces, require_engagement_relation, visible_workspace_ids
+from interfaces.api.authz_helpers import (
+    filter_by_visible_workspaces,
+    require_engagement_relation,
+    visible_workspace_ids,
+)
 from interfaces.api.engagement_schemas import (
     EngagementCreateIn,
     EngagementListOut,
@@ -23,6 +26,7 @@ from interfaces.api.engagement_schemas import (
     TenantMemoryOut,
 )
 from interfaces.api.planner_tasks import spawn_engagement_planner
+from interfaces.api.tenant_deps import require_tenant_match_http
 
 router = APIRouter(prefix="/v1", tags=["engagements"])  # deprecated: prefer /v1/work-orders
 
@@ -78,8 +82,7 @@ async def list_engagements(
 ) -> EngagementListOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     store = get_container().get_engagement_state_store()
-    from cys_core.infrastructure.engagement.postgres_store import PostgresEngagementStateStore
-
+    list_with_updated_at = getattr(store, "list_recent_with_updated_at", None)
     visible = visible_workspace_ids(_auth)
 
     def _visible(engagement) -> bool:
@@ -88,8 +91,8 @@ async def list_engagements(
         workspace_id = (getattr(engagement, "workspace_id", "") or "").strip()
         return not workspace_id or workspace_id in visible
 
-    if isinstance(store, PostgresEngagementStateStore):
-        pairs = store.list_recent_with_updated_at(tenant_id, limit=limit)
+    if list_with_updated_at is not None:
+        pairs = list_with_updated_at(tenant_id, limit=limit)
         return EngagementListOut(
             engagements=[
                 _engagement_out(eng, updated_at=ts)

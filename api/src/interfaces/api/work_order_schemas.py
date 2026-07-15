@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from cys_core.domain.engagement.models import EngagementMode, PlanStrategy
 from cys_core.domain.follow_up.models import FollowUpMode, initial_follow_up_id
-from cys_core.domain.work_order.models import WorkOrder, WorkOrderRequest, WorkOrderStatus
+from cys_core.domain.work_order.models import WorkOrder, WorkOrderRequest
 
 
 class WorkOrderCreateIn(BaseModel):

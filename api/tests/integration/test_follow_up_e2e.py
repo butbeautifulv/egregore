@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp
 from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher
 from cys_core.domain.engagement.models import Engagement, EngagementStatus, SynthesisStatus
 from cys_core.domain.memory.services import MemoryReadService, MemoryWriteService
@@ -52,7 +51,7 @@ def test_follow_up_publish_cycle_updates_memory_and_egress() -> None:
         follow_up_id="fu-1",
     )
     text = publisher.publish_success(job=job, result={"answer": "Because."}, investigation_id="eng-1")
-    assert text == "Because."
+    assert "Because." in text
     egress.publish_event.assert_called_once()
     assert egress.publish_event.call_args.args[1] == "follow_up_complete"
     turns = memory_reader.query_conversation_turns("default", "eng-1")

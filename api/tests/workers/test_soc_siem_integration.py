@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 
 import httpx
 import pytest
@@ -11,13 +10,13 @@ from cys_core.infrastructure.tools.adapters.siem import query_siem_readonly_sear
 
 
 def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
-    @contextmanager
-    def _fake_sync_http_client(**_kwargs: object):
-        yield mock_client
+    def _fake_invoke_mcp_sync(**_kwargs: object) -> dict:
+        response = mock_client.post(_kwargs.get("url", ""), json=_kwargs.get("payload"))
+        return response.json()
 
     monkeypatch.setattr(
-        "cys_core.integrations.siem_mcp_client.sync_http_client",
-        _fake_sync_http_client,
+        "cys_core.integrations.mcp_http.invoke_mcp_sync",
+        _fake_invoke_mcp_sync,
     )
 
 
@@ -52,9 +51,8 @@ def test_query_siem_readonly_delegates_to_mcp(monkeypatch: pytest.MonkeyPatch) -
 
 @pytest.mark.unit
 def test_invoke_tool_routes_siem_mcp(monkeypatch: pytest.MonkeyPatch) -> None:
-    from bootstrap.container import get_container
-
     import cys_core.application.runtime_config as rc
+    from bootstrap.container import get_container
 
     monkeypatch.setattr(rc, "_siem_mcp_enabled", True)
 

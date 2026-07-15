@@ -3,9 +3,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime
 
-
-class InvalidListCursor(ValueError):
-    """Raised when a list pagination cursor cannot be decoded."""
+from cys_core.domain.engagement.pagination import InvalidListCursor
 
 
 def encode_cursor(updated_at: datetime, engagement_id: str) -> str:

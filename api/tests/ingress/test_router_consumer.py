@@ -4,13 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from cys_core.application.plans.plan_loader import load_plan_routing
 from cys_core.application.use_cases.dispatch_event import DispatchEvent
 from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
 from cys_core.domain.events.models import SecurityEvent
-from cys_core.application.plans.plan_loader import load_plan_routing
-from tests.conftest import make_event_router
 from cys_core.infrastructure.queue import InMemoryJobQueue
 from interfaces.ingress.router_consumer import RouterConsumer
+from tests.conftest import make_event_router
 
 
 @pytest.mark.unit

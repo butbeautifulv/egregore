@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from cys_core.domain.catalog.models import ModePolicyPayload, ProfilePolicyPayload
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.domain.reasoning.sgr_models import SgrPolicy
 from cys_core.domain.workers.models import PersonaBudget
 
 DEFAULT_BUS_POLICY: dict[str, list[str]] = {
@@ -185,12 +184,18 @@ _BASE_PERSONA_BUDGETS: dict[str, PersonaBudget] = {
 }
 
 PERSONA_BUDGETS = _BASE_PERSONA_BUDGETS
+_loaded_persona_budgets: dict[str, PersonaBudget] | None = None
+
+
+def configure_persona_budgets(budgets: dict[str, PersonaBudget]) -> None:
+    global _loaded_persona_budgets
+    _loaded_persona_budgets = dict(budgets) if budgets else None
 
 
 def get_persona_budgets() -> dict[str, PersonaBudget]:
-    from bootstrap.persona_budget_loader import get_loaded_persona_budgets
-
-    return get_loaded_persona_budgets()
+    if _loaded_persona_budgets is not None:
+        return dict(_loaded_persona_budgets)
+    return dict(_BASE_PERSONA_BUDGETS)
 
 PERSONA_CLEARANCE: dict[str, str] = {
     "soc": "confidential",

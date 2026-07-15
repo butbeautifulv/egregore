@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from bootstrap.container import get_container
 from cys_core.application.authz.audit import log_grant_change
 from cys_core.application.authz.tenant_bind import resolve_organization_id
-from interfaces.api.tenant_deps import require_tenant_match_http
 from cys_core.application.ports.authz import AuthzTuple
 from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.security.auth_models import AuthClaims
@@ -19,6 +18,7 @@ from interfaces.api.auth import require_operator_role, require_reader_role
 from interfaces.api.authz_deps import require_relation
 from interfaces.api.authz_helpers import count_active_jobs_for_workspace, require_workspace_relation
 from interfaces.api.errors import control_agent_immutable_http, workspace_active_jobs_http
+from interfaces.api.tenant_deps import require_tenant_match_http
 
 router = APIRouter(prefix="/v1", tags=["workspaces"])
 

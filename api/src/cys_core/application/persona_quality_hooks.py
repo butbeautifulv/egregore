@@ -3,8 +3,8 @@ from __future__ import annotations
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
 from cys_core.application.use_cases.update_persona_quality import UpdatePersonaQuality
-from cys_core.domain.catalog.quality_events import PersonaQualityEvent, PersonaQualityEventKind
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+from cys_core.domain.catalog.quality_events import PersonaQualityEvent, PersonaQualityEventKind
 
 _catalog: AgentCatalogPort | None = None
 _policy_port: ProfilePolicyPort | None = None
@@ -68,7 +68,13 @@ def record_event(
     )
 
 
-def record_job_completed(persona: str, *, success: bool, cost_usd: float = 0.0, profile_id: str = DEFAULT_PROFILE_ID) -> None:
+def record_job_completed(
+    persona: str,
+    *,
+    success: bool,
+    cost_usd: float = 0.0,
+    profile_id: str = DEFAULT_PROFILE_ID,
+) -> None:
     kind = PersonaQualityEventKind.JOB_COMPLETED if success else PersonaQualityEventKind.JOB_FAILED
     record_event(kind, persona, profile_id=profile_id, cost_usd=cost_usd)
 

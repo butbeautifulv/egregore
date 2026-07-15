@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,13 +35,8 @@ ALLOWLIST_BOOTSTRAP_INTERFACES: frozenset[str] = frozenset(
         "src/cys_core/infrastructure/auth/broker.py",
         "src/cys_core/infrastructure/auth/factory.py",
         "src/cys_core/infrastructure/bootstrap/application_settings_adapter.py",
-        "src/cys_core/infrastructure/bootstrap/catalog_seed_adapter.py",
-        "src/cys_core/infrastructure/bootstrap/policy_defaults_adapter.py",
-        "src/cys_core/infrastructure/bootstrap/product_pack_adapter.py",
         "src/cys_core/infrastructure/bus_transport.py",
         "src/cys_core/infrastructure/engagement/factory.py",
-        "src/cys_core/infrastructure/catalog/catalog_registry.py",
-        "src/cys_core/infrastructure/job_store/factory.py",
         "src/cys_core/infrastructure/k8s_sandbox.py",
         "src/cys_core/infrastructure/kafka_audit.py",
         "src/cys_core/infrastructure/kafka_bus.py",
@@ -52,7 +46,6 @@ ALLOWLIST_BOOTSTRAP_INTERFACES: frozenset[str] = frozenset(
         "src/cys_core/infrastructure/kafka_paused.py",
         "src/cys_core/infrastructure/kafka_publisher.py",
         "src/cys_core/infrastructure/kafka_queue.py",
-        "src/cys_core/infrastructure/memory/factory.py",
         "src/cys_core/infrastructure/queue.py",
         "src/cys_core/infrastructure/rag/retrieve.py",
         "src/cys_core/infrastructure/rag/store.py",
@@ -67,10 +60,7 @@ ALLOWLIST_BOOTSTRAP_INTERFACES: frozenset[str] = frozenset(
         "src/cys_core/registry/discovery_tools.py",
         "src/cys_core/registry/mcp_tools.py",
         "src/cys_core/registry/product_context.py",
-        "src/cys_core/registry/skills_tool.py",
         "src/cys_core/registry/tools.py",
-        "src/cys_core/registry/veil_tools.py",
-        "src/cys_core/registry/siem_tools.py",
         "src/cys_core/security/rate_limit.py",
     }
 )
@@ -319,7 +309,11 @@ def main() -> int:
         ("bootstrap/interfaces in cys_core", check_bootstrap_interfaces(), len(ALLOWLIST_BOOTSTRAP_INTERFACES)),
         ("application → interfaces", check_application_no_interfaces(), len(ALLOWLIST_APPLICATION_INTERFACES)),
         ("application → bootstrap", check_application_no_bootstrap(), len(ALLOWLIST_APPLICATION_BOOTSTRAP)),
-        ("application → infrastructure", check_application_no_infrastructure(), len(ALLOWLIST_APPLICATION_INFRASTRUCTURE)),
+        (
+            "application → infrastructure",
+            check_application_no_infrastructure(),
+            len(ALLOWLIST_APPLICATION_INFRASTRUCTURE),
+        ),
         ("application → registry", check_application_no_registry(), len(ALLOWLIST_APPLICATION_REGISTRY)),
         ("application → observability", check_application_no_observability(), len(ALLOWLIST_APPLICATION_OBSERVABILITY)),
         ("application → runtime", check_application_no_runtime(), len(ALLOWLIST_APPLICATION_RUNTIME)),

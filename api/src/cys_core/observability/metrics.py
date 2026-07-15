@@ -6,6 +6,8 @@ from typing import Iterator
 
 from prometheus_client import Counter, Gauge, Histogram
 
+from cys_core.domain.catalog.trust import declared_trust_score as _declared_trust_score
+
 
 class CysMetrics:
     """Prometheus metrics registry for cys-agi platform signals."""
@@ -300,8 +302,6 @@ class CysMetrics:
 
 
 metrics = CysMetrics()
-
-from cys_core.domain.catalog.trust import declared_trust_score as _declared_trust_score  # noqa: E402
 
 
 def declared_trust_score(entry) -> float:

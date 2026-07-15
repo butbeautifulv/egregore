@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import structlog
 from datetime import datetime, timezone
 from typing import Any
+
+import structlog
 
 from cys_core.application.bus_planner_gate import planner_personas_terminal
 from cys_core.application.ports.engagement_store import EngagementStateStore
@@ -14,8 +15,8 @@ from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesi
 from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
 from cys_core.domain.engagement.models import Engagement, EngagementStatus, ExecutionMode, SynthesisStatus
 from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
-from cys_core.domain.workers.models import WorkerJob, WorkerJobStatus
 from cys_core.domain.workers.failure_reason import WorkerJobFailureReason
+from cys_core.domain.workers.models import WorkerJob, WorkerJobStatus
 
 logger = structlog.get_logger(__name__)
 

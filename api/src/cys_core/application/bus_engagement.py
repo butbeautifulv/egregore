@@ -1,4 +1,4 @@
-from cys_core.domain.engagement.ids import (  # noqa: F401
+from cys_core.domain.engagement.ids import (
     ENGAGEMENT_ID_RE,
     extract_engagement_id,
     normalize_correlation_id,

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import structlog
 from typing import Any
+
+import structlog
 
 from cys_core.application.ports.schema_registry import SchemaRegistryPort
 from cys_core.application.ports.tracing_ports import ApplicationTracingPort
+from cys_core.application.runtime_config import get_critic_default_confidence, get_critic_trust_threshold
 from cys_core.application.workers.evidence_gate import soc_evidence_gaps
 from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.application.workers.tool_execution_tracker import get_persona_manifests
 from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
-from cys_core.domain.evidence.models import EvidenceManifest
 
 logger = structlog.get_logger(__name__)
 
@@ -50,15 +51,13 @@ class ProcessFindingCritic:
         schema_registry: SchemaRegistryPort | None = None,
         trust_threshold: float | None = None,
     ) -> None:
-        from bootstrap.settings import get_settings
-
         self._policy_port = policy_port
         self._application_tracing = application_tracing
         self._schema_registry = schema_registry
         self.trust_threshold = (
             trust_threshold
             if trust_threshold is not None
-            else get_settings().critic_trust_threshold
+            else get_critic_trust_threshold()
         )
 
     # NOTE(evidence-grounding-consolidation, 2026-07-14): this reads `get_persona_manifests`
@@ -71,9 +70,7 @@ class ProcessFindingCritic:
     # cys_core/application/workers/tool_execution_tracker.py. Do not "fix" this without reading
     # that note first.
     def _resolve_trust_score(self, finding: dict[str, Any], persona: str, investigation_id: str | None) -> float:
-        from bootstrap.settings import get_settings
-
-        default_confidence = get_settings().critic_default_confidence
+        default_confidence = get_critic_default_confidence()
         try:
             confidence = float(
                 finding.get("confidence", finding.get("trust_score", default_confidence))

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from cys_core.domain.authz.tool_datasource_map import TOOL_TO_DATASOURCE
 from cys_core.domain.datasources.models import DataSourceCapability
 from cys_core.domain.datasources.tool_metadata import ToolDataSourceBinding
-from cys_core.domain.authz.tool_datasource_map import TOOL_TO_DATASOURCE
 
 _AUTHZ_MAP_BINDINGS: dict[str, ToolDataSourceBinding] = {
     tool_name: ToolDataSourceBinding(

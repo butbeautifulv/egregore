@@ -1,9 +1,9 @@
 import pytest
 
-from cys_core.domain.events.models import RoutingRule, SecurityEvent
 from cys_core.application.plans.plan_loader import load_plan_routing
-from cys_core.domain.events.plans import PlanRoutingConfig, rule_matches, severity_at_least
 from cys_core.application.routing.event_router import EventRouter
+from cys_core.domain.events.models import RoutingRule, SecurityEvent
+from cys_core.domain.events.plans import PlanRoutingConfig, rule_matches, severity_at_least
 from tests.application.port_fakes import fake_policy_port
 
 

@@ -15,7 +15,6 @@ from cys_core.domain.security.a2a import A2A_PROTOCOL_VERSION, default_mtls_subj
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.sanitizer import InputSanitizer
 
-
 _STRUCTURAL_ID_KEYS = frozenset(
     {
         "correlation_id",
@@ -220,11 +219,23 @@ class SecureAgentBus:
         timestamp: str,
     ) -> str:
         body = json.dumps(
-            {"sender": sender, "recipient": recipient, "type": message_type, "payload": payload, "timestamp": timestamp},
+            {
+                "sender": sender,
+                "recipient": recipient,
+                "type": message_type,
+                "payload": payload,
+                "timestamp": timestamp,
+            },
             sort_keys=True,
             separators=(",", ":"),
         )
         return hmac.new(self.signing_key, body.encode("utf-8"), hashlib.sha256).hexdigest()
 
     def _log_event(self, event_type: str, details: dict[str, Any]) -> None:
-        self.security_events.append({"type": event_type, "details": details, "ts": datetime.now(timezone.utc).isoformat()})
+        self.security_events.append(
+            {
+                "type": event_type,
+                "details": details,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+        )
