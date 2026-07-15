@@ -63,6 +63,7 @@ export function usePlatformBreadcrumbLabel(label: string | null) {
 export function usePlatformBreadcrumbMiddle(crumbs: PlatformCrumb[]) {
   const { setMiddleCrumbs } = useBreadcrumbContext()
   const crumbsKey = JSON.stringify(crumbs)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately keyed on crumbsKey (deep-equal), not the crumbs reference
   const stableCrumbs = useMemo(() => crumbs, [crumbsKey])
   useEffect(() => {
     setMiddleCrumbs(stableCrumbs)

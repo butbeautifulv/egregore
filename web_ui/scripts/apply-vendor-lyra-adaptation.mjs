@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @deprecated Lyra styling is handled by shared/gui semantic tokens + html[data-gui-style="lyra"].
+ * @deprecated Lyra styling is handled by vendor/gui's own semantic tokens + html[data-gui-style="lyra"].
  * Kept as a no-op for scripts that still invoke this file.
  */
 console.log(

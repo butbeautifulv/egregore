@@ -49,6 +49,7 @@ export function AgentMessageBlock({
   const copyText = useMemo(() => resolveEntryCopyText(entry, finding), [entry, finding])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-expands on new streaming, one-way (doesn't force-close on stream end)
     if (entry.streaming) setReasoningOpen(true)
   }, [entry.streaming])
 

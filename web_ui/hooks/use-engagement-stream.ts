@@ -37,11 +37,6 @@ export function useEngagementStream(
   }, [onEvent])
 
   useEffect(() => {
-    if (!enabled || !engagementId) {
-      setStatus("closed")
-      return
-    }
-
     let cancelled = false
     let backoff = INITIAL_BACKOFF_MS
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -115,7 +110,13 @@ export function useEngagementStream(
       }
     }
 
-    void connect()
+    void (async () => {
+      if (!enabled || !engagementId) {
+        setStatus("closed")
+        return
+      }
+      await connect()
+    })()
 
     return () => {
       cancelled = true

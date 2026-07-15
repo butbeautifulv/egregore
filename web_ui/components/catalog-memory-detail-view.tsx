@@ -28,10 +28,10 @@ export function CatalogMemoryDetailView({
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    setEntry(null)
     ;(async () => {
+      setLoading(true)
+      setError(null)
+      setEntry(null)
       try {
         const response = await listTenantMemory({
           limit: 200,

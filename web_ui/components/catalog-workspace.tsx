@@ -59,6 +59,7 @@ export function CatalogWorkspace({
   const [actionError, setActionError] = useState<unknown>(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs the active tab when the URL's ?tab= changes externally (e.g. browser back/forward)
     setKind(initialTab)
   }, [initialTab])
 
@@ -77,7 +78,7 @@ export function CatalogWorkspace({
     }
   }, [])
 
-  const { data, error, rawError, loading, refresh, isStale } = useApiQuery(fetcher, [], {
+  const { data, rawError, loading, refresh, isStale } = useApiQuery(fetcher, [], {
     fallback: "Failed to load catalog",
     enabled: kind !== "memory",
   })

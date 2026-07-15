@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Frozen shadcn preset reference snapshot (docs/GUI_VENDOR.md) — never
+    // imported by app code, kept only for visual diffing against upstream.
+    ".external/**",
   ]),
 ]);
 

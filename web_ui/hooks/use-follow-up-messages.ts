@@ -106,7 +106,9 @@ export function useFollowUpMessages(investigationId: string) {
     if (stored) {
       jobIdToFollowUpIdRef.current.set("", stored)
     }
-    void reloadFollowUps()
+    void (async () => {
+      await reloadFollowUps()
+    })()
   }, [investigationId, reloadFollowUps])
 
   const upsertAssistantStream = useCallback(

@@ -87,7 +87,9 @@ export function InvestigationDetailView({
     }
   }, [investigationId])
 
-  refreshDetailOnlyRef.current = refreshDetailOnly
+  useEffect(() => {
+    refreshDetailOnlyRef.current = refreshDetailOnly
+  })
 
   const applyEngagementEvent = useCallback(
     (event: Parameters<typeof handleEvent>[0]) => {
@@ -215,6 +217,11 @@ export function InvestigationDetailView({
   const followUpJobMap = useMemo(
     () => {
       const merged = buildFollowUpJobMap(jobs, followUps)
+      // Reading a ref during render is normally unsound, but every write to
+      // followUpJobMapRef (in applyEngagementEvent) is paired with a state
+      // update in the same call, so a re-render always follows and this
+      // memo never observes a stale ref value in practice.
+      // eslint-disable-next-line react-hooks/refs -- see comment above
       for (const [jobId, fuId] of followUpJobMapRef.current) {
         merged.set(jobId, fuId)
       }
@@ -282,7 +289,7 @@ export function InvestigationDetailView({
     const err = detail.planner_error.trim()
     if (followUpPlanFailedMessage && err === followUpPlanFailedMessage) return null
     return err
-  }, [detail?.planner_status, detail?.planner_error, followUpPlanFailedMessage])
+  }, [detail, followUpPlanFailedMessage])
 
   const streamConnected = engagementStreamStatus === "open"
 

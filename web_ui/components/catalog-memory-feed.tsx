@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 
-import { listTenantMemory, type MemoryEntry } from "@/lib/api-client"
+import { listTenantMemory } from "@/lib/api-client"
 import { ApiErrorAlert } from "@/components/api-error-alert"
 import { MemoryEntriesList } from "@/components/memory-entries-list"
 import { useApiQuery } from "@/hooks/use-api-query"

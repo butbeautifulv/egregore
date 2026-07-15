@@ -116,7 +116,7 @@ function loadSkillSummary(tool: ChatToolCall): string {
   return "Skill loaded"
 }
 
-function ToolCallAttachment({ tool, index }: { tool: ChatToolCall; index: number }) {
+function ToolCallAttachment({ tool }: { tool: ChatToolCall }) {
   const playbook = isPlaybookSearchTool(tool.name)
   const loadSkill = tool.name.startsWith("load_skill")
   const title = playbook ? "playbook_search" : tool.name
@@ -153,7 +153,6 @@ export const ToolCallList = memo(function ToolCallList({ tools }: { tools: ChatT
         <ToolCallAttachment
           key={`${tool.tool_call_id ?? tool.name}-${index}`}
           tool={tool}
-          index={index}
         />
       ))}
     </AttachmentGroup>
