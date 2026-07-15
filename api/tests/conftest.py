@@ -140,21 +140,35 @@ def soc_catalog() -> InMemoryAgentCatalog:
 def _reset_container_and_memory_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
     """Use in-memory catalog and reset DI container between tests."""
     import bootstrap.container as container_mod
+    from bootstrap.catalog_loader import load_profile_pack
     from bootstrap.settings import get_settings
+    from cys_core.application.runtime_config import configure_from_settings
 
     monkeypatch.setenv("AUTH_ENABLED", "0")
     monkeypatch.setenv("USE_MEMORY_FALLBACK", "true")
     get_settings.cache_clear()
+    configure_from_settings(get_settings())
     container_mod._container = None
     from cys_core.infrastructure.catalog.catalog_singletons import CatalogSingletons
 
     CatalogSingletons.reset()
-    catalog = catalog_with_soc_profile()
+    profile, entries = load_profile_pack()
+    catalog = InMemoryAgentCatalog()
+    catalog.seed(entries, profile)
     patch_catalog(monkeypatch, catalog)
     monkeypatch.setattr(
         "cys_core.infrastructure.catalog.registry_factory._use_postgres",
         lambda: False,
     )
+    from bootstrap.paths import find_api_root
+    from cys_core.application.skills.catalog import configure_skills_agents_root
+
+    class _AgentsRoot:
+        def agents_root(self):
+            return find_api_root() / "agents"
+
+    configure_skills_agents_root(_AgentsRoot())
+    container_mod.get_container()
     yield
     container_mod._container = None
     CatalogSingletons.reset()

@@ -40,7 +40,7 @@ def load_skill(
     job_id: str = "",
     profile_id: str = "cybersec-soc",
 ) -> str:
-    if skill_name not in allowed_skills and allowed_skills:
+    if skill_name not in allowed_skills:
         raise SkillLoadError(f"Skill '{skill_name}' not allowlisted for persona '{persona}'")
     body = _load_from_catalog(skill_name, profile_id=profile_id)
     if body is None:

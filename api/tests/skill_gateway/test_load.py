@@ -15,8 +15,8 @@ def test_load_skill_success():
         allowed_skills=["network-beaconing"],
         job_id="job-1",
     )
-    assert "BEGIN_SKILL_CONTENT" in content
-    assert "SKILL_CONTENT" in content
+    assert "<!-- skill:network-beaconing sha:" in content
+    assert "USER_DATA_TO_PROCESS" in content
     assert len(get_skill_audit_records()) == 1
     clear_skill_audit_records()
 

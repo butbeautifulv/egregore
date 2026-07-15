@@ -5,8 +5,13 @@ from collections import deque
 
 import pytest
 
+from bootstrap.settings import Settings
 from cys_core.domain.workers.models import WorkerJob
 from cys_core.infrastructure.queue import RedisJobQueue
+
+
+def _redis_settings(redis_url: str = "redis://localhost:6379/0") -> Settings:
+    return Settings(stage="test", redis_url=redis_url)
 
 
 def _job(job_id: str, persona: str = "consultant") -> WorkerJob:
@@ -48,7 +53,7 @@ class _FakeRedis:
 def test_redis_list_enqueue_dequeue_two_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeRedis()
     monkeypatch.setattr("redis.Redis.from_url", lambda *_args, **_kwargs: fake)
-    queue = RedisJobQueue(redis_url="redis://localhost:6379/0")
+    queue = RedisJobQueue(settings=_redis_settings())
     first = _job("j1")
     second = _job("j2")
     queue.enqueue(first)
@@ -62,8 +67,8 @@ def test_redis_list_enqueue_dequeue_two_jobs(monkeypatch: pytest.MonkeyPatch) ->
 def test_redis_brpop_safe_for_multiple_workers(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeRedis()
     monkeypatch.setattr("redis.Redis.from_url", lambda *_args, **_kwargs: fake)
-    queue_a = RedisJobQueue(redis_url="redis://localhost:6379/0")
-    queue_b = RedisJobQueue(redis_url="redis://localhost:6379/0")
+    queue_a = RedisJobQueue(settings=_redis_settings())
+    queue_b = RedisJobQueue(settings=_redis_settings())
     payload = _job("j-only")
     queue_a.enqueue(payload)
     assert queue_a.dequeue(0.1) == payload
@@ -82,7 +87,7 @@ def test_redis_reconnects_after_init_ping_failure(monkeypatch: pytest.MonkeyPatc
         return fake
 
     monkeypatch.setattr("redis.Redis.from_url", _from_url)
-    queue = RedisJobQueue(redis_url="redis://localhost:6379/0")
+    queue = RedisJobQueue(settings=_redis_settings())
     assert queue.active_backend == "memory"
     job = _job("reconnect-1")
     assert queue.enqueue(job) == job.job_id
@@ -94,7 +99,7 @@ def test_redis_reconnects_after_init_ping_failure(monkeypatch: pytest.MonkeyPatc
         ("1-0", {"payload": json.dumps({"job_id": "legacy-1", "event_id": "evt-legacy", "persona": "consultant"})})
     ]
     monkeypatch.setattr("redis.Redis.from_url", lambda *_args, **_kwargs: fake)
-    queue = RedisJobQueue(redis_url="redis://localhost:6379/0")
+    queue = RedisJobQueue(settings=_redis_settings())
     job = queue.dequeue(0.1)
     assert job is not None
     assert job.job_id == "legacy-1"

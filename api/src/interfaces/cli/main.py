@@ -45,7 +45,7 @@ def cmd_worker(args: argparse.Namespace) -> int:
     get_container()
     configure_logging("egregore-worker")
     setup_otel(service_name="egregore-worker")
-    if args.metrics_port is not None:
+    if getattr(args, "metrics_port", None) is not None:
         os.environ["EGREGORE_METRICS_PORT"] = str(args.metrics_port)
     idle_timeout = settings.worker_idle_timeout if args.idle_timeout is None else args.idle_timeout
     if args.daemon:

@@ -15,7 +15,7 @@ def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.
         yield mock_client
 
     monkeypatch.setattr(
-        "cys_core.integrations.veil_mcp_client.sync_http_client",
+        "cys_core.infrastructure.http_client.sync_http_client",
         _fake_sync_http_client,
     )
 

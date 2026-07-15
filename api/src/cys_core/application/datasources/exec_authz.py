@@ -28,7 +28,11 @@ def _resolve_source(binding_datasource_id: str) -> DataSource:
     return DataSource(
         id=binding_datasource_id,
         type=binding_datasource_id,
-        capabilities=[DataSourceCapability.GET, DataSourceCapability.LIST],
+        capabilities=[
+            DataSourceCapability.GET,
+            DataSourceCapability.LIST,
+            DataSourceCapability.QUERY,
+        ],
     )
 
 

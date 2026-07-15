@@ -5,7 +5,12 @@ from typing import Any
 
 import pytest
 
+from bootstrap.settings import Settings
 from cys_core.infrastructure.engagement.redis_egress import RedisEngagementEgress
+
+
+def _redis_settings(redis_url: str = "redis://localhost:6379/0") -> Settings:
+    return Settings(stage="test", redis_url=redis_url)
 
 
 class _FakePubSub:
@@ -77,8 +82,8 @@ class _FakeRedis:
 def test_redis_egress_publish_visible_across_instances(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeRedis()
     monkeypatch.setattr("redis.Redis.from_url", lambda *_args, **_kwargs: fake)
-    writer = RedisEngagementEgress(redis_url="redis://localhost:6379/0")
-    reader = RedisEngagementEgress(redis_url="redis://localhost:6379/0")
+    writer = RedisEngagementEgress(settings=_redis_settings())
+    reader = RedisEngagementEgress(settings=_redis_settings())
     assert writer.active_backend == "redis"
 
     writer.publish_status(
@@ -98,7 +103,7 @@ def test_redis_egress_falls_back_to_memory_when_redis_down(monkeypatch: pytest.M
         "redis.Redis.from_url",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionError("down")),
     )
-    egress = RedisEngagementEgress(redis_url="redis://invalid:1/0")
+    egress = RedisEngagementEgress(settings=_redis_settings("redis://invalid:1/0"))
     assert egress.active_backend == "memory"
     egress.publish_event("eng-2", "job_finished", {"tenant_id": "default"})
     events = egress.snapshot("eng-2", tenant_id="default")

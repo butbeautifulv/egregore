@@ -16,9 +16,10 @@ def test_get_job_queue_redis_by_default(monkeypatch):
     reset_job_queue_cache()
     monkeypatch.setenv("USE_KAFKA", "false")
     try:
+        from bootstrap.settings import get_settings
         from cys_core.infrastructure.queue import get_job_queue
 
-        queue = get_job_queue()
+        queue = get_job_queue(settings=get_settings())
         assert isinstance(queue, RedisJobQueue)
     finally:
         get_settings.cache_clear()
@@ -38,7 +39,7 @@ def test_get_job_queue_kafka_when_enabled(monkeypatch):
         settings.use_kafka = True
         from cys_core.infrastructure.queue import get_job_queue
 
-        queue = get_job_queue(persona="soc")
+        queue = get_job_queue(persona="soc", settings=settings)
         assert isinstance(queue, KafkaJobQueue)
         assert queue._persona == "soc"
     finally:

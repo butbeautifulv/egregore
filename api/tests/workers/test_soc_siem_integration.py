@@ -11,13 +11,13 @@ from cys_core.infrastructure.tools.adapters.siem import query_siem_readonly_sear
 
 
 def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
-    @contextmanager
-    def _fake_sync_http_client(**_kwargs: object):
-        yield mock_client
+    def _fake_invoke_mcp_sync(**_kwargs: object) -> dict:
+        response = mock_client.post(_kwargs.get("url", ""), json=_kwargs.get("payload"))
+        return response.json()
 
     monkeypatch.setattr(
-        "cys_core.integrations.siem_mcp_client.sync_http_client",
-        _fake_sync_http_client,
+        "cys_core.integrations.mcp_http.invoke_mcp_sync",
+        _fake_invoke_mcp_sync,
     )
 
 
