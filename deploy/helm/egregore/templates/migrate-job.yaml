@@ -10,6 +10,7 @@ spec:
     spec:
       restartPolicy: OnFailure
       enableServiceLinks: false
+      {{- include "egregore.podSecurityContext" . | nindent 6 }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -18,6 +19,7 @@ spec:
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- include "egregore.containerSecurityContext" . | nindent 10 }}
           command: ["/app/.venv/bin/egregore", "migrate"]
           envFrom:
             - configMapRef:
@@ -27,4 +29,10 @@ spec:
           env:
             - name: OTEL_SERVICE_NAME
               value: egregore-migrate
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 {{- end }}
