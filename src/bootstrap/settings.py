@@ -26,12 +26,14 @@ def _settings_env_files() -> tuple[str, ...]:
         files[0] = str(override)
 
     settings_path = Path(__file__).resolve()
-    # Monorepo dev checkout: .../cys_framework/projects/egregore/bootstrap/settings.py
-    if len(settings_path.parents) > 3:
-        repo_root = settings_path.parents[3]
-        local_secrets = repo_root / "deploy" / ".secrets" / "egregore-local.env"
-        if local_secrets.is_file():
-            files.append(str(local_secrets))
+    # Monorepo dev checkout: .../cys_framework/projects/egregore/src/bootstrap/settings.py
+    for depth in (4, 3):
+        if len(settings_path.parents) > depth:
+            repo_root = settings_path.parents[depth]
+            local_secrets = repo_root / "deploy" / ".secrets" / "egregore-local.env"
+            if local_secrets.is_file():
+                files.append(str(local_secrets))
+                break
     return tuple(files)
 
 

@@ -12,7 +12,7 @@ from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.security.prompt_context import TrustedSystemContext
 from cys_core.domain.security.system_prompt_assembler import assemble_trusted_system_context
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RULES_SKIP = frozenset({"README.md"})
 
 _catalog_provider: AgentCatalogPort | None = None

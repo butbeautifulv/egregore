@@ -1,7 +1,37 @@
 name: Release Gate
 
-# DIAGNOSTIC STUB — temporarily stripped to isolate a startup_failure.
-# Full version backed up; will be restored once the cause is found.
+# Canonical CI/CD gate for egregore — the single required status check that
+# blocks broken builds and known vulnerabilities from reaching `main`.
+#
+# Supersedes ci.yml, arch-gate.yml, adversarial-gate.yml, security-shift-left.yml
+# and ci-profile.yml, which raced as five independent, uncoordinated workflows
+# on every PR with no branch protection behind any of them — so none of them
+# actually blocked anything. Those files are kept (workflow_dispatch only, not
+# deleted) in case something external still references them; see the header
+# comment added to each for why it was retired.
+#
+# Modeled directly on .gitlab/jobs/cxado/egregore-*.yml — the real, currently
+# active corp GitLab pipeline for this product — reusing the same
+# scripts/gate-check.py + config/security-gate-policy.yaml mechanism and the
+# same blocker/warn split (GitLab's `.egregore_blocker` / `.egregore_warn`).
+#
+# Known pre-existing gaps intentionally left warn-only (continue-on-error)
+# rather than either silently dropped or left permanently red — see the
+# TODO on each job and docs/CI_CD_KNOWN_GAPS.md for the tracked follow-up:
+#   - lint: 367 pre-existing ruff findings (same command ci.yml's own lint
+#     job already used — this predates tonight, ci.yml's `lint` job has
+#     apparently never gone green)
+#   - unit-tests: ~60 pre-existing failures across 15/29 pytest_batches.sh
+#     batches, unrelated to this PR (confirmed via git-stash bisection)
+#   - arch-lint: 8 files import `bootstrap` from domain/application layers
+#     (real import-boundary violations, predate this workflow)
+#   - domain-coverage: 100% target, ~78% actual today
+#
+# These four are exactly why this gate exists: nothing currently stops any
+# of this from reaching `main` today. Fixing them is real, separate work —
+# each is flipped from warn to blocking independently once addressed, same
+# as security-gate-policy.yaml's own documented "warn → block after
+# stabilization" precedent (see its changelog, phase B5).
 
 on:
   pull_request:
@@ -14,16 +44,41 @@ permissions:
   security-events: write
   pull-requests: read
 
+env:
+  STAGE: test
+  USE_MEMORY_FALLBACK: "true"
+  SECURITY_POLICY: config/security-gate-policy.yaml
+
 jobs:
+  # ---------------------------------------------------------------------
+  # Blocking — must pass before merge
+  # ---------------------------------------------------------------------
+
   adversarial:
     runs-on: ubuntu-latest
     steps:
-      - run: echo hi
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Abuse-case matrix
+        run: uv run pytest tests/adversarial/ -m adversarial --strict-markers -q
 
   web-ui:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web_ui
     steps:
-      - run: echo hi
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test lib/
+      - run: bun run build
 
   secret-scan:
     uses: ./.github/workflows/job-secret-scan.yml
@@ -36,6 +91,69 @@ jobs:
   osa:
     uses: ./.github/workflows/job-osa.yml
     secrets: inherit
+
+  # ---------------------------------------------------------------------
+  # Warn-only — runs and reports on every PR, does not block merge yet.
+  # Flip continue-on-error off once the underlying debt is paid down.
+  # ---------------------------------------------------------------------
+
+  lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Ruff
+        run: uv run ruff check src tests
+      - name: Type check
+        run: uv run ty check src
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Pytest batches
+        run: ./scripts/pytest_batches.sh
+
+  arch-lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Import linter
+        run: uv run lint-imports
+      - name: Import boundary audit
+        run: uv run python scripts/verify_import_boundaries.py
+      - name: No langfuse in core
+        run: bash scripts/verify_no_langfuse_in_core.sh
+      - name: Architecture contract tests
+        run: uv run pytest tests/architecture/ -q
+
+  domain-coverage:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Domain coverage (target 100%)
+        run: |
+          uv run pytest tests/domain/ -q \
+            --cov=src/cys_core/domain --cov-report=term-missing --cov-fail-under=100
 
   iac-scan:
     uses: ./.github/workflows/job-iac-scan.yml
@@ -51,4 +169,113 @@ jobs:
 
   skill-scanner:
     uses: ./.github/workflows/job-skill-scanner.yml
+    secrets: inherit
+
+  # ---------------------------------------------------------------------
+  # Aggregate gate — THE status check to require in branch protection.
+  # Fails if any blocking job above didn't succeed; warn-only jobs are
+  # deliberately excluded from this list.
+  # ---------------------------------------------------------------------
+
+  release-gate:
+    if: always()
+    runs-on: ubuntu-latest
+    needs:
+      - adversarial
+      - web-ui
+      - secret-scan
+      - sast
+      - osa
+    steps:
+      - name: Evaluate required checks
+        run: |
+          set -eu
+          fail=0
+          declare -A results=(
+            [adversarial]="${{ needs.adversarial.result }}"
+            [web-ui]="${{ needs.web-ui.result }}"
+            [secret-scan]="${{ needs.secret-scan.result }}"
+            [sast]="${{ needs.sast.result }}"
+            [osa]="${{ needs.osa.result }}"
+          )
+          for job in "${!results[@]}"; do
+            r="${results[$job]}"
+            echo "$job: $r"
+            if [ "$r" != "success" ]; then
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::One or more required gate jobs did not succeed."
+            exit 1
+          fi
+          echo "All required gates passed."
+
+  # ---------------------------------------------------------------------
+  # Main-only — build, supply chain, sign, deploy. Gated on release-gate,
+  # so this never runs against an unmerged/unvetted commit.
+  # ---------------------------------------------------------------------
+
+  build:
+    if: github.ref == 'refs/heads/main'
+    needs: [release-gate]
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+      - name: Build image
+        env:
+          REGISTRY: ghcr.io/${{ github.repository }}
+        run: |
+          if [ -f Dockerfile ]; then
+            docker build -t "${REGISTRY}:${{ github.sha }}" .
+          else
+            echo "No Dockerfile at repo root — skipping image build"
+          fi
+
+  sbom:
+    if: github.ref == 'refs/heads/main'
+    needs: [build]
+    uses: ./.github/workflows/job-sbom.yml
+    secrets: inherit
+
+  container-scan:
+    if: github.ref == 'refs/heads/main'
+    needs: [build]
+    uses: ./.github/workflows/job-sca-image.yml
+    secrets: inherit
+    with:
+      image: ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+  sign:
+    if: github.ref == 'refs/heads/main'
+    needs: [container-scan]
+    uses: ./.github/workflows/job-sign.yml
+    secrets: inherit
+
+  deploy-preprod:
+    if: github.ref == 'refs/heads/main'
+    needs: [sign]
+    uses: ./.github/workflows/deploy-preprod.yml
+    secrets: inherit
+
+  dast:
+    if: github.ref == 'refs/heads/main'
+    needs: [deploy-preprod]
+    uses: ./.github/workflows/dast.yml
+    secrets: inherit
+
+  sec-func-tests:
+    if: github.ref == 'refs/heads/main'
+    needs: [deploy-preprod]
+    uses: ./.github/workflows/job-sec-func-tests.yml
+    secrets: inherit
+
+  iast-preprod:
+    if: github.ref == 'refs/heads/main'
+    needs: [deploy-preprod]
+    uses: ./.github/workflows/job-iast-preprod.yml
     secrets: inherit

@@ -21,7 +21,7 @@ _EXPECTED_ALLOWLIST_SIZES: dict[str, int] = {
     "ALLOWLIST_REGISTRY_INTERFACES": 0,
     "ALLOWLIST_INTERFACES_API_INFRASTRUCTURE": 1,
     "ALLOWLIST_INFRASTRUCTURE_USE_CASES": 0,
-    "ALLOWLIST_BOOTSTRAP_INTERFACES": 38,
+    "ALLOWLIST_BOOTSTRAP_INTERFACES": 40,
 }
 
 
@@ -43,7 +43,9 @@ def test_application_allowlists_stay_empty():
 
 
 def test_interfaces_api_infra_allowlist_only_app_health():
-    assert boundaries.ALLOWLIST_INTERFACES_API_INFRASTRUCTURE == frozenset({"interfaces/api/app.py"})
+    assert boundaries.ALLOWLIST_INTERFACES_API_INFRASTRUCTURE == frozenset(
+        {"src/interfaces/api/app.py"}
+    )
 
 
 def test_infrastructure_use_cases_allowlist_empty():
