@@ -8,7 +8,7 @@ import pytest
 import scripts.verify_import_boundaries as boundaries
 
 ROOT = Path(__file__).resolve().parents[2]
-CORE = ROOT / "cys_core"
+CORE = ROOT / "src" / "cys_core"
 
 
 def _rg(pattern: str, path: Path) -> list[str]:

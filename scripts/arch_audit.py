@@ -62,8 +62,8 @@ def _violations_for_prefix(prefix: str, forbidden: set[str]) -> list[dict[str, s
 
 def audit() -> dict:
     return {
-        "domain_violations": _violations_for_prefix("cys_core/domain", FORBIDDEN_IN_DOMAIN),
-        "application_violations": _violations_for_prefix("cys_core/application", FORBIDDEN_IN_APPLICATION),
+        "domain_violations": _violations_for_prefix("src/cys_core/domain", FORBIDDEN_IN_DOMAIN),
+        "application_violations": _violations_for_prefix("src/cys_core/application", FORBIDDEN_IN_APPLICATION),
     }
 
 

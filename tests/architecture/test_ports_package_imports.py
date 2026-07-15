@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-PORTS = ROOT / "cys_core" / "application" / "ports"
+PORTS = ROOT / "src" / "cys_core" / "application" / "ports"
 
 
 def _rg(pattern: str, path: Path) -> list[str]:

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CORE = ROOT / "cys_core"
+CORE = ROOT / "src" / "cys_core"
 APPLICATION = CORE / "application"
 REGISTRY = CORE / "registry"
 DOMAIN = CORE / "domain"
@@ -32,53 +32,53 @@ ALLOWLIST_APPLICATION_RUNTIME: frozenset[str] = frozenset()
 # Phase 4 + Phase 7: cys_core → bootstrap/interfaces (infra settings, registry tool adapters)
 ALLOWLIST_BOOTSTRAP_INTERFACES: frozenset[str] = frozenset(
     {
-        "cys_core/benchmarks/gaia_pipeline.py",
-        "cys_core/infrastructure/auth/broker.py",
-        "cys_core/infrastructure/auth/factory.py",
-        "cys_core/infrastructure/bootstrap/application_settings_adapter.py",
-        "cys_core/infrastructure/bootstrap/catalog_seed_adapter.py",
-        "cys_core/infrastructure/bootstrap/policy_defaults_adapter.py",
-        "cys_core/infrastructure/bootstrap/product_pack_adapter.py",
-        "cys_core/infrastructure/bus_transport.py",
-        "cys_core/infrastructure/engagement/factory.py",
-        "cys_core/infrastructure/catalog/catalog_registry.py",
-        "cys_core/infrastructure/job_store/factory.py",
-        "cys_core/infrastructure/k8s_sandbox.py",
-        "cys_core/infrastructure/kafka_audit.py",
-        "cys_core/infrastructure/kafka_bus.py",
-        "cys_core/infrastructure/kafka_bus_events.py",
-        "cys_core/infrastructure/kafka_control_events.py",
-        "cys_core/infrastructure/kafka_events.py",
-        "cys_core/infrastructure/kafka_paused.py",
-        "cys_core/infrastructure/kafka_publisher.py",
-        "cys_core/infrastructure/kafka_queue.py",
-        "cys_core/infrastructure/memory/factory.py",
-        "cys_core/infrastructure/queue.py",
-        "cys_core/infrastructure/rag/retrieve.py",
-        "cys_core/infrastructure/rag/store.py",
-        "cys_core/infrastructure/sandbox.py",
-        "cys_core/infrastructure/tools/adapters/search_stack.py",
-        "cys_core/infrastructure/tools/adapters/siem.py",
-        "cys_core/middleware/security_middleware.py",
-        "cys_core/observability/logging_setup.py",
-        "cys_core/observability/otel_provider.py",
-        "cys_core/observability/platform_gauges.py",
-        "cys_core/persistence.py",
-        "cys_core/registry/discovery_tools.py",
-        "cys_core/registry/mcp_tools.py",
-        "cys_core/registry/product_context.py",
-        "cys_core/registry/skills_tool.py",
-        "cys_core/registry/tools.py",
-        "cys_core/registry/veil_tools.py",
-        "cys_core/registry/siem_tools.py",
-        "cys_core/security/rate_limit.py",
+        "src/cys_core/benchmarks/gaia_pipeline.py",
+        "src/cys_core/infrastructure/auth/broker.py",
+        "src/cys_core/infrastructure/auth/factory.py",
+        "src/cys_core/infrastructure/bootstrap/application_settings_adapter.py",
+        "src/cys_core/infrastructure/bootstrap/catalog_seed_adapter.py",
+        "src/cys_core/infrastructure/bootstrap/policy_defaults_adapter.py",
+        "src/cys_core/infrastructure/bootstrap/product_pack_adapter.py",
+        "src/cys_core/infrastructure/bus_transport.py",
+        "src/cys_core/infrastructure/engagement/factory.py",
+        "src/cys_core/infrastructure/catalog/catalog_registry.py",
+        "src/cys_core/infrastructure/job_store/factory.py",
+        "src/cys_core/infrastructure/k8s_sandbox.py",
+        "src/cys_core/infrastructure/kafka_audit.py",
+        "src/cys_core/infrastructure/kafka_bus.py",
+        "src/cys_core/infrastructure/kafka_bus_events.py",
+        "src/cys_core/infrastructure/kafka_control_events.py",
+        "src/cys_core/infrastructure/kafka_events.py",
+        "src/cys_core/infrastructure/kafka_paused.py",
+        "src/cys_core/infrastructure/kafka_publisher.py",
+        "src/cys_core/infrastructure/kafka_queue.py",
+        "src/cys_core/infrastructure/memory/factory.py",
+        "src/cys_core/infrastructure/queue.py",
+        "src/cys_core/infrastructure/rag/retrieve.py",
+        "src/cys_core/infrastructure/rag/store.py",
+        "src/cys_core/infrastructure/sandbox.py",
+        "src/cys_core/infrastructure/tools/adapters/search_stack.py",
+        "src/cys_core/infrastructure/tools/adapters/siem.py",
+        "src/cys_core/middleware/security_middleware.py",
+        "src/cys_core/observability/logging_setup.py",
+        "src/cys_core/observability/otel_provider.py",
+        "src/cys_core/observability/platform_gauges.py",
+        "src/cys_core/persistence.py",
+        "src/cys_core/registry/discovery_tools.py",
+        "src/cys_core/registry/mcp_tools.py",
+        "src/cys_core/registry/product_context.py",
+        "src/cys_core/registry/skills_tool.py",
+        "src/cys_core/registry/tools.py",
+        "src/cys_core/registry/veil_tools.py",
+        "src/cys_core/registry/siem_tools.py",
+        "src/cys_core/security/rate_limit.py",
     }
 )
 
 # Phase 4 audit: interfaces/api → infrastructure (health probe only)
 ALLOWLIST_INTERFACES_API_INFRASTRUCTURE: frozenset[str] = frozenset(
     {
-        "interfaces/api/app.py",  # lazy infra_health for /health
+        "src/interfaces/api/app.py",  # lazy infra_health for /health
     }
 )
 
@@ -229,9 +229,9 @@ def check_infrastructure_no_interfaces() -> list[str]:
 
 
 def check_interfaces_api_no_infrastructure() -> list[str]:
-    """interfaces/api routers should not import infrastructure (except health in app.py)."""
+    """src/interfaces/api routers should not import infrastructure (except health in app.py)."""
     violations: list[str] = []
-    api_root = ROOT / "interfaces" / "api"
+    api_root = ROOT / "src" / "interfaces" / "api"
     if not api_root.exists():
         return violations
     for path in api_root.rglob("*.py"):
@@ -330,7 +330,7 @@ def main() -> int:
             len(ALLOWLIST_INFRASTRUCTURE_INTERFACES),
         ),
         (
-            "interfaces/api → infrastructure",
+            "src/interfaces/api → infrastructure",
             check_interfaces_api_no_infrastructure(),
             len(ALLOWLIST_INTERFACES_API_INFRASTRUCTURE),
         ),
