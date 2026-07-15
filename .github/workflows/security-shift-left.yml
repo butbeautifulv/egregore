@@ -1,9 +1,13 @@
+# SUPERSEDED by release-gate.yml (2026-07-15): ci.yml's `uses:
+# ./.github/workflows/security-shift-left.yml` call was broken anyway — this
+# file only declared `pull_request`/`push` triggers, never `workflow_call`,
+# so GitHub Actions could not have run it as a reusable workflow from ci.yml.
+# It also defaulted SECURITY_POLICY to the warn-only "adopt" policy. Kept for
+# manual/debug use only; not auto-triggered.
 name: Security Shift Left
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read

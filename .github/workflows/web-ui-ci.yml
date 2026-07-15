@@ -1,0 +1,32 @@
+name: Web UI CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web_ui/**"
+      - ".github/workflows/web-ui-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "web_ui/**"
+      - ".github/workflows/web-ui-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  web-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web_ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test lib/
+      - run: bun run build

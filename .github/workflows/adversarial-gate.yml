@@ -1,9 +1,11 @@
+# SUPERSEDED by release-gate.yml's `adversarial` + `domain-coverage` jobs
+# (2026-07-15): this raced independently alongside ci.yml's own domain-gate
+# job — two separate 100%-coverage assertions on the same code. Kept for
+# manual/debug use only; not auto-triggered.
 name: Adversarial Gate
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   adversarial-matrix:
@@ -30,4 +32,4 @@ jobs:
           STAGE: test
           USE_MEMORY_FALLBACK: "true"
         run: |
-          uv run pytest tests/domain/ -q --cov=cys_core/domain --cov-report=term-missing --cov-fail-under=100
+          uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-report=term-missing --cov-fail-under=100

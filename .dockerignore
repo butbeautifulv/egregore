@@ -5,19 +5,32 @@ __pycache__
 .ruff_cache
 htmlcov
 .coverage
-ui/node_modules
-ui/.next
-tests
+web_ui/node_modules
+web_ui/.next
 docs
-ui/docs
+web_ui/docs
 .cursor
 refs
-deploy
-scripts
 grafana
 config
-migrations
-connectors
-*.md
-!README.md
 .agents
+.env
+.env.local
+
+# Python API tree — exclude dev/test bulk, keep runtime assets
+api/tests
+api/.venv
+api/.pytest_cache
+api/.ruff_cache
+api/.coverage
+api/docs
+api/scripts
+
+# Root-level legacy paths (pre-split)
+/tests
+/scripts
+/migrations
+
+# Markdown except api README required by uv/hatch
+*.md
+!api/README.md

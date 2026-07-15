@@ -14,17 +14,17 @@ jobs:
       - uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
-          framework: terraform,kubernetes,helm,dockerfile,docker_compose
+          framework: terraform,kubernetes,helm,dockerfile
           soft_fail: true
           output_format: sarif
           output_file_path: reports/checkov.sarif
       - name: Gate check
         run: |
           mkdir -p reports
-          [ -f reports/checkov.sarif ] || echo '{"runs":[{"results":[]}]}' > reports/checkov.sarif
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
+          [ -f reports/checkov.sarif ] || echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > reports/checkov.sarif
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control iac --report reports/checkov.sarif --policy "$POLICY"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: reports/checkov.sarif

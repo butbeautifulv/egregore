@@ -1,12 +1,14 @@
 # GitHub profile: shift-left — flat security jobs (no nested security-gates orchestrator)
-
+#
+# SUPERSEDED by release-gate.yml (2026-07-15): this was a leftover
+# fabrica reference profile (its own `build` job is a literal stub —
+# `echo "build stub — see templates/github/workflows/ci.yml"`) that was
+# never removed after adoption, and defaulted to the warn-only "adopt"
+# policy. Kept for manual/debug use only; not auto-triggered.
 name: CI Shift Left
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read

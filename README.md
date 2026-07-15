@@ -20,7 +20,7 @@ Secure event-driven multi-agent cybersecurity platform with ephemeral sandbox wo
 - Secure RAG (`rag_query`), Skill Gateway (`load_skill`), K8s sandbox connector
 - Prometheus metrics, Grafana dashboard, CI adversarial gates
 - FastAPI: `POST /events`, `GET /status`, investigations API, SSE stream, HITL resume API, `GET /metrics`
-- Operator UI (`ui/`): work orders list, live chat, follow-ups, structured intake, persona stepper, approvals, live timeline
+- Operator UI (`web_ui/`): work orders list, live chat, follow-ups, structured intake, persona stepper, approvals, live timeline
 - Operator follow-ups on closed work orders: Q&A, orchestrate, catalog re-plan (`POST /v1/work-orders/{id}/follow-ups`)
 - Work order API (`/v1/work-orders`) as preferred operator surface over legacy `/v1/engagements`
 - Продуктовый слой `agents/` — personas, rules, routing plans, skills
@@ -37,25 +37,25 @@ Markdown SSOT: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/OBSERVABILI
 ## Быстрый старт
 
 ```bash
-uv sync
+cd api && uv sync
 
-docker compose up -d   # Postgres + Redis + Redpanda + Qdrant
+docker compose -f deploy/docker-compose.yml up -d   # Postgres + Redis + Redpanda + Qdrant
 
-cp .env.example .env   # LLM API key
+cp api/.env.example api/.env   # LLM API key (local only, not committed)
 
-uv run egregore info
-uv run egregore migrate   # apply migrations/*.sql
+cd api && uv run egregore info
+cd api && uv run egregore migrate   # apply migrations/*.sql
 ```
 
 ### Operator UI (full stack)
 
 ```bash
-make dev-infra                    # or: docker compose up -d
-uv run egregore serve --port 8080 # or: make dev-api
-uv run egregore worker --daemon # optional: make dev-worker
+make dev-infra                    # or: docker compose -f deploy/docker-compose.yml up -d
+cd api && uv run egregore serve --port 8080 # or: make dev-api
+cd api && uv run egregore worker --daemon # optional: make dev-worker
 
-cd ui && cp .env.local.example .env.local && bun install && bun run dev
-# or from repo root: make dev-ui
+cd web_ui && cp .env.local.example .env.local && bun install && bun run dev
+# or from repo root: make dev-web-ui
 ```
 
 Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8080/status](http://localhost:8080/status).
@@ -80,22 +80,22 @@ Docker app profile (no host Node/Python): `make dev-docker` (requires `.env`).
 
 ```bash
 # Ingest SIEM event → enqueue SOC worker
-uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
+cd api && uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
 
 # Process queued worker job
-uv run egregore worker --once
+cd api && uv run egregore worker --once
 
 # Control plane status
-uv run egregore status
+cd api && uv run egregore status
 
 # Manual investigation (all workers)
-uv run egregore session -g "Assess CI/CD pipeline risks"
+cd api && uv run egregore session -g "Assess CI/CD pipeline risks"
 
 # HTTP API
-uv run egregore serve --port 8080
+cd api && uv run egregore serve --port 8080
 
 # Tests (low memory — one pytest process per tests/<dir>/)
-./scripts/pytest_batches.sh --cov --domain-gate
+cd api && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## CLI
@@ -142,24 +142,17 @@ uv run egregore serve --port 8080
 
 ```
 egregore/
-├── agents/                 # Продукт: personas, rules, plans, skills
-├── bootstrap/              # settings, DI container, product_loader
-├── connectors/             # SIEM poll → ingress API
-├── interfaces/             # Delivery: api, ingress, worker, control_plane, gateways, rag, cli
-├── ui/                     # Operator console (Next.js) — work orders, follow-ups, approvals, SSE
-├── tui/                    # Operator TUI (Go Bubble Tea) — same contract as ui/
-├── deploy/k8s/             # Worker Job + NetworkPolicy
-├── deploy/grafana/         # SOC dashboards
-├── cys_core/
-│   ├── domain/             # events, workers, findings, security, rag, skills
-│   ├── application/        # ports, use-cases
-│   ├── infrastructure/     # sandbox, queue, bus, kafka
-│   ├── observability/      # Prometheus, tracing, Langfuse tags
-│   ├── registry/           # AgentRegistry, tools, mcp_tools, skills
-│   └── runtime/            # AgentRuntime
+├── api/                    # Python/uv backend (pyproject.toml, src/, tests/, agents/)
+│   ├── src/                # cys_core, interfaces, bootstrap, connectors, authz, main.py
+│   ├── agents/             # Product personas, rules, plans, skills
+│   ├── migrations/         # SQL migrations
+│   └── scripts/            # pytest_batches, verify_import_boundaries, …
+├── deploy/                 # Dockerfile, compose, k8s, helm, grafana
+├── web_ui/                 # Operator console (Next.js)
+├── tui/                    # Operator TUI (Go Bubble Tea)
 ├── docs/
-├── Makefile                # make dev-infra, dev-api, dev-ui, dev-worker
-└── tests/
+├── Makefile                # thin dispatcher (Python → api/, UI → web_ui/)
+└── scripts/                # full-stack dev wrappers, security gates
 ```
 
 ## Роли агентов
@@ -184,19 +177,19 @@ egregore/
 | `HITL_AUTO_APPROVE_THRESHOLD` | `low` | Risk gate для dangerous tools |
 | `TRUST_SCORE_THRESHOLD` | `0.5` | Critic trust threshold |
 | `PERSISTENCE_CONNECTOR` | `auto` | `auto`, `memory`, `postgres` |
-| `UI_CORS_ORIGINS` | `http://localhost:3000,...` | Allowed origins for Operator UI (`ui/`) |
+| `UI_CORS_ORIGINS` | `http://localhost:3000,...` | Allowed origins for Operator UI (`web_ui/`) |
 | `EGREGORE_FOLLOW_UP_ENABLED` | `true` | Enable operator follow-ups on closed work orders |
 | `EGREGORE_FOLLOW_UP_PLAN_ENABLED` | `true` | Enable catalog re-plan follow-up mode |
 | `EGREGORE_MAX_FOLLOW_UPS` | `10` | Max follow-up messages per engagement |
 | `EGREGORE_MAX_FOLLOW_UP_PLANS` | `3` | Max plan-mode follow-ups per engagement |
 | `PLANNER_TIMEOUT_SECONDS` | `120` | Fallback when async meta-planner stays in planning |
 
-Полный список: [`.env.example`](.env.example)
+Полный список: [`api/.env.example`](api/.env.example)
 
 ## Тестирование
 
 ```bash
-./scripts/pytest_batches.sh --cov --domain-gate
+cd api && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## Документация
@@ -216,7 +209,7 @@ egregore/
 
 - Python ≥ 3.13
 - Docker (Postgres 16, Redis 7) — опционально с `USE_MEMORY_FALLBACK=true`
-- Node.js 20+ — для Operator UI (`ui/`)
+- Node.js 20+ — для Operator UI (`web_ui/`)
 - API-ключ LLM-провайдера — для live worker runs
 
 ## Лицензия

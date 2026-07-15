@@ -16,17 +16,21 @@ wheels/
 # Test / tooling
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
+.ruff_cache/
+.import_linter_cache/
+.ty_cache/
+.mypy_cache/
 
-# IDE
+# Post-split legacy root debris (pyc-only ghosts)
+/cys_core/
+/bootstrap/
+
+# IDE / local agent tooling
 .cursor/
-.idea/
-.vscode/
-
-# .agents/rules are committed (Cursor workflow). Core rules via make rules-link symlinks.
-.agents/*
-!.agents/rules/
-!.agents/rules/**
+.agents/
 
 # Local jailbreak/injection corpus (threat intel only, never runtime)
 docs/injections/
@@ -34,8 +38,8 @@ docs/injections/
 # OS
 .DS_Store
 
-# Operator UI (ui/)
-ui/node_modules/
-ui/.next/
-ui/.env.local
-ui/tsconfig.tsbuildinfo
+# Operator UI (web_ui/)
+web_ui/node_modules/
+web_ui/.next/
+web_ui/.env.local
+web_ui/tsconfig.tsbuildinfo

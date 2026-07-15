@@ -6,6 +6,9 @@ on:
 jobs:
   linter-security:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -15,20 +18,18 @@ jobs:
         run: uv sync
       - name: Ruff security lint
         run: |
-          if [ "${ENABLE_REAL_LINTERS:-false}" = "true" ]; then
-            uv run ruff check . --output-format sarif -o linter.sarif || true
-          else
-            echo '{"runs":[{"results":[]}]}' > linter.sarif
-          fi
+          uv run ruff check . --output-format sarif -o linter.sarif || true
+          [ -s linter.sarif ] || echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > linter.sarif
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Gate check
+        working-directory: ${{ github.workspace }}
         run: |
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
-          python scripts/gate-check.py --control linters --report linter.sarif --policy "$POLICY"
-      - uses: github/codeql-action/upload-sarif@v3
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
+          python scripts/gate-check.py --control linters --report api/linter.sarif --policy "$POLICY"
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: linter.sarif
+          sarif_file: api/linter.sarif
           category: linters

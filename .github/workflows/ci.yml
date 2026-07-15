@@ -1,10 +1,11 @@
+# SUPERSEDED by release-gate.yml (2026-07-15): this file's own `unit-batches`
+# and `arch-gate` jobs called `make test-batches` / `make arch-gate`, neither
+# of which exists in the Makefile — this workflow could never have completed
+# a run. Kept for manual/debug use only; not auto-triggered.
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,7 +30,7 @@ jobs:
           enable-cache: true
       - run: uv sync
       - name: Ruff
-        run: uv run ruff check cys_core interfaces bootstrap tests
+        run: uv run ruff check src tests
 
   unit-batches:
     runs-on: ubuntu-latest

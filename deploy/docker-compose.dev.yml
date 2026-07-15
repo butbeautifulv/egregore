@@ -1,0 +1,57 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    entrypoint: ["/app/api/.venv/bin/egregore"]
+    command: ["serve", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+    env_file:
+      - ../api/.env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      UI_CORS_ORIGINS: http://localhost:3000
+      WORKER_IDLE_TIMEOUT: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - app
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    entrypoint: ["/app/api/.venv/bin/egregore"]
+    command: ["worker", "--daemon", "--idle-timeout", "0"]
+    env_file:
+      - ../api/.env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      WORKER_IDLE_TIMEOUT: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - app
+
+  ui:
+    build:
+      context: ../web_ui
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_EGREGORE_API_URL: http://localhost:8080
+    restart: unless-stopped
+    profiles:
+      - app

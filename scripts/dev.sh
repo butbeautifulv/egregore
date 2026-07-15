@@ -58,13 +58,13 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "[dev] starting API on :8080"
-PROMETHEUS_MULTIPROC_DIR="$MPDIR" uv run egregore serve --port 8080 &
+(cd api && PROMETHEUS_MULTIPROC_DIR="$MPDIR" uv run egregore serve --port 8080) &
 PIDS+=($!)
 
 if wait_for_redis; then
   for i in $(seq 1 "$REPLICAS"); do
     echo "[dev] starting worker $i/$REPLICAS"
-    PROMETHEUS_MULTIPROC_DIR="$MPDIR" uv run egregore worker --daemon --idle-timeout "$IDLE" &
+    (cd api && PROMETHEUS_MULTIPROC_DIR="$MPDIR" uv run egregore worker --daemon --idle-timeout "$IDLE") &
     PIDS+=($!)
   done
 else
@@ -72,7 +72,7 @@ else
 fi
 
 echo "[dev] starting UI on :3000"
-(cd ui && EGREGORE_API_UPSTREAM=http://127.0.0.1:8080 NEXT_PUBLIC_EGRESS_SSE=1 bun run dev) &
+(cd web_ui && EGREGORE_API_UPSTREAM=http://127.0.0.1:8080 NEXT_PUBLIC_EGRESS_SSE=1 bun run dev) &
 PIDS+=($!)
 
 if command -v go >/dev/null && [[ -f tui/cmd/egregore-tui/main.go ]]; then

@@ -11,7 +11,7 @@ jobs:
   trivy-image:
     runs-on: ubuntu-latest
     steps:
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ inputs.image }}
           severity: CRITICAL,HIGH
@@ -20,7 +20,7 @@ jobs:
           exit-code: "0"
       - name: Gate check
         run: python scripts/gate-check.py --control sca --report sca.sarif
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: sca.sarif

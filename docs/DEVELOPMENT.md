@@ -13,6 +13,12 @@ uv run egregore migrate
 
 See [README.md](../README.md) for full quick start and [OBSERVABILITY.md](OBSERVABILITY.md) for Langfuse, Prometheus, Grafana, and Tempo.
 
+## Repo layout
+
+- **Backend:** `src/cys_core`, `src/interfaces`, `src/bootstrap`, `src/connectors`, `src/authz` — Python import names stay `cys_core`, `interfaces`, etc. (`pythonpath=src` in `pyproject.toml`).
+- **Operator UI:** `web_ui/` (Next.js).
+- **Seed product:** `agents/` at repo root (YAML personas; not under `src/`).
+
 ## Dev stack
 
 One command (infra + supervised API + 2 workers + UI):
@@ -29,7 +35,7 @@ make dev-langfuse    # Langfuse UI http://localhost:3001
 make dev-obs         # Prometheus :9091, Grafana :3002, Tempo OTLP :4317
 make dev-api         # API http://localhost:8080
 make dev-workers     # 2 worker daemons (WORKER_REPLICAS, never idle-exit)
-make dev-ui          # Operator UI http://localhost:3000
+make dev-web-ui          # Operator UI http://localhost:3000
 ```
 
 `make dev` and `scripts/dev.sh` start API + `WORKER_REPLICAS` workers (default 2) with auto-restart on crash. Workers use `WORKER_IDLE_TIMEOUT=0` (run until stopped). Docker: `make dev-docker` scales workers the same way.
@@ -188,7 +194,7 @@ HTTP spans export to Tempo on `localhost:4317`. Explore in Grafana → Tempo. LL
 | No Langfuse traces | Both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` required |
 | Jobs never run | Workers must be running (`make dev`); postgres + redis healthy (`docker compose ps`) |
 | Port 3000 in use | Operator UI uses **3000**; Langfuse uses **3001** |
-| UI dev `ENOSPC` | `cd ui && bunx next dev --webpack` or `bun run build && bun run start` |
+| UI dev `ENOSPC` | `cd web_ui && bunx next dev --webpack` or `bun run build && bun run start` |
 
 ### Langfuse trace diagnosis
 

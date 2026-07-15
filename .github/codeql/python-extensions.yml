@@ -1,0 +1,6 @@
+extensions:
+  - addsTo:
+      pack: codeql/python-all
+      extensible: barrierModel
+    data:
+      - ["cys_core.infrastructure.runs.attachment_store", "Member[_safe_filename].ReturnValue", "path-injection"]

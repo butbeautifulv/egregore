@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -28,11 +28,27 @@ jobs:
           format: sarif
           output: osa.sarif
           exit-code: "0"
+      - name: Print findings
+        if: always()
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          d = json.load(open("osa.sarif"))
+          for run in d.get("runs", []):
+              rules = {r["id"]: r for r in run.get("tool", {}).get("driver", {}).get("rules", [])}
+              for r in run.get("results", []):
+                  level = r.get("level", "?")
+                  rule_id = r.get("ruleId", "?")
+                  sev = rules.get(rule_id, {}).get("properties", {}).get("security-severity", "?")
+                  loc = r.get("locations", [{}])[0].get("physicalLocation", {}).get("artifactLocation", {}).get("uri", "?")
+                  msg = r.get("message", {}).get("text", "").splitlines()[0][:160] if r.get("message", {}).get("text") else ""
+                  print(f"[{level:7s} sev={sev:>4s}] {rule_id:28s} {loc} — {msg}")
+          PYEOF
       - name: Gate check
         run: |
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control osa --report osa.sarif --policy "$POLICY"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: osa.sarif

@@ -1,9 +1,10 @@
+# SUPERSEDED by release-gate.yml's `arch-lint` job (2026-07-15): this ran as a
+# second, independent, uncoordinated copy of the same import-linter check
+# ci.yml already had inline. Kept for manual/debug use only; not auto-triggered.
 name: Architecture Gate
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   arch-lint:
@@ -30,5 +31,5 @@ jobs:
           USE_MEMORY_FALLBACK: "true"
         run: |
           uv run pytest tests/ -q \
-            --cov=cys_core/domain --cov-fail-under=100 \
+            --cov=src/cys_core/domain --cov-fail-under=100 \
             --cov-report=term-missing:skip-covered

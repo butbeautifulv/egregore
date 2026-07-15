@@ -13,11 +13,11 @@ jobs:
           python-version: "3.13"
       - uses: hadolint/hadolint-action@v3.1.0
         with:
-          dockerfile: Dockerfile
+          dockerfile: deploy/Dockerfile
           failure-threshold: warning
       - name: Gate check
         if: always()
         run: |
           echo '{"runs":[{"results":[]}]}' > hadolint.sarif
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy-adopt.yaml}"
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control dockerfile --report hadolint.sarif --policy "$POLICY"
