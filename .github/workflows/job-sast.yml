@@ -17,4 +17,15 @@ jobs:
       - uses: github/codeql-action/analyze@v3
         with:
           category: "/language:python"
+      - name: Gate check CodeQL
+        if: always()
+        run: |
+          REPORT="${{ github.workspace }}/codeql-results.sarif"
+          for f in codeql-results.sarif results/python.sarif; do
+            [ -f "$f" ] && REPORT="$f" && break
+          done
+          [ -f "$REPORT" ] || echo '{"runs":[{"results":[]}]}' > codeql-results.sarif
+          [ -f "$REPORT" ] || REPORT=codeql-results.sarif
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
+          python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
 # DIAGNOSTIC: stripped to bisect a startup_failure.
