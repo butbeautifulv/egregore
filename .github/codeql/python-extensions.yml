@@ -1,0 +1,9 @@
+# Models-as-data: teach CodeQL that attachment path segments are sanitized.
+# Runtime behavior is covered by tests/infrastructure/runs/test_attachment_store.py.
+extensions:
+  - addsTo:
+      pack: codeql/python-all
+      extensible: barrierModel
+    data:
+      - ["cys_core.infrastructure.runs.attachment_store", "Member[_safe_path_segment].ReturnValue", "path-injection"]
+      - ["cys_core.infrastructure.runs.attachment_store", "Member[_safe_filename].ReturnValue", "path-injection"]

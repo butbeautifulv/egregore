@@ -24,11 +24,12 @@ jobs:
         with:
           python-version: "3.13"
       - name: Gate check
+        working-directory: ${{ github.workspace }}
         run: |
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control linters --report linter.sarif --policy "$POLICY"
+          python scripts/gate-check.py --control linters --report api/linter.sarif --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: linter.sarif
+          sarif_file: api/linter.sarif
           category: linters

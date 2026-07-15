@@ -20,7 +20,8 @@ def _safe_path_segment(value: str) -> str:
     were never sanitized, letting a value like "../../etc" escape the
     attachment root (CodeQL py/path-injection).
     """
-    segment = re.sub(r"[^\w.\-]+", "_", value) or "_"
+    segment = Path(value).name
+    segment = re.sub(r"[^\w.\-]+", "_", segment) or "_"
     if segment in (".", ".."):
         segment = "_"
     return segment
@@ -31,7 +32,15 @@ class FilesystemAttachmentStore:
         self._root = Path(root or get_run_attachments_dir())
 
     def _run_dir(self, tenant_id: str, run_id: str) -> Path:
-        return self._root / _safe_path_segment(tenant_id) / _safe_path_segment(run_id)
+        run_dir = (
+            self._root
+            / _safe_path_segment(tenant_id)
+            / _safe_path_segment(run_id)
+        ).resolve()
+        root = self._root.resolve()
+        if root not in run_dir.parents and run_dir != root:
+            raise ValueError("path traversal detected")
+        return run_dir
 
     def save(self, tenant_id: str, run_id: str, filename: str, data: bytes) -> str:
         dest_dir = self._run_dir(tenant_id, run_id)

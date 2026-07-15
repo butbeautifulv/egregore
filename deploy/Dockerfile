@@ -3,7 +3,7 @@
 # Build from egregore repo root: docker build -f deploy/Dockerfile .
 FROM python:3.13-slim AS base
 WORKDIR /app/api
-RUN pip install --no-cache-dir uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.12 /uv /usr/local/bin/uv
 
 # Layer 1: lockfile only — deps install cached until pyproject.toml / uv.lock change.
 COPY api/pyproject.toml api/uv.lock api/README.md ./

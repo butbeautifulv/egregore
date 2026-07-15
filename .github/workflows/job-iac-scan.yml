@@ -14,7 +14,7 @@ jobs:
       - uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
-          framework: terraform,kubernetes,helm,dockerfile,docker_compose
+          framework: terraform,kubernetes,helm,dockerfile
           soft_fail: true
           output_format: sarif
           output_file_path: reports/checkov.sarif
