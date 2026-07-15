@@ -11,8 +11,8 @@ domain-gate:
 
 fga-validate:
 	@if command -v fga >/dev/null 2>&1; then \
-		fga model validate --file authz/model.fga; \
-		fga model test --tests authz/model.fga.yaml; \
+		fga model validate --file src/authz/model.fga; \
+		fga model test --tests src/authz/model.fga.yaml; \
 	else \
 		echo "fga CLI not installed; pytest tests/authz/ validates model file contract"; \
 		USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/authz/ -q; \

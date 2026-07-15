@@ -8,7 +8,7 @@ import yaml
 
 
 def test_fga_model_contains_workspace_edit_permission() -> None:
-    model = Path("authz/model.fga").read_text(encoding="utf-8")
+    model = Path("src/authz/model.fga").read_text(encoding="utf-8")
 
     assert "type workspace" in model
     assert "define can_edit" in model
