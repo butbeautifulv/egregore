@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 
 class CoordinatorProgressTracker:
     """Debounce coordinator narratives to engagement-level milestones."""

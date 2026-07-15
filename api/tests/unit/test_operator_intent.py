@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.application.follow_up.intent import classify_operator_intent, classify_follow_up_mode
+from cys_core.application.follow_up.intent import classify_follow_up_mode, classify_operator_intent
 
 
 @pytest.mark.unit

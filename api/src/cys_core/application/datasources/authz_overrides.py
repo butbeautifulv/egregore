@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from cys_core.domain.catalog.models import ProfilePolicyPayload
-from cys_core.domain.datasources.authz import AuthzRequest, AuthorizationDecision
+from cys_core.domain.datasources.authz import AuthorizationDecision, AuthzRequest
 from cys_core.domain.datasources.models import DataSource, DataSourceCapability
 
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from cys_core.application.ports.context_summarizer import ContextSummarizerPort
-
 
 class NoopContextSummarizer:
     def summarize(self, *, goal: str, messages_text: str, prior_summary: str = "") -> str:

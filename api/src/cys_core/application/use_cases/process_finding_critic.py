@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import structlog
 from typing import Any
+
+import structlog
 
 from cys_core.application.ports.schema_registry import SchemaRegistryPort
 from cys_core.application.ports.tracing_ports import ApplicationTracingPort
@@ -9,7 +10,6 @@ from cys_core.application.workers.evidence_gate import soc_evidence_gaps
 from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.application.workers.tool_execution_tracker import get_persona_manifests
 from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
-from cys_core.domain.evidence.models import EvidenceManifest
 
 logger = structlog.get_logger(__name__)
 

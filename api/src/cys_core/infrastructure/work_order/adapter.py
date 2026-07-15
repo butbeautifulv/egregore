@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from cys_core.domain.catalog.models import PlannerPack, ProfilePack
-from cys_core.domain.engagement.models import Engagement, EngagementStatus, SynthesisStatus
+from cys_core.domain.engagement.models import Engagement, EngagementStatus
 from cys_core.domain.work_order.models import WorkOrder, WorkOrderRequest, WorkOrderStatus
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from cys_core.application.workers.evidence_gate import soc_evidence_gaps
 from cys_core.domain.evidence.manifest_builder import build_manifest_from_investigation
-from cys_core.domain.evidence.models import DataGap, EvidenceRef
+from cys_core.domain.evidence.models import EvidenceRef
 
 
 def _inc893743_sparse_payload() -> dict:

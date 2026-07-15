@@ -15,7 +15,14 @@ from cys_core.domain.engagement.bus_guard import (
 
 logger = structlog.get_logger(__name__)
 
-__all__ = ["EngagementBusGuard", "GuardCounters", "TripReason", "configure_engagement_bus_guard", "get_engagement_bus_guard", "reset_engagement_bus_guard"]
+__all__ = [
+    "EngagementBusGuard",
+    "GuardCounters",
+    "TripReason",
+    "configure_engagement_bus_guard",
+    "get_engagement_bus_guard",
+    "reset_engagement_bus_guard",
+]
 
 
 class EngagementBusGuard:

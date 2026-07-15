@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from bootstrap.settings import get_settings
+from cys_core.application.runtime_config import get_self_refine_max, get_use_run_kernel
 from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp
-from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.use_cases.enqueue_next_planned_persona import EnqueueNextPlannedPersona
 from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
+from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.use_cases.run_worker_job import RunWorkerJob
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
@@ -15,8 +17,6 @@ from cys_core.application.workers.follow_up_aggregator import FollowUpAggregator
 from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher
 from cys_core.application.workers.job_finalizer import WorkerJobFinalizer
 from cys_core.application.workers.result_validator import WorkerResultValidator
-from bootstrap.settings import get_settings
-from cys_core.application.runtime_config import get_self_refine_max, get_use_run_kernel
 from cys_core.domain.security.factory import get_output_guardrails
 
 

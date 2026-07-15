@@ -4,24 +4,21 @@ import json
 from typing import Any, Protocol, cast
 
 from cys_core.application.plans_as_hints import load_plan_hints
+from cys_core.application.policy_resolver import get_profile_policy_resolver
 from cys_core.application.ports.catalog import AgentCatalogPort
-from cys_core.application.ports.observability.judge_backend import JudgeBackendPort
 from cys_core.application.ports.context_summarizer import ContextSummarizerPort
+from cys_core.application.ports.observability.judge_backend import JudgeBackendPort
 from cys_core.application.ports.profile_policy import ProfilePolicyPort
 from cys_core.application.ports.reflexion import ReflexionLesson, ReflexionStorePort
 from cys_core.application.ports.run_state import RunStateStorePort
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort
 from cys_core.application.ports.work_todo import WorkTodoStorePort
+from cys_core.application.runs.agent_run_kernel import AgentRunKernel, KernelRuntime
 from cys_core.application.runs.attachment_hints import process_attachment_hints
+from cys_core.application.runs.kernel_mappers import run_state_to_kernel_request
 from cys_core.application.runs.plan_helpers import format_todo_snapshot
 from cys_core.application.runs.plan_strict import has_failed_todos, merge_plan_delta_with_policy
 from cys_core.application.runs.run_budget import run_session_budget
-from cys_core.application.skills.catalog import list_skill_metadata
-from cys_core.application.spawn_broker import SubagentSpawnBroker
-from cys_core.application.use_cases.analyze_task_hints import AnalyzeTaskHints, TaskHintsModel
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
-from cys_core.application.use_cases.evaluate_trace_critic import EvaluateTraceCritic
-from cys_core.application.use_cases.extract_structured_output import enrich_conductor_result
-from cys_core.application.policy_resolver import get_profile_policy_resolver
 from cys_core.application.runtime_config import (
     get_egregore_strict_plan,
     get_task_hints_enabled,
@@ -29,13 +26,17 @@ from cys_core.application.runtime_config import (
     get_trace_critic_hitl_on_exhausted,
     get_use_run_kernel,
 )
-from cys_core.application.runs.agent_run_kernel import AgentRunKernel, KernelRuntime
-from cys_core.application.runs.kernel_mappers import run_state_to_kernel_request
+from cys_core.application.skills.catalog import list_skill_metadata
+from cys_core.application.spawn_broker import SubagentSpawnBroker
+from cys_core.application.use_cases.analyze_task_hints import AnalyzeTaskHints, TaskHintsModel
+from cys_core.application.use_cases.evaluate_trace_critic import EvaluateTraceCritic
+from cys_core.application.use_cases.extract_structured_output import enrich_conductor_result
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.runs.checkpoint import checkpoint_key
 from cys_core.domain.runs.models import InteractionMode, RunContext
 from cys_core.domain.runs.plan_models import WorkPlan, WorkTodo
 from cys_core.domain.runs.state_models import RunState, RunStatus
+from cys_core.domain.runs.status_policy import derive_run_status
 
 
 def _default_task_hints() -> AnalyzeTaskHints:
@@ -83,9 +84,6 @@ def _parse_work_plan(result: dict[str, Any]) -> WorkPlan | None:
         except Exception:
             return None
     return None
-
-
-from cys_core.domain.runs.status_policy import derive_run_status
 
 
 def _merge_todos_from_result(
@@ -270,7 +268,11 @@ class RunStep:
             and get_trace_critic_enabled()
             and persona in ("conductor", "gaia_solver")
             and state.step_count
-            % max(1, self._trace_policy(ctx.profile_id).every_n_steps or self._policy_resolver().trace_critic_every_n(ctx.profile_id))
+            % max(
+                1,
+                self._trace_policy(ctx.profile_id).every_n_steps
+                or self._policy_resolver().trace_critic_every_n(ctx.profile_id),
+            )
             == 0
         ):
             verdict = self._trace_critic_for(ctx.profile_id).execute(
@@ -320,7 +322,11 @@ class RunStep:
                         todos=todos,
                         mode=mode,
                     )
-                if (self._trace_policy(ctx.profile_id).hitl_on_exhausted or get_trace_critic_hitl_on_exhausted()) and isinstance(
+                trace_hitl = (
+                    self._trace_policy(ctx.profile_id).hitl_on_exhausted
+                    or get_trace_critic_hitl_on_exhausted()
+                )
+                if trace_hitl and isinstance(
                     last_result, dict
                 ):
                     last_result["trace_critic_escalation"] = True

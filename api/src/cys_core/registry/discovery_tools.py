@@ -3,9 +3,9 @@ from __future__ import annotations
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.persona_ranking import PersonaRankingPort
 from cys_core.application.runtime_config import get_use_dynamic_catalog
-from cys_core.infrastructure.policy.mode_policy_adapter import allow_tool_for_profile
 from cys_core.domain.runs.models import InteractionMode
 from cys_core.infrastructure.catalog.profile_policy import get_trust_floor
+from cys_core.infrastructure.policy.mode_policy_adapter import allow_tool_for_profile
 from cys_core.registry.agents import AgentRegistry
 from cys_core.registry.skill_registry import SkillRegistry
 from cys_core.registry.tools import list_tools

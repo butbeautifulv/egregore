@@ -6,9 +6,9 @@ import pytest
 
 from cys_core.application.use_cases.seed_catalog import SeedCatalog
 from cys_core.application.use_cases.upsert_catalog_agent import UpsertCatalogAgent
-from tests.application.port_fakes import fake_catalog_seed_loaders, fake_schema_registry
 from cys_core.domain.catalog.models import AgentCatalogEntry, CatalogSource, ProfilePack
 from cys_core.infrastructure.catalog.memory import InMemoryAgentCatalog
+from tests.application.port_fakes import fake_catalog_seed_loaders, fake_schema_registry
 
 
 @pytest.mark.unit

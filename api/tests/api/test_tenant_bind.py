@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from interfaces.api.tenant_deps import require_tenant_match_http
 from cys_core.domain.security.auth_models import AuthClaims
+from interfaces.api.tenant_deps import require_tenant_match_http
 
 
 @pytest.mark.unit

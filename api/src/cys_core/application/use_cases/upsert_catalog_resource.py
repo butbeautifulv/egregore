@@ -8,7 +8,7 @@ from cys_core.domain.catalog.models import (
     StagingStatus,
     ToolCatalogEntry,
 )
-from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID, resolve_profile_id
+from cys_core.domain.catalog.profile_id import resolve_profile_id
 
 
 def _resolve(body: dict, *, explicit_profile_id: str | None = None) -> str:

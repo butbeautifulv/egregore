@@ -6,7 +6,6 @@ from cys_core.domain.skills.models import SkillManifest, SkillTrustTier
 from cys_core.registry.skill_registry import SkillRegistry, compute_skill_hash
 from interfaces.gateways.skill.load import SkillLoadError, load_skill
 
-
 _SKILL_HASH_PINNING_DROPPED = (
     "cys_core.infrastructure.skill.load_skill.load_skill() was refactored to a dynamic-"
     "catalog/allowlist model (profile_id, staging_status, sanitizer) and no longer takes a "

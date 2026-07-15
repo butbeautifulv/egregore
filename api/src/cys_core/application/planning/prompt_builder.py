@@ -49,7 +49,9 @@ _DEFAULT_TEMPLATE = """Goal: {goal}
 Event type: {event_type}
 Severity: {severity}
 Available personas: {personas}
-Select 1 to {max_personas} personas (minimal set). {incident_hint}{advisory_hint}{hints}For SIEM incident triage (INC-*, investigate incident, alerts) prefer soc alone or soc+intel only.
+Select 1 to {max_personas} personas (minimal set). {incident_hint}{advisory_hint}{hints}\
+For SIEM incident triage (INC-*, investigate incident, alerts) prefer soc alone or soc+intel only.
 For independent specialists use execution_mode parallel; use staged when order matters.
-Specialist personas run first; consultant synthesis follows automatically after they finish (do not add consultant to the personas list).
+Specialist personas run first; consultant synthesis follows automatically after they finish \
+(do not add consultant to the personas list).
 For multi-persona plans you may set synthesis_persona to purple for kill-chain scope."""

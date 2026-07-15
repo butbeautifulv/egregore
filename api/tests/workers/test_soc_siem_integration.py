@@ -52,9 +52,8 @@ def test_query_siem_readonly_delegates_to_mcp(monkeypatch: pytest.MonkeyPatch) -
 
 @pytest.mark.unit
 def test_invoke_tool_routes_siem_mcp(monkeypatch: pytest.MonkeyPatch) -> None:
-    from bootstrap.container import get_container
-
     import cys_core.application.runtime_config as rc
+    from bootstrap.container import get_container
 
     monkeypatch.setattr(rc, "_siem_mcp_enabled", True)
 

@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tests.application.port_fakes import fake_correlation_id_port
 from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
 from cys_core.domain.events.models import RoutingDecision
 from cys_core.observability.tracing import get_correlation_id, reset_correlation_id
 from interfaces.ingress.router import EventIngress
+from tests.application.port_fakes import fake_correlation_id_port
 
 
 def _ingress(router: SimpleNamespace, orchestration: MagicMock, *, use_kafka: bool = False) -> EventIngress:

@@ -75,7 +75,7 @@ def test_critic_auto_passes_suppressed(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_bus_router_content_dedup_blocks_second_enqueue() -> None:
-    from cys_core.infrastructure.bus_dedup_store import BusDedupStore, reset_bus_dedup_store
+    from cys_core.infrastructure.bus_dedup_store import reset_bus_dedup_store
 
     reset_bus_dedup_store()
     enqueued: list[str] = []
@@ -240,7 +240,6 @@ async def test_critic_no_revision_on_noop(monkeypatch: pytest.MonkeyPatch) -> No
 
 @pytest.mark.unit
 def test_engagement_guard_trips_on_total_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
-    from cys_core.application.bus_guard_config import BusGuardConfig
     from cys_core.application.engagement_bus_guard import EngagementBusGuard, reset_engagement_bus_guard
 
     reset_engagement_bus_guard()
@@ -261,7 +260,6 @@ def test_engagement_guard_trips_on_total_jobs(monkeypatch: pytest.MonkeyPatch) -
 
 @pytest.mark.unit
 def test_pingpong_detection(monkeypatch: pytest.MonkeyPatch) -> None:
-    from cys_core.application.bus_guard_config import BusGuardConfig
     from cys_core.application.engagement_bus_guard import EngagementBusGuard, reset_engagement_bus_guard
 
     reset_engagement_bus_guard()
@@ -284,8 +282,8 @@ def test_pingpong_detection(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_budget_callback_records_api_tokens() -> None:
-    from langchain_core.outputs import ChatGeneration, ChatResult
     from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration, ChatResult
 
     from cys_core.domain.workers.job_budget import JobBudgetTracker
     from cys_core.infrastructure.observability.budget_usage_callback import BudgetUsageCallback
@@ -310,14 +308,13 @@ async def test_budget_callback_records_api_tokens() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_engagement_guard_trips_and_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    from cys_core.application.bus_guard_config import BusGuardConfig
     from cys_core.application import engagement_bus_guard as guard_module
-    from cys_core.application.engagement_bus_guard import EngagementBusGuard, TripReason
+    from cys_core.application.engagement_bus_guard import TripReason
     from cys_core.application.use_cases.fail_engagement_guardrail import FailEngagementGuardrail
     from cys_core.domain.engagement.models import Engagement
+    from cys_core.domain.workers.models import WorkerJob
     from cys_core.infrastructure.engagement.memory_store import MemoryEngagementStateStore
     from cys_core.infrastructure.queue import InMemoryJobQueue
-    from cys_core.domain.workers.models import WorkerJob
 
     guard_module.reset_engagement_bus_guard()
     config = BusGuardConfig(
@@ -499,8 +496,7 @@ async def test_enqueue_from_bus_allows_critic_revision_to_intel_in_plan() -> Non
 
 @pytest.mark.unit
 def test_maybe_trip_soft_pingpong_when_planner_terminal() -> None:
-    from cys_core.application.bus_guard_config import BusGuardConfig
-    from cys_core.application.engagement_bus_guard import EngagementBusGuard, TripReason
+    from cys_core.application.engagement_bus_guard import TripReason
     from cys_core.application.use_cases.fail_engagement_guardrail import maybe_trip_engagement
     from cys_core.infrastructure.engagement.memory_store import MemoryEngagementStateStore
 
@@ -550,8 +546,6 @@ def test_filter_escalation_recipients_strips_redteam_from_intel() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_enqueue_from_bus_rejects_second_revision_on_soc() -> None:
-    from cys_core.application.bus_guard_config import BusGuardConfig
-    from cys_core.application.engagement_bus_guard import EngagementBusGuard
 
     queue = MagicMock()
     queue.aenqueue = AsyncMock()
@@ -591,9 +585,8 @@ async def test_enqueue_from_bus_rejects_second_revision_on_soc() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_critic_auto_accepts_after_revision_cap(monkeypatch: pytest.MonkeyPatch) -> None:
-    from cys_core.application.bus_guard_config import BusGuardConfig
-    from cys_core.application.engagement_bus_guard import EngagementBusGuard, reset_engagement_bus_guard
     from cys_core.application import engagement_bus_guard as guard_module
+    from cys_core.application.engagement_bus_guard import reset_engagement_bus_guard
     from interfaces.control_plane.critic_service import CriticService
 
     reset_engagement_bus_guard()

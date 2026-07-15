@@ -22,9 +22,8 @@ def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.
 
 @pytest.mark.unit
 def test_invoke_tool_routes_playbook_search(monkeypatch: pytest.MonkeyPatch) -> None:
-    from bootstrap.container import get_container
-
     import cys_core.application.runtime_config as rc
+    from bootstrap.container import get_container
 
     monkeypatch.setattr(rc, "_veil_mcp_enabled", True)
 
@@ -60,9 +59,8 @@ def test_invoke_tool_routes_playbook_search(monkeypatch: pytest.MonkeyPatch) -> 
 
 @pytest.mark.unit
 def test_invoke_tool_routes_ti_search(monkeypatch: pytest.MonkeyPatch) -> None:
-    from bootstrap.container import get_container
-
     import cys_core.application.runtime_config as rc
+    from bootstrap.container import get_container
 
     monkeypatch.setattr(rc, "_veil_mcp_enabled", True)
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from cys_core.application.runtime_config import get_use_dynamic_catalog
 from cys_core.application.ports.agent_definitions import AgentDefinitionsLoaderPort
+from cys_core.application.runtime_config import get_use_dynamic_catalog
 from cys_core.domain.agents.models import AgentDefinition
 
 _loader: AgentDefinitionsLoaderPort | None = None

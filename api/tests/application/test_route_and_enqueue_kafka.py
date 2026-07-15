@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tests.application.port_fakes import fake_correlation_id_port
 from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
 from cys_core.domain.events.models import RoutingDecision
+from tests.application.port_fakes import fake_correlation_id_port
 
 
 @pytest.mark.unit

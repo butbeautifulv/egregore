@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from scripts.migrate_catalog_persona_prompts import (
     migrate_agent_payload,
     migrate_profile_payload,

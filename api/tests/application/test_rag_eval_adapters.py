@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cys_core.application.evals.rag_adapters import FaithEvalAdapter, FActScoreAdapter, RagasAdapter
+from cys_core.application.evals.rag_adapters import FActScoreAdapter, FaithEvalAdapter, RagasAdapter
 from cys_core.domain.rag.eval_export import RagEvalTriple
 
 

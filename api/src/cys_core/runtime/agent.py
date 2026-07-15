@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from functools import lru_cache
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any, TypeVar, cast
 
 from langchain.agents import create_agent
@@ -11,7 +11,14 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.types import Command
 from pydantic import BaseModel
 
-from cys_core.application.workers.finding_quality import normalize_finding_payload, preserve_planned_tool_calls
+from cys_core.application.policy_resolver import get_profile_policy_resolver
+from cys_core.application.ports import ModelConnector, PersistenceContext
+from cys_core.application.ports.stream_context import StreamContext
+from cys_core.application.reasoning.sgr_tooling import (
+    resolve_agent_tool_names,
+    resolve_sgr_for_agent,
+    scope_allowed_tools,
+)
 from cys_core.application.runtime_config import (
     get_budget_use_api_usage,
     get_context_summary_enabled,
@@ -21,30 +28,24 @@ from cys_core.application.runtime_config import (
     get_sgr_iron_max_retries,
     get_stage,
     get_stream_agent_token_streaming,
-    get_use_sgr_reasoning,
 )
-from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.application.policy_resolver import get_profile_policy_resolver
-from cys_core.application.reasoning.sgr_tooling import (
-    resolve_agent_tool_names,
-    resolve_sgr_for_agent,
-    scope_allowed_tools,
-)
-from cys_core.llm import get_model_connector, get_persona_recursion_limit
-from cys_core.application.ports import ModelConnector, PersistenceContext
+from cys_core.application.workers.finding_quality import normalize_finding_payload, preserve_planned_tool_calls
 from cys_core.domain.agents.policies import build_interrupt_on
+from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.memory.services import MemoryReadService
 from cys_core.domain.messaging import extract_message_content
+from cys_core.domain.parsing.json_text import parse_json_text as _parse_json_text
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.factory import get_input_sanitizer, get_output_guardrails
 from cys_core.domain.security.prompt_context import REFUSAL_MESSAGE
 from cys_core.domain.workers.job_budget import JobBudgetExceeded, JobBudgetTracker
-from cys_core.application.ports.stream_context import StreamContext
+from cys_core.infrastructure.observability.budget_usage_callback import build_budget_usage_callback
 from cys_core.infrastructure.observability.egress_streaming_callback import (
     build_egress_streaming_callbacks,
 )
-from cys_core.infrastructure.observability.budget_usage_callback import build_budget_usage_callback
+from cys_core.llm import get_model_connector, get_persona_recursion_limit
 from cys_core.middleware.context_summary_middleware import ContextSummaryMiddleware
+from cys_core.middleware.follow_up_tool_middleware import FollowUpToolMiddleware
 from cys_core.middleware.memory_context_middleware import MemoryContextMiddleware
 from cys_core.middleware.one_tool_middleware import OneToolPerTurnMiddleware
 from cys_core.middleware.prompt_context_middleware import PromptContextMiddleware
@@ -52,10 +53,9 @@ from cys_core.middleware.scope_middleware import ScopeMiddleware
 from cys_core.middleware.security_middleware import SecurityMiddleware
 from cys_core.middleware.tool_coercion_middleware import ToolCoercionMiddleware
 from cys_core.middleware.tool_dedup_middleware import ToolDedupMiddleware
-from cys_core.middleware.follow_up_tool_middleware import FollowUpToolMiddleware
 from cys_core.middleware.tool_ladder_middleware import ToolLadderMiddleware
-from cys_core.observability.trace_attributes import build_sgr_trace_metadata, merge_langchain_config
 from cys_core.observability.metrics import metrics
+from cys_core.observability.trace_attributes import build_sgr_trace_metadata, merge_langchain_config
 from cys_core.registry.agents import AgentDefinition, AgentRegistry, get_agent_registry
 from cys_core.registry.schemas import schema_registry
 from cys_core.registry.tools import tool_registry
@@ -72,9 +72,6 @@ def _structured_has_content(data: dict[str, Any]) -> bool:
         if isinstance(value, (int, float)) and value not in (0, 0.0):
             return True
     return False
-
-
-from cys_core.domain.parsing.json_text import parse_json_text as _parse_json_text
 
 
 def _default_sync_persistence() -> PersistenceContext:
@@ -170,7 +167,6 @@ class AgentRuntime:
                     keep_tool_results=get_keep_tool_results(),
                 )
             )
-        from cys_core.application.policy_resolver import get_profile_policy_resolver
         from cys_core.middleware.sgr_one_tool_middleware import SgrOneToolMiddleware
         from cys_core.middleware.sgr_reasoning_middleware import SchemaGuidedReasoningMiddleware
         from cys_core.middleware.sgr_session import SgrSessionState

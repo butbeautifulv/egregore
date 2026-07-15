@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import pytest
+from langchain_core.messages import AIMessage, ToolMessage
 
+from cys_core.application.ports.reflexion import ReflexionLesson
 from cys_core.application.runs.message_trim import heal_orphaned_tool_messages, trim_tool_results
 from cys_core.application.runs.plan_strict import merge_plan_delta_with_policy, plan_delta_allowed
 from cys_core.application.runs.tool_coercion import coerce_tool_args
 from cys_core.application.skills.catalog import list_skill_metadata
-from cys_core.domain.runs.plan_models import WorkTodo, TodoStatus
 from cys_core.domain.policy.product_payloads import gaia_profile_policy_payload
+from cys_core.domain.runs.plan_models import TodoStatus, WorkTodo
 from cys_core.domain.security.profile_tools import filter_tools_for_profile
-from cys_core.domain.security.risk import classify_tool_risk, RiskLevel
+from cys_core.domain.security.risk import RiskLevel, classify_tool_risk
 from cys_core.infrastructure.reflexion.memory import InMemoryReflexionStore
-from cys_core.application.ports.reflexion import ReflexionLesson
-from langchain_core.messages import ToolMessage, AIMessage
 
 
 def test_coerce_tool_args():

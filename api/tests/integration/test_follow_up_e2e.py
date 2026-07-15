@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp
 from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher
 from cys_core.domain.engagement.models import Engagement, EngagementStatus, SynthesisStatus
 from cys_core.domain.memory.services import MemoryReadService, MemoryWriteService

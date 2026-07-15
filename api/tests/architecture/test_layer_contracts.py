@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Shrink-only allowlist regression tests for architecture import boundaries."""
+
+from __future__ import annotations
 
 import scripts.verify_import_boundaries as boundaries
 

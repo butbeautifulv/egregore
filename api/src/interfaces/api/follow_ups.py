@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from bootstrap.container import get_container
 from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp, FollowUpError
-from interfaces.api.tenant_deps import require_tenant_match_http
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_operator_role, require_reader_role
 from interfaces.api.authz_helpers import require_engagement_relation
 from interfaces.api.follow_up_schemas import FollowUpIn, FollowUpListOut, FollowUpOut, FollowUpTurnOut
+from interfaces.api.tenant_deps import require_tenant_match_http
 
 router = APIRouter(prefix="/v1", tags=["follow-ups"])
 

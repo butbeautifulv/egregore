@@ -4,7 +4,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from scripts.check_agent_policy_tests import check_policy_tests_updated
 
 

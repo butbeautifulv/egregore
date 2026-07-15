@@ -6,8 +6,18 @@ import urllib.request
 from typing import Any
 
 from bootstrap.settings import get_settings
-from cys_core.application.runtime_config import get_serper_api_key, get_web_search_provider, get_perplexity_api_key, get_jina_api_key
-from cys_core.infrastructure.tools.adapters.search_stack import enhance_query, judge_search_relevance, jina_search, perplexity_search
+from cys_core.application.runtime_config import (
+    get_jina_api_key,
+    get_perplexity_api_key,
+    get_serper_api_key,
+    get_web_search_provider,
+)
+from cys_core.infrastructure.tools.adapters.search_stack import (
+    enhance_query,
+    jina_search,
+    judge_search_relevance,
+    perplexity_search,
+)
 
 
 def web_search(query: str, *, limit: int | None = None) -> dict[str, Any]:
@@ -64,7 +74,13 @@ def _duckduckgo_search(query: str, *, limit: int) -> dict[str, Any]:
         results.append({"title": data.get("Heading", ""), "snippet": abstract, "url": data.get("AbstractURL", "")})
     for topic in (data.get("RelatedTopics") or [])[:limit]:
         if isinstance(topic, dict) and "Text" in topic:
-            results.append({"title": topic.get("Text", "")[:80], "snippet": topic.get("Text", ""), "url": topic.get("FirstURL", "")})
+            results.append(
+                {
+                    "title": topic.get("Text", "")[:80],
+                    "snippet": topic.get("Text", ""),
+                    "url": topic.get("FirstURL", ""),
+                }
+            )
     return {"success": True, "provider": "duckduckgo", "results": results[:limit]}
 
 

@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 
 from cys_core.application.use_cases.extract_structured_output import (
     build_structured_extraction_prompt,
-    detect_output_schema,
     parse_structured_output,
 )
 from cys_core.benchmarks.gaia_normalizer import normalize_gaia_answer
 from cys_core.llm.reasoning import get_reasoning_model_connector
-
 
 _GAIA_ANSWER_TYPES = ("number", "date", "time", "string")
 
@@ -51,7 +48,11 @@ def extract_gaia_final_answer(*, question: str, summary: str, answer_type: str |
         from bootstrap.settings import get_settings
 
         if get_settings().reasoning_model.strip():
-            prompt = build_structured_extraction_prompt(goal=question, schema_type=f"gaia_{kind}", agent_summary=summary)
+            prompt = build_structured_extraction_prompt(
+                goal=question,
+                schema_type=f"gaia_{kind}",
+                agent_summary=summary,
+            )
             prompt += (
                 "\nFor GAIA: put the final short answer in payload.answer. "
                 "Use digits only for numbers. Use minimal string phrasing."
@@ -79,10 +80,10 @@ def extract_gaia_final_answer(*, question: str, summary: str, answer_type: str |
 
 async def run_gaia_solver(question: str, *, file_path: str = "") -> dict[str, Any]:
     from bootstrap.container import get_container
-    from cys_core.domain.runs.models import InteractionMode, RunContext
-    from cys_core.infrastructure.runs.factory import get_run_state_store, get_work_todo_store
     from cys_core.application.use_cases.run_step import RunStep
+    from cys_core.domain.runs.models import InteractionMode, RunContext
     from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
+    from cys_core.infrastructure.runs.factory import get_run_state_store, get_work_todo_store
     from cys_core.runtime.agent import get_runtime
 
     get_container().wire_agent_definitions_loader()

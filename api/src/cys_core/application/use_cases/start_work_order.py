@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from cys_core.application.follow_up.intent import classify_operator_intent, orchestrator_persona_for
 from cys_core.application.operator_messages.service import (
     initial_follow_up_id,
-    is_follow_up_turn_id,
     persist_operator_turn_to_memory,
 )
-from cys_core.application.use_cases.start_engagement import StartEngagement
-from cys_core.application.use_cases.ensure_default_workspace import ensure_default_workspace
 from cys_core.application.ports.authz import AuthzTuple
+from cys_core.application.use_cases.ensure_default_workspace import ensure_default_workspace
+from cys_core.application.use_cases.start_engagement import StartEngagement
 from cys_core.application.work_order.intake_normalizer import intake_memory_content
 from cys_core.domain.catalog.models import ProfilePack
 from cys_core.domain.engagement.models import Engagement, EngagementRequest
@@ -100,7 +98,13 @@ class StartWorkOrder:
                     raise WorkOrderValidationError(str(exc.message), status_code=400) from exc
         return intake
 
-    def _engagement_request(self, request: WorkOrderRequest, goal: str, *, skip_dispatch: bool = False) -> EngagementRequest:
+    def _engagement_request(
+        self,
+        request: WorkOrderRequest,
+        goal: str,
+        *,
+        skip_dispatch: bool = False,
+    ) -> EngagementRequest:
         engagement_id = request.correlation_id or f"eng-{uuid.uuid4().hex[:12]}"
         return EngagementRequest(
             profile_id=request.profile_id,

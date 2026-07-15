@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
-from typing import Any
+from pydantic import BaseModel, Field, model_validator
 
 from cys_core.domain.engagement.models import ExecutionMode
-from pydantic import BaseModel, Field, model_validator
 
 
 class TodoStatus(str, Enum):

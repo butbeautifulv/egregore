@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
-from cys_core.domain.workers.models import WorkerJob, RunResult
+from cys_core.domain.workers.models import RunResult, WorkerJob
 from interfaces.worker.orchestrator import WorkerOrchestrator
 from tests.application.fakes.job_queue import FakeJobQueue, FakeJobStore
 from tests.application.workers.factory import build_run_worker_job_for_tests

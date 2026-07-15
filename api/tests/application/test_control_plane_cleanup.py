@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from cys_core.application.control_plane.critic_display import (
     critic_verdict_visible_to_operator,
     format_critic_operator_message,

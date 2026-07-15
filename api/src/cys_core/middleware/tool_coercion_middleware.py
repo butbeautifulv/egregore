@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import inspect
 import json
-import structlog
 from collections.abc import Callable
 from typing import Any, Awaitable
 
+import structlog
 from langchain.agents.middleware.types import AgentMiddleware
 from langgraph.prebuilt.tool_node import ToolCallRequest
-from langgraph.types import Command
 
 from cys_core.application.runs.tool_coercion import (
     coerce_tool_args,
@@ -96,7 +94,13 @@ class ToolCoercionMiddleware(AgentMiddleware):
         if tool_name == "investigate_incident":
             record_tool_success(job_id, tool_name)
             return
-        if tool_name in _INTEL_SUCCESS_TOOLS or tool_name == "load_skill" or is_veil_tool(tool_name) or tool_name == "enrich_ioc":
+        intel_success = (
+            tool_name in _INTEL_SUCCESS_TOOLS
+            or tool_name == "load_skill"
+            or is_veil_tool(tool_name)
+            or tool_name == "enrich_ioc"
+        )
+        if intel_success:
             record_tool_success(job_id, tool_name)
         if is_veil_tool(tool_name) or tool_name == "enrich_ioc":
             record_veil_tool(job_id)

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from cys_core.integrations.siem_mcp_client import call_siem_mcp_tool, siem_mcp_enabled
-from cys_core.infrastructure.http_client import request_json
 from bootstrap.settings import get_settings
+from cys_core.infrastructure.http_client import request_json
+from cys_core.integrations.siem_mcp_client import call_siem_mcp_tool, siem_mcp_enabled
 
 
 def _cap_siem_limit(limit: int) -> int:

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from cys_core.domain.workers.models import WorkerJob
 from cys_core.infrastructure.kafka_errors import (
-    KafkaBrokerUnavailableError,
     KafkaMessageDecodeError,
     KafkaPublishError,
 )

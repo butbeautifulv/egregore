@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import json
 from collections.abc import Callable
 from typing import Any, Awaitable
 
@@ -14,7 +13,6 @@ from cys_core.application.reasoning.sgr_policy import ResolvedSgrPolicy
 from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL, SchemaGuidedReasoningStep
 from cys_core.middleware._framework_casts import cast_model_response, cast_tool_result
 from cys_core.middleware.sgr_session import SgrSessionState
-
 
 _REASONING_REMINDER = (
     "Before any action tool, you MUST call reasoning_step with structured fields: "

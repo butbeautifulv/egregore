@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# ruff: noqa: E402
 """Measure sanitizer detection rate on docs/injections/ — metadata only, no content output."""
 
 from __future__ import annotations
@@ -9,14 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-# Add project root for imports when run as script.
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
-from cys_core.domain.security.sanitizer import InputSanitizer  # noqa: E402
-
-CORPUS_ROOT = _ROOT / "docs" / "injections"
+CORPUS_ROOT = Path(__file__).resolve().parents[1] / "docs" / "injections"
 # Structural lines likely to contain technique markers (not full-file classification).
 _MARKER = re.compile(
     r"<\|[^|]+\|>|!UNRESTRICTED|!UNFILTERED|!LEAK|GODMODE|improve and structure|"
@@ -25,6 +17,10 @@ _MARKER = re.compile(
     re.IGNORECASE,
 )
 _CHUNK_SIZE = 240
+
+
+def _api_src_root() -> Path:
+    return Path(__file__).resolve().parents[1] / "api" / "src"
 
 
 def _iter_probe_chunks(path: Path) -> list[str]:
@@ -42,6 +38,11 @@ def _iter_probe_chunks(path: Path) -> list[str]:
 
 
 def main() -> int:
+    api_src = _api_src_root()
+    if str(api_src) not in sys.path:
+        sys.path.insert(0, str(api_src))
+    from cys_core.domain.security.sanitizer import InputSanitizer
+
     if not CORPUS_ROOT.is_dir():
         print(json.dumps({"error": f"corpus not found: {CORPUS_ROOT}"}))
         return 1

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Callable
-
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.catalog_write_gate import CatalogWriteGatePort
 from cys_core.domain.catalog.models import AgentCatalogEntry, CatalogSource

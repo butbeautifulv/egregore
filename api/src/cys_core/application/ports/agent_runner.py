@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 from cys_core.application.ports.stream_context import StreamContext
 

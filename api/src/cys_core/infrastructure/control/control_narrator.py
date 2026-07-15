@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
-from cys_core.application.ports.narration import NarrationPort
-
 
 class NarratorRuntimePort(Protocol):
     async def arun(

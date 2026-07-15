@@ -1,4 +1,4 @@
-from cys_core.infrastructure.tools.adapters.siem_mcp import (  # noqa: F401
+from cys_core.infrastructure.tools.adapters.siem_mcp import (
     acall_siem_tool,
     call_siem_tool,
     is_siem_tool,

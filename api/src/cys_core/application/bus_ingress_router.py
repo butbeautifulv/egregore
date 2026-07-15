@@ -10,7 +10,6 @@ from cys_core.application.bus_engagement import extract_engagement_id
 from cys_core.application.bus_fingerprint import envelope_fingerprint
 from cys_core.application.engagement_bus_guard import EngagementBusGuard
 from cys_core.application.ports.bus_dedup import BusDedupPort
-from cys_core.application.ports.bus_ingress_router import BusIngressRouterPort
 from cys_core.application.ports.metrics import MetricsPort
 from cys_core.domain.security.bus_messages import BusMessageType
 

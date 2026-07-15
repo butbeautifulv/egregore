@@ -6,7 +6,7 @@ from collections import deque
 import pytest
 
 from cys_core.domain.workers.models import WorkerJob
-from cys_core.infrastructure.queue import InMemoryJobQueue, RedisJobQueue
+from cys_core.infrastructure.queue import RedisJobQueue
 
 
 def _job(job_id: str, persona: str = "consultant") -> WorkerJob:

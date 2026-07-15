@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.application.port_fakes import fake_correlation_id_port
 from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
 from interfaces.ingress.router import EventIngress
+from tests.application.port_fakes import fake_correlation_id_port
 
 
 @pytest.mark.integration

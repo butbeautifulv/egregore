@@ -10,7 +10,12 @@ logger = logging.getLogger(__name__)
 Processor = Callable[[EngagementPlan, dict[str, Any], list[str], str], EngagementPlan]
 
 
-def advisory_consultant_fallback(plan: EngagementPlan, ctx: dict[str, Any], available: list[str], goal: str) -> EngagementPlan:
+def advisory_consultant_fallback(
+    plan: EngagementPlan,
+    ctx: dict[str, Any],
+    available: list[str],
+    goal: str,
+) -> EngagementPlan:
     if plan.personas or "consultant" not in set(available):
         return plan
     if not ctx.get("advisory"):

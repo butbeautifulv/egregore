@@ -7,7 +7,7 @@ from cys_core.application.ports.product_pack import ProductPackPort
 from cys_core.application.routing.event_router import EventRouter
 from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.events.domain_events import DomainEvent
-from cys_core.domain.events.models import RoutingDecision, SecurityEvent, EventType, Severity
+from cys_core.domain.events.models import EventType, RoutingDecision, SecurityEvent
 
 
 def resolve_domain_for_profile(profile_id: str, *, packs: ProductPackPort) -> str:

@@ -4,7 +4,7 @@ import pytest
 
 from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
 from cys_core.domain.evidence.gaps import soc_evidence_gaps
-from cys_core.domain.evidence.models import DataGap, EvidenceManifest, EvidenceRef, Observation
+from cys_core.domain.evidence.models import DataGap, EvidenceManifest, Observation
 
 
 def _sparse_manifest() -> EvidenceManifest:

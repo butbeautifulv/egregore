@@ -7,10 +7,10 @@ from cys_core.application.authz.service import AuthzService
 from cys_core.application.spawn_broker import SubagentSpawnBroker
 from cys_core.domain.runs.models import ContextKind, InteractionMode, RunContext
 from cys_core.domain.runs.spawn import SpawnWorkerPayload
+from cys_core.domain.security.auth_models import AuthClaims
 from cys_core.infrastructure.authz.noop import NoopAuthzPort
 from interfaces.api.authz_helpers import require_workspace_relation
 from interfaces.api.tenant_deps import require_tenant_match_http
-from cys_core.domain.security.auth_models import AuthClaims
 
 
 @pytest.mark.unit

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import threading
-from typing import Callable, cast
+from typing import Callable
 
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.catalog_audit import CatalogAuditPort
@@ -10,15 +11,14 @@ from cys_core.application.ports.registry_catalogs import (
     PlanCatalogPort,
     SkillCatalogPort,
 )
+from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.catalog.models import (
     AgentCatalogEntry,
-    CatalogSource,
     McpServerEntry,
     PlanCatalogEntry,
     SkillCatalogEntry,
     StagingStatus,
 )
-from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.catalog.validation import CrossRefValidator
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.factory import get_input_sanitizer

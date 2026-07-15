@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.domain.catalog.models import AgentCatalogEntry, PersonaQuality, ProfilePack, SkillCatalogEntry
+from cys_core.domain.catalog.models import AgentCatalogEntry, PersonaQuality, ProfilePack
 from cys_core.domain.catalog.validation import CatalogValidationError, CrossRefValidator
-from cys_core.infrastructure.catalog.memory import InMemoryAgentCatalog
 
 
 @pytest.mark.unit

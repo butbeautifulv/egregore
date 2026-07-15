@@ -9,7 +9,7 @@ from cys_core.application.bus_planner_gate import (
     filter_escalation_recipients,
 )
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
-from cys_core.application.findings.outcome_mapper import finding_to_operator_outcome, synthesis_outcome_from_context
+from cys_core.application.findings.outcome_mapper import synthesis_outcome_from_context
 from cys_core.application.ports.bus import AgentTransportConnector
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
@@ -19,12 +19,11 @@ from cys_core.application.workers.tool_execution_tracker import (
     get_merged_manifest,
     record_persona_manifest,
 )
+from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.engagement.bus_routing import ControlPlaneMode as BusControlPlaneMode
 from cys_core.domain.memory.services import MemoryWriteService
 from cys_core.domain.security.agent_bus import SecureAgentBus
 from cys_core.domain.workers.models import WorkerJob
-
-from cys_core.domain.agents.control import is_control_persona
 
 _ADVISORY_WORK_KINDS = frozenset({"initial_qa", "follow_up_qa"})
 

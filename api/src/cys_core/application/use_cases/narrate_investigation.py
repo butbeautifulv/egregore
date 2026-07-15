@@ -4,7 +4,7 @@ import json
 from typing import Any, Protocol
 
 from cys_core.application.ports.engagement_store import EngagementStateStore
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort
 from cys_core.domain.memory.services import MemoryReadService
 
 

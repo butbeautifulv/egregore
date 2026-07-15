@@ -3,7 +3,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any
 
-from cys_core.application.ports.observability.trace_backend import TraceBackendPort
 from cys_core.domain.observability.models import TraceContext
 
 

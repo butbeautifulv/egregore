@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from cys_core.domain.security.sanitizer import InputSanitizer
 from cys_core.domain.security.auth_models import AuthClaims, AuthError, claims_from_payload
+from cys_core.domain.security.sanitizer import InputSanitizer
 
 
 def _decode_test_token(token: str) -> dict:

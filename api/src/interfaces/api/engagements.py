@@ -9,10 +9,13 @@ from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
 from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
 from cys_core.domain.parsing.json_text import parse_json_text
-from interfaces.api.tenant_deps import require_tenant_match_http
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_ingress_role, require_reader_role
-from interfaces.api.authz_helpers import filter_by_visible_workspaces, require_engagement_relation, visible_workspace_ids
+from interfaces.api.authz_helpers import (
+    filter_by_visible_workspaces,
+    require_engagement_relation,
+    visible_workspace_ids,
+)
 from interfaces.api.engagement_schemas import (
     EngagementCreateIn,
     EngagementListOut,
@@ -23,6 +26,7 @@ from interfaces.api.engagement_schemas import (
     TenantMemoryOut,
 )
 from interfaces.api.planner_tasks import spawn_engagement_planner
+from interfaces.api.tenant_deps import require_tenant_match_http
 
 router = APIRouter(prefix="/v1", tags=["engagements"])  # deprecated: prefer /v1/work-orders
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from cys_core.domain.catalog.models import ModePolicyPayload, ProfilePolicyPayload
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.domain.reasoning.sgr_models import SgrPolicy
 from cys_core.domain.workers.models import PersonaBudget
 
 DEFAULT_BUS_POLICY: dict[str, list[str]] = {

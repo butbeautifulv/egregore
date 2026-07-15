@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from typing import Any
 
 import structlog
 
@@ -13,18 +12,18 @@ from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.use_cases.enqueue_next_planned_persona import EnqueueNextPlannedPersona
+from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
 from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher
 from cys_core.domain.catalog.profile_id import resolve_profile_id
-from cys_core.domain.security.agent_bus import SecureAgentBus
 from cys_core.domain.engagement.models import EngagementStatus
 from cys_core.domain.follow_up.models import (
-    is_follow_up_orchestrator,
     is_follow_up_payload,
     is_follow_up_plan_iteration,
     is_follow_up_planning,
     is_initial_qa_payload,
     work_kind_from_payload,
 )
+from cys_core.domain.security.agent_bus import SecureAgentBus
 from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.workers.failure_reason import WorkerJobFailureReason, classify_worker_failure
 from cys_core.domain.workers.models import WorkerJob, WorkerJobStatus

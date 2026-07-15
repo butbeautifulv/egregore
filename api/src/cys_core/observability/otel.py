@@ -6,7 +6,8 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 _instrumented = False
 _otel_setup: Callable[[str], None] | None = None
-_otel_enabled: Callable[[], bool] = lambda: False
+def _otel_enabled() -> bool:
+    return False
 
 
 def configure_otel(*, enabled: Callable[[], bool], setup: Callable[[str], None]) -> None:

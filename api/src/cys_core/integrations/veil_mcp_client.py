@@ -16,8 +16,11 @@ from cys_core.application.runtime_config import (
     configure_from_settings,
     get_veil_mcp_timeout,
     get_veil_mcp_url,
+)
+from cys_core.application.runtime_config import (
     veil_mcp_enabled as _veil_mcp_enabled,
 )
+from cys_core.domain.tools.catalog.veil import VEIL_TOOL_NAMES as FALLBACK_VEIL_TOOL_NAMES
 from cys_core.infrastructure.http_client import async_http_client, sync_http_client
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
@@ -59,7 +62,6 @@ def _classify_rpc_error(message: str) -> str:
 def _log_veil_failure(tool_name: str, *, reason: str, error: str) -> None:
     logger.warning("veil_mcp_tool_failed", tool=tool_name, source="veil-mcp", reason=reason, error=error)
 
-from cys_core.domain.tools.catalog.veil import VEIL_TOOL_NAMES as FALLBACK_VEIL_TOOL_NAMES
 
 # Backward-compatible alias for imports that still reference the old name.
 VEIL_MCP_TOOL_NAMES = FALLBACK_VEIL_TOOL_NAMES
@@ -144,7 +146,12 @@ def _finalize_veil_mcp_result(tool_name: str, body: dict[str, Any]) -> dict[str,
 def _prepare_veil_call(tool_name: str, arguments: dict[str, Any] | None) -> dict[str, Any] | None:
     _ensure_veil_runtime_config()
     if not veil_mcp_enabled():
-        return {"success": False, "error": "Veil MCP disabled (VEIL_MCP_ENABLED=false)", "source": "veil-mcp", "reason": "unavailable"}
+        return {
+            "success": False,
+            "error": "Veil MCP disabled (VEIL_MCP_ENABLED=false)",
+            "source": "veil-mcp",
+            "reason": "unavailable",
+        }
     if tool_name not in get_veil_allowed_tools():
         return {
             "success": False,

@@ -5,7 +5,6 @@ from collections.abc import Callable
 
 import psycopg
 import structlog
-import threading
 
 from cys_core.application.runtime_config import (
     get_postgres_url,

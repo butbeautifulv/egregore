@@ -9,9 +9,9 @@ from cys_core.domain.policy.pure import (
     persona_budget_pure,
     persona_clearance_pure,
 )
+from cys_core.domain.runs.models import InteractionMode
 from cys_core.domain.security.classification import DataClassification
 from cys_core.domain.security.risk import RiskLevel
-from cys_core.domain.runs.models import InteractionMode
 from cys_core.domain.workers.budgets import PersonaBudget
 
 

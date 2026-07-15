@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from cys_core.domain.reasoning.sgr_models import SchemaGuidedReasoningStep
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
+
+from cys_core.domain.reasoning.sgr_models import SchemaGuidedReasoningStep
 
 
 @pytest.mark.unit

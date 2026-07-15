@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
 from pydantic import BaseModel, Field
+
+from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
 
 
 class EngagementCreateIn(BaseModel):

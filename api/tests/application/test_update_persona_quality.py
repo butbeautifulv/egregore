@@ -5,7 +5,6 @@ import pytest
 from cys_core.application.use_cases.update_persona_quality import UpdatePersonaQuality
 from cys_core.domain.catalog.models import AgentCatalogEntry
 from cys_core.domain.catalog.quality_events import PersonaQualityEvent, PersonaQualityEventKind
-from tests.application.port_fakes import fake_policy_port
 from tests.conftest import FakePolicyPort, catalog_with_soc_profile
 
 

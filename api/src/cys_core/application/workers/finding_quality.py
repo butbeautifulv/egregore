@@ -2,19 +2,21 @@ from __future__ import annotations
 
 from typing import Any
 
-from cys_core.domain.findings.normalize import (  # noqa: F401
+from cys_core.domain.findings.normalize import (
     normalize_finding_payload,
     normalize_list_field,
     structured_has_content,
 )
-from cys_core.domain.findings.quality_gates import (  # noqa: F401
+from cys_core.domain.findings.quality_gates import (
     coerce_consultant_advisory_result,
     consultant_finding_gaps,
-    finding_meets_minimum as _finding_meets_minimum,
     follow_up_answer_gaps,
     has_planned_tool_calls,
     normalize_consultant_lists,
     preserve_planned_tool_calls,
+)
+from cys_core.domain.findings.quality_gates import (
+    finding_meets_minimum as _finding_meets_minimum,
 )
 
 __all__ = [

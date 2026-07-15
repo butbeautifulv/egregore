@@ -4,10 +4,11 @@ import json
 import logging
 from typing import Any
 
-from cys_core.application.errors import PlanningFailedError
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
+from cys_core.application.errors import PlanningFailedError
 from cys_core.application.planning.post_processors import apply_post_processors
 from cys_core.application.planning.prompt_builder import CatalogPlannerPromptBuilder
+from cys_core.application.planning.runtime import PlannerRuntime
 from cys_core.application.planning.signals import PlannerSignalDetector
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
@@ -15,9 +16,12 @@ from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.persona_ranking import PersonaRankingPort
 from cys_core.application.ports.resource_source import ResourceSourcePort
 from cys_core.application.ports.stream_context import StreamContext
-from cys_core.application.ports.tracing_ports import ApplicationTracingPort, NOOP_APPLICATION_TRACING
-from cys_core.application.runtime_config import get_max_planner_personas, get_planner_default_execution_mode, get_planner_fallback_personas
-from cys_core.application.planning.runtime import PlannerRuntime
+from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, ApplicationTracingPort
+from cys_core.application.runtime_config import (
+    get_max_planner_personas,
+    get_planner_default_execution_mode,
+    get_planner_fallback_personas,
+)
 from cys_core.domain.catalog.models import PlannerPack, ProfilePack
 from cys_core.domain.engagement.models import Engagement, EngagementPlan, EngagementStatus, ExecutionMode
 from cys_core.domain.events.models import SecurityEvent

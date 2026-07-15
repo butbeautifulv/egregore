@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cys_core.application.eval.adapters import BfclAdapterSkeleton, RagasAdapterSkeleton
+from cys_core.application.eval.adapters import RagasAdapterSkeleton
 from cys_core.application.routing.quality_router import ScoreQualityRouter
 from cys_core.domain.memory.records import MemoryRecord, RetrievalContext
 from cys_core.domain.quality.models import PersonaQuality

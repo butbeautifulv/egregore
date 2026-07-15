@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.catalog_audit import CatalogAuditPort
+from cys_core.application.ports.catalog_write_gate import CatalogWriteGatePort
 from cys_core.application.ports.tool_catalog import ToolCatalogPort
 from cys_core.domain.catalog.models import (
     AgentCatalogEntry,
@@ -13,7 +14,6 @@ from cys_core.domain.catalog.models import (
     SkillCatalogEntry,
     ToolCatalogEntry,
 )
-from cys_core.application.ports.catalog_write_gate import CatalogWriteGatePort
 
 
 class CatalogMutationService:
@@ -102,7 +102,13 @@ class CatalogMutationService:
         if tools:
             self._tools.seed(tools)
         if self._audit is not None:
-            self._audit.record_change("seed", agent=profile.id, actor=actor, resource_type="profile", resource_id=profile.id)
+            self._audit.record_change(
+                "seed",
+                agent=profile.id,
+                actor=actor,
+                resource_type="profile",
+                resource_id=profile.id,
+            )
         self._reload()
         return {
             "seeded": len(entries),

@@ -9,8 +9,8 @@ class LangfuseEvalBackend(NoopEvalBackend):
 
     def record_score(self, trace_id: str, name: str, value: float, *, comment: str = "") -> None:
         try:
-            from langfuse import Langfuse
             from bootstrap.settings import get_settings
+            from langfuse import Langfuse
 
             settings = get_settings()
             if not settings.langfuse_enabled:

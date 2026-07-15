@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import structlog
 
 from cys_core.application.bus_planner_gate import planner_personas_terminal
@@ -11,8 +9,8 @@ from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.ports.metrics import MetricsPort
-from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.engagement.models import EngagementStatus
+from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 
 logger = structlog.get_logger(__name__)
 

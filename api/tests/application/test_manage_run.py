@@ -4,7 +4,7 @@ import pytest
 
 from cys_core.application.use_cases.manage_run import ManageRun
 from cys_core.domain.runs.models import InteractionMode, RunContext
-from cys_core.domain.runs.state_models import RunState, RunStatus
+from cys_core.domain.runs.state_models import RunStatus
 from cys_core.infrastructure.runs.memory import InMemoryRunStateStore
 from cys_core.infrastructure.runs.todo_store import InMemoryWorkTodoStore
 from tests.application.port_fakes import run_step_port_kwargs

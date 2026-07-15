@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bootstrap.persona_budget_loader import load_persona_budgets
-from bootstrap.settings import Settings, get_settings
 from bootstrap.containers.auth_container import AuthContainer
 from bootstrap.containers.catalog_container import CatalogContainer
 from bootstrap.containers.engagement_container import EngagementContainer
@@ -11,6 +9,8 @@ from bootstrap.containers.observability_container import ObservabilityContainer
 from bootstrap.containers.persistence_container import PersistenceContainer
 from bootstrap.containers.policy_container import PolicyContainer
 from bootstrap.containers.tools_container import ToolsContainer
+from bootstrap.persona_budget_loader import load_persona_budgets
+from bootstrap.settings import Settings, get_settings
 from cys_core.application.policy_enforcement import PolicyEnforcementService
 from cys_core.application.policy_resolver import ProfilePolicyResolver
 from cys_core.application.runtime_config import configure_from_settings
@@ -28,14 +28,6 @@ from cys_core.infrastructure.catalog.profile_policy import (
     get_notify_control_severities,
     get_profile_policy,
     get_trust_floor,
-)
-from cys_core.infrastructure.catalog.registry_factory import (
-    get_catalog_audit,
-    get_catalog_write_gate,
-    get_mcp_catalog,
-    get_plan_catalog,
-    get_skill_catalog,
-    get_tool_catalog,
 )
 
 if TYPE_CHECKING:
@@ -160,9 +152,6 @@ class Container:
 
     def get_plan_investigation(self):
         return self._engagement.get_plan_investigation()
-
-    def wire_bus_reload(self) -> None:
-        self._engagement.wire_bus_reload()
 
     # ------------------------------------------------------------------
     # Persistence / queue / transport / sandbox / memory

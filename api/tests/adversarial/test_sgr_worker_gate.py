@@ -6,8 +6,8 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 
 from cys_core.application.reasoning.sgr_policy import ResolvedSgrPolicy
 from cys_core.domain.reasoning.sgr_models import SchemaGuidedReasoningStep
-from cys_core.middleware.sgr_reasoning_middleware import SchemaGuidedReasoningMiddleware
 from cys_core.middleware.sgr_one_tool_middleware import SgrOneToolMiddleware
+from cys_core.middleware.sgr_reasoning_middleware import SchemaGuidedReasoningMiddleware
 from cys_core.middleware.sgr_session import SgrSessionState
 
 
@@ -18,7 +18,7 @@ def test_worker_sgr_stack_blocks_siem_without_reasoning():
         policy=ResolvedSgrPolicy(enabled=True, mode="sgr_hybrid", require_before_action=True),
         session=session,
     )
-    one_tool_mw = SgrOneToolMiddleware(session=session)
+    SgrOneToolMiddleware(session=session)
     request = ToolCallRequest(
         tool_call={"name": "query_siem_readonly", "id": "1", "args": {}},
         tool=None,  # type: ignore[arg-type]

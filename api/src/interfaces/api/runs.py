@@ -7,12 +7,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from bootstrap.container import get_container
 from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
 from cys_core.domain.runs.plan_models import PlanApproval
-from interfaces.api.tenant_deps import require_tenant_match_http
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_ingress_role, require_operator_role
 from interfaces.api.authz_helpers import require_engagement_relation
 from interfaces.api.errors import authz_denied_http
 from interfaces.api.run_schemas import RunCreateIn, RunOut, RunStepIn, SessionCreateIn
+from interfaces.api.tenant_deps import require_tenant_match_http
 
 router = APIRouter(tags=["runs"])
 
@@ -94,7 +94,10 @@ async def run_step(
     # .use_cases.run_step.RunStep exists and is unit-tested but was never connected to a
     # container factory or this route. Report explicitly rather than silently creating an
     # unrelated engagement and mislabeling it as this run (the previous behavior).
-    raise HTTPException(status_code=501, detail="Continuing an existing run via /runs/{run_id}/steps is not implemented")
+    raise HTTPException(
+        status_code=501,
+        detail="Continuing an existing run via /runs/{run_id}/steps is not implemented",
+    )
 
 
 @router.post("/runs/{run_id}/approve-plan", response_model=RunOut)

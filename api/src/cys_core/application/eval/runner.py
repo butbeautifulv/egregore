@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from cys_core.application.ports.eval_runner import EvalRunnerPort
-from cys_core.domain.eval.models import EvalCase, EvalDataset, EvalMetric, EvalRun, EvalSampleResult
+from cys_core.domain.eval.models import EvalDataset, EvalMetric, EvalRun, EvalSampleResult
 
 
 class DryRunEvalRunner:

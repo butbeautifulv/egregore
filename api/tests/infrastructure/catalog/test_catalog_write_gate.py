@@ -3,8 +3,8 @@ import pytest
 from cys_core.domain.catalog.models import AgentCatalogEntry, CatalogSource
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.prompt_context import SECURITY_RULES_BLOCK
-from cys_core.infrastructure.catalog.catalog_write_gate import CatalogWriteGate
 from cys_core.infrastructure.catalog.audit_adapter import InMemoryCatalogAudit
+from cys_core.infrastructure.catalog.catalog_write_gate import CatalogWriteGate
 from cys_core.infrastructure.catalog.memory import InMemoryAgentCatalog
 from cys_core.infrastructure.catalog.memory_mcp import InMemoryMcpServerCatalog
 from cys_core.infrastructure.catalog.memory_plans import InMemoryPlanCatalog

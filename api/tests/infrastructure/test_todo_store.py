@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.infrastructure.runs.todo_store import InMemoryWorkTodoStore
 from cys_core.domain.runs.plan_models import WorkTodo
+from cys_core.infrastructure.runs.todo_store import InMemoryWorkTodoStore
 
 
 @pytest.mark.unit

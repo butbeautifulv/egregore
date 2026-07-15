@@ -5,7 +5,7 @@ from typing import Any
 
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.use_cases.start_engagement import _pipeline_staged
-from cys_core.domain.engagement.models import EngagementStatus, SynthesisStatus
+from cys_core.domain.engagement.models import SynthesisStatus
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.domain.workers.models import WorkerJob
 

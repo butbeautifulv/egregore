@@ -22,7 +22,11 @@ def _usage_from_response(response: LLMResult | ChatResult) -> tuple[int, int]:
         message = getattr(gen, "message", None)
         usage_metadata = getattr(message, "usage_metadata", None) if message is not None else None
         if isinstance(usage_metadata, dict):
-            prompt_tokens = int(usage_metadata.get("input_tokens") or usage_metadata.get("prompt_tokens") or prompt_tokens)
+            prompt_tokens = int(
+                usage_metadata.get("input_tokens")
+                or usage_metadata.get("prompt_tokens")
+                or prompt_tokens
+            )
             completion_tokens = int(
                 usage_metadata.get("output_tokens") or usage_metadata.get("completion_tokens") or completion_tokens
             )

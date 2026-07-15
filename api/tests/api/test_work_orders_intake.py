@@ -55,8 +55,9 @@ async def test_list_work_orders_returns_personas_and_updated_at(monkeypatch) -> 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_work_orders_invalid_cursor_returns_400(monkeypatch) -> None:
-    from cys_core.infrastructure.engagement.list_cursor import InvalidListCursor
     from fastapi import HTTPException
+
+    from cys_core.infrastructure.engagement.list_cursor import InvalidListCursor
     from interfaces.api.work_orders import list_work_orders
 
     store = MagicMock()

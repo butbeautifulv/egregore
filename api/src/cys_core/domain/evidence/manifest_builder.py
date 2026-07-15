@@ -5,7 +5,6 @@ from typing import Any
 import structlog
 
 from cys_core.domain.evidence.incident_mitre import infer_suggested_mitre_techniques
-from cys_core.domain.evidence.observation_ids import build_obs_id
 from cys_core.domain.evidence.models import (
     DataGap,
     EvidenceManifest,
@@ -14,6 +13,7 @@ from cys_core.domain.evidence.models import (
     Observation,
     ObservationKind,
 )
+from cys_core.domain.evidence.observation_ids import build_obs_id
 
 logger = structlog.get_logger(__name__)
 
@@ -260,7 +260,7 @@ def _finalize_manifest(
     )
     has_account = any(fa.present for fp, fa in availability.items() if "account" in fp)
     has_pipe = availability.get("object.name", FieldAvailability(field_path="object.name", present=False)).present
-    has_pid = any(fa.present for fp, fa in availability.items() if fp.endswith(".id"))
+    any(fa.present for fp, fa in availability.items() if fp.endswith(".id"))
     kata_taa = _kata_taa_detected(rules, incident_body)
 
     data_gaps: list[DataGap] = []

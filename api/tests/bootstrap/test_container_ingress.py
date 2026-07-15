@@ -27,7 +27,6 @@ def test_container_ingress_factories_share_router():
 @pytest.mark.unit
 def test_container_worker_orchestrator_cached_by_persona(monkeypatch):
     container = Container(Settings(use_kafka=False))
-    instances: dict[str | None, object] = {}
     construct_count = 0
 
     class FakeOrchestrator:

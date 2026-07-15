@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from cys_core.domain.evidence.snapshot import EvidenceSnapshot
 

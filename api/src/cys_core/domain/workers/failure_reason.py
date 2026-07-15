@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import structlog
 from enum import StrEnum
+
+import structlog
 
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.workers.exceptions import JobBudgetExceeded

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -78,8 +77,8 @@ def test_spawn_worker_sync_path_uses_enqueue(monkeypatch: pytest.MonkeyPatch) ->
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_kafka_queue_sync_enqueue_raises_in_running_loop() -> None:
-    from cys_core.infrastructure.kafka_queue import KafkaJobQueue
     from cys_core.domain.workers.models import WorkerJob
+    from cys_core.infrastructure.kafka_queue import KafkaJobQueue
 
     queue = KafkaJobQueue.__new__(KafkaJobQueue)
     job = WorkerJob(job_id="j1", event_id="e1", persona="soc")

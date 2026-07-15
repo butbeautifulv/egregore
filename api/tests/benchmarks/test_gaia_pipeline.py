@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.benchmarks.gaia_pipeline import detect_gaia_answer_type, extract_gaia_final_answer
 from cys_core.benchmarks.gaia_normalizer import normalize_gaia_answer
+from cys_core.benchmarks.gaia_pipeline import detect_gaia_answer_type, extract_gaia_final_answer
 
 
 @pytest.mark.unit

@@ -1,4 +1,4 @@
-from cys_core.domain.engagement.bus_routing import (  # noqa: F401
+from cys_core.domain.engagement.bus_routing import (
     BUS_ALWAYS_RECIPIENTS,
     CONTROL_PLANE_RECIPIENTS,
     ControlPlaneMode,

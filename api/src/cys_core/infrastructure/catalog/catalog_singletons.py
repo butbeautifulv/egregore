@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from typing import TypeVar, cast, cast
+from typing import TypeVar, cast
 
 T = TypeVar("T")
 

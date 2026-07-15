@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-import structlog
 from typing import Any
+
+import structlog
 
 from cys_core.application.ports.agent_registry import AgentRegistryPort
 from cys_core.application.ports.sandbox import SandboxConnector
+from cys_core.application.ports.tracing_ports import WorkerTracingPort
 from cys_core.application.ports.workspace_store import WorkspaceStorePort
 from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
-from cys_core.application.workers.finding_publisher import WorkerFindingPublisher
-from cys_core.application.workers.follow_up_aggregator import FollowUpAggregator
-from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher, prepare_follow_up_result
-from cys_core.application.workers.finding_publisher import should_publish_finding_to_bus
 from cys_core.application.workers.evidence_gate import soc_evidence_gaps
+from cys_core.application.workers.finding_publisher import WorkerFindingPublisher, should_publish_finding_to_bus
 from cys_core.application.workers.finding_quality import (
     coerce_consultant_advisory_result,
     consultant_finding_gaps,
@@ -22,9 +21,12 @@ from cys_core.application.workers.finding_quality import (
     follow_up_answer_gaps,
     has_planned_tool_calls,
 )
+from cys_core.application.workers.follow_up_aggregator import FollowUpAggregator
+from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher, prepare_follow_up_result
 from cys_core.application.workers.job_finalizer import WorkerJobFinalizer
 from cys_core.application.workers.noop_finding import is_noop_finding
 from cys_core.application.workers.result_validator import WorkerResultValidator
+from cys_core.application.workers.timeout_salvage import build_salvage_finding
 from cys_core.application.workers.tool_execution_tracker import (
     clear_tool_execution_count,
     get_merged_manifest,
@@ -35,21 +37,19 @@ from cys_core.application.workers.tool_execution_tracker import (
     seed_job_from_persona_manifest,
     tool_succeeded,
 )
-from cys_core.application.workers.timeout_salvage import build_salvage_finding
 from cys_core.application.workspace.persona_resolver import resolve_worker_agent_definition
 from cys_core.domain.catalog.profile_id import resolve_profile_id
+from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
 from cys_core.domain.follow_up.models import (
     is_follow_up_orchestrator,
     is_follow_up_plan_planner_job,
     work_kind_from_payload,
 )
-from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.sanitizer import InputSanitizer
 from cys_core.domain.workers.bus_job_ids import is_bus_worker_job_id
 from cys_core.domain.workers.exceptions import JobBudgetExceeded
 from cys_core.domain.workers.job_budget import JobBudgetTracker
-from cys_core.application.ports.tracing_ports import WorkerTracingPort
 from cys_core.domain.workers.models import RunResult, WorkerJob
 
 logger = structlog.get_logger(__name__)

@@ -4,13 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.application.port_fakes import fake_correlation_id_port
+from cys_core.application.plans.plan_loader import load_plan_routing
 from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
 from cys_core.application.use_cases.route_and_enqueue import RouteAndEnqueueEvent
-from cys_core.application.plans.plan_loader import load_plan_routing
-from tests.conftest import make_event_router
 from cys_core.infrastructure.queue import InMemoryJobQueue
 from interfaces.ingress.router import EventIngress
+from tests.application.port_fakes import fake_correlation_id_port
+from tests.conftest import make_event_router
 
 
 @pytest.mark.unit

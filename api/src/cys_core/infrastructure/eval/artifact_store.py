@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cys_core.domain.eval.models import EvalArtifact, EvalRun, EvalSampleResult
+from cys_core.domain.eval.models import EvalArtifact, EvalSampleResult
 
 
 class FilesystemEvalArtifactStore:

@@ -6,12 +6,11 @@ import json
 import os
 import sys
 
-import cys_core.observability.prometheus_setup  # noqa: F401 — multiprocess atexit
-
-from bootstrap.settings import settings
 from bootstrap.container import get_container
+from bootstrap.settings import settings
 from cys_core.observability.logging_setup import configure_logging
 from cys_core.observability.otel import setup_otel
+from cys_core.observability.prometheus_setup import register_multiprocess_shutdown
 from cys_core.registry.agents import get_agent_registry
 from cys_core.runtime.agent import get_runtime
 
@@ -355,6 +354,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     # Ensure bootstrap wiring runs for ALL CLI commands (incl. migrate/serve),
     # so registries/loaders are configured in offline/production environments.
+    register_multiprocess_shutdown()
     from bootstrap.container import get_container
 
     get_container()

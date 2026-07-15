@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,13 +14,12 @@ from cys_core.application.use_cases.start_work_order import (
     WorkOrderValidationError,
 )
 from cys_core.domain.security.auth_models import AuthClaims
-from cys_core.domain.work_order.models import WorkOrderRequest
-from interfaces.api.tenant_deps import require_tenant_match_http
 from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
 from interfaces.api.authz_helpers import require_engagement_relation, visible_workspace_ids
-from interfaces.api.planner_tasks import spawn_engagement_planner
-from interfaces.api.follow_ups import _get_enqueue_follow_up
 from interfaces.api.follow_up_schemas import FollowUpIn, FollowUpListOut, FollowUpOut, FollowUpTurnOut
+from interfaces.api.follow_ups import _get_enqueue_follow_up
+from interfaces.api.planner_tasks import spawn_engagement_planner
+from interfaces.api.tenant_deps import require_tenant_match_http
 from interfaces.api.work_order_schemas import WorkOrderCreateIn, WorkOrderListOut, WorkOrderOut
 
 router = APIRouter(prefix="/v1", tags=["work-orders"])

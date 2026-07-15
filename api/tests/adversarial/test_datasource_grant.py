@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cys_core.application.authz.service import AuthzDenied, AuthzService
+from cys_core.application.authz.service import AuthzService
 from cys_core.application.use_cases.invoke_tool import InvokeTool
 from cys_core.domain.tools.models import ToolInvokeCommand
 

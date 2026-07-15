@@ -4,8 +4,8 @@ from bootstrap.settings import settings
 from cys_core.domain.rag.models import ChunkACL, RagChunk, RetrievalResult
 from cys_core.domain.security.classification import SecureContextBuilder
 from cys_core.domain.security.content_delimiters import wrap_retrieved_chunks_body
-from cys_core.observability.metrics import metrics
 from cys_core.infrastructure.rag.store import VectorStore, get_vector_store
+from cys_core.observability.metrics import metrics
 
 
 def _acl_allows(chunk_acl: ChunkACL, ctx: SecureContextBuilder, persona_roles: list[str]) -> bool:

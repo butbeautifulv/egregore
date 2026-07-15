@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import atexit
 import os
 import re
+from typing import Any
 
 _ENV = "PROMETHEUS_MULTIPROC_DIR"
 _MPROC_FILE = re.compile(r"^(counter|gauge|histogram|summary)_(\d+)\.db$")
@@ -63,5 +62,7 @@ def cleanup_multiproc_dir_on_startup() -> None:
                 pass
 
 
-if os.environ.get(_ENV):
-    atexit.register(_mark_process_dead)
+def register_multiprocess_shutdown() -> None:
+    """Register atexit hook so worker/API metrics flush when PROMETHEUS_MULTIPROC_DIR is set."""
+    if os.environ.get(_ENV):
+        atexit.register(_mark_process_dead)

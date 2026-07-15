@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.domain.catalog.models import AgentCatalogEntry, ProfilePack, ProfilePolicyPayload
+from cys_core.domain.catalog.models import AgentCatalogEntry, ProfilePack
 from cys_core.infrastructure.catalog.memory import InMemoryAgentCatalog
 
 
