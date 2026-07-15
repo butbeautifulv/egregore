@@ -352,18 +352,20 @@ class AgentRuntime:
         session_id: str | None = None,
         sandbox_tools: list | None = None,
         recursion_limit: int | None = None,
-        job_id: str = "",
+        job_id: str | None = None,
         event_id: str = "",
         correlation_id: str = "",
-        tenant_id: str = "default",
-        investigation_id: str = "",
+        tenant_id: str | None = None,
+        investigation_id: str | None = None,
         sandbox_id: str = "",
-        profile_id: str = DEFAULT_PROFILE_ID,
+        profile_id: str | None = None,
         stream_context: StreamContext | None = None,
     ) -> dict[str, Any]:
+        tenant_id = tenant_id or "default"
+        job_id = job_id or ""
         defn = self.registry.get(name)
         sid = session_id or f"agent-{name}"
-        inv_id = investigation_id or correlation_id or event_id
+        inv_id = investigation_id or correlation_id or event_id or ""
         entries_loaded = 0
         if self._memory_reader is not None and inv_id:
             entries_loaded = len(

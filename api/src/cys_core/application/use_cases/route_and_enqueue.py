@@ -45,6 +45,10 @@ class RouteAndEnqueueEvent:
             application_tracing=self._tracing,
         )
 
+    @property
+    def router(self) -> EventRouter:
+        return self._route_event._router
+
     def _build_event(
         self,
         event_type: str,

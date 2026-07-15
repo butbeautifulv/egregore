@@ -312,10 +312,10 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
 
     @app.get("/investigations", response_model=InvestigationsListOut)
     async def list_investigations(
+        response: Response,
         tenant_id: str = "default",
         limit: int = 20,
         cursor: str | None = None,
-        response: Response = None,
         _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     ) -> InvestigationsListOut:
         from cys_core.infrastructure.engagement.list_cursor import InvalidListCursor

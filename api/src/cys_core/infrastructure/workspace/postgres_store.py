@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import Any, cast
 
 import psycopg
 from psycopg.rows import dict_row
@@ -34,7 +35,7 @@ class PostgresWorkspaceStore:
         self._ensure_schema()
 
     def _connect(self):
-        return psycopg.connect(self._postgres_url, row_factory=dict_row)
+        return psycopg.connect(self._postgres_url, row_factory=cast(Any, dict_row))
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:

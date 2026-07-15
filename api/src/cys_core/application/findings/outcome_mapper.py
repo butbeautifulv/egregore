@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from cys_core.domain.findings.operator_outcome import OperatorOutcome, OutcomeSection, ProvenanceRef
 
@@ -24,7 +24,7 @@ def _title_from_finding(finding: dict[str, Any], *, fallback: str) -> str:
 def finding_to_operator_outcome(
     finding: dict[str, Any],
     *,
-    kind: str = "advisory",
+    kind: Literal["advisory", "investigation", "synthesis"] = "advisory",
     title: str = "",
     provenance: list[ProvenanceRef] | None = None,
 ) -> OperatorOutcome:
@@ -32,7 +32,7 @@ def finding_to_operator_outcome(
         finding.get("summary") or finding.get("finding") or finding.get("topic") or ""
     ).strip()
     return OperatorOutcome(
-        kind=kind,  # type: ignore[arg-type]
+        kind=kind,
         title=title or _title_from_finding(finding, fallback="Work order outcome"),
         summary=summary or "—",
         recommendations=_recommendations_from_finding(finding),

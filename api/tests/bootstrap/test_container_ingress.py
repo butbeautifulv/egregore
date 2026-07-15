@@ -55,7 +55,10 @@ def test_container_worker_orchestrator_cached_by_persona(monkeypatch):
 def test_meta_planner_uses_agent_runtime_not_ingress_orchestrator(monkeypatch):
     container = Container(Settings(use_kafka=False))
     runtime = MagicMock()
-    monkeypatch.setattr(container, "get_agent_runtime", lambda: runtime)
+    monkeypatch.setattr(
+        "cys_core.runtime.agent.get_runtime",
+        lambda: runtime,
+    )
 
     planner = container.get_meta_planner()
 

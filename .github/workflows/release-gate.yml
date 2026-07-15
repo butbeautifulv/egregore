@@ -18,10 +18,8 @@ name: Release Gate
 # Known pre-existing gaps intentionally left warn-only (continue-on-error)
 # rather than either silently dropped or left permanently red — see the
 # TODO on each job and docs/CI_CD_KNOWN_GAPS.md for the tracked follow-up:
-#   - lint: 367 pre-existing ruff findings (same command ci.yml's own lint
-#     job already used — this predates tonight, ci.yml's `lint` job has
-#     apparently never gone green)
-#   - unit-tests: ~60 pre-existing failures across 15/29 pytest_batches.sh
+#   - lint: resolved — ruff + ty green, lint job blocking
+#   - unit-tests: ~60 pre-existing failures across pytest batches
 #     batches, unrelated to this PR (confirmed via git-stash bisection)
 #   - arch-lint: 8 files import `bootstrap` from domain/application layers
 #     (real import-boundary violations, predate this workflow)
@@ -103,7 +101,6 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: api

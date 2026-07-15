@@ -43,6 +43,7 @@ class OpenFgaAuthzPort:
             api_url=self._api_url,
             store_id=self._store_id,
             credentials=credentials,
+            authorization_model_id=self._model_id or None,
         )
         return OpenFgaClient(config)
 
@@ -63,14 +64,11 @@ class OpenFgaAuthzPort:
     def check(self, req: AuthzCheck) -> bool:
         from openfga_sdk.client.models import ClientCheckRequest
 
-        kwargs = {
-            "user": req.user,
-            "relation": req.relation,
-            "object": req.object,
-        }
-        if self._model_id:
-            kwargs["authorization_model_id"] = self._model_id
-        body = ClientCheckRequest(**kwargs)
+        body = ClientCheckRequest(
+            user=req.user,
+            relation=req.relation,
+            object=req.object,
+        )
 
         async def _run():
             client = self._build_client()
@@ -85,10 +83,11 @@ class OpenFgaAuthzPort:
     def list_objects(self, *, user: str, relation: str, object_type: str) -> list[str]:
         from openfga_sdk.client.models import ClientListObjectsRequest
 
-        kwargs = {"user": user, "relation": relation, "type": object_type}
-        if self._model_id:
-            kwargs["authorization_model_id"] = self._model_id
-        body = ClientListObjectsRequest(**kwargs)
+        body = ClientListObjectsRequest(
+            user=user,
+            relation=relation,
+            type=object_type,
+        )
 
         async def _run():
             client = self._build_client()

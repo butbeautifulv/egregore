@@ -5,14 +5,19 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 _instrumented = False
+_otel_enabled_fn: Callable[[], bool] | None = None
 _otel_setup: Callable[[str], None] | None = None
+
+
 def _otel_enabled() -> bool:
-    return False
+    if _otel_enabled_fn is None:
+        return False
+    return _otel_enabled_fn()
 
 
 def configure_otel(*, enabled: Callable[[], bool], setup: Callable[[str], None]) -> None:
-    global _otel_enabled, _otel_setup
-    _otel_enabled = enabled
+    global _otel_enabled_fn, _otel_setup
+    _otel_enabled_fn = enabled
     _otel_setup = setup
 
 

@@ -248,7 +248,7 @@ class EnqueueFollowUp:
         prior_operator_turns = sum(1 for t in turns if self._turn_role(t) == "operator")
         work_kind = classify_follow_up_mode(
             message,
-            mode=mode,  # type: ignore[arg-type]
+            mode=mode if mode in ("auto", "qa", "orchestrate", "plan") else "auto",
             prior_operator_turns=prior_operator_turns,
         )
         if work_kind == "follow_up_plan":

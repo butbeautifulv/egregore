@@ -228,9 +228,10 @@ class StartWorkOrder:
                 },
             )
         engagement = self._engagement_store.get(tenant_id, engagement_id) if self._engagement_store else None
-        if engagement is not None:
+        store = self._engagement_store
+        if engagement is not None and store is not None:
             engagement.mark_enqueued([job_id])
-            self._engagement_store.upsert(engagement)
+            store.upsert(engagement)
         return job_id
 
     async def _execute_initial_qa(

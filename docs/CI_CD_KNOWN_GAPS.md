@@ -7,16 +7,11 @@ lowered bar. Flip each item to blocking/un-xfail once its root cause is fixed.
 
 ## Warn-only jobs
 
-### `lint` — 367 pre-existing ruff findings
+### ~~`lint`~~ — **resolved** (blocking since feature/bypass-ci-lint)
 
-`uv run ruff check src tests` — the
-exact command `ci.yml`'s own (now-superseded) `lint` job used — currently
-reports 367 findings (284 auto-fixable with `ruff check --fix`, 9 more with
-`--unsafe-fixes`). Since every other job in `ci.yml` had `needs: [lint]`,
-this means that pipeline has likely never gotten past its first job. Not
-fixed here: a blanket repo-wide `--fix` is a large, unrelated diff that
-doesn't belong bundled into the PR that introduces this gate. `ty check`
-(the type checker) was not independently re-verified.
+`uv run ruff check src tests` and `uv run ty check src` both exit 0. `noqa`
+suppressions removed; ty protocol alignment on `AgentRuntime.arun` /
+`PlannerRuntime`. Lint job `continue-on-error` removed from `release-gate.yml`.
 
 ### `unit-tests` — ~60 pre-existing test failures
 

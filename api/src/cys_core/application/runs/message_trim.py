@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 
 
@@ -23,7 +25,7 @@ def _tool_turn_span(messages: list[AnyMessage], start: int) -> tuple[int, int]:
     """Return [start, end) indices for AIMessage tool_calls + following ToolMessages."""
     if start >= len(messages) or not _is_tool_turn_start(messages[start]):
         return start, start
-    expected_ids = set(_tool_call_ids(messages[start]))  # type: ignore[arg-type]
+    expected_ids = set(_tool_call_ids(cast(AIMessage, messages[start])))
     end = start + 1
     seen: set[str] = set()
     while end < len(messages) and isinstance(messages[end], ToolMessage):
@@ -62,7 +64,7 @@ def _drop_incomplete_tool_turns(messages: list[AnyMessage]) -> list[AnyMessage]:
             index += 1
             continue
         start, end = _tool_turn_span(messages, index)
-        expected_ids = set(_tool_call_ids(message))  # type: ignore[arg-type]
+        expected_ids = set(_tool_call_ids(cast(AIMessage, message)))
         tool_ids = {
             str(getattr(messages[pos], "tool_call_id", "") or "")
             for pos in range(start + 1, end)
