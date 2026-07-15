@@ -28,8 +28,8 @@ docs/injections/
 # OS
 .DS_Store
 
-# Operator UI (ui/)
-ui/node_modules/
-ui/.next/
-ui/.env.local
-ui/tsconfig.tsbuildinfo
+# Operator UI (web_ui/)
+web_ui/node_modules/
+web_ui/.next/
+web_ui/.env.local
+web_ui/tsconfig.tsbuildinfo

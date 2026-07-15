@@ -42,7 +42,7 @@ services:
 
   ui:
     build:
-      context: ./ui
+      context: ./web_ui
       dockerfile: Dockerfile.dev
     ports:
       - "3000:3000"
