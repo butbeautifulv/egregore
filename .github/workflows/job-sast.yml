@@ -7,5 +7,8 @@ jobs:
   codeql:
     runs-on: ubuntu-latest
     steps:
-      - run: echo hi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
 # DIAGNOSTIC: stripped to bisect a startup_failure.
