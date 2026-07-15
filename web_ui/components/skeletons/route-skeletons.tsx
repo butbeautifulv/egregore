@@ -1,7 +1,6 @@
 import { Skeleton } from "@/vendor/gui/ui/skeleton"
 
 import {
-  AgentChatBlockSkeleton,
   ChartCardsGridSkeleton,
   ChatFormCardSkeleton,
   ChatThreadSkeleton,

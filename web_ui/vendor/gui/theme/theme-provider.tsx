@@ -102,7 +102,11 @@ function ThemeProvider({ children }: { children: ReactNode }) {
     theme === "system" ? systemResolvedTheme : theme
 
   useLayoutEffect(() => {
+    // Must run synchronously before paint to avoid a theme flash — the
+    // blocking <script> in <head> already set the DOM class, this just
+    // brings React's state in sync with it on mount.
     const stored = getStoredTheme()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pre-paint sync from localStorage, not derivable at render time
     setThemeState(stored)
     applyThemeToDocument(stored)
     setHydrated(true)

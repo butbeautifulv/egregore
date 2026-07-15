@@ -40,9 +40,9 @@ function SkillRow({ skillId }: { skillId: string }) {
   useEffect(() => {
     if (!open || skill) return
     let cancelled = false
-    setLoading(true)
-    setError(null)
     ;(async () => {
+      setLoading(true)
+      setError(null)
       try {
         const data = await getCatalogSkill(skillId)
         if (!cancelled) setSkill(data)
@@ -94,13 +94,13 @@ export function CatalogAgentDetailView({ agentName }: { agentName: string }) {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    setMemoryError(null)
-    setAgent(null)
-    setToolById(new Map())
-    setMemory([])
     ;(async () => {
+      setLoading(true)
+      setError(null)
+      setMemoryError(null)
+      setAgent(null)
+      setToolById(new Map())
+      setMemory([])
       try {
         const [detail, mem, tools] = await Promise.all([
           getCatalogAgent(agentName),

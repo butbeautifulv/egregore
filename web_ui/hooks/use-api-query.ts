@@ -36,7 +36,9 @@ export function useApiQuery<T>(
   const [isStale, setIsStale] = useState(false)
   const hasDataRef = useRef(initialData !== undefined)
   const fetcherRef = useRef(fetcher)
-  fetcherRef.current = fetcher
+  useEffect(() => {
+    fetcherRef.current = fetcher
+  })
 
   const refresh = useCallback(async () => {
     if (!enabled) return
@@ -60,16 +62,16 @@ export function useApiQuery<T>(
     } finally {
       setLoading(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps passed by caller
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/use-memo -- deps passed by caller as a dynamic array
   }, [enabled, fallback, ...deps])
 
   useEffect(() => {
-    if (!enabled) {
-      setLoading(false)
-      return
-    }
     let cancelled = false
     ;(async () => {
+      if (!enabled) {
+        setLoading(false)
+        return
+      }
       const hadData = hasDataRef.current
       if (!hadData) {
         setLoading(true)

@@ -124,7 +124,6 @@ export function EngagementChatThread({
   profileId,
   finalReport,
   plannerError,
-  plannerStatus,
   followUps = [],
   followUpChildEntries = new Map(),
   followUpSending = false,

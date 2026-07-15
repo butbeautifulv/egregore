@@ -74,7 +74,9 @@ export function OperatorMessageComposer({
   const [mode, setMode] = useState<FollowUpMode>(initialMode)
 
   useEffect(() => {
+    // Resets mode when variant/isFirstFollowUp change on an already-mounted composer.
     if (variant === "create" && PLAN_ENABLED) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- see comment above
       setMode("plan")
       return
     }

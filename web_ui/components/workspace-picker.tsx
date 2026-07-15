@@ -25,6 +25,7 @@ export function WorkspacePicker() {
     if (!workspaces || workspaces.length === 0 || getSelectedWorkspaceId()) return
     const defaultWs = workspaces.find((ws) => ws.id.endsWith("-default")) ?? workspaces[0]
     setSelectedWorkspaceId(defaultWs.id)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- picks + persists a default workspace once the list loads, mirrors localStorage
     setSelected(defaultWs.id)
   }, [workspaces])
 
