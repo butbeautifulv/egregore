@@ -32,6 +32,18 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
     def session(self) -> SgrSessionState:
         return self._session
 
+    def _prepend_reasoning_reminder(self, request: ModelRequest) -> ModelRequest:
+        from langchain_core.messages import SystemMessage
+
+        if request.system_message is not None:
+            content = str(request.system_message.content or "")
+            return request.override(
+                system_message=SystemMessage(content=f"{_REASONING_REMINDER}\n\n{content}"),
+            )
+        messages = list(request.messages)
+        messages.insert(0, SystemMessage(content=_REASONING_REMINDER))
+        return request.override(messages=messages)
+
     def wrap_model_call(
         self,
         request: ModelRequest,
@@ -39,11 +51,7 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
     ) -> ModelResponse | AIMessage:
         self._session.reset_turn()
         if self._policy.enabled and self._policy.require_before_action:
-            from langchain_core.messages import SystemMessage
-
-            messages = list(request.messages)
-            messages.insert(0, SystemMessage(content=_REASONING_REMINDER))
-            request = request.override(messages=messages)
+            request = self._prepend_reasoning_reminder(request)
         return handler(request)
 
     async def awrap_model_call(
@@ -53,11 +61,7 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
     ) -> ModelResponse | AIMessage:
         self._session.reset_turn()
         if self._policy.enabled and self._policy.require_before_action:
-            from langchain_core.messages import SystemMessage
-
-            messages = list(request.messages)
-            messages.insert(0, SystemMessage(content=_REASONING_REMINDER))
-            request = request.override(messages=messages)
+            request = self._prepend_reasoning_reminder(request)
         result = handler(request)
         if inspect.isawaitable(result):
             return cast_model_response(await result)

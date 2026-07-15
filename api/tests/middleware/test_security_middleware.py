@@ -29,7 +29,7 @@ def test_security_middleware_paths_and_hitl_builder(monkeypatch):
         def __le__(self, _other):
             return False
 
-    monkeypatch.setattr(security_middleware, "classify_tool_risk", lambda _name, _profile_id=None: HighRisk())
+    monkeypatch.setattr(security_middleware, "classify_tool_risk_pure", lambda _name, _policy=None: HighRisk())
     gated = middleware.wrap_tool_call(request("danger"), lambda req: ToolMessage(content="ok", tool_call_id="x"))
     assert gated.status == "error"
     assert "requires human approval" in gated.content
@@ -46,7 +46,7 @@ def test_security_middleware_paths_and_hitl_builder(monkeypatch):
     middleware.rate_limiter.check.side_effect = None
     from cys_core.domain.security.risk import RiskLevel
 
-    monkeypatch.setattr(security_middleware, "classify_tool_risk", lambda _name, _profile_id=None: RiskLevel.LOW)
+    monkeypatch.setattr(security_middleware, "classify_tool_risk_pure", lambda _name, _policy=None: RiskLevel.LOW)
     handled = middleware.wrap_tool_call(
         request("parse_netflow"),
         lambda req: ToolMessage(content="ok", tool_call_id=req.tool_call["id"]),
@@ -88,7 +88,7 @@ def test_security_middleware_interrupts_in_prod(monkeypatch):
         def __le__(self, _other):
             return False
 
-    monkeypatch.setattr(security_middleware, "classify_tool_risk", lambda _name, _profile_id=None: HighRisk())
+    monkeypatch.setattr(security_middleware, "classify_tool_risk_pure", lambda _name, _policy=None: HighRisk())
     result = middleware.wrap_tool_call(
         request("run_active_scan", args={"target": "lab"}),
         lambda req: ToolMessage(content="ok", tool_call_id=req.tool_call["id"]),
@@ -127,7 +127,7 @@ async def test_security_middleware_async_paths(monkeypatch):
         def __le__(self, _other):
             return False
 
-    monkeypatch.setattr(security_middleware, "classify_tool_risk", lambda _name, _profile_id=None: HighRisk())
+    monkeypatch.setattr(security_middleware, "classify_tool_risk_pure", lambda _name, _policy=None: HighRisk())
     gated = await middleware.awrap_tool_call(request("danger"), lambda req: ToolMessage(content="ok", tool_call_id="x"))
     assert gated.status == "error"
     assert "rejected" in gated.content
@@ -144,7 +144,7 @@ async def test_security_middleware_async_paths(monkeypatch):
     rate_limiter.error = None
     from cys_core.domain.security.risk import RiskLevel
 
-    monkeypatch.setattr(security_middleware, "classify_tool_risk", lambda _name, _profile_id=None: RiskLevel.LOW)
+    monkeypatch.setattr(security_middleware, "classify_tool_risk_pure", lambda _name, _policy=None: RiskLevel.LOW)
 
     async def async_handler(req):
         return ToolMessage(content="async-ok", tool_call_id=req.tool_call["id"])

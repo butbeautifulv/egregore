@@ -39,8 +39,8 @@ def test_risk_downgrade_blocked_by_merge():
 
 @pytest.mark.unit
 def test_mode_policy_blocks_spawn_in_plan():
-    assert ModePolicy.allow_tool(InteractionMode.PLAN, "spawn_worker", "cybersec-soc") is False
-    assert ModePolicy.allow_tool(InteractionMode.ASK, "execute_command", "cybersec-soc") is False
+    assert ModePolicy.allow_tool(InteractionMode.PLAN, "spawn_worker") is False
+    assert ModePolicy.allow_tool(InteractionMode.ASK, "execute_command") is False
 
 
 @pytest.mark.unit
@@ -51,4 +51,4 @@ def test_classify_tool_risk_from_profile(monkeypatch):
     catalog = InMemoryAgentCatalog()
     catalog.upsert_profile(ProfilePack(id="cybersec-soc", name="SOC", policy=policy))
     _patch_catalog_policy(monkeypatch, catalog)
-    assert classify_tool_risk("custom_tool", "cybersec-soc") == RiskLevel.LOW
+    assert classify_tool_risk("custom_tool", policy) == RiskLevel.LOW
