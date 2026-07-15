@@ -27,6 +27,30 @@ Archived for Kaizen reference — not open gaps:
 - `attachment_store.py` path-injection fix + regression test.
 - `langsmith` / `starlette` dependency bumps for OSA HIGH findings.
 
+## IaC Checkov triage (`iac-scan`)
+
+Scope: `deploy/` only, frameworks `helm` + `dockerfile` (see `.github/workflows/job-iac-scan.yml`). Out of scan: `api/`, `web_ui/`, `docs/`; UI image Dockerfile is covered by the separate `web-ui` / `dockerfile-lint` jobs.
+
+Baseline skips in [`.checkov.yaml`](../.checkov.yaml):
+
+| Rule | Reason |
+|------|--------|
+| `CKV_K8S_21` | Namespace set at `helm install -n` |
+| `CKV_K8S_35` | Secrets via `envFrom` + external Secret/ConfigMap |
+| `CKV_K8S_14` / `CKV_K8S_15` / `CKV_K8S_43` | Image tag, pull policy, and digest from deploy-time values (Nexus/Kaniko loop) |
+| `CKV2_K8S_6` | NetworkPolicy enforced at platform/nginx ingress layer, not in chart |
+
+`deploy/Dockerfile.corp` excluded via `skip-path` (offline Kaniko lifecycle).
+
+Helm templates harden pod/container `securityContext` and UI probes (commits on `feature/bypass-ci-lint`). Local smoke:
+
+```bash
+checkov -d deploy --framework helm,dockerfile --config-file .checkov.yaml --soft-fail \
+  --output sarif --output-file-path reports/checkov.sarif
+python scripts/gate-check.py --control iac --report reports/checkov.sarif \
+  --policy config/security-gate-policy.yaml
+```
+
 ## Note for future readers
 
 `bootstrap/__init__.py` re-exports `settings` singleton and shadows the
