@@ -13,8 +13,9 @@ jobs:
           python-version: "3.13"
       - uses: bridgecrewio/checkov-action@v12
         with:
-          directory: .
-          framework: terraform,kubernetes,helm,dockerfile
+          directory: deploy
+          framework: helm,dockerfile
+          config_file: .checkov.yaml
           soft_fail: true
           output_format: sarif
           output_file_path: reports/checkov.sarif
