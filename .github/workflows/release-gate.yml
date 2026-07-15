@@ -169,8 +169,6 @@ jobs:
 
   # ---------------------------------------------------------------------
   # Aggregate gate — THE status check to require in branch protection.
-  # Fails if any blocking job above didn't succeed; warn-only jobs are
-  # deliberately excluded from this list.
   # ---------------------------------------------------------------------
 
   release-gate:
@@ -186,6 +184,10 @@ jobs:
       - unit-tests
       - arch-lint
       - domain-coverage
+      - iac-scan
+      - dockerfile-lint
+      - linter-security
+      - skill-scanner
     steps:
       - name: Evaluate required checks
         run: |
@@ -201,6 +203,10 @@ jobs:
             [unit-tests]="${{ needs['unit-tests'].result }}"
             [arch-lint]="${{ needs['arch-lint'].result }}"
             [domain-coverage]="${{ needs['domain-coverage'].result }}"
+            [iac-scan]="${{ needs['iac-scan'].result }}"
+            [dockerfile-lint]="${{ needs['dockerfile-lint'].result }}"
+            [linter-security]="${{ needs['linter-security'].result }}"
+            [skill-scanner]="${{ needs['skill-scanner'].result }}"
           )
           for job in "${!results[@]}"; do
             r="${results[$job]}"

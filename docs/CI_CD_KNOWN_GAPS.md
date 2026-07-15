@@ -14,9 +14,7 @@
 | `domain-coverage` | `pytest tests/domain/ --cov=src/cys_core/domain --cov-fail-under=100` |
 | `adversarial` | `pytest tests/adversarial/ -m adversarial` (0 xfail) |
 | `secret-scan` / `sast` / `osa` | security scanners + `gate-check.py` |
-
-Warn-only jobs (`iac-scan`, `dockerfile-lint`, `linter-security`, `skill-scanner`)
-still run on every PR but are excluded from the `release-gate` aggregate `needs`.
+| `iac-scan` / `dockerfile-lint` / `linter-security` / `skill-scanner` | reusable scanner jobs |
 
 ## Historical notes (infra fixes during gate bring-up)
 
