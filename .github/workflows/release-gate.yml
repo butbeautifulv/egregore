@@ -108,6 +108,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Pytest batches
         run: ./scripts/pytest_batches.sh
 
@@ -128,6 +130,8 @@ jobs:
         run: uv run python scripts/verify_import_boundaries.py
       - name: No langfuse in core
         run: bash scripts/verify_no_langfuse_in_core.sh
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Architecture contract tests
         run: uv run pytest tests/architecture/ -q
 
