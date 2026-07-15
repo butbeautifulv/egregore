@@ -1,8 +1,8 @@
 services:
   cys-agi:
     build:
-      context: .
-      target: runtime
+      context: ..
+      dockerfile: deploy/Dockerfile
     image: cys-agi:secure
     user: "10001:10001"
     read_only: true
@@ -10,7 +10,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-      - seccomp=./deploy/seccomp/cys-agi-seccomp.json
+      - seccomp=./seccomp/cys-agi-seccomp.json
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
     environment:
@@ -43,9 +43,9 @@ services:
       - /var/cache/nginx:rw,noexec,nosuid,nodev,size=32m
       - /var/run:rw,noexec,nosuid,nodev,size=8m
     volumes:
-      - ./deploy/nginx/cys-agi.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./deploy/tls:/etc/nginx/tls:ro
-      - ./deploy/mtls:/etc/nginx/mtls:ro
+      - ./nginx/cys-agi.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./tls:/etc/nginx/tls:ro
+      - ./mtls:/etc/nginx/mtls:ro
     ports:
       - "8443:8443"
     networks:
@@ -101,4 +101,4 @@ volumes:
 
 secrets:
   postgres_password:
-    file: ./deploy/secrets/postgres_password.txt
+    file: ./secrets/postgres_password.txt

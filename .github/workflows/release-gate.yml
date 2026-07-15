@@ -57,6 +57,9 @@ jobs:
 
   adversarial:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -101,6 +104,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     continue-on-error: true
+    defaults:
+      run:
+        working-directory: api
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -115,6 +121,9 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     continue-on-error: true
+    defaults:
+      run:
+        working-directory: api
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -127,6 +136,9 @@ jobs:
   arch-lint:
     runs-on: ubuntu-latest
     continue-on-error: true
+    defaults:
+      run:
+        working-directory: api
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -145,6 +157,9 @@ jobs:
   domain-coverage:
     runs-on: ubuntu-latest
     continue-on-error: true
+    defaults:
+      run:
+        working-directory: api
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -231,10 +246,10 @@ jobs:
         env:
           REGISTRY: ghcr.io/${{ github.repository }}
         run: |
-          if [ -f Dockerfile ]; then
-            docker build -t "${REGISTRY}:${{ github.sha }}" .
+          if [ -f deploy/Dockerfile ]; then
+            docker build -f deploy/Dockerfile -t "${REGISTRY}:${{ github.sha }}" .
           else
-            echo "No Dockerfile at repo root — skipping image build"
+            echo "No deploy/Dockerfile — skipping image build"
           fi
 
   sbom:
