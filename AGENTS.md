@@ -6,7 +6,7 @@
 
 | Слой | Путь | Runtime? | Назначение |
 |------|------|----------|------------|
-| **Core rules** | `shared/agent-rules/core/` → `.agents/rules/core-*.mdc` | Нет | `make rules-link` — karpathy, critic, branches, kaizen, docs |
+| **Core rules** | `shared/agent-rules/core/` via meta [`.cursor/rules/`](../../.cursor/rules/) when using `cxado.code-workspace` | Нет | Открывать workspace, не `rules-link` в submodule |
 | **Project overlay** | `.agents/rules/project-*.mdc` | Нет | egregore arch, pytest, security only |
 | **Generic agent skills** | `shared/skills/agent/*` | Нет | `make skills-install` → `~/.cursor/skills/` |
 | **Product skills** | `agents/skills/` | **Да** | Skill Gateway — thin overlay на hub |
