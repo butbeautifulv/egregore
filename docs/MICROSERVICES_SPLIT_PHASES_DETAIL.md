@@ -94,6 +94,51 @@ Kubernetes Job API напрямую), оставляя `SandboxConnector.create(
 `execute()` как единственным вызывающим. Вариант (б) проще и меньше меняет
 существующий код — рекомендуется по умолчанию, см. Phase 3.3.
 
+## Открытие D: `JobBudgetTracker`/`configure_job_cost` — та же process-locality болезнь, что Открытие A, но это уже enforcement, а не диагностика
+
+Найдено при проектировании Phase 2 (не было в исходном плане). `cys_core/domain/workers/job_budget.py`
+— `JobBudgetTracker._states`/`_profile_costs` и модульная `_cost_per_1k_tokens_usd` — это
+**точно такие же** process-local словари/globals под classmethod-интерфейсом, что и
+`tool_execution_tracker` из Открытия A. Сегодня `WorkerOrchestrator.run_job()`
+(`orchestrator.py:154-166`) делает `configure_job_cost(cost_rate, profile_id=profile_id)`
+и `JobBudgetTracker.configure(session_id, max_tokens=..., max_cost_usd=..., max_tool_calls=...,
+profile_id=profile_id)` **до** вызова `execute()` — и именно это единожды-конфигурированное
+состояние читают:
+
+- `cys_core/middleware/security_middleware.py:105,159` — `JobBudgetTracker.check_tool_call(session_id)`
+  **перед каждым вызовом инструмента**, то есть это не диагностика, а реальный enforcement
+  budget/DoW-лимита (часть §10 hardening baseline);
+- `cys_core/runtime/agent.py:490,587,611` — `record_tokens()` на каждый LLM-вызов;
+- `run_worker_job.py:298,578,692,776` — `JobBudgetTracker.get(session_id)` для контроля
+  бюджета в разных точках пайплайна;
+- `job_finalizer.py:142` — финальное чтение `tokens_used`/`cost_usd` для метрик и биллинга.
+
+Как только `execute()` переезжает в дочерний процесс (Phase 2 subprocess, Phase 3
+контейнеры), а `configure()` остаётся в родителе (`WorkerOrchestrator.run_job()`) —
+`JobBudgetTracker.get(session_id)` в дочернем процессе всегда возвращает `None`.
+Последствия хуже, чем в Открытии A, потому что это не только "теряем диагностику при
+таймауте", а: **`check_tool_call()` при отсутствующем state в текущей реализации не
+падает и не блокирует** (нет state → нечего проверять) — то есть tool-call budget cap
+и cost cap **молча перестают действовать** для любого job'а, исполняемого вне
+родительского процесса. Отдельно, `configure_job_cost(cost_rate, profile_id=...)` — тоже
+модульный global; `Container.__init__` уже вызывает `configure_job_cost(settings.job_cost_per_1k_tokens_usd)`
+при старте (это восстанавливает диапазон **default**-ставки в любом свежем процессе,
+включая дочерний), но per-profile override (когда у профиля своя, отличная от default,
+`cost_per_1k_tokens`) не переживает границу процесса — дочерний процесс использует
+default-ставку вместо профильной.
+
+**Вывод**: это блокер для Phase 2, не только для Phase 3 — так же, как Открытие A.
+Решение по той же схеме: **`run-sandboxed-job` entrypoint** (Phase 2.2b) должен сам
+вызывать `JobBudgetTracker.configure(...)` (и, если профильная cost-ставка отличается от
+default, `configure_job_cost(cost_rate, profile_id=profile_id)`) **внутри дочернего
+процесса**, до вызова `execute()`, используя `budgeted`/`profile_id`/`cost_rate`,
+переданные через job payload — а не полагаться на то, что родитель уже это сделал
+(родительская конфигурация в этом случае действует только на несуществующий, "свой"
+`JobBudgetTracker`-namespace родительского процесса и никак не видна дочернему). После
+завершения — `JobBudgetTracker.clear(session_id)` в `finally` дочернего процесса
+(симметрично тому, что уже делает `WorkerOrchestrator.run_job()` сегодня в родителе для
+in-process backend'а).
+
 ---
 
 ## Phase 1 — extract `ExecutionBackend` port, без изменения поведения
@@ -142,35 +187,57 @@ default остаётся `in_process`.
 
 ## Phase 2 — `SubprocessExecutionBackend` (проверить контракт без контейнеров)
 
+**2.0. Родитель не должен гонять свой soft-timeout параллельно с child'овым.**
+`WorkerOrchestrator.run_job()` (Phase 1, не менялось) оборачивает
+`self.execution_backend.execute(...)` в `asyncio.wait_for(..., timeout=soft_timeout)` и
+при `TimeoutError` сам вызывает `try_salvage_partial`. Если это оставить как есть для
+subprocess-бэкенда, у нас будет **гонка**: и родитель, и child (2.2a) независимо
+считают от одного и того же `soft_timeout`, и если родительский таймер сработает
+первым (планировщик/IPC jitter), родитель отменит await, попытается
+`try_salvage_partial` на **своём** (пустом) `tool_execution_tracker`/`JobBudgetTracker`
+— получит `None` — и залогирует `tool_count=0`, ровно тот баг, который 2.2a должен
+был закрыть, просто с другой стороны провода.
+
+Решение: у `ExecutionBackend`-реализаций, которые сами управляют таймаутом и salvage
+(subprocess, K8s, Docker), — атрибут `owns_timeout: bool = True` (у
+`InProcessExecutionBackend` — `False`, поведение Phase 1 не меняется). В
+`WorkerOrchestrator.run_job()`: если `getattr(self.execution_backend, "owns_timeout", False)`
+— оборачивать `execute(...)` в `asyncio.wait_for(..., timeout=job_timeout)` (**hard**,
+не soft) и **не** вызывать `try_salvage_partial` при `TimeoutError` этого внешнего
+таймера (нечего салважить — весь livedata в child'е; если сработал именно hard-таймер,
+это значит child завис **сверх** своего собственного soft-timeout+salvage бюджета —
+последний рубеж, не обычный путь). Обычный путь — child сам укладывается в
+soft_timeout, сам салважит при необходимости и возвращает финальный `RunResult` — тогда
+родительский `wait_for(job_timeout)` просто получает результат раньше hard-границы.
+
 **2.1.** `cys_core/infrastructure/execution/subprocess_backend.py` —
-`SubprocessExecutionBackend.execute(...)`: сериализует `job`/`budgeted` в JSON
-(`job.model_dump_json()` — уточнить, что нужно оба объекта или budgeted достаточно,
-т.к. `cmd_run_sandboxed_job` сегодня принимает один `WorkerJob` через `--job-json`),
-запускает `egregore run-sandboxed-job --job-json -` через
-`asyncio.create_subprocess_exec` (не `shell=True` — важно, см. §10.2/OS Command
-Injection controls), пишет job в stdin, читает stdout, парсит `RunResult` из
-`{"result": {...}}`, который `cmd_run_sandboxed_job` уже печатает (`cli/main.py:105`).
+`SubprocessExecutionBackend.execute(...)`, `owns_timeout = True`. Сериализует **envelope**,
+не голый `job`: `{"job": ..., "budgeted": ..., "session_id": ..., "profile_id": ...,
+"cost_rate": ..., "soft_timeout": ..., "job_timeout": ...}` (см. Открытие D — child
+должен сам сконфигурировать `JobBudgetTracker`/`configure_job_cost`, для этого ему нужны
+`profile_id`/`cost_rate`, которые сегодня резолвятся в родителе перед `execute()`).
+Запускает `egregore run-sandboxed-job --job-json -` через `asyncio.create_subprocess_exec`
+(не `shell=True` — важно, см. §10.2/OS Command Injection controls), пишет envelope в
+stdin, читает stdout, парсит `RunResult` из `{"result": {...}}`, который
+`cmd_run_sandboxed_job` уже печатает (`cli/main.py:105`).
 
 **2.2a. Закрыть Открытие A — soft-timeout/salvage должны переехать внутрь child-процесса.**
-Сегодня `WorkerOrchestrator.run_job()` (родитель) сам ловит `TimeoutError` от
-`asyncio.wait_for(execution_backend.execute(...), timeout=soft_timeout)` и **сам**
-вызывает `try_salvage_partial`/читает `get_tool_execution_count` — это больше не
-сработает, т.к. вся активность (и, значит, все `tool_execution_tracker`-записи) — в
-дочернем процессе. Новый контракт: **`run-sandboxed-job` entrypoint сам знает
-`soft_timeout`** (передаётся через job payload или доп. аргумент), сам оборачивает
-`orch.run_job(job)`/`RunWorkerJob.execute(...)` в `asyncio.wait_for` **внутри
-дочернего процесса**, и при таймауте **сам** вызывает `try_salvage_partial` (у него
-есть живые `tool_execution_tracker`-данные) — и в любом случае (успех, salvage,
-жёсткий фейл) печатает **один** финальный `RunResult` в stdout. Родительский
-`SubprocessExecutionBackend.execute()` больше не делает свой собственный
-`asyncio.wait_for` вокруг `execute()`-эквивалента — он ждёт, пока child-процесс сам
-завершится, с **отдельным, чуть большим** hard-timeout как последний рубеж (kill
-процесса, если завтра завис совсем).
+Новый контракт: **`run-sandboxed-job` entrypoint сам знает `soft_timeout`** (из envelope),
+сам оборачивает `RunWorkerJob.execute(...)` в `asyncio.wait_for` **внутри дочернего
+процесса**, и при таймауте **сам** вызывает `try_salvage_partial` (у него есть живые
+`tool_execution_tracker`-данные) — и в любом случае (успех, salvage, жёсткий фейл)
+печатает **один** финальный `RunResult` в stdout.
 
-**2.2b.** Правка `cmd_run_sandboxed_job` (`cli/main.py:82-106`) под 2.2a: принять
-`soft_timeout`/`job_timeout` (из job payload, не нового CLI-флага, чтобы не плодить
-конфигурацию в двух местах), реализовать ту же timeout/salvage-логику, что раньше
-была в `WorkerOrchestrator.run_job()`, но локально.
+**2.2b. Закрыть Открытие D — child должен сам сконфигурировать `JobBudgetTracker`/`configure_job_cost`.**
+Правка `cmd_run_sandboxed_job` (`cli/main.py:82-106`): распаковать envelope из 2.1,
+до вызова `execute()` вызвать `configure_job_cost(cost_rate, profile_id=profile_id)` и
+`JobBudgetTracker.configure(session_id, max_tokens=budgeted.max_tokens,
+max_cost_usd=budgeted.max_cost_usd, max_tool_calls=budgeted.max_tool_calls,
+profile_id=profile_id)` — без этого `security_middleware.py`'s
+`JobBudgetTracker.check_tool_call()` молча перестаёт ограничивать tool-calls внутри
+child'а. Реализовать ту же soft/hard timeout+salvage-логику, что раньше была в
+`WorkerOrchestrator.run_job()` (2.2a), но локально. В `finally`: `JobBudgetTracker.clear(session_id)`
+и `clear_tool_execution_count(job.job_id)` — симметрично родительскому `finally` сегодня.
 
 **2.3.** Отмена/kill: `SubprocessExecutionBackend.execute()` должен убивать дочерний
 процесс (`proc.kill()`) в `finally`, если родительский `asyncio.CancelledError`/hard
