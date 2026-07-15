@@ -189,7 +189,7 @@ _loaded_persona_budgets: dict[str, PersonaBudget] | None = None
 
 def configure_persona_budgets(budgets: dict[str, PersonaBudget]) -> None:
     global _loaded_persona_budgets
-    _loaded_persona_budgets = dict(budgets)
+    _loaded_persona_budgets = dict(budgets) if budgets else None
 
 
 def get_persona_budgets() -> dict[str, PersonaBudget]:

@@ -154,7 +154,58 @@ def test_memory_validator_truncates_long_content():
 
 
 @pytest.mark.unit
-def test_investigation_state_store_lifecycle():
+def test_memory_conversation_turn_filters_expired_and_bad_checksum() -> None:
+    from cys_core.domain.memory.models import MemoryEntry, MemoryScope
+    from cys_core.domain.memory.validator import MemoryEntryValidator
+
+    class MemoryStore:
+        def __init__(self) -> None:
+            self._entries: list[MemoryEntry] = []
+
+        def append(self, entry: MemoryEntry) -> None:
+            self._entries.append(entry)
+
+        def query(self, scope: MemoryScope, *, limit: int = 20) -> list[MemoryEntry]:
+            return [entry for entry in self._entries if entry.scope == scope][:limit]
+
+    store = MemoryStore()
+    reader = MemoryReadService(store, signing_key=b"key")
+    scope = MemoryScope(tenant_id="t1", investigation_id="inv-conv")
+    validator = MemoryEntryValidator(namespace_key="t1:inv-conv", signing_key=b"key")
+    store.append(
+        MemoryEntry(
+            scope=scope,
+            content='{"role":"operator","text":"old"}',
+            memory_type="conversation",
+            source_agent="operator",
+            source_job_id="job-old",
+            checksum=validator.checksum('{"role":"operator","text":"old"}'),
+            created_at=datetime.now(timezone.utc) - timedelta(days=30),
+        )
+    )
+    store.append(
+        MemoryEntry(
+            scope=scope,
+            content='{"role":"operator","text":"bad"}',
+            memory_type="conversation",
+            source_agent="operator",
+            source_job_id="job-bad",
+            checksum="bad",
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    assert reader.query_conversation_turns("t1", "inv-conv") == []
+
+
+@pytest.mark.unit
+def test_memory_list_by_tenant_without_store_method() -> None:
+    class QueryOnlyStore:
+        def query(self, scope: MemoryScope, *, limit: int = 20) -> list[MemoryEntry]:
+            return []
+
+    reader = MemoryReadService(QueryOnlyStore())
+    assert reader.list_by_tenant("t1") == []
+
     store = InMemoryInvestigationStateStore()
     store.append_finding("t1", "inv-3", {"severity": "high"})
     store.mark_persona_done("t1", "inv-3", "soc")
