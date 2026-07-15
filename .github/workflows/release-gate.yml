@@ -22,20 +22,6 @@ jobs:
     steps:
       - run: echo hi
 
-  web-ui:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo hi
-
   secret-scan:
     uses: ./.github/workflows/job-secret-scan.yml
     secrets: inherit
-
-  sast:
-    uses: ./.github/workflows/job-sast.yml
-    secrets: inherit
-
-  osa:
-    uses: ./.github/workflows/job-osa.yml
-    secrets: inherit
-
