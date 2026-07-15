@@ -6,18 +6,8 @@ from cys_core.domain.skills.models import SkillManifest, SkillTrustTier
 from cys_core.registry.skill_registry import SkillRegistry, compute_skill_hash
 from interfaces.gateways.skill.load import SkillLoadError, load_skill
 
-_SKILL_HASH_PINNING_DROPPED = (
-    "cys_core.infrastructure.skill.load_skill.load_skill() was refactored to a dynamic-"
-    "catalog/allowlist model (profile_id, staging_status, sanitizer) and no longer takes a "
-    "`registry` argument or does content_hash verification — the hash-pinning/unsigned-skill "
-    "rejection this test asserts appears to have been dropped, not just renamed. Needs a "
-    "product/security decision on whether an equivalent control should be reinstated before "
-    "this can be un-xfailed. See docs/CI_CD_KNOWN_GAPS.md."
-)
-
 
 @pytest.mark.adversarial
-@pytest.mark.xfail(reason=_SKILL_HASH_PINNING_DROPPED, strict=False)
 def test_skill_not_in_allowlist(tmp_path, monkeypatch):
     reg = SkillRegistry.load()
     with pytest.raises(SkillLoadError, match="allowlist"):
@@ -25,7 +15,6 @@ def test_skill_not_in_allowlist(tmp_path, monkeypatch):
 
 
 @pytest.mark.adversarial
-@pytest.mark.xfail(reason=_SKILL_HASH_PINNING_DROPPED, strict=False)
 def test_skill_hash_mismatch_blocked(tmp_path):
     reg = SkillRegistry.load()
     manifest = reg.get("network-beaconing")
@@ -36,7 +25,6 @@ def test_skill_hash_mismatch_blocked(tmp_path):
 
 
 @pytest.mark.adversarial
-@pytest.mark.xfail(reason=_SKILL_HASH_PINNING_DROPPED, strict=False)
 def test_unsigned_external_skill_rejected_by_hash(tmp_path):
     skill_md = tmp_path / "SKILL.md"
     skill_md.write_text(

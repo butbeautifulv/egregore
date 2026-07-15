@@ -10,7 +10,7 @@ from bootstrap.containers.persistence_container import PersistenceContainer
 from bootstrap.containers.policy_container import PolicyContainer
 from bootstrap.containers.tools_container import ToolsContainer
 from bootstrap.persona_budget_loader import load_persona_budgets
-from bootstrap.settings import Settings, get_settings
+from bootstrap.settings import Settings
 from cys_core.application.catalog_singletons import configure_catalog_singleton_rebind
 from cys_core.application.policy_enforcement import PolicyEnforcementService
 from cys_core.application.policy_resolver import ProfilePolicyResolver
@@ -18,12 +18,6 @@ from cys_core.application.runtime_config import configure_from_settings
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.policy.defaults import configure_persona_budgets
 from cys_core.domain.workers.job_budget import configure_job_cost
-from cys_core.infrastructure.config.infra_settings import (
-    configure_docker_sandbox_settings,
-    configure_egress_streaming_settings,
-    configure_http_timeouts,
-    configure_wayback_settings,
-)
 from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog, reload_agent_registry
 from cys_core.infrastructure.catalog.profile_policy import (
     ProfilePolicyLoader,
@@ -37,6 +31,18 @@ from cys_core.infrastructure.catalog.profile_policy import (
     get_profile_policy,
     get_trust_floor,
 )
+from cys_core.infrastructure.config.infra_settings import (
+    configure_docker_sandbox_settings,
+    configure_egress_streaming_settings,
+    configure_http_timeouts,
+    configure_wayback_settings,
+)
+
+
+def get_settings() -> Settings:
+    from bootstrap.settings import get_settings as _settings_get_settings
+
+    return _settings_get_settings()
 
 if TYPE_CHECKING:
     from cys_core.application.ports import PersistenceContext
@@ -64,7 +70,7 @@ class Container:
     """
 
     def __init__(self, settings: Settings | None = None) -> None:
-        self.settings = settings or get_settings()
+        self.settings = settings if settings is not None else get_settings()
         configure_from_settings(self.settings)
         configure_job_cost(self.settings.job_cost_per_1k_tokens_usd)
         configure_persona_budgets(load_persona_budgets(self.settings))
