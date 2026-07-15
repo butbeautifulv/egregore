@@ -33,6 +33,7 @@ spec:
         app: egregore-ui
     spec:
       enableServiceLinks: false
+      {{- include "egregore.podSecurityContext" . | nindent 6 }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -58,12 +59,31 @@ spec:
         - name: ui
           image: {{ include "egregore.uiImage" . | quote }}
           imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
+          {{- include "egregore.containerSecurityContext" . | nindent 10 }}
           env:
             - name: EGREGORE_API_UPSTREAM
               value: "http://egregore-api:8080"
           ports:
             - containerPort: 3000
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           {{- with .Values.resources.ui }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
