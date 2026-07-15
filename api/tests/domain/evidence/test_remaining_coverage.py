@@ -4,7 +4,7 @@ import pytest
 
 from cys_core.domain.evidence.gaps import consultant_synthesis_gaps, soc_evidence_gaps
 from cys_core.domain.evidence.manifest_builder import build_manifest_from_investigation
-from cys_core.domain.evidence.models import DataGap, EvidenceManifest, FieldAvailability, EvidenceRef, Observation
+from cys_core.domain.evidence.models import DataGap, EvidenceManifest, EvidenceRef, FieldAvailability, Observation
 from cys_core.domain.evidence.resolver import resolve_observation
 
 

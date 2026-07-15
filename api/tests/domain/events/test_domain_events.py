@@ -5,6 +5,7 @@ import pytest
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.events.domain_events import DomainEvent, TaskEvent
 
+
 @pytest.mark.unit
 def test_domain_event_defaults() -> None:
     event = DomainEvent(id="evt-1", domain="soc", event_type="siem.alert")

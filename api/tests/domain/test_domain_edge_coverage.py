@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -11,9 +11,8 @@ from cys_core.domain.authz.tool_datasource_map import (
     datasource_seed_tuples,
     workspace_datasource_consumer_tuples,
 )
-from cys_core.domain.catalog.models import AgentCatalogEntry, ProfilePolicyPayload
+from cys_core.domain.catalog.models import AgentCatalogEntry
 from cys_core.domain.catalog.validation import CrossRefValidator
-from cys_core.domain.policy.defaults import ESCALATION_ONLY_PATHS
 from cys_core.domain.datasources.models import DataSource, DataSourceCapability
 from cys_core.domain.datasources.validation import (
     capability_implies_write,
@@ -37,7 +36,12 @@ from cys_core.domain.findings.operator_outcome import OperatorOutcome
 from cys_core.domain.findings.quality_gates import finding_meets_minimum
 from cys_core.domain.follow_up.models import is_follow_up_plan_iteration
 from cys_core.domain.parsing.json_text import parse_json_text, parse_loose_structured_text
-from cys_core.domain.policy.defaults import configure_persona_budgets, gaia_profile_policy_payload, get_persona_budgets
+from cys_core.domain.policy.defaults import (
+    ESCALATION_ONLY_PATHS,
+    configure_persona_budgets,
+    gaia_profile_policy_payload,
+    get_persona_budgets,
+)
 from cys_core.domain.policy.pure import (
     allow_tool_pure,
     mode_sets_from_policy,

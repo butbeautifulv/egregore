@@ -6,7 +6,7 @@ from cys_core.domain.engagement.bus_routing import off_plan_bus_enqueue_reason
 from cys_core.domain.evidence.gaps import consultant_synthesis_gaps
 from cys_core.domain.evidence.manifest_builder import _add_observation, build_manifest_from_investigation
 from cys_core.domain.evidence.models import EvidenceManifest, EvidenceRef, Observation
-from cys_core.domain.evidence.resolver import entity_grounded, resolve_observation
+from cys_core.domain.evidence.resolver import resolve_observation
 from cys_core.domain.findings.quality_gates import finding_meets_minimum
 from cys_core.domain.parsing.json_text import _literal, _strip_prefixes, parse_loose_structured_text
 from cys_core.domain.policy import defaults as policy_defaults

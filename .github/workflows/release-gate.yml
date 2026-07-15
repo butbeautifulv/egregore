@@ -15,13 +15,8 @@ name: Release Gate
 # scripts/gate-check.py + config/security-gate-policy.yaml mechanism and the
 # same blocker/warn split (GitLab's `.egregore_blocker` / `.egregore_warn`).
 #
-# Known pre-existing gaps intentionally left warn-only (continue-on-error)
-# rather than either silently dropped or left permanently red — see the
-# TODO on each job and docs/CI_CD_KNOWN_GAPS.md for the tracked follow-up:
-#   - lint: resolved — ruff + ty green, lint job blocking
-#   - unit-tests: resolved — all 29 pytest batches green, job blocking
-#   - arch-lint: resolved — import boundaries + lint-imports green, job blocking
-#   - domain-coverage: resolved — 100% on src/cys_core/domain, job blocking
+# All quality and security jobs below are blocking (no continue-on-error).
+# Historical remediation notes: docs/CI_CD_KNOWN_GAPS.md (resolved).
 
 on:
   pull_request:
@@ -85,11 +80,6 @@ jobs:
   osa:
     uses: ./.github/workflows/job-osa.yml
     secrets: inherit
-
-  # ---------------------------------------------------------------------
-  # Warn-only — runs and reports on every PR, does not block merge yet.
-  # Flip continue-on-error off once the underlying debt is paid down.
-  # ---------------------------------------------------------------------
 
   lint:
     runs-on: ubuntu-latest
@@ -157,6 +147,10 @@ jobs:
           uv run pytest tests/domain/ -q \
             --cov=src/cys_core/domain --cov-report=term-missing --cov-fail-under=100
 
+  # ---------------------------------------------------------------------
+  # Warn-only — runs and reports on every PR, does not block merge yet.
+  # ---------------------------------------------------------------------
+
   iac-scan:
     uses: ./.github/workflows/job-iac-scan.yml
     secrets: inherit
@@ -188,6 +182,10 @@ jobs:
       - secret-scan
       - sast
       - osa
+      - lint
+      - unit-tests
+      - arch-lint
+      - domain-coverage
     steps:
       - name: Evaluate required checks
         run: |
@@ -199,6 +197,10 @@ jobs:
             [secret-scan]="${{ needs['secret-scan'].result }}"
             [sast]="${{ needs.sast.result }}"
             [osa]="${{ needs.osa.result }}"
+            [lint]="${{ needs.lint.result }}"
+            [unit-tests]="${{ needs['unit-tests'].result }}"
+            [arch-lint]="${{ needs['arch-lint'].result }}"
+            [domain-coverage]="${{ needs['domain-coverage'].result }}"
           )
           for job in "${!results[@]}"; do
             r="${results[$job]}"

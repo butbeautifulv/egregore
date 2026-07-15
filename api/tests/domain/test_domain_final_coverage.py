@@ -14,12 +14,11 @@ from cys_core.domain.evidence.gaps import consultant_synthesis_gaps, soc_evidenc
 from cys_core.domain.evidence.manifest_builder import build_manifest_from_investigation
 from cys_core.domain.evidence.models import EvidenceManifest, EvidenceRef, Observation
 from cys_core.domain.evidence.resolver import entity_grounded, resolve_observation
-from cys_core.domain.follow_up.models import is_follow_up_plan_iteration
 from cys_core.domain.findings.quality_gates import finding_meets_minimum
-from cys_core.domain.policy.pure import mode_sets_from_policy
-from cys_core.domain.policy.pure import allow_tool_pure
+from cys_core.domain.follow_up.models import is_follow_up_plan_iteration
+from cys_core.domain.policy.pure import allow_tool_pure, mode_sets_from_policy
 from cys_core.domain.runs.plan_models import EngagementPlannerOutput
-from cys_core.domain.security.agent_bus import AgentTrustLevel, SecureAgentBus
+from cys_core.domain.security.agent_bus import SecureAgentBus
 from cys_core.domain.security.prompt_context import digest_matches
 from cys_core.domain.security.sandbox_tokens import verify_sandbox_token
 from cys_core.domain.security.system_prompt_assembler import (
