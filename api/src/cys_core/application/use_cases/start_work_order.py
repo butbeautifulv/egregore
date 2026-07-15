@@ -8,6 +8,7 @@ from cys_core.application.operator_messages.service import (
     persist_operator_turn_to_memory,
 )
 from cys_core.application.ports.authz import AuthzTuple
+from cys_core.application.ports.work_order import WorkOrderStorePort
 from cys_core.application.use_cases.ensure_default_workspace import ensure_default_workspace
 from cys_core.application.use_cases.start_engagement import StartEngagement
 from cys_core.application.work_order.intake_normalizer import intake_memory_content
@@ -18,7 +19,6 @@ from cys_core.domain.follow_up.models import FOLLOW_UP_PHASE
 from cys_core.domain.work_order.intake import WorkOrderIntake
 from cys_core.domain.work_order.models import WorkOrderRequest
 from cys_core.domain.workers.models import WorkerJob
-from cys_core.application.ports.work_order import WorkOrderStorePort
 
 INITIAL_QA_PENDING = "initial_qa_pending"
 

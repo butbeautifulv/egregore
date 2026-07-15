@@ -13,8 +13,8 @@ def test_classify_operator_intent_initial_qa() -> None:
 @pytest.mark.unit
 def test_classify_operator_intent_initial_orchestrate_coerces_to_plan(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "cys_core.application.follow_up.intent.get_settings",
-        lambda: type("S", (), {"follow_up_plan_enabled": True})(),
+        "cys_core.application.follow_up.intent.get_follow_up_plan_enabled",
+        lambda: True,
     )
     assert (
         classify_operator_intent("re-investigate", mode="orchestrate", context="initial")

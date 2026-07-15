@@ -327,7 +327,6 @@ class EngagementContainer:
         if self._plan_investigation is not None:
             return self._plan_investigation
         from cys_core.application.use_cases.plan_investigation import PlanInvestigation
-
         from cys_core.infrastructure.catalog.catalog_registry import reload_agent_registry
 
         container = self._container

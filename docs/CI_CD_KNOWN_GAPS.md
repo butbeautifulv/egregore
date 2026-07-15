@@ -13,30 +13,20 @@ lowered bar. Flip each item to blocking/un-xfail once its root cause is fixed.
 suppressions removed; ty protocol alignment on `AgentRuntime.arun` /
 `PlannerRuntime`. Lint job `continue-on-error` removed from `release-gate.yml`.
 
-### `unit-tests` — ~60 pre-existing test failures
+### ~~`unit-tests`~~ — **resolved** (blocking since feature/bypass-ci-lint)
 
-`./scripts/pytest_batches.sh` currently fails in ~15 of 29 batches, unrelated
-to any single recent change (confirmed the same night via git-stash
-bisection against a specific 5-file diff). Root cause not yet triaged in
-detail; hypothesized to be fallout from the `bootstrap` Container-splitting
-refactor (see the `bootstrap/__init__.py` shadowing footgun noted below —
-plausibly not the only such landmine it left behind).
+Post-arch-refactor regressions fixed: `runtime_config` defaults,
+monkeypatch targets for container/`get_follow_up_plan_enabled`/
+`get_egress_streaming_settings`, and related test wiring. All 29 pytest
+batches green (`./scripts/pytest_batches.sh` exits 0). `continue-on-error`
+removed from `unit-tests` job in `release-gate.yml`.
 
-### `arch-lint` — import-boundary violations
+### ~~`arch-lint`~~ — **resolved** (blocking since feature/bypass-ci-lint)
 
-`uv run lint-imports` currently reports real violations predating this
-workflow: `bootstrap` imported directly from `cys_core.domain` (4 files) and
-`cys_core.application` (8 files), plus `cys_core.infrastructure` imported
-directly from `interfaces/api` in 3 files (`engagements.py`, `follow_ups.py`,
-`work_orders.py`). This also breaks `tests/architecture/test_layer_contracts.py`'s
-shrink-only allowlist contract (`ALLOWLIST_BOOTSTRAP_INTERFACES` grew to 40,
-ceiling is 38) — a regression against the state `ARCHITECTURE_DEBT.md`'s
-Phase 7/8 remediation had left green. See that file for the full layering
-model; this is the up-to-date "still broken" pointer.
-
-Fix means routing `Settings`/infra access through the container/ports instead
-of importing `bootstrap`/`infrastructure` inline, consistent with the Wave
-A–E pattern already used elsewhere in the codebase.
+`make -C api verify-architecture` exits 0: `lint-imports` (3 contracts
+kept), `verify_import_boundaries.py`, `verify_no_langfuse_in_core.sh`, and
+`tests/architecture/` all green. `continue-on-error` removed from `arch-lint`
+job in `release-gate.yml`.
 
 ### `domain-coverage` — 100% target, ~78% actual
 

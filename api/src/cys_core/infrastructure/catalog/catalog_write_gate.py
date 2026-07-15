@@ -20,7 +20,6 @@ from cys_core.domain.catalog.models import (
     StagingStatus,
 )
 from cys_core.domain.catalog.validation import CrossRefValidator
-from cys_core.infrastructure.catalog.profile_policy import get_profile_policy
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.factory import get_input_sanitizer
 from cys_core.domain.security.sanitizer import InjectionVerdict
@@ -30,6 +29,7 @@ from cys_core.domain.security.system_prompt_assembler import (
     had_embedded_rule_sections,
     resolve_persona_prompt,
 )
+from cys_core.infrastructure.catalog.profile_policy import get_profile_policy
 
 
 class CatalogWriteGate:

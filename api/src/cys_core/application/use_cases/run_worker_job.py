@@ -10,6 +10,7 @@ from cys_core.application.ports.metrics import MetricsPort
 from cys_core.application.ports.sandbox import SandboxConnector
 from cys_core.application.ports.tracing_ports import WorkerTracingPort
 from cys_core.application.ports.workspace_store import WorkspaceStorePort
+from cys_core.application.runtime_config import get_worker_max_attempts, get_worker_triage_max_attempts
 from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
@@ -38,7 +39,6 @@ from cys_core.application.workers.tool_execution_tracker import (
     seed_job_from_persona_manifest,
     tool_succeeded,
 )
-from cys_core.application.runtime_config import get_worker_max_attempts, get_worker_triage_max_attempts
 from cys_core.application.workspace.persona_resolver import resolve_worker_agent_definition
 from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding

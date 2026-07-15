@@ -19,10 +19,8 @@ name: Release Gate
 # rather than either silently dropped or left permanently red — see the
 # TODO on each job and docs/CI_CD_KNOWN_GAPS.md for the tracked follow-up:
 #   - lint: resolved — ruff + ty green, lint job blocking
-#   - unit-tests: ~60 pre-existing failures across pytest batches
-#     batches, unrelated to this PR (confirmed via git-stash bisection)
-#   - arch-lint: 8 files import `bootstrap` from domain/application layers
-#     (real import-boundary violations, predate this workflow)
+#   - unit-tests: resolved — all 29 pytest batches green, job blocking
+#   - arch-lint: resolved — import boundaries + lint-imports green, job blocking
 #   - domain-coverage: 100% target, ~78% actual today
 #
 # These four are exactly why this gate exists: nothing currently stops any
@@ -117,7 +115,6 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: api
@@ -132,7 +129,6 @@ jobs:
 
   arch-lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: api

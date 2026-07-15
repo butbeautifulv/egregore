@@ -4,9 +4,9 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from cys_core.application.skills.catalog import list_skill_metadata
 from cys_core.application.bus_engagement import normalize_correlation_id
 from cys_core.application.ports.engagement_store import EngagementStateStore
+from cys_core.application.skills.catalog import list_skill_metadata
 from cys_core.domain.follow_up.models import is_follow_up_payload, work_kind_from_payload
 from cys_core.domain.memory.services import MemoryReadService
 from cys_core.domain.workers.models import WorkerJob

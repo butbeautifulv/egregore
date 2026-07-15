@@ -62,7 +62,7 @@ async def test_list_engagements_returns_recent(monkeypatch):
     from cys_core.domain.engagement.models import Engagement, EngagementStatus
     from interfaces.api.app import create_app
 
-    store = MagicMock()
+    store = MagicMock(spec=["list_recent"])
     store.list_recent.return_value = [
         Engagement(
             id="eng-1",

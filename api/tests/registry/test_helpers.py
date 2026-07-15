@@ -60,7 +60,6 @@ def test_registry_helpers_and_temp_agent_loading(tmp_path, monkeypatch):
         registry.get("missing")
 
     agents.get_agent_registry.cache_clear()
-    import cys_core.application.runtime_config as rc
 
     monkeypatch.setattr("cys_core.registry.agents.get_use_dynamic_catalog", lambda: False)
     configure_agent_definitions_loader(get_default_agent_definitions_loader())

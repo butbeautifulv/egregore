@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from cys_core.domain.engagement.models import Engagement
-from cys_core.domain.work_order.models import WorkOrder, WorkOrderRequest
+from cys_core.domain.work_order.models import WorkOrder
 
 
 class WorkOrderStorePort(Protocol):

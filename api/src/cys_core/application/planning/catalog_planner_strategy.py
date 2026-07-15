@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
