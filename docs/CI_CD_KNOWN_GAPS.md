@@ -76,6 +76,70 @@ blocked at `max_high_risk_tool_chain_depth=1`. Either
 `get_tool_chain_policy()`, isn't re-reading settings after the container
 reset. Needs tracing before un-xfailing.
 
+## Infra fixes applied while first bringing the gate up
+
+- **`release-gate.yml` never ran a single job** (`startup_failure`, 0 jobs
+  created, on every push) until this was found: `job-sast.yml`'s `codeql`
+  job requests `permissions: actions: read` at the job level, but the
+  caller (`release-gate.yml`) never granted `actions` at its top-level
+  `permissions:` block. A reusable workflow's job cannot request a
+  permission scope its caller doesn't hold — GitHub rejects the *entire*
+  run at validation time when that happens, before any job (even unrelated
+  ones) is created, which is what made this so hard to isolate. Fixed by
+  adding `actions: read` to `release-gate.yml`'s top-level permissions.
+- **`osa / trivy-fs`**: pinned to `aquasecurity/trivy-action@0.28.0`, a tag
+  that doesn't exist. Bumped to `v0.36.0` (also fixed in `job-sca-image.yml`,
+  used by the main-only container-scan job).
+- **`sast / semgrep`, and by the same pattern `iac-scan` / `linter-security`**:
+  the fallback SARIF these jobs write when the real scanner produces no
+  file — `{"runs":[{"results":[]}]}` — isn't schema-valid SARIF (no
+  `version`, no `tool`), so `codeql-action/upload-sarif` rejects it whenever
+  that fallback triggers. Replaced with a minimal valid SARIF document in
+  the 3 files release-gate.yml actually calls. The same broken placeholder
+  still exists in ~8 other workflow files not in this PR's call graph
+  (`job-ml-model-scan.yml`, `nightly-sast.yml`, the `job-oss-*` variants,
+  etc.) — same fix, just out of scope tonight.
+- **`osa / dependency-review`** still fails: `Dependency review is not
+  supported on this repository. Please ensure that Dependency graph is
+  enabled` — a repo setting (Settings → Security → Dependency graph), not
+  a code fix. Left for a human to enable; not something to toggle
+  unilaterally from an agent session.
+- **`sast / codeql` was silently reporting `findings=0` on every run despite
+  CodeQL genuinely finding 3 real `py/path-injection` results** (see
+  "Real finding" below) — the single worst bug found tonight, because it
+  made the SAST gate decorative rather than blocking. `codeql-action/analyze`
+  writes its SARIF to `$RUNNER_WORKSPACE/results/<language>.sarif` (one
+  directory *above* the checkout) by default; the gate-check step was
+  checking the relative path `results/python.sarif` (*inside* the
+  checkout) — never matched, so it silently fell through to the empty
+  placeholder and always passed. Fixed by pinning `analyze`'s `output:` to
+  a known path (`codeql-sarif/`) and — more importantly — changed the
+  gate-check step to **fail loudly if the real report is missing**,
+  instead of silently substituting an empty one. Same audit found
+  `job-linter-security.yml` gating its real `ruff` scan behind
+  `$ENABLE_REAL_LINTERS`, an env var that can never reach it (the same
+  `env:`-doesn't-propagate-into-`uses:` limitation noted for
+  `SECURITY_POLICY` above) — it was defaulting to `false` and always
+  writing the empty stub. Now always runs the real scan.
+  `job-dockerfile-lint.yml`'s gate-check step is *still* purely decorative
+  (`echo '{"runs":[{"results":[]}]}' > hadolint.sarif` runs unconditionally,
+  never reads hadolint's actual output) — not fixed here since
+  `hadolint-action` itself still fails the job on real findings via its own
+  exit code and this control is warn-only, but the gate-check step's own
+  verdict should not be trusted.
+- **Real finding, not fixed here**: CodeQL flagged `py/path-injection`
+  (severity: error) three times in
+  `cys_core/infrastructure/runs/attachment_store.py` (now at
+  `src/cys_core/infrastructure/runs/attachment_store.py`), lines 24/26/27 —
+  `tenant_id` and `run_id` go straight into `Path` construction with no
+  sanitization, unlike `filename` which already goes through
+  `_safe_filename()`. Both values originate from
+  `interfaces/api/runs.py`'s `upload_attachment` (`run_id` from the URL
+  path, `tenant_id` from the request). This is a real, unaddressed path
+  traversal risk — surfaced by this PR's SAST fix, deliberately not fixed
+  in the same PR as the CI/CD mechanism itself so the fix gets its own
+  reviewable diff. Do this next.
+
 ## Note for future readers
 
 `bootstrap/__init__.py` does `from bootstrap.settings import Settings,

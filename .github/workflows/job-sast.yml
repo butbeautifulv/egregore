@@ -25,35 +25,29 @@ jobs:
       - uses: github/codeql-action/analyze@v3
         with:
           category: "/language:python"
+          output: codeql-sarif
       - name: Gate check CodeQL
         if: always()
         run: |
-          REPORT="${{ github.workspace }}/codeql-results.sarif"
-          for f in codeql-results.sarif results/python.sarif; do
-            [ -f "$f" ] && REPORT="$f" && break
-          done
-          [ -f "$REPORT" ] || echo '{"runs":[{"results":[]}]}' > codeql-results.sarif
-          [ -f "$REPORT" ] || REPORT=codeql-results.sarif
+          REPORT="codeql-sarif/python.sarif"
+          [ -f "$REPORT" ] || { echo "::error::CodeQL did not produce $REPORT — check the analyze step above; refusing to silently pass a SAST gate with no real report." >&2; exit 1; }
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
 
   semgrep:
     runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:1.117.0
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - uses: returntocorp/semgrep-action@v1
-        with:
-          config: p/ci
+      - name: Semgrep scan
+        run: semgrep scan --config p/ci --sarif -o semgrep.sarif .
       - name: Gate check
         if: always()
         run: |
-          REPORT=semgrep.sarif
-          [ -f "$REPORT" ] || echo '{"runs":[{"results":[]}]}' > "$REPORT"
+          [ -s semgrep.sarif ] || { echo "::error::semgrep did not produce a non-empty semgrep.sarif — refusing to silently pass a SAST gate with no real report." >&2; exit 1; }
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
+          python3 scripts/gate-check.py --control sast --report semgrep.sarif --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:

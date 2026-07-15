@@ -15,11 +15,8 @@ jobs:
         run: uv sync
       - name: Ruff security lint
         run: |
-          if [ "${ENABLE_REAL_LINTERS:-false}" = "true" ]; then
-            uv run ruff check . --output-format sarif -o linter.sarif || true
-          else
-            echo '{"runs":[{"results":[]}]}' > linter.sarif
-          fi
+          uv run ruff check . --output-format sarif -o linter.sarif || true
+          [ -s linter.sarif ] || echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"none","rules":[]}},"results":[]}]}' > linter.sarif
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
