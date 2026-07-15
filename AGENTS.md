@@ -19,7 +19,7 @@ Follow `.agents/rules/core-*.mdc` (hub) + `project-workflow.mdc` + `project-secu
 
 Master plan: [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATFORM.md)
 
-SGR (Schema-Guided Reasoning): [docs/integration/sgr-reasoning.md](docs/integration/sgr-reasoning.md) — pattern port only; **no** runtime imports from `shared/references/sgr-agent-core-main`.
+SGR (Schema-Guided Reasoning): [docs/integration/sgr-reasoning.md](docs/integration/sgr-reasoning.md) — pattern port only; **no** runtime imports from `refs/sgr-agent-core-main` (cxado meta root).
 
 ## Два разных «agents» (историческая заметка)
 
@@ -61,15 +61,15 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ## Платформенный код
 
-### Repo layout (`src/`)
+### Repo layout (`api/src/`)
 
-Python backend packages live under **`src/`** (`src/cys_core`, `src/interfaces`, `src/bootstrap`, `src/connectors`, `src/authz`). Import names are unchanged (`from cys_core...`). Operator UI is **`web_ui/`** (not `ui/`). Seed **`agents/`** stays at repo root.
+Python backend packages live under **`api/src/`** (`api/src/cys_core`, `api/src/interfaces`, `api/src/bootstrap`, `api/src/connectors`, `api/src/authz`). Import names are unchanged (`from cys_core...`). ASGI entrypoint: **`api/src/main.py`**. Operator UI is **`web_ui/`** (not `ui/`). Product seed **`api/agents/`**. Docker/compose: **`deploy/`**.
 
 ### Единые точки входа
 
 - **Events:** `interfaces/ingress/router.py` → `EventIngress`
 - **Workers:** `interfaces/worker/orchestrator.py` → `WorkerOrchestrator`
-- **CLI:** `uv run egregore`
+- **CLI:** `cd api && uv run egregore`
 - **Operator UI:** `web_ui/` — Next.js 16, HTTP client to FastAPI (`lib/api-client.ts`)
 - **Operator TUI:** `tui/` — Go Bubble Tea, порт того же контракта (`internal/api/`)
 - **Контракт UI+TUI:** [docs/operator-console-contract.md](docs/operator-console-contract.md)
@@ -109,15 +109,9 @@ Python backend packages live under **`src/`** (`src/cys_core`, `src/interfaces`,
 - **Keycloak OIDC** (optional): JWT Bearer на Ingress API (`interfaces/api/`) и MCP Tool Gateway (`interfaces/gateways/tool/`). Env: `AUTH_ENABLED`, `KEYCLOAK_ISSUER`, RBAC roles — см. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#keycloak-oidc-ingress--tool-gateway).
 - **Workspace + OpenFGA ReBAC** (ADR-005): workspaces, tenant bind, FGA `AUTHZ_MODE` — см. [docs/auth/oidc-openfga.md](docs/auth/oidc-openfga.md) и [docs/adr/ADR-005-workspace-oidc-openfga.md](docs/adr/ADR-005-workspace-oidc-openfga.md).
 
-### MCP-first exploration (Cursor)
+### Agent tooling (Cursor)
 
-При исследовании кода предпочитать MCP перед blind grep:
-
-1. **codebase-memory** — `search_code`, `trace_path`, `get_architecture`
-2. **serena** — `find_symbol`, `find_referencing_symbols` (scope: `projects/egregore`)
-3. Grep/read — только если MCP не дал ответа
-
-После крупных структурных изменений — `index_repository` для egregore в codebase-memory.
+При исследовании кода: **scoped Grep/Read** в `projects/egregore/`; **Context7** — только для сторонних библиотек. См. meta [docs/agents/cursor-mcp-tooling.md](../../../docs/agents/cursor-mcp-tooling.md).
 
 ### Langfuse observability (Cursor)
 
@@ -169,7 +163,7 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 
 ## Тесты
 
-**Агентам: только батчами** — `./scripts/pytest_batches.sh`, не `uv run pytest` на весь `tests/` одним процессом.
+**Агентам: только батчами** — `cd api && ./scripts/pytest_batches.sh`, не `uv run pytest` на весь `tests/` одним процессом.
 
 - **Точечно** после правок: только затронутые батчи (см. `.cursor/rules/project-egregore-pytest-batches.mdc`).
 - **Полный прогон** — перед PR / после cross-cutting рефакторинга.
@@ -177,12 +171,12 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 Правило: `.cursor/rules/project-egregore-pytest-batches.mdc`.
 
 ```bash
-./scripts/pytest_batches.sh
-./scripts/pytest_batches.sh --cov --domain-gate
-make -C projects/egregore domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
-make -C projects/egregore verify-architecture  # import boundaries + lint-imports + tests/architecture
-./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
-USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
+cd api && ./scripts/pytest_batches.sh
+cd api && ./scripts/pytest_batches.sh --cov --domain-gate
+make -C api domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
+make -C api verify-architecture  # import boundaries + lint-imports + tests/architecture
+cd api && ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
+cd api && USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
 ```
 
 Architecture debt inventory: [`docs/ARCHITECTURE_DEBT.md`](docs/ARCHITECTURE_DEBT.md). Regenerate table: `python3 scripts/arch_inventory.py`.
@@ -207,15 +201,15 @@ Coverage gate: **100%** на `cys_core/domain`.
 
 ## Cursor Cloud specific instructions
 
-**egregore** — CLI + optional FastAPI (`uv run egregore serve`).
+**egregore** — CLI + optional FastAPI (`cd api && uv run egregore serve`).
 
 ### Команды
 
 | Действие | Команда |
 |----------|---------|
-| Тесты | `./scripts/pytest_batches.sh` |
-| Smoke | `USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
-| Event flow | `uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `uv run egregore worker --once` |
+| Тесты | `cd api && ./scripts/pytest_batches.sh` |
+| Smoke | `cd api && USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
+| Event flow | `cd api && uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `cd api && uv run egregore worker --once` |
 
 Без API-ключа: `info`, `ingest` (enqueue), `status`, `pytest`.
 

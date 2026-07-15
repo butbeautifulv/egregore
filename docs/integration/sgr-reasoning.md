@@ -5,7 +5,7 @@
 **Status:** accepted  
 **North star:** mandatory per-step schema-guided reasoning for small models, without importing `sgr-agent-core` at runtime.
 
-Egregore adapts patterns from [`shared/references/sgr-agent-core-main`](../../../shared/references/sgr-agent-core-main) (read-only). Production code must **not** import that package.
+Egregore adapts patterns from [`refs/sgr-agent-core-main`](../../../../refs/sgr-agent-core-main) at cxado meta root (read-only). Production code must **not** import that package.
 
 ### Decision
 

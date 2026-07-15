@@ -37,22 +37,22 @@ Markdown SSOT: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/OBSERVABILI
 ## Быстрый старт
 
 ```bash
-uv sync
+cd api && uv sync
 
-docker compose up -d   # Postgres + Redis + Redpanda + Qdrant
+docker compose -f deploy/docker-compose.yml up -d   # Postgres + Redis + Redpanda + Qdrant
 
-cp .env.example .env   # LLM API key
+cp api/.env.example api/.env   # LLM API key (local only, not committed)
 
-uv run egregore info
-uv run egregore migrate   # apply migrations/*.sql
+cd api && uv run egregore info
+cd api && uv run egregore migrate   # apply migrations/*.sql
 ```
 
 ### Operator UI (full stack)
 
 ```bash
-make dev-infra                    # or: docker compose up -d
-uv run egregore serve --port 8080 # or: make dev-api
-uv run egregore worker --daemon # optional: make dev-worker
+make dev-infra                    # or: docker compose -f deploy/docker-compose.yml up -d
+cd api && uv run egregore serve --port 8080 # or: make dev-api
+cd api && uv run egregore worker --daemon # optional: make dev-worker
 
 cd web_ui && cp .env.local.example .env.local && bun install && bun run dev
 # or from repo root: make dev-web-ui
@@ -80,22 +80,22 @@ Docker app profile (no host Node/Python): `make dev-docker` (requires `.env`).
 
 ```bash
 # Ingest SIEM event → enqueue SOC worker
-uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
+cd api && uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
 
 # Process queued worker job
-uv run egregore worker --once
+cd api && uv run egregore worker --once
 
 # Control plane status
-uv run egregore status
+cd api && uv run egregore status
 
 # Manual investigation (all workers)
-uv run egregore session -g "Assess CI/CD pipeline risks"
+cd api && uv run egregore session -g "Assess CI/CD pipeline risks"
 
 # HTTP API
-uv run egregore serve --port 8080
+cd api && uv run egregore serve --port 8080
 
 # Tests (low memory — one pytest process per tests/<dir>/)
-./scripts/pytest_batches.sh --cov --domain-gate
+cd api && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## CLI
@@ -142,20 +142,17 @@ uv run egregore serve --port 8080
 
 ```
 egregore/
-├── src/                    # Python backend (install root; import names unchanged)
-│   ├── cys_core/           # domain, application, infrastructure, registry, runtime
-│   ├── interfaces/         # Delivery: api, ingress, worker, control_plane, gateways, rag, cli
-│   ├── bootstrap/          # settings, DI container, product_loader
-│   ├── connectors/         # SIEM poll → ingress API
-│   └── authz/              # OpenFGA model (model.fga)
-├── agents/                 # Продукт: personas, rules, plans, skills (seed, repo root)
-├── web_ui/                 # Operator console (Next.js) — work orders, follow-ups, approvals, SSE
-├── tui/                    # Operator TUI (Go Bubble Tea) — same contract as web_ui/
-├── deploy/k8s/             # Worker Job + NetworkPolicy
-├── deploy/grafana/         # SOC dashboards
+├── api/                    # Python/uv backend (pyproject.toml, src/, tests/, agents/)
+│   ├── src/                # cys_core, interfaces, bootstrap, connectors, authz, main.py
+│   ├── agents/             # Product personas, rules, plans, skills
+│   ├── migrations/         # SQL migrations
+│   └── scripts/            # pytest_batches, verify_import_boundaries, …
+├── deploy/                 # Dockerfile, compose, k8s, helm, grafana
+├── web_ui/                 # Operator console (Next.js)
+├── tui/                    # Operator TUI (Go Bubble Tea)
 ├── docs/
-├── Makefile                # make dev-infra, dev-api, dev-web-ui, dev-worker
-└── tests/
+├── Makefile                # thin dispatcher (Python → api/, UI → web_ui/)
+└── scripts/                # full-stack dev wrappers, security gates
 ```
 
 ## Роли агентов
@@ -187,12 +184,12 @@ egregore/
 | `EGREGORE_MAX_FOLLOW_UP_PLANS` | `3` | Max plan-mode follow-ups per engagement |
 | `PLANNER_TIMEOUT_SECONDS` | `120` | Fallback when async meta-planner stays in planning |
 
-Полный список: [`.env.example`](.env.example)
+Полный список: [`api/.env.example`](api/.env.example)
 
 ## Тестирование
 
 ```bash
-./scripts/pytest_batches.sh --cov --domain-gate
+cd api && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## Документация
