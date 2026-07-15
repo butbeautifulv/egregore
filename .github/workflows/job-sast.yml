@@ -3,6 +3,10 @@ name: SAST
 on:
   workflow_call:
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   codeql:
     runs-on: ubuntu-latest
@@ -32,4 +36,26 @@ jobs:
           [ -f "$REPORT" ] || REPORT=codeql-results.sarif
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
           python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
-# DIAGNOSTIC: stripped to bisect a startup_failure.
+
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/ci
+      - name: Gate check
+        if: always()
+        run: |
+          REPORT=semgrep.sarif
+          [ -f "$REPORT" ] || echo '{"runs":[{"results":[]}]}' > "$REPORT"
+          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
+          python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: sast-semgrep
