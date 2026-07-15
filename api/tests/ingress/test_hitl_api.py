@@ -31,10 +31,8 @@ async def test_hitl_api_job_status_and_resume(monkeypatch):
     )
     store.pause_for_hitl(pending, {"params_hash": "deadbeef", "tool": "run_active_scan"})
 
-    monkeypatch.setattr(
-        "interfaces.worker.hitl_resume.get_runtime",
-        lambda: SimpleNamespace(aresume=AsyncMock(return_value={"ok": True})),
-    )
+    fake_queue = SimpleNamespace(aenqueue=AsyncMock(return_value="resume-job-hitl"))
+    monkeypatch.setattr("bootstrap.container.Container.get_job_queue", lambda self, persona=None: fake_queue)
     monkeypatch.setattr(
         "interfaces.worker.hitl_resume.params_hash",
         lambda _args: "deadbeef",
@@ -56,7 +54,11 @@ async def test_hitl_api_job_status_and_resume(monkeypatch):
             json={"decision": "approve", "approval_id": "appr-abc", "actor": "alice"},
         )
         assert resumed.status_code == 200
-        assert resumed.json()["status"] == "resumed"
+        assert resumed.json()["status"] == "resume_submitted"
+        assert resumed.json()["resume_job_id"] == "resume-job-hitl"
+        fake_queue.aenqueue.assert_awaited_once()
+        enqueued_job = fake_queue.aenqueue.await_args.args[0]
+        assert enqueued_job.resume_checkpoint_ref == "worker:redteam:job-hitl"
 
 
 @pytest.mark.unit

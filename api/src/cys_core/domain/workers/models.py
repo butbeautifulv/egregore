@@ -55,6 +55,10 @@ class WorkerJob(BaseModel):
     max_tokens: int = 0
     max_cost_usd: float = 0.0
     max_tool_calls: int = 0
+    #: LangGraph thread_id (== original run's session_id) to continue via
+    #: runtime.aresume() instead of starting a new run — set only on jobs
+    #: enqueued by ResumeHitlJob. Empty for every ordinary job.
+    resume_checkpoint_ref: str = ""
 
     def transition_to(self, status: WorkerJobStatus) -> None:
         if status == self.status:

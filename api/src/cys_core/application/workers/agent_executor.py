@@ -24,6 +24,11 @@ class WorkerAgentExecutor:
         self._use_run_kernel = use_run_kernel
         self._self_refine_max = self_refine_max
 
+    async def resume(
+        self, *, persona: str, session_id: str, resume_payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._runtime.aresume(persona, session_id, resume_payload)
+
     async def run(
         self,
         *,

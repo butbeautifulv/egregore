@@ -352,6 +352,64 @@ class RunWorkerJob:
             await self._job_finalizer.mark_runtime_failure(job, str(exc), exc=exc)
             return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
 
+    async def _execute_resume(self, job: WorkerJob, investigation_id: str) -> RunResult:
+        """Continue an interrupted LangGraph thread after HITL approval.
+
+        Deliberately does not go through _publish_and_finalize()'s synthesis/
+        follow-up branching — those depend on the original job's payload
+        (goal/phase/findings_summary), which this job structurally doesn't
+        have (job_store only carries lightweight metadata, not the original
+        payload — Discovery G, docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md).
+        The LangGraph checkpoint itself already encodes what phase the
+        interrupted run was in; this only needs to unblock it and publish
+        whatever it produces, the same way any non-synthesis finding is
+        published. Creates a fresh sandbox scoped to *this* resume job's own
+        run_id — giving Command(resume=...) real MCP Tool Gateway credentials
+        if the graph goes on to call more tools, which the inline
+        runtime.aresume() call this replaces never did (Discovery B).
+        """
+        run_id = job.job_id
+        creds = None
+        try:
+            creds = await self._create_sandbox(job, run_id, investigation_id, job.resume_checkpoint_ref)
+            defn = self._resolve_defn(job, investigation_id)
+            resume_payload = {
+                "decision": job.payload.get("decision"),
+                "approval_id": job.payload.get("approval_id"),
+            }
+            result = await self._agent_executor.resume(
+                persona=job.persona,
+                session_id=job.resume_checkpoint_ref,
+                resume_payload=resume_payload,
+            )
+            await self._finding_publisher.publish(
+                job=job,
+                defn=defn,
+                result=result,
+                sandbox_id=creds.sandbox_id,
+                investigation_id=investigation_id,
+            )
+            await self._job_finalizer.mark_success(job, investigation_id)
+            return RunResult(
+                job_id=job.job_id,
+                persona=job.persona,
+                success=True,
+                finding=result,
+                sandbox_id=creds.sandbox_id,
+            )
+        except Exception as exc:
+            await self._job_finalizer.mark_runtime_failure(job, str(exc), exc=exc)
+            return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
+        finally:
+            with self._worker_tracing.span(
+                "worker.sandbox.destroy",
+                persona=job.persona,
+                job_id=job.job_id,
+                engagement_id=investigation_id,
+                tenant_id=job.tenant_id,
+            ):
+                await self.sandbox.adestroy(run_id)
+
     def _seed_bus_or_follow_up_manifest(self, job: WorkerJob, investigation_id: str) -> None:
         if job.feedback or is_bus_worker_job_id(job.job_id):
             manifest = get_persona_manifests(investigation_id).get(job.persona)
@@ -798,6 +856,9 @@ class RunWorkerJob:
     ) -> RunResult:
         run_id = job.job_id
         investigation_id = self._context_builder.investigation_id(job)
+
+        if job.resume_checkpoint_ref:
+            return await self._execute_resume(job, investigation_id)
 
         if is_follow_up_plan_planner_job(job.payload, persona=job.persona) and self._plan_follow_up_runner is not None:
             return await self._execute_follow_up_plan_planner(
