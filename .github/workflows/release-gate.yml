@@ -193,8 +193,8 @@ jobs:
           fail=0
           declare -A results=(
             [adversarial]="${{ needs.adversarial.result }}"
-            [web-ui]="${{ needs.web-ui.result }}"
-            [secret-scan]="${{ needs.secret-scan.result }}"
+            [web-ui]="${{ needs['web-ui'].result }}"
+            [secret-scan]="${{ needs['secret-scan'].result }}"
             [sast]="${{ needs.sast.result }}"
             [osa]="${{ needs.osa.result }}"
           )
