@@ -28,9 +28,9 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 automountServiceAccountToken: false
 securityContext:
   runAsNonRoot: true
-  runAsUser: 1000
-  runAsGroup: 1000
-  fsGroup: 1000
+  runAsUser: 10000
+  runAsGroup: 10000
+  fsGroup: 10000
   seccompProfile:
     type: RuntimeDefault
 {{- end }}
