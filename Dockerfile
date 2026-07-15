@@ -10,9 +10,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # Layer 2: source — only reinstalls the local project wheel, not all PyPI deps.
-COPY cys_core ./cys_core
-COPY interfaces ./interfaces
-COPY bootstrap ./bootstrap
+COPY src ./src
 COPY agents ./agents
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev

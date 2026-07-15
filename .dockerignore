@@ -17,7 +17,6 @@ scripts
 grafana
 config
 migrations
-connectors
 *.md
 !README.md
 .agents

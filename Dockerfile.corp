@@ -14,9 +14,7 @@ ENV UV_INDEX_URL=https://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_PYPI_HOST}/repo
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY cys_core ./cys_core
-COPY interfaces ./interfaces
-COPY bootstrap ./bootstrap
+COPY src ./src
 COPY agents ./agents
 RUN uv sync --frozen --no-dev
 
