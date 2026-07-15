@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from bootstrap.agent_definitions_loader import get_default_agent_definitions_loader
-from cys_core.infrastructure.registry.agent_registry_adapter import AgentRegistryAdapter
+from cys_core.infrastructure.registry.agent_registry_adapter import build_agent_registry_port
 from cys_core.infrastructure.registry.schema_registry_adapter import SchemaRegistryAdapter
 from cys_core.infrastructure.registry.tool_registry_adapter import ToolRegistryAdapter
 from cys_core.registry.agents import AgentRegistry, configure_agent_definitions_loader
@@ -15,7 +15,7 @@ from cys_core.registry.tools import tool_registry
 def test_agent_registry_adapter_delegates_get():
     configure_agent_definitions_loader(get_default_agent_definitions_loader())
     registry = AgentRegistry.load()
-    adapter = AgentRegistryAdapter(registry)
+    adapter = build_agent_registry_port(registry)
     first = registry.names()[0]
     assert adapter.get(first) is registry.get(first)
 

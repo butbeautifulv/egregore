@@ -111,7 +111,9 @@ def test_litellm_message_conversion_and_sync_generation(monkeypatch):
         request_timeout=90.0,
     )
     assert model._llm_type == "litellm"
-    assert model.bind_tools([]) is model
+    bound = model.bind_tools([])
+    assert bound is not model
+    assert bound.bound_tools == []
     result = model._generate([HumanMessage(content="hi")], stop=["END"], extra="value")
 
     assert result.generations[0].message.content == "answer"

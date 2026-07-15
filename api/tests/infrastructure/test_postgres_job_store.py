@@ -54,6 +54,8 @@ class _FakeConnection:
                         row.get("event_id", ""),
                         row["hitl_preview_json"],
                         row["pending_hitl_json"],
+                        row.get("last_error", ""),
+                        row.get("failure_reason", ""),
                     )
                 ]
         return cursor
@@ -72,6 +74,8 @@ class _FakeConnection:
                 event_id,
                 preview,
                 pending,
+                last_error,
+                failure_reason,
             ) = params
             pending_data = json.loads(pending) if pending else None
             self.jobs[job_id] = {
@@ -84,6 +88,8 @@ class _FakeConnection:
                 "event_id": event_id,
                 "hitl_preview_json": json.loads(preview),
                 "pending_hitl_json": pending_data,
+                "last_error": last_error,
+                "failure_reason": failure_reason,
             }
 
     def commit(self) -> None:

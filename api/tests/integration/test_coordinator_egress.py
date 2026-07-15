@@ -47,5 +47,5 @@ async def test_coordinator_publishes_report_with_job_id(monkeypatch) -> None:
     args = egress.publish_event.call_args[0]
     assert args[0] == "eng-1"
     assert args[1] == "report"
-    assert args[2]["job_id"] == "coordinator:eng-1"
+    assert args[2]["job_id"] == "consultant:eng-1"
     assert "summary" in args[2]
