@@ -13,6 +13,15 @@ class ExecutionBackend(Protocol):
     container boundary (subprocess, K8s, Docker).
     """
 
+    #: True for backends whose child process manages its own soft-timeout and
+    #: salvage (subprocess/K8s/Docker) — the caller (WorkerOrchestrator.run_job)
+    #: must then use a hard job_timeout dead-man's switch instead of racing its
+    #: own soft-timeout against the child's, and must not attempt to salvage
+    #: from its own (empty) tool_execution_tracker/JobBudgetTracker state. False
+    #: for InProcessExecutionBackend, where today's soft-timeout+salvage in the
+    #: caller is still correct because execute() runs in the same process.
+    owns_timeout: bool
+
     async def execute(
         self,
         job: WorkerJob,

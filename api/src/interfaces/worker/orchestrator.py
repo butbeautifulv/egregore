@@ -13,7 +13,7 @@ from cys_core.application.workers.tool_execution_tracker import (
     clear_tool_execution_count,
     get_tool_execution_count,
 )
-from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID, resolve_profile_id
+from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.security.agent_bus import AgentTrustLevel, SecureAgentBus
 from cys_core.domain.security.factory import get_input_sanitizer
 from cys_core.domain.workers.job_budget import JobBudgetTracker
@@ -150,16 +150,12 @@ class WorkerOrchestrator:
             correlation_id=investigation_id,
             work_kind=str(job.payload.get("work_kind", "")),
         )
-        catalog_entry = container.get_agent_catalog().get_agent(budgeted.persona)
-        profile_id = resolve_profile_id(
-            payload=budgeted.payload,
-            catalog_entry=catalog_entry,
-        )
         from cys_core.domain.workers.job_budget import configure_job_cost
+        from cys_core.infrastructure.policy.budget_adapter import resolve_job_cost_context
 
-        cost_rate = container.get_profile_policy_port().get_cost_per_1k_tokens(profile_id)
-        if cost_rate <= 0:
-            cost_rate = container.settings.job_cost_per_1k_tokens_usd
+        profile_id, cost_rate = resolve_job_cost_context(
+            budgeted, default_cost_rate=container.settings.job_cost_per_1k_tokens_usd
+        )
         configure_job_cost(cost_rate, profile_id=profile_id)
         JobBudgetTracker.configure(
             session_id,
@@ -175,12 +171,35 @@ class WorkerOrchestrator:
                     phase=str(job.payload.get("phase") or ""),
                 )
                 soft_timeout = job_timeout * container.settings.worker_soft_timeout_fraction
+                backend_owns_timeout = getattr(self.execution_backend, "owns_timeout", False)
+                wait_timeout = job_timeout if backend_owns_timeout else soft_timeout
                 try:
                     return await asyncio.wait_for(
                         self.execution_backend.execute(job, budgeted, session_id, job_state),
-                        timeout=soft_timeout,
+                        timeout=wait_timeout,
                     )
                 except TimeoutError:
+                    if backend_owns_timeout:
+                        # Backend (subprocess/K8s/Docker) manages its own soft-timeout
+                        # and salvage inside the child process, where the live
+                        # tool_execution_tracker/JobBudgetTracker state actually is
+                        # (Discoveries A/D). Reaching here means the child overran even
+                        # the hard job_timeout — a dead-man's switch, not the normal
+                        # path — so there is nothing in this process to salvage.
+                        logger.error(
+                            "worker job exceeded hard timeout without returning",
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            job_timeout_s=job_timeout,
+                        )
+                        self._metrics.record_worker_job_timeout(job.persona)
+                        await self._run_worker_job.mark_job_timeout(job)
+                        return RunResult(
+                            job_id=job.job_id,
+                            persona=job.persona,
+                            success=False,
+                            error="worker_job_timeout",
+                        )
                     tool_count = get_tool_execution_count(job.job_id)
                     salvaged: RunResult | None = None
                     try:

@@ -80,24 +80,46 @@ def cmd_worker(args: argparse.Namespace) -> int:
 
 
 def cmd_run_sandboxed_job(args: argparse.Namespace) -> int:
-    """Execute one already-dequeued WorkerJob directly, bypassing the queue.
+    """Execute one already-budgeted WorkerJob directly — child-process
+    entrypoint for SubprocessExecutionBackend (and, later, K8s/Docker
+    backends). The Dispatcher (WorkerOrchestrator.run_job, running in the
+    parent) already popped this job off the queue, resolved dependency
+    deferral, and enriched its budget — this command must not repeat any of
+    that (would race/duplicate against the shared queue).
 
-    Child-container entrypoint for delegated sandbox execution (see
-    DockerAgentSandboxConnector) — the dispatcher process already popped this
-    job off the queue, so this command must run it directly rather than
-    dequeuing again (which would race/duplicate). Not for interactive use.
+    What it *does* own, locally, in this process: soft-timeout + salvage
+    (Discovery A) and JobBudgetTracker/configure_job_cost configuration
+    (Discovery D) — both are process-local state that does not survive the
+    parent/child boundary, so the child must set them up and tear them down
+    itself rather than trusting whatever the parent configured for its own,
+    separate process. See docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md Phase
+    2.2a/2.2b. Not for interactive use.
     """
     get_container()
     configure_logging("egregore-worker-sandboxed")
     setup_otel(service_name="egregore-worker-sandboxed")
-    from cys_core.domain.workers.models import WorkerJob
+    from cys_core.infrastructure.execution.envelope import SubprocessJobEnvelope
+    from cys_core.infrastructure.execution.sandboxed_entrypoint import execute_sandboxed_job
 
     raw = sys.stdin.read() if args.job_json == "-" else args.job_json
-    job = WorkerJob.model_validate_json(raw)
+    envelope = SubprocessJobEnvelope.model_validate_json(raw)
+    job = envelope.job
 
     async def _run() -> dict:
-        orch = get_container().get_worker_orchestrator(persona=job.persona)
-        result = await orch.run_job(job)
+        container = get_container()
+        job_timeout = container.settings.resolve_worker_job_timeout(
+            persona=job.persona,
+            phase=str(job.payload.get("phase") or ""),
+        )
+        result = await execute_sandboxed_job(
+            envelope,
+            run_worker_job=container.get_run_worker_job(persona=job.persona),
+            metrics=container.get_metrics_port(),
+            tool_chain_policy=container.get_tool_chain_policy(),
+            job_timeout=job_timeout,
+            soft_timeout=job_timeout * container.settings.worker_soft_timeout_fraction,
+            default_cost_rate=container.settings.job_cost_per_1k_tokens_usd,
+        )
         return {"result": result.model_dump()}
 
     out = asyncio.run(_run())
@@ -295,10 +317,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_sandboxed = sub.add_parser(
         "run-sandboxed-job",
-        help="Execute one WorkerJob directly (child-container entrypoint, not for interactive use)",
+        help="Execute one budgeted job envelope directly (child-process entrypoint, not for interactive use)",
     )
     run_sandboxed.add_argument(
-        "--job-json", default="-", help="WorkerJob as JSON, or '-' to read from stdin (default)"
+        "--job-json",
+        default="-",
+        help="SubprocessJobEnvelope as JSON, or '-' to read from stdin (default)",
     )
     run_sandboxed.set_defaults(func=cmd_run_sandboxed_job)
 
