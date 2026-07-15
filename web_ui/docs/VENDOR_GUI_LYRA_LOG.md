@@ -1,7 +1,7 @@
 # Vendor GUI — radix-lyra profile
 
 **Date:** 2026-07-01 (updated)  
-**Project:** egregore Operator UI (`projects/egregore/ui`)
+**Project:** egregore Operator UI (`projects/egregore/web_ui`)
 
 ## Preset (source of truth)
 
@@ -19,7 +19,7 @@
 Apply to the project:
 
 ```bash
-cd projects/egregore/ui
+cd projects/egregore/web_ui
 npx shadcn@latest apply b3Rq8QejA --yes
 ```
 

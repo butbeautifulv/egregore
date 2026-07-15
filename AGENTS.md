@@ -61,12 +61,16 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ## Платформенный код
 
+### Repo layout (`src/`)
+
+Python backend packages live under **`src/`** (`src/cys_core`, `src/interfaces`, `src/bootstrap`, `src/connectors`, `src/authz`). Import names are unchanged (`from cys_core...`). Operator UI is **`web_ui/`** (not `ui/`). Seed **`agents/`** stays at repo root.
+
 ### Единые точки входа
 
 - **Events:** `interfaces/ingress/router.py` → `EventIngress`
 - **Workers:** `interfaces/worker/orchestrator.py` → `WorkerOrchestrator`
 - **CLI:** `uv run egregore`
-- **Operator UI:** `ui/` — Next.js 16, HTTP client to FastAPI (`lib/api-client.ts`)
+- **Operator UI:** `web_ui/` — Next.js 16, HTTP client to FastAPI (`lib/api-client.ts`)
 - **Operator TUI:** `tui/` — Go Bubble Tea, порт того же контракта (`internal/api/`)
 - **Контракт UI+TUI:** [docs/operator-console-contract.md](docs/operator-console-contract.md)
 - **LLM:** `cys_core/llm` — LiteLLM only
@@ -79,16 +83,16 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 - Не восстанавливать batch `assess` pipeline как primary path
 - Не создавать `agents/*.py` Python-модули для personas
-- Не коммитить `.env`, ключи, `.agents/`, `ui/node_modules/`, `ui/.next/`
+- Не коммитить `.env`, ключи, `.agents/`, `web_ui/node_modules/`, `web_ui/.next/`
 - Не редактировать `.cursor/plans/` без явного запроса
-- Не подключать `shared/gui` как `file:` dependency в `ui/` — только vendor-copy ([`ui/docs/GUI_VENDOR.md`](ui/docs/GUI_VENDOR.md))
+- Не подключать `shared/gui` как `file:` dependency в `web_ui/` — только vendor-copy ([`web_ui/docs/GUI_VENDOR.md`](web_ui/docs/GUI_VENDOR.md))
 
-### Operator UI (`ui/`)
+### Operator UI (`web_ui/`)
 
 - Next.js App Router; shared primitives vendored in `ui/vendor/gui/`
-- Sync from meta-repo: `cd ui && ./scripts/vendor-gui.sh && node scripts/rewrite-vendor-imports.mjs`
+- Sync from meta-repo: `cd web_ui && ./scripts/vendor-gui.sh && node scripts/rewrite-vendor-imports.mjs`
 - UI changes: ≤5 files per PR (same rule as backend sub-phases)
-- Dev: `make dev-ui` from repo root; see [ui/README.md](ui/README.md)
+- Dev: `make dev-web-ui` from repo root; see [web_ui/README.md](ui/README.md)
 
 ### Security
 
@@ -178,7 +182,7 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 make -C projects/egregore domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
 make -C projects/egregore verify-architecture  # import boundaries + lint-imports + tests/architecture
 ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
-USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=cys_core/domain --cov-fail-under=100
+USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
 ```
 
 Architecture debt inventory: [`docs/ARCHITECTURE_DEBT.md`](docs/ARCHITECTURE_DEBT.md). Regenerate table: `python3 scripts/arch_inventory.py`.

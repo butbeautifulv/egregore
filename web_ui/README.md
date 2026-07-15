@@ -1,6 +1,6 @@
 # Egregore Operator UI
 
-Next.js operator console — lives at `ui/` inside the [egregore](..) repository.
+Next.js operator console — lives at `web_ui/` inside the [egregore](..) repository.
 
 **Shared contract with TUI:** [../docs/operator-console-contract.md](../docs/operator-console-contract.md) — API, SSE, chat state, JSON display. Change API here (`lib/api-client.ts`) first, then port to `tui/internal/api/`.
 
@@ -25,7 +25,7 @@ cd projects/egregore && docker compose up -d
 ## Quick start (UI only)
 
 ```bash
-cd ui
+cd web_ui
 cp .env.local.example .env.local
 bun install
 bun run dev

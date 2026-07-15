@@ -20,7 +20,7 @@ Secure event-driven multi-agent cybersecurity platform with ephemeral sandbox wo
 - Secure RAG (`rag_query`), Skill Gateway (`load_skill`), K8s sandbox connector
 - Prometheus metrics, Grafana dashboard, CI adversarial gates
 - FastAPI: `POST /events`, `GET /status`, investigations API, SSE stream, HITL resume API, `GET /metrics`
-- Operator UI (`ui/`): work orders list, live chat, follow-ups, structured intake, persona stepper, approvals, live timeline
+- Operator UI (`web_ui/`): work orders list, live chat, follow-ups, structured intake, persona stepper, approvals, live timeline
 - Operator follow-ups on closed work orders: Q&A, orchestrate, catalog re-plan (`POST /v1/work-orders/{id}/follow-ups`)
 - Work order API (`/v1/work-orders`) as preferred operator surface over legacy `/v1/engagements`
 - Продуктовый слой `agents/` — personas, rules, routing plans, skills
@@ -54,8 +54,8 @@ make dev-infra                    # or: docker compose up -d
 uv run egregore serve --port 8080 # or: make dev-api
 uv run egregore worker --daemon # optional: make dev-worker
 
-cd ui && cp .env.local.example .env.local && bun install && bun run dev
-# or from repo root: make dev-ui
+cd web_ui && cp .env.local.example .env.local && bun install && bun run dev
+# or from repo root: make dev-web-ui
 ```
 
 Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8080/status](http://localhost:8080/status).
@@ -142,23 +142,19 @@ uv run egregore serve --port 8080
 
 ```
 egregore/
-├── agents/                 # Продукт: personas, rules, plans, skills
-├── bootstrap/              # settings, DI container, product_loader
-├── connectors/             # SIEM poll → ingress API
-├── interfaces/             # Delivery: api, ingress, worker, control_plane, gateways, rag, cli
-├── ui/                     # Operator console (Next.js) — work orders, follow-ups, approvals, SSE
-├── tui/                    # Operator TUI (Go Bubble Tea) — same contract as ui/
+├── src/                    # Python backend (install root; import names unchanged)
+│   ├── cys_core/           # domain, application, infrastructure, registry, runtime
+│   ├── interfaces/         # Delivery: api, ingress, worker, control_plane, gateways, rag, cli
+│   ├── bootstrap/          # settings, DI container, product_loader
+│   ├── connectors/         # SIEM poll → ingress API
+│   └── authz/              # OpenFGA model (model.fga)
+├── agents/                 # Продукт: personas, rules, plans, skills (seed, repo root)
+├── web_ui/                 # Operator console (Next.js) — work orders, follow-ups, approvals, SSE
+├── tui/                    # Operator TUI (Go Bubble Tea) — same contract as web_ui/
 ├── deploy/k8s/             # Worker Job + NetworkPolicy
 ├── deploy/grafana/         # SOC dashboards
-├── cys_core/
-│   ├── domain/             # events, workers, findings, security, rag, skills
-│   ├── application/        # ports, use-cases
-│   ├── infrastructure/     # sandbox, queue, bus, kafka
-│   ├── observability/      # Prometheus, tracing, Langfuse tags
-│   ├── registry/           # AgentRegistry, tools, mcp_tools, skills
-│   └── runtime/            # AgentRuntime
 ├── docs/
-├── Makefile                # make dev-infra, dev-api, dev-ui, dev-worker
+├── Makefile                # make dev-infra, dev-api, dev-web-ui, dev-worker
 └── tests/
 ```
 
@@ -184,7 +180,7 @@ egregore/
 | `HITL_AUTO_APPROVE_THRESHOLD` | `low` | Risk gate для dangerous tools |
 | `TRUST_SCORE_THRESHOLD` | `0.5` | Critic trust threshold |
 | `PERSISTENCE_CONNECTOR` | `auto` | `auto`, `memory`, `postgres` |
-| `UI_CORS_ORIGINS` | `http://localhost:3000,...` | Allowed origins for Operator UI (`ui/`) |
+| `UI_CORS_ORIGINS` | `http://localhost:3000,...` | Allowed origins for Operator UI (`web_ui/`) |
 | `EGREGORE_FOLLOW_UP_ENABLED` | `true` | Enable operator follow-ups on closed work orders |
 | `EGREGORE_FOLLOW_UP_PLAN_ENABLED` | `true` | Enable catalog re-plan follow-up mode |
 | `EGREGORE_MAX_FOLLOW_UPS` | `10` | Max follow-up messages per engagement |
@@ -216,7 +212,7 @@ egregore/
 
 - Python ≥ 3.13
 - Docker (Postgres 16, Redis 7) — опционально с `USE_MEMORY_FALLBACK=true`
-- Node.js 20+ — для Operator UI (`ui/`)
+- Node.js 20+ — для Operator UI (`web_ui/`)
 - API-ключ LLM-провайдера — для live worker runs
 
 ## Лицензия

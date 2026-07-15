@@ -10,7 +10,7 @@ Egregore UI copies a minimal subset of [`shared/gui`](../../../../shared/gui) in
 
 ## Sync workflow
 
-From `projects/egregore/ui` (meta-repo checkout required for `shared/gui`):
+From `projects/egregore/web_ui` (meta-repo checkout required for `shared/gui`):
 
 ```bash
 ./scripts/vendor-gui.sh

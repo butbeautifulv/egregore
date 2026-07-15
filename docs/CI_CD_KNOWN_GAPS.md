@@ -9,7 +9,7 @@ lowered bar. Flip each item to blocking/un-xfail once its root cause is fixed.
 
 ### `lint` — 367 pre-existing ruff findings
 
-`uv run ruff check cys_core interfaces bootstrap connectors tests` — the
+`uv run ruff check src tests` — the
 exact command `ci.yml`'s own (now-superseded) `lint` job used — currently
 reports 367 findings (284 auto-fixable with `ruff check --fix`, 9 more with
 `--unsafe-fixes`). Since every other job in `ci.yml` had `needs: [lint]`,
@@ -45,7 +45,7 @@ A–E pattern already used elsewhere in the codebase.
 
 ### `domain-coverage` — 100% target, ~78% actual
 
-`cys_core/domain` coverage gate is set to `--cov-fail-under=100` but current
+`src/cys_core/domain` coverage gate is set to `--cov-fail-under=100` but current
 coverage is ~78%. Whole files are at 0% (e.g. `workers/continuation.py`,
 `workspace/models.py`). Aspirational target predates this workflow; needs
 either a real push to 100% or a documented, intentional ratchet baseline
@@ -55,7 +55,7 @@ instead of an unenforced 100% that nothing has met.
 
 ### `tests/adversarial/test_skill_injection.py` (3 tests)
 
-`load_skill()` (`cys_core/infrastructure/skill/load_skill.py`) was refactored
+`load_skill()` (`src/cys_core/infrastructure/skill/load_skill.py`) was refactored
 to a dynamic-catalog/allowlist model (`profile_id`, `staging_status`,
 `get_input_sanitizer()`) and no longer accepts a `registry` argument or does
 `content_hash` verification. The hash-pinning / unsigned-skill-rejection
