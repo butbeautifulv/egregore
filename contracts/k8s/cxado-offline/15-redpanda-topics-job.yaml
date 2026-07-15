@@ -1,0 +1,54 @@
+# Snapshot from cxado deploy/k8s/cxado-offline/ — refresh on topic changes
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-topics-init
+  namespace: cxado-data
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: redpanda-topics-init
+    spec:
+      restartPolicy: OnFailure
+      enableServiceLinks: false
+      containers:
+        - name: rpk
+          image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              BROKER="redpanda.cxado-data.svc.cluster.local:9092"
+              for i in $(seq 1 40); do
+                if rpk topic list --brokers "${BROKER}" >/dev/null 2>&1; then
+                  echo "redpanda ready"
+                  break
+                fi
+                echo "waiting for redpanda..."
+                sleep 3
+              done
+              # Single-partition platform topics
+              TOPICS=(
+                security.events.raw
+                bus.findings
+                worker.jobs.dlq
+                audit.tool.invocations
+                worker.jobs.paused
+                audit.hitl.approvals
+                audit.skill.loads
+                interfaces.rag.ingest.staging
+                security.events.awaiting_approval
+                security.events.escalation
+              )
+              for topic in "${TOPICS[@]}"; do
+                echo "create ${topic} (p=1)"
+                rpk topic create "${topic}" -p 1 -r 1 --brokers "${BROKER}" || true
+              done
+              # Stream B (ADR-1): unified worker queue — persona is a job field, not a topic suffix
+              echo "create worker.jobs (p=8)"
+              rpk topic create worker.jobs -p 8 -r 1 --brokers "${BROKER}" || true
+              rpk topic list --brokers "${BROKER}"
