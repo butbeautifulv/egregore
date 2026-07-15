@@ -11,6 +11,7 @@ from cys_core.application.bus_fingerprint import envelope_fingerprint
 from cys_core.application.engagement_bus_guard import EngagementBusGuard
 from cys_core.application.ports.bus_dedup import BusDedupPort
 from cys_core.application.ports.metrics import MetricsPort
+from cys_core.application.runtime_config import get_bus_seen_ttl_seconds
 from cys_core.domain.security.bus_messages import BusMessageType
 
 logger = structlog.get_logger(__name__)
@@ -37,9 +38,7 @@ class BusIngressRouter:
         self._egress_publish = egress_publish
         self._seen: dict[str, float] = {}
         if seen_ttl_seconds is None:
-            from bootstrap.settings import get_settings
-
-            seen_ttl_seconds = get_settings().bus_seen_ttl_seconds
+            seen_ttl_seconds = get_bus_seen_ttl_seconds()
         self._seen_ttl = seen_ttl_seconds
         self._dedup_store = dedup_store
         self._bus_guard = bus_guard

@@ -6,7 +6,7 @@ from typing import Any
 
 import structlog
 
-from bootstrap.settings import Settings, get_settings
+from cys_core.application.runtime_config import FollowUpSettings, get_follow_up_settings
 from cys_core.application.follow_up.intent import classify_follow_up_mode, orchestrator_persona_for
 from cys_core.application.operator_messages.service import (
     is_follow_up_turn_id,
@@ -46,7 +46,7 @@ class EnqueueFollowUp:
         run_state_store=None,
         engagement_egress: EngagementEgressPort | None = None,
         metrics: MetricsPort | None = None,
-        settings: Settings | None = None,
+        follow_up_settings: FollowUpSettings | None = None,
     ) -> None:
         self._engagement_store = engagement_store
         self._memory_writer = memory_writer
@@ -56,7 +56,7 @@ class EnqueueFollowUp:
         self._run_state_store = run_state_store
         self._engagement_egress = engagement_egress
         self._metrics = metrics
-        self._settings = settings or get_settings()
+        self._settings = follow_up_settings or get_follow_up_settings()
 
     def _ensure_run_context(self, tenant_id: str, engagement_id: str) -> None:
         if self._run_state_store is None:

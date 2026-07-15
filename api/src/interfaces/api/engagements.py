@@ -82,8 +82,7 @@ async def list_engagements(
 ) -> EngagementListOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     store = get_container().get_engagement_state_store()
-    from cys_core.infrastructure.engagement.postgres_store import PostgresEngagementStateStore
-
+    list_with_updated_at = getattr(store, "list_recent_with_updated_at", None)
     visible = visible_workspace_ids(_auth)
 
     def _visible(engagement) -> bool:
@@ -92,8 +91,8 @@ async def list_engagements(
         workspace_id = (getattr(engagement, "workspace_id", "") or "").strip()
         return not workspace_id or workspace_id in visible
 
-    if isinstance(store, PostgresEngagementStateStore):
-        pairs = store.list_recent_with_updated_at(tenant_id, limit=limit)
+    if list_with_updated_at is not None:
+        pairs = list_with_updated_at(tenant_id, limit=limit)
         return EngagementListOut(
             engagements=[
                 _engagement_out(eng, updated_at=ts)

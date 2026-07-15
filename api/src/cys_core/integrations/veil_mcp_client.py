@@ -13,7 +13,6 @@ from cys_core.application.runs.tool_coercion import (
     veil_ti_category_hint,
 )
 from cys_core.application.runtime_config import (
-    configure_from_settings,
     get_veil_mcp_timeout,
     get_veil_mcp_url,
 )
@@ -28,14 +27,11 @@ from cys_core.observability.tracing import inject_correlation_headers
 logger = structlog.get_logger(__name__)
 
 def _ensure_veil_runtime_config() -> None:
-    """Load settings into runtime_config when MCP is called outside the composition root."""
-    from cys_core.application.runtime_config import get_postgres_url
+    """No-op when runtime_config was wired via the composition root."""
+    from cys_core.application.runtime_config import is_runtime_configured
 
-    if get_postgres_url():
+    if is_runtime_configured():
         return
-    from bootstrap.settings import get_settings
-
-    configure_from_settings(get_settings())
 
 
 def _classify_http_error(exc: httpx.HTTPError) -> str:

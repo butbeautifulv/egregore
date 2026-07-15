@@ -184,12 +184,18 @@ _BASE_PERSONA_BUDGETS: dict[str, PersonaBudget] = {
 }
 
 PERSONA_BUDGETS = _BASE_PERSONA_BUDGETS
+_loaded_persona_budgets: dict[str, PersonaBudget] | None = None
+
+
+def configure_persona_budgets(budgets: dict[str, PersonaBudget]) -> None:
+    global _loaded_persona_budgets
+    _loaded_persona_budgets = dict(budgets)
 
 
 def get_persona_budgets() -> dict[str, PersonaBudget]:
-    from bootstrap.persona_budget_loader import get_loaded_persona_budgets
-
-    return get_loaded_persona_budgets()
+    if _loaded_persona_budgets is not None:
+        return dict(_loaded_persona_budgets)
+    return dict(_BASE_PERSONA_BUDGETS)
 
 PERSONA_CLEARANCE: dict[str, str] = {
     "soc": "confidential",

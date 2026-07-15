@@ -156,9 +156,7 @@ def _scan_event_fields(
             event_uuid=event_uuid,
         )
     if event.get("text"):
-        from bootstrap.settings import get_settings
-
-        text_max = get_settings().evidence_event_text_max
+        text_max = 500
         _add_observation(
             observations,
             kind="event_text",
@@ -293,24 +291,21 @@ def _finalize_manifest(
     if kata_taa and (not has_cmdline or not has_pipe):
         required_external.append("kata_taa_console")
 
-    from bootstrap.settings import get_settings
-
-    evidence = get_settings()
     if not observations:
         telemetry_level = "metadata_only"
-        max_confidence = evidence.evidence_max_confidence_metadata
+        max_confidence = 0.3
     elif kata_taa and not has_cmdline:
         telemetry_level = "sparse"
-        max_confidence = evidence.evidence_max_confidence_sparse
+        max_confidence = 0.5
     elif not has_cmdline and not has_account:
         telemetry_level = "sparse"
-        max_confidence = evidence.evidence_max_confidence_sparse
+        max_confidence = 0.5
     elif recent_truncated and not include_raw_events:
         telemetry_level = "sparse"
-        max_confidence = evidence.evidence_max_confidence_sparse
+        max_confidence = 0.5
     else:
         telemetry_level = "rich"
-        max_confidence = evidence.evidence_max_confidence_rich
+        max_confidence = 1.0
 
     for fp, _kind in _FORENSIC_FIELD_PATHS:
         if fp not in availability:

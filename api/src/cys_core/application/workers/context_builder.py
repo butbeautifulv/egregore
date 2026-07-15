@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from cys_core.application.skills.catalog import list_skill_metadata
 from cys_core.application.bus_engagement import normalize_correlation_id
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.domain.follow_up.models import is_follow_up_payload, work_kind_from_payload
@@ -119,10 +120,9 @@ class WorkerContextBuilder:
         if not hints:
             return []
         try:
-            from cys_core.registry.skill_registry import SkillRegistry
-
-            reg = SkillRegistry.load()
-            return [name for name in reg.names() if name in hints]
+            metadata = list_skill_metadata()
+            known = {item["id"] for item in metadata} | {item["name"] for item in metadata}
+            return [hint for hint in hints if hint in known]
         except Exception:
             return hints
 
@@ -139,9 +139,12 @@ class WorkerContextBuilder:
             skill_block = ""
             if skill_names:
                 try:
-                    from cys_core.registry.skill_registry import SkillRegistry
-
-                    skill_block = SkillRegistry.load().metadata_block(skill_names)
+                    metadata = list_skill_metadata()
+                    lines = ["AVAILABLE_SKILLS (metadata only — use load_skill to fetch body):"]
+                    for item in metadata:
+                        if item["name"] in skill_names:
+                            lines.append(f"- {item['name']}: {item['description']}")
+                    skill_block = "\n".join(lines) if len(lines) > 1 else ""
                 except Exception:
                     skill_block = ""
             return json.dumps(

@@ -14,6 +14,8 @@ class NoopClass(StrEnum):
 _NOOP_RESPONSES = frozenset({"duplicate_suppressed", "duplicate", "no_change", "unchanged"})
 _NOOP_STATUSES = frozenset({"pending_data", "duplicate_suppressed", "no_change", "unchanged"})
 _LOW_CONFIDENCE_STATUSES = frozenset({"pending_data", "unchanged"})
+_DEFAULT_NOOP_LOW_CONFIDENCE_THRESHOLD = 0.25
+_DEFAULT_NOOP_PENDING_TRUST_THRESHOLD = 0.3
 _DEDUP_SUMMARY_MARKERS = (
     "дубликат",
     "дедупликац",
@@ -60,9 +62,7 @@ def _event_id_from(payload_or_finding: dict[str, Any], finding: dict[str, Any]) 
 
 def _low_confidence(value: Any, *, threshold: float | None = None) -> bool:
     if threshold is None:
-        from bootstrap.settings import get_settings
-
-        threshold = get_settings().noop_low_confidence_threshold
+        threshold = _DEFAULT_NOOP_LOW_CONFIDENCE_THRESHOLD
     if not isinstance(value, (int, float)):
         return False
     return float(value) <= threshold
@@ -87,9 +87,6 @@ def _is_untrusted_pending_summary(summary: str) -> bool:
 
 def classify_finding(result: dict[str, Any]) -> NoopClass | None:
     """Classify a worker finding as noop, or None if it should propagate."""
-    from bootstrap.settings import get_settings
-
-    settings = get_settings()
     finding = _coerce_finding_dict(result)
     if finding is None:
         return None
@@ -112,7 +109,7 @@ def classify_finding(result: dict[str, Any]) -> NoopClass | None:
 
     if status in _LOW_CONFIDENCE_STATUSES and _low_confidence(
         trust_score,
-        threshold=settings.noop_pending_trust_threshold,
+        threshold=_DEFAULT_NOOP_PENDING_TRUST_THRESHOLD,
     ):
         return NoopClass.PENDING_DATA
 

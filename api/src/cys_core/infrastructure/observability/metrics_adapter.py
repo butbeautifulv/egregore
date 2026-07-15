@@ -55,6 +55,9 @@ class ObservabilityMetricsAdapter:
     def record_planner_stuck_fallback(self) -> None:
         _metrics.record_planner_stuck_fallback()
 
+    def record_worker_job_salvaged(self, persona: str, reason: str) -> None:
+        _metrics.record_worker_job_salvaged(persona, reason)
+
     def record_follow_up_queued(self, work_kind: str) -> None:
         _metrics.record_follow_up_queued(work_kind)
 

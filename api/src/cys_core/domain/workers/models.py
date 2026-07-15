@@ -26,12 +26,7 @@ _ALLOWED_TRANSITIONS: dict[WorkerJobStatus, frozenset[WorkerJobStatus]] = {
 
 
 def _default_max_tool_calls() -> int:
-    try:
-        from bootstrap.settings import get_settings
-
-        return get_settings().default_persona_max_tool_calls
-    except Exception:
-        return 50
+    return 50
 
 
 class PersonaBudget(BaseModel):

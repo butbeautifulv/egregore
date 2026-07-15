@@ -6,6 +6,7 @@ from typing import Any
 import structlog
 
 from cys_core.application.ports.agent_registry import AgentRegistryPort
+from cys_core.application.ports.metrics import MetricsPort
 from cys_core.application.ports.sandbox import SandboxConnector
 from cys_core.application.ports.tracing_ports import WorkerTracingPort
 from cys_core.application.ports.workspace_store import WorkspaceStorePort
@@ -37,6 +38,7 @@ from cys_core.application.workers.tool_execution_tracker import (
     seed_job_from_persona_manifest,
     tool_succeeded,
 )
+from cys_core.application.runtime_config import get_worker_max_attempts, get_worker_triage_max_attempts
 from cys_core.application.workspace.persona_resolver import resolve_worker_agent_definition
 from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
@@ -126,6 +128,8 @@ class RunWorkerJob:
         follow_up_aggregator: FollowUpAggregator | None = None,
         plan_follow_up_runner: PlanFollowUpRunner | None = None,
         workspace_store: WorkspaceStorePort | None = None,
+        metrics: MetricsPort | None = None,
+        build_job_trace_metadata: Any | None = None,
     ) -> None:
         self._context_builder = context_builder
         self._agent_executor = agent_executor
@@ -144,6 +148,8 @@ class RunWorkerJob:
         self.resolve_legacy_tools = resolve_legacy_tools
         self.make_load_skill_tool = make_load_skill_tool
         self._workspace_store = workspace_store
+        self._metrics = metrics
+        self._build_job_trace_metadata = build_job_trace_metadata
 
     def _workspace_id_for_job(self, job: WorkerJob, investigation_id: str) -> str:
         store = self._context_builder._engagement_store
@@ -297,9 +303,8 @@ class RunWorkerJob:
             self._job_finalizer.mark_persona_completed(job)
         job_state["status"] = "success"
         await self._job_finalizer.mark_success(job, investigation_id)
-        from cys_core.observability.metrics import metrics
-
-        metrics.record_worker_job_salvaged(job.persona, reason)
+        if self._metrics is not None:
+            self._metrics.record_worker_job_salvaged(job.persona, reason)
         return RunResult(
             job_id=job.job_id,
             persona=job.persona,
@@ -362,9 +367,9 @@ class RunWorkerJob:
                     seed_job_from_persona_manifest(job.job_id, manifest, mark_siem_done=True)
 
     def _build_job_span_attrs(self, job: WorkerJob, investigation_id: str, inv_ctx: dict) -> dict:
-        from cys_core.observability.trace_attributes import build_job_trace_metadata
-
-        trace_meta = build_job_trace_metadata(
+        if self._build_job_trace_metadata is None:
+            return {}
+        trace_meta = self._build_job_trace_metadata(
             persona=job.persona,
             job_id=job.job_id,
             correlation_id=job.correlation_id,
@@ -462,13 +467,10 @@ class RunWorkerJob:
             engagement_id=investigation_id,
             tenant_id=job.tenant_id,
         ):
-            from bootstrap.settings import get_settings
-
-            worker_settings = get_settings()
             max_attempts = (
-                worker_settings.worker_triage_max_attempts
+                get_worker_triage_max_attempts()
                 if job.persona in _TRIAGE_PERSONAS
-                else worker_settings.worker_max_attempts
+                else get_worker_max_attempts()
             )
             for attempt in range(max_attempts):
                 result = await self._agent_executor.run(

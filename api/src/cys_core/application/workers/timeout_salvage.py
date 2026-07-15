@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any
 
-from bootstrap.settings import get_settings
+from cys_core.application.runtime_config import get_timeout_salvage_summary_max
 from cys_core.application.workers.tool_execution_tracker import get_merged_manifest
 from cys_core.domain.evidence.models import EvidenceRef
 
@@ -34,7 +34,7 @@ def _is_ladder_block_output(preview: str) -> bool:
 
 def _truncate_summary(text: str) -> str:
     cleaned = " ".join(text.split())
-    summary_max = get_settings().timeout_salvage_summary_max
+    summary_max = get_timeout_salvage_summary_max()
     if len(cleaned) <= summary_max:
         return cleaned
     return cleaned[:summary_max] + "…"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import logging
 from typing import Any
@@ -20,6 +21,7 @@ from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, A
 from cys_core.application.runtime_config import (
     get_max_planner_personas,
     get_planner_default_execution_mode,
+    get_planner_default_post_processors,
     get_planner_fallback_personas,
 )
 from cys_core.domain.catalog.models import PlannerPack, ProfilePack
@@ -33,9 +35,7 @@ _DEFAULT_POST_PROCESSORS = ["advisory_consultant_fallback", "staged_soc_intel_fo
 
 
 def _default_post_processors() -> list[str]:
-    from bootstrap.settings import get_settings
-
-    raw = get_settings().planner_default_post_processors
+    raw = get_planner_default_post_processors()
     parsed = [p.strip() for p in raw.split(",") if p.strip()]
     return parsed or list(_DEFAULT_POST_PROCESSORS)
 
@@ -55,6 +55,7 @@ class CatalogPlannerStrategy:
         profile_id: str = "cybersec-soc",
         application_tracing: ApplicationTracingPort | None = None,
         engagement_egress: EngagementEgressPort | None = None,
+        reload_personas: Callable[[], None] | None = None,
     ) -> None:
         self.runtime = runtime
         self.engagement_store = engagement_store
@@ -65,6 +66,7 @@ class CatalogPlannerStrategy:
         self.profile_id = profile_id
         self._tracing = application_tracing or NOOP_APPLICATION_TRACING
         self._engagement_egress = engagement_egress
+        self._reload_personas = reload_personas
 
     def _profile_pack(self) -> ProfilePack:
         for profile in self.agent_catalog.list_profiles():
@@ -85,9 +87,8 @@ class CatalogPlannerStrategy:
         personas = self.resource_source.list_worker_personas(profile_id=self.profile_id)
         if personas:
             return personas
-        from cys_core.infrastructure.catalog.catalog_registry import reload_agent_registry
-
-        reload_agent_registry()
+        if self._reload_personas is not None:
+            self._reload_personas()
         return self.resource_source.list_worker_personas(profile_id=self.profile_id)
 
     def _max_personas(self) -> int:

@@ -10,14 +10,12 @@ from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PEND
 from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
 from cys_core.application.use_cases.start_work_order import (
     INITIAL_QA_PENDING,
-    StartWorkOrder,
     WorkOrderValidationError,
 )
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
 from interfaces.api.authz_helpers import require_engagement_relation, visible_workspace_ids
 from interfaces.api.follow_up_schemas import FollowUpIn, FollowUpListOut, FollowUpOut, FollowUpTurnOut
-from interfaces.api.follow_ups import _get_enqueue_follow_up
 from interfaces.api.planner_tasks import spawn_engagement_planner
 from interfaces.api.tenant_deps import require_tenant_match_http
 from interfaces.api.work_order_schemas import WorkOrderCreateIn, WorkOrderListOut, WorkOrderOut
@@ -25,35 +23,6 @@ from interfaces.api.work_order_schemas import WorkOrderCreateIn, WorkOrderListOu
 router = APIRouter(prefix="/v1", tags=["work-orders"])
 
 _MAX_LIST_LIMIT = 100
-
-
-def _work_order_store():
-    from cys_core.infrastructure.work_order.adapter import WorkOrderStore
-
-    return WorkOrderStore(get_container().get_engagement_state_store())
-
-
-def _start_work_order() -> StartWorkOrder:
-    container = get_container()
-    authz = container.get_authz_service()
-
-    def _write_authz_tuples(tuples):
-        authz.write_tuples(tuples)
-
-    return StartWorkOrder(
-        work_order_store=_work_order_store(),
-        start_engagement=container.get_start_engagement(),
-        memory_writer=container.get_memory_write_service(),
-        memory_reader=container.get_memory_read_service(),
-        agent_catalog=container.get_agent_catalog(),
-        metrics=container.get_metrics_port(),
-        job_store=container.get_job_store(),
-        queue=container.get_job_queue(),
-        engagement_egress=container.get_engagement_egress(),
-        engagement_store=container.get_engagement_state_store(),
-        workspace_store=container.get_workspace_store(),
-        authz_tuple_writer=_write_authz_tuples if authz.mode != "off" else None,
-    )
 
 
 @router.get("/work-orders", response_model=WorkOrderListOut)
@@ -73,7 +42,7 @@ async def list_work_orders(
             cursor=cursor,
         )
     except Exception as exc:
-        from cys_core.infrastructure.engagement.list_cursor import InvalidListCursor
+        from cys_core.domain.engagement.pagination import InvalidListCursor
 
         if isinstance(exc, InvalidListCursor):
             raise HTTPException(status_code=400, detail="invalid_cursor") from exc
@@ -103,7 +72,7 @@ async def create_work_order(
     wo_request = body.to_domain_request()
     if wo_request.tenant_id != tenant_id:
         wo_request = wo_request.model_copy(update={"tenant_id": tenant_id})
-    start = _start_work_order()
+    start = get_container().get_start_work_order()
     try:
         engagement, decision, job_ids = await start.execute(wo_request)
     except WorkOrderValidationError as exc:
@@ -137,7 +106,7 @@ async def get_work_order(
         engagement_id=work_order_id,
         relation="can_view",
     )
-    store = _work_order_store()
+    store = get_container().get_work_order_store()
     work_order = store.get(tenant_id, work_order_id)
     if work_order is None:
         raise HTTPException(status_code=404, detail="work_order_not_found")
@@ -154,7 +123,7 @@ async def list_work_order_follow_ups(
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> FollowUpListOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
-    use_case = _get_enqueue_follow_up()
+    use_case = get_container().get_enqueue_follow_up()
     turns = use_case.list_turns(tenant_id, work_order_id)
     return FollowUpListOut(turns=[FollowUpTurnOut(**item) for item in turns])
 
@@ -172,7 +141,7 @@ async def create_work_order_follow_up(
         engagement_id=work_order_id,
         relation="can_operate",
     )
-    use_case = _get_enqueue_follow_up()
+    use_case = get_container().get_enqueue_follow_up()
     from cys_core.application.use_cases.enqueue_follow_up import FollowUpError
 
     try:

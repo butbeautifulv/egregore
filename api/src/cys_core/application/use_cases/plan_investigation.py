@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from cys_core.application.planning.catalog_planner_strategy import CatalogPlannerStrategy
@@ -29,6 +30,7 @@ class PlanInvestigation:
         profile_id: str = "cybersec-soc",
         application_tracing: ApplicationTracingPort | None = None,
         engagement_egress: EngagementEgressPort | None = None,
+        reload_personas: Callable[[], None] | None = None,
     ) -> None:
         self._strategy = CatalogPlannerStrategy(
             runtime=runtime,
@@ -40,6 +42,7 @@ class PlanInvestigation:
             profile_id=profile_id,
             application_tracing=application_tracing or NOOP_APPLICATION_TRACING,
             engagement_egress=engagement_egress,
+            reload_personas=reload_personas,
         )
         self.runtime = runtime
         self.engagement_store = engagement_store

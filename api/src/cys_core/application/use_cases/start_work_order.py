@@ -18,7 +18,7 @@ from cys_core.domain.follow_up.models import FOLLOW_UP_PHASE
 from cys_core.domain.work_order.intake import WorkOrderIntake
 from cys_core.domain.work_order.models import WorkOrderRequest
 from cys_core.domain.workers.models import WorkerJob
-from cys_core.infrastructure.work_order.adapter import WorkOrderStore
+from cys_core.application.ports.work_order import WorkOrderStorePort
 
 INITIAL_QA_PENDING = "initial_qa_pending"
 
@@ -46,7 +46,7 @@ class StartWorkOrder:
     def __init__(
         self,
         *,
-        work_order_store: WorkOrderStore,
+        work_order_store: WorkOrderStorePort,
         start_engagement: StartEngagement,
         memory_writer=None,
         memory_reader=None,

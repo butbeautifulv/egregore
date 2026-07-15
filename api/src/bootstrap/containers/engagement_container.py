@@ -201,6 +201,7 @@ class EngagementContainer:
                 meta_planner=self.get_meta_planner(),
                 dispatch=self.get_dispatch_event(),
                 workspace_store=container.get_workspace_store(),
+                build_job_trace_metadata=container.get_build_job_trace_metadata(),
             )
         )
 
@@ -327,6 +328,8 @@ class EngagementContainer:
             return self._plan_investigation
         from cys_core.application.use_cases.plan_investigation import PlanInvestigation
 
+        from cys_core.infrastructure.catalog.catalog_registry import reload_agent_registry
+
         container = self._container
         self._plan_investigation = PlanInvestigation(
             runtime=self.get_agent_runtime(),
@@ -336,6 +339,7 @@ class EngagementContainer:
             agent_catalog=container.get_agent_catalog(),
             application_tracing=container.get_application_tracing_port(),
             engagement_egress=self.get_engagement_egress(),
+            reload_personas=reload_agent_registry,
         )
         return self._plan_investigation
 

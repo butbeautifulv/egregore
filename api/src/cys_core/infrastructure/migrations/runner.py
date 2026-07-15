@@ -5,9 +5,7 @@ from typing import Any, cast
 
 import psycopg
 
-from bootstrap.paths import find_api_root
-
-_DEFAULT_MIGRATIONS_DIR = find_api_root(Path(__file__).resolve().parent) / "migrations"
+_DEFAULT_MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 
 
 def apply_migrations(postgres_url: str, migrations_dir: Path | None = None) -> list[str]:

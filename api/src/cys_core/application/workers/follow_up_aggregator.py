@@ -89,13 +89,15 @@ class FollowUpAggregator:
                 continue
             lines.append(f"{record.persona} ({job_id}): {record.status.value}")
         if self._memory_reader is not None:
-            from bootstrap.settings import get_settings
+            from cys_core.application.runtime_config import (
+                get_follow_up_merge_query_limit,
+                get_follow_up_merge_summary_max,
+            )
 
-            merge_settings = get_settings()
-            query_limit = merge_settings.follow_up_merge_query_limit
-            summary_max = merge_settings.follow_up_merge_summary_max
+            merge_settings_query_limit = get_follow_up_merge_query_limit()
+            summary_max = get_follow_up_merge_summary_max()
             for entry in self._memory_reader.query_investigation(
-                tenant_id, investigation_id, limit=query_limit
+                tenant_id, investigation_id, limit=merge_settings_query_limit
             ):
                 if entry.source_job_id not in child_ids:
                     continue
