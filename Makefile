@@ -1,4 +1,4 @@
-.PHONY: verify-architecture domain-gate run fga-validate
+.PHONY: verify-architecture domain-gate run fga-validate dev-web-ui
 
 verify-architecture:
 	uv run python scripts/verify_import_boundaries.py
@@ -20,3 +20,6 @@ fga-validate:
 
 run:
 	cd tui && $(MAKE) run
+
+dev-web-ui:
+	cd web_ui && bun run dev

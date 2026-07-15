@@ -98,9 +98,9 @@ for batch in "${BATCHES[@]}"; do
   COV_ARGS=()
   if [[ "$WITH_COV" == 1 ]]; then
     COV_ARGS=(
-      --cov=cys_core/domain
-      --cov=cys_core/application
-      --cov=cys_core/infrastructure
+      --cov=src/cys_core/domain
+      --cov=src/cys_core/application
+      --cov=src/cys_core/infrastructure
       --cov-append
       --cov-fail-under=0
     )

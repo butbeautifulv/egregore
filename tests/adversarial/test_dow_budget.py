@@ -16,7 +16,7 @@ from interfaces.gateways.tool.server import create_app
         "high-risk tool chain depth check isn't reading the patched "
         "max_high_risk_tool_chain_depth, or ToolChainPolicy/get_tool_chain_policy() "
         "caches independently of the container reset. Needs tracing through "
-        "bootstrap/containers/tools_container.py before un-xfailing. See "
+        "src/bootstrap/containers/tools_container.py before un-xfailing. See "
         "docs/CI_CD_KNOWN_GAPS.md."
     ),
     strict=False,
