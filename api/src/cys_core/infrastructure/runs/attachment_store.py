@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -12,19 +13,9 @@ def _safe_filename(name: str) -> str:
     return re.sub(r"[^\w.\-]+", "_", base) or "attachment.bin"
 
 
-def _safe_path_segment(value: str) -> str:
-    """Reject anything but a single, traversal-safe path component.
-
-    tenant_id/run_id come straight from request input (URL path, request
-    body) and are used as filesystem path segments — unlike filename, they
-    were never sanitized, letting a value like "../../etc" escape the
-    attachment root (CodeQL py/path-injection).
-    """
-    segment = Path(value).name
-    segment = re.sub(r"[^\w.\-]+", "_", segment) or "_"
-    if segment in (".", ".."):
-        segment = "_"
-    return segment
+def _opaque_segment(value: str) -> str:
+    """Map tenant/run ids to a non-user-controlled path component."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 class FilesystemAttachmentStore:
@@ -32,15 +23,7 @@ class FilesystemAttachmentStore:
         self._root = Path(root or get_run_attachments_dir())
 
     def _run_dir(self, tenant_id: str, run_id: str) -> Path:
-        run_dir = (
-            self._root
-            / _safe_path_segment(tenant_id)
-            / _safe_path_segment(run_id)
-        ).resolve()
-        root = self._root.resolve()
-        if root not in run_dir.parents and run_dir != root:
-            raise ValueError("path traversal detected")
-        return run_dir
+        return self._root / _opaque_segment(tenant_id) / _opaque_segment(run_id)
 
     def save(self, tenant_id: str, run_id: str, filename: str, data: bytes) -> str:
         dest_dir = self._run_dir(tenant_id, run_id)
