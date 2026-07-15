@@ -450,6 +450,7 @@ class Settings(BaseSettings):
         default=0.9, validation_alias="WORKER_SOFT_TIMEOUT_FRACTION"
     )
     worker_dequeue_timeout_s: float = Field(default=2.0, validation_alias="WORKER_DEQUEUE_TIMEOUT_S")
+    execution_backend: str = Field(default="in_process", validation_alias="EXECUTION_BACKEND")
 
     reconcile_synthesis_stale_multiplier: float = Field(
         default=2.0, validation_alias="RECONCILE_SYNTHESIS_STALE_MULTIPLIER"

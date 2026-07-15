@@ -137,6 +137,13 @@ class EngagementContainer:
         if persona not in self._worker_orchestrators:
             from interfaces.worker.orchestrator import WorkerOrchestrator
 
+            backend_kind = self.settings.execution_backend
+            if backend_kind != "in_process":
+                raise NotImplementedError(
+                    f"execution_backend={backend_kind!r} is not wired yet "
+                    "(planned for Phase 2/3 of docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md); "
+                    "only 'in_process' is available today"
+                )
             self._worker_orchestrators[persona] = WorkerOrchestrator(persona=persona)
         return self._worker_orchestrators[persona]
 

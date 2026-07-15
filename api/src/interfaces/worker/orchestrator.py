@@ -8,6 +8,7 @@ import structlog
 from bootstrap.container import get_container
 from bootstrap.settings import settings
 from cys_core.application.bus_engagement import normalize_correlation_id
+from cys_core.application.ports.execution_backend import ExecutionBackend
 from cys_core.application.workers.tool_execution_tracker import (
     clear_tool_execution_count,
     get_tool_execution_count,
@@ -18,6 +19,7 @@ from cys_core.domain.security.factory import get_input_sanitizer
 from cys_core.domain.workers.job_budget import JobBudgetTracker
 from cys_core.domain.workers.models import RunResult, WorkerJob
 from cys_core.infrastructure.bus_transport import get_bus_transport
+from cys_core.infrastructure.execution.in_process import InProcessExecutionBackend
 from cys_core.infrastructure.policy.budget_adapter import enrich_job_budget
 from cys_core.infrastructure.sandbox import get_sandbox_connector
 from cys_core.observability.tracing import bind_correlation_id, reset_correlation_id
@@ -72,6 +74,7 @@ class WorkerOrchestrator:
         registry: AgentRegistry | None = None,
         transport: Any = None,
         sanitizer: Any = None,
+        execution_backend: ExecutionBackend | None = None,
     ) -> None:
         self.persona = persona
         self.runtime = runtime or get_runtime()
@@ -94,6 +97,7 @@ class WorkerOrchestrator:
             queue=self.queue,
             sanitizer=self.sanitizer,
         )
+        self.execution_backend = execution_backend or InProcessExecutionBackend(self._run_worker_job)
 
     async def run_job(self, job: WorkerJob) -> RunResult:
         container = get_container()
@@ -173,7 +177,7 @@ class WorkerOrchestrator:
                 soft_timeout = job_timeout * container.settings.worker_soft_timeout_fraction
                 try:
                     return await asyncio.wait_for(
-                        self._run_worker_job.execute(job, budgeted, session_id, job_state),
+                        self.execution_backend.execute(job, budgeted, session_id, job_state),
                         timeout=soft_timeout,
                     )
                 except TimeoutError:
