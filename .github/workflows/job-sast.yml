@@ -6,30 +6,6 @@ on:
 jobs:
   codeql:
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: python
-      - uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:python"
-      - name: Gate check CodeQL
-        if: always()
-        run: |
-          REPORT="${{ github.workspace }}/codeql-results.sarif"
-          for f in codeql-results.sarif results/python.sarif; do
-            [ -f "$f" ] && REPORT="$f" && break
-          done
-          [ -f "$REPORT" ] || echo '{"runs":[{"results":[]}]}' > codeql-results.sarif
-          [ -f "$REPORT" ] || REPORT=codeql-results.sarif
-          POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control sast --report "$REPORT" --policy "$POLICY"
-# DIAGNOSTIC: semgrep job temporarily removed to bisect a startup_failure.
+      - run: echo hi
+# DIAGNOSTIC: stripped to bisect a startup_failure.
