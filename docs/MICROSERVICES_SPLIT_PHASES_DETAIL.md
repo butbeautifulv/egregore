@@ -262,6 +262,48 @@ Acceptance: контейнеров/K8s ещё нет, переключается
 
 ---
 
+## Открытие E: `JobStorePort` не хранит сериализованный job — вариант (б) из 3.1 требует миграции схемы, которой ещё нет
+
+Найдено при реализации Phase 3. `cys_core/application/ports/job_store.py` — `JobRecord`
+хранит только лёгкие метаданные (`job_id`, `session_id`, `persona`, `status`,
+`pending_hitl`, `correlation_id`, `tenant_id`, `event_id`, ошибки) — **не** сам `WorkerJob`/
+`budgeted`/`session_id`-контекст, нужный, чтобы реально вызвать `execute()`. То есть
+вариант (б) из 3.1 ("под читает job по `RUN_ID` из `job_store`") сегодня физически
+нечем читать — потребовал бы отдельную миграцию схемы + новый метод порта
+(`get_payload(job_id)`/аналог), что само по себе отдельная под-фаза, а не деталь Job-спеки.
+
+**Решение для этой фазы**: вариант (а) — передать envelope как значение env var
+(`JOB_PAYLOAD_JSON`) в теле K8s Job. Один job — один под, envelope одного job'а
+(job+budgeted+session_id, без сжатия) на практике далеко умещается в лимит K8s на
+суммарный размер env (обычно единицы КБ на такой payload против лимита в районе
+1 МБ на под). Если это когда-то перестанет умещаться (очень большие payload'ы) —
+тогда действительно нужна отдельная под-фаза на job_store-схему; не блокирует эту.
+
+## Открытие F: `K8sSandboxConnector.create()`, вызванный изнутри пода, который сам же породил `K8sExecutionBackend`, создаст **второй**, паразитный Job
+
+Прямое продолжение Открытия C, но конкретнее, чем "решить один раз" — вот что происходит
+буквально: `K8sExecutionBackend` (новый, Phase 3.2) создаёт под через Batch API напрямую
+(decision (б) из Открытия C). Внутри этого пода запускается `run-sandboxed-job` →
+`RunWorkerJob.execute()` → `_create_sandbox()` → `self.sandbox.acreate(run_id, ...)`, где
+`self.sandbox` — это **новый экземпляр** `K8sSandboxConnector` (свежий процесс, пустой
+`_job_names`). Guard `"sandbox already active for run_id"` в `create()` проверяет только
+`_job_names` **этого** экземпляра — он **не сработает**, потому что это другой процесс.
+Вместо явной ошибки `create()` молча создаст **второй**, паразитный K8s Job — хуже, чем
+падение: тихая утечка ресурсов, а не громкий фейл.
+
+**Решение**: `K8sSandboxConnector` получает флаг `credentials_only: bool` (из
+`settings.k8s_sandbox_credentials_only`, читаемого через env `K8S_SANDBOX_CREDENTIALS_ONLY`).
+Когда `True` — `create()`/`acreate()` **не** вызывают `_create_job`/`_wait_job_ready`
+вообще, а сразу минтят и возвращают `SandboxCredentials` (под уже существует — это и есть
+текущий контекст исполнения). `K8sExecutionBackend` кладёт
+`K8S_SANDBOX_CREDENTIALS_ONLY=true` в env спеки пода, которую сам создаёт — так что
+`get_sandbox_connector()` внутри `execute()`, запущенного в этом поде, увидит флаг через
+обычный `Settings` (env-driven) и не попытается породить ещё один Job. Снаружи пода
+(текущее прямое использование `K8sSandboxConnector` где угодно ещё) флаг остаётся `False`
+по умолчанию — поведение не меняется.
+
+---
+
 ## Phase 3 — container backend, закрытие задокументированного разрыва
 
 **3.0. Сначала — зафиксировать факт, а не чинить вслепую.** Текущий K8s Job template
