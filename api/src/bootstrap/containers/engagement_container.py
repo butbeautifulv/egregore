@@ -168,9 +168,17 @@ class EngagementContainer:
             elif backend_kind == "docker":
                 from cys_core.infrastructure.execution.docker_backend import DockerExecutionBackend
 
+                extra_run_args: list[str] = []
+                if self.settings.docker_network:
+                    extra_run_args += ["--network", self.settings.docker_network]
+                if self.settings.docker_env_file:
+                    extra_run_args += ["--env-file", self.settings.docker_env_file]
                 self._worker_orchestrators[persona] = WorkerOrchestrator(
                     persona=persona,
-                    execution_backend=DockerExecutionBackend(image=self.settings.docker_worker_image),
+                    execution_backend=DockerExecutionBackend(
+                        image=self.settings.docker_worker_image,
+                        extra_run_args=extra_run_args,
+                    ),
                 )
             else:
                 raise NotImplementedError(

@@ -372,6 +372,22 @@ class Settings(BaseSettings):
         description="Image DockerExecutionBackend runs via `docker run` for dev/CI "
         "job execution without a real Kubernetes cluster.",
     )
+    docker_network: str = Field(
+        default="",
+        validation_alias="DOCKER_NETWORK",
+        description="Docker network the sandboxed job container joins (e.g. the "
+        "docker-compose project network, so it can reach postgres/redis by service "
+        "name). Empty uses the docker daemon's default bridge — same as today.",
+    )
+    docker_env_file: str = Field(
+        default="",
+        validation_alias="DOCKER_ENV_FILE",
+        description="Path to an env file (e.g. deploy/.secrets/egregore-local.env) "
+        "passed to the sandboxed job container via `docker run --env-file`. A "
+        "`docker run` child does not inherit the parent process's environment the "
+        "way SubprocessExecutionBackend's plain subprocess does, so without this "
+        "the container has no DEEPSEEK_API_KEY/POSTGRES_HOST/etc.",
+    )
     k8s_sandbox_ttl_seconds: float = Field(
         default=600.0,
         validation_alias="K8S_SANDBOX_TTL_SECONDS",

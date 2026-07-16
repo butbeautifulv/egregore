@@ -12,6 +12,7 @@ wheels/
 # Environment and secrets
 .env
 .env.local
+deploy/.secrets/
 
 # Test / tooling
 .pytest_cache/

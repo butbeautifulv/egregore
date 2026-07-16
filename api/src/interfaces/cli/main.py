@@ -96,7 +96,7 @@ def cmd_run_sandboxed_job(args: argparse.Namespace) -> int:
     2.2a/2.2b. Not for interactive use.
     """
     get_container()
-    configure_logging("egregore-worker-sandboxed")
+    configure_logging("egregore-worker-sandboxed", stream=sys.stderr)
     setup_otel(service_name="egregore-worker-sandboxed")
     from cys_core.infrastructure.execution.envelope import SubprocessJobEnvelope
     from cys_core.infrastructure.execution.sandboxed_entrypoint import execute_sandboxed_job

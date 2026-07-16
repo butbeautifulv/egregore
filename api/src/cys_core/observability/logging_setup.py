@@ -41,8 +41,15 @@ def _add_otel_context(
     return event_dict
 
 
-def configure_logging(service_name: str) -> None:
-    """Configure structlog JSON logging for stdout (Loki/Promtail ingestion)."""
+def configure_logging(service_name: str, *, stream: Any = None) -> None:
+    """Configure structlog JSON logging for stdout (Loki/Promtail ingestion).
+
+    ``stream`` defaults to stdout for every long-running service (serve,
+    worker daemon, coordinator/critic daemons) where a container runtime
+    scrapes stdout for logs. ``run-sandboxed-job`` is the one caller that
+    passes stderr instead: its stdout is the SubprocessExecutionBackend IPC
+    channel (a single final RunResult JSON line) and must not be interleaved
+    with per-event log lines."""
     global _configured
     if _configured:
         return
@@ -85,7 +92,7 @@ def configure_logging(service_name: str) -> None:
         foreign_pre_chain=shared_processors,
     )
 
-    handler = logging.StreamHandler(sys.stdout)
+    handler = logging.StreamHandler(stream or sys.stdout)
     handler.setFormatter(formatter)
 
     root = logging.getLogger()

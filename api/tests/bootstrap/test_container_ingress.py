@@ -52,6 +52,57 @@ def test_container_worker_orchestrator_cached_by_persona(monkeypatch):
 
 
 @pytest.mark.unit
+def test_docker_execution_backend_forwards_network_and_env_file(monkeypatch):
+    """Live infra testing (docker/.secrets local stack) found DockerExecutionBackend
+    wired with zero extra_run_args: `docker run` doesn't inherit the parent's env
+    or join any particular network the way a plain subprocess does, so a job
+    container spawned this way couldn't reach postgres/redis/the LLM provider.
+    docker_network/docker_env_file settings close that gap."""
+    monkeypatch.setenv("EXECUTION_BACKEND", "docker")
+    monkeypatch.setenv("DOCKER_NETWORK", "deploy_default")
+    monkeypatch.setenv("DOCKER_ENV_FILE", "deploy/.secrets/egregore-local.env")
+    container = Container(Settings(use_kafka=False))
+    captured: dict[str, object] = {}
+
+    class FakeDockerBackend:
+        def __init__(self, *, image, extra_run_args=None):
+            captured["image"] = image
+            captured["extra_run_args"] = extra_run_args
+
+    monkeypatch.setattr(
+        "cys_core.infrastructure.execution.docker_backend.DockerExecutionBackend",
+        FakeDockerBackend,
+    )
+
+    container.get_worker_orchestrator(persona="soc")
+
+    assert captured["extra_run_args"] == [
+        "--network", "deploy_default",
+        "--env-file", "deploy/.secrets/egregore-local.env",
+    ]
+
+
+@pytest.mark.unit
+def test_docker_execution_backend_omits_args_when_unset(monkeypatch):
+    monkeypatch.setenv("EXECUTION_BACKEND", "docker")
+    container = Container(Settings(use_kafka=False))
+    captured: dict[str, object] = {}
+
+    class FakeDockerBackend:
+        def __init__(self, *, image, extra_run_args=None):
+            captured["extra_run_args"] = extra_run_args
+
+    monkeypatch.setattr(
+        "cys_core.infrastructure.execution.docker_backend.DockerExecutionBackend",
+        FakeDockerBackend,
+    )
+
+    container.get_worker_orchestrator(persona="soc")
+
+    assert captured["extra_run_args"] == []
+
+
+@pytest.mark.unit
 def test_meta_planner_uses_agent_runtime_not_ingress_orchestrator(monkeypatch):
     container = Container(Settings(use_kafka=False))
     runtime = MagicMock()
