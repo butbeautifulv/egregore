@@ -1458,6 +1458,8 @@ failures), после первого в истории проекта полно
 ## 16. Meta-planner moved fully to worker; dirty cross-package imports removed
 ## (task #51 follow-up, done properly instead of deferred)
 
+### 16.1. The original problem: a stub, not a fix
+
 §14's retrospective already named the meta-planner finding (`CatalogPlannerStrategy.execute()`
 actually calls `self.runtime.arun(...)`) as the sharpest irony of Phase A–C: the discipline
 "never guess, always verify by execution" was stated explicitly in the same session that
@@ -1470,7 +1472,7 @@ with the runtime object swapped for `None` and a loud comment. This was flagged 
 a known, accepted regression (meta-LLM async planning silently doesn't work from the api
 build), not a design.
 
-**Fixed for real, not deferred further:**
+### 16.2. Fixed for real, not deferred further
 
 - `cys_core/application/planning/*` (catalog_planner_strategy.py, prompt_builder.py,
   post_processors.py, runtime.py, signals.py) and `cys_core/application/use_cases/
@@ -1498,75 +1500,84 @@ build), not a design.
   per-persona job queue for the *dispatch* of planning (not just the LLM call inside it) was a
   deliberate choice over adding a second, parallel consumer-daemon concept next to the
   existing Router/Critic/Coordinator daemons: one queueing mechanism, not two.
-- Reviewing every `bootstrap.container` reach-in from `contracts` (not just the two `ty check`
-  had flagged before) surfaced the same mistake twice more, both worse than the meta-planner
-  case because nothing pointed at them until this pass:
-  - `cys_core/registry/product_context.py` and `discovery_tools.py` both had a
-    `try: from bootstrap.container import get_container ... except Exception:` fallback for
-    resolving the agent catalog — dead in practice (`set_catalog_provider()` is called by both
-    containers' `wire_catalog_ports()`), but structurally wrong: `contracts` reaching into
-    `api`/`worker`'s own composition root. Fixed by wiring `product_context.set_catalog_provider(...)`
-    into both `wire_catalog_ports()` methods (the same pattern `discovery_tools` already used)
-    and deleting the fallback import entirely. `discovery_tools.search_tools()`'s direct
-    `from cys_core.registry.tools import list_tools` (worker-only module, no fallback at all)
-    got the same treatment via a new `set_tool_lister_provider()`, wired only from worker.
-  - **Bigger find**: `contracts`'s shared `PersistenceContainer`/`CatalogContainer` — the ones
-    §1.1 described as having "zero worker/agent-runtime imports, even lazily" — actually
-    carried `get_sandbox_connector()`, `get_persistence_context()`/`get_async_persistence_context()`
-    (LangGraph checkpoint/store, `cys_core.persistence`), `get_context_summarizer()`,
-    `get_reflexion_store()`, and (`CatalogContainer`) `get_tool_registry_port()`, all backed by
-    modules that only exist in `worker`. `api`'s own `Container` delegated all five and even
-    called `configure_persistence_providers(self.get_persistence_context, ...)` unconditionally
-    at bootstrap — none of the five were ever actually invoked from any real `api` code path
-    (confirmed by grep), so this was a live footgun rather than a live crash: present, wired,
-    and guaranteed to `ModuleNotFoundError` the moment anything ever called them from `api`.
-    Fixed by deleting all five from the shared containers and api's `Container`, and moving
-    the real implementations directly onto `worker`'s own `Container` (same public method
-    names, same caching, just no longer claimed as generic).
-  - `cys_core/application/use_cases/route_event.py`'s `RouteEvent` took `plan_catalog=`/
-    `mutation=` constructor args used for nothing except lazily importing api-only
-    `UpdatePlanQuality` inside a `try/except Exception: pass` — silently a no-op every time
-    `worker`'s identical `get_route_event()` wiring called it (worker doesn't have that
-    module either, despite passing the same `plan_catalog=`/`mutation=` args). Replaced with
-    an injected `record_plan_match` hook: `api`'s container builds the real
-    `UpdatePlanQuality`-backed closure, `worker`'s passes none.
-- Running `uv run ty check src` for all three packages for the first time (not just planned in
-  §1's CI design) surfaced two more real, unrelated bugs it happened to catch along the way:
-  `jsonschema` used in `api`'s `start_work_order.py::_validate_intake()` behind a bare
-  `try/except ImportError: pass` was never actually a declared dependency anywhere, so intake
-  schema validation has been silently disabled this whole time — added as a real dependency,
-  removed the swallow. And `api`'s `app.py` had a live `POST /workers/process-one` route
-  calling `get_container().get_worker_orchestrator()` — a method that only exists on `worker`'s
-  `Container`, unconditionally reachable (no `CONTROL_MODE` guard, no try/except), that would
-  `AttributeError` on first real request; deleted (equivalent function is already
-  `egregore worker --once` on `worker`'s own CLI).
 
-**Why this took a second pass instead of being caught in Phase C**: Phase C's own
-"zero-shared-fallback" verification (§14 solution 1) proved `api` and `worker` each *build* and
-*import* independently — it did not prove that every method reachable on a *shared* contracts
-container actually *executes* successfully from both sides, only that both sides can construct
-the container object. A container method that imports its worker-only dependency lazily inside
-the method body passes both the import-boundary check and a full green test suite as long as
-nothing in the test suite happens to call that specific method from the api-configured
-container — which nothing did. The generalizable lesson (extending §14's own solution 5): for
-any container class installed identically into two sibling packages, "both packages can
-construct it" is not sufficient — every public method needs at least one test invoked from each
-sibling's own real wiring, or a lazy per-method import inside a supposedly-generic shared class
-is invisible until something in production finally calls it.
+### 16.3. Dirty cross-package imports found and fixed alongside
 
-**Follow-up 5-whys pass on this section itself**: does the new `WorkerJob(persona="planner",
-work_kind="engagement_plan")` design actually get consumed in a real deployment, not just in
-unit tests that construct `RunWorkerJob`/`EngagementPlannerRunner` directly? Traced the real
-queue-consumption path (`KafkaJobQueue`/`RedisJobQueue`) instead of assuming: job routing by
-persona is enforced client-side, not by the queue itself. `KafkaJobQueue._matches_persona`
-requeues (not drops) a job that doesn't match a worker's own `--persona` filter; `RedisJobQueue`
-ignores persona entirely (one shared list, `job.persona` is only consulted later inside
-`RunWorkerJob`'s own dispatch). Both `scripts/dev.sh` and `deploy/docker-compose.dev.yml` start
-every worker replica with no `--persona` (catch-all) today, which is why this works — it is an
-accident of today's topology, not a guarantee in the code. This isn't new risk introduced by
-this section (every existing persona already depended on the same implicit assumption); it's a
-pre-existing gap this section's own job additionally now depends on. Fixed the observability
-half: `KafkaJobQueue`'s requeue path now increments
+Reviewing every `bootstrap.container` reach-in from `contracts` (not just the two `ty check`
+had flagged before) surfaced the same mistake twice more, both worse than the meta-planner
+case because nothing pointed at them until this pass:
+
+- `cys_core/registry/product_context.py` and `discovery_tools.py` both had a
+  `try: from bootstrap.container import get_container ... except Exception:` fallback for
+  resolving the agent catalog — dead in practice (`set_catalog_provider()` is called by both
+  containers' `wire_catalog_ports()`), but structurally wrong: `contracts` reaching into
+  `api`/`worker`'s own composition root. Fixed by wiring `product_context.set_catalog_provider(...)`
+  into both `wire_catalog_ports()` methods (the same pattern `discovery_tools` already used)
+  and deleting the fallback import entirely. `discovery_tools.search_tools()`'s direct
+  `from cys_core.registry.tools import list_tools` (worker-only module, no fallback at all)
+  got the same treatment via a new `set_tool_lister_provider()`, wired only from worker.
+- **Bigger find**: `contracts`'s shared `PersistenceContainer`/`CatalogContainer` — the ones
+  §1.1 described as having "zero worker/agent-runtime imports, even lazily" — actually
+  carried `get_sandbox_connector()`, `get_persistence_context()`/`get_async_persistence_context()`
+  (LangGraph checkpoint/store, `cys_core.persistence`), `get_context_summarizer()`,
+  `get_reflexion_store()`, and (`CatalogContainer`) `get_tool_registry_port()`, all backed by
+  modules that only exist in `worker`. `api`'s own `Container` delegated all five and even
+  called `configure_persistence_providers(self.get_persistence_context, ...)` unconditionally
+  at bootstrap — none of the five were ever actually invoked from any real `api` code path
+  (confirmed by grep), so this was a live footgun rather than a live crash: present, wired,
+  and guaranteed to `ModuleNotFoundError` the moment anything ever called them from `api`.
+  Fixed by deleting all five from the shared containers and api's `Container`, and moving
+  the real implementations directly onto `worker`'s own `Container` (same public method
+  names, same caching, just no longer claimed as generic).
+- `cys_core/application/use_cases/route_event.py`'s `RouteEvent` took `plan_catalog=`/
+  `mutation=` constructor args used for nothing except lazily importing api-only
+  `UpdatePlanQuality` inside a `try/except Exception: pass` — silently a no-op every time
+  `worker`'s identical `get_route_event()` wiring called it (worker doesn't have that
+  module either, despite passing the same `plan_catalog=`/`mutation=` args). Replaced with
+  an injected `record_plan_match` hook: `api`'s container builds the real
+  `UpdatePlanQuality`-backed closure, `worker`'s passes none.
+
+Running `uv run ty check src` for all three packages for the first time (not just planned in
+§1's CI design) surfaced two more real, unrelated bugs it happened to catch along the way:
+`jsonschema` used in `api`'s `start_work_order.py::_validate_intake()` behind a bare
+`try/except ImportError: pass` was never actually a declared dependency anywhere, so intake
+schema validation has been silently disabled this whole time — added as a real dependency,
+removed the swallow. And `api`'s `app.py` had a live `POST /workers/process-one` route
+calling `get_container().get_worker_orchestrator()` — a method that only exists on `worker`'s
+`Container`, unconditionally reachable (no `CONTROL_MODE` guard, no try/except), that would
+`AttributeError` on first real request; deleted (equivalent function is already
+`egregore worker --once` on `worker`'s own CLI).
+
+### 16.4. Why this took a second pass instead of being caught in Phase C
+
+Phase C's own "zero-shared-fallback" verification (§14 solution 1) proved `api` and `worker` each
+*build* and *import* independently — it did not prove that every method reachable on a *shared*
+contracts container actually *executes* successfully from both sides, only that both sides can
+construct the container object. A container method that imports its worker-only dependency
+lazily inside the method body passes both the import-boundary check and a full green test suite
+as long as nothing in the test suite happens to call that specific method from the
+api-configured container — which nothing did. The generalizable lesson (extending §14's own
+solution 5): for any container class installed identically into two sibling packages, "both
+packages can construct it" is not sufficient — every public method needs at least one test
+invoked from each sibling's own real wiring, or a lazy per-method import inside a
+supposedly-generic shared class is invisible until something in production finally calls it.
+
+### 16.5. Follow-up audit — does the new job actually get consumed in a real deployment?
+
+Does the new `WorkerJob(persona="planner", work_kind="engagement_plan")` design actually get
+consumed in a real deployment, not just in unit tests that construct
+`RunWorkerJob`/`EngagementPlannerRunner` directly? Traced the real queue-consumption path
+(`KafkaJobQueue`/`RedisJobQueue`) instead of assuming: job routing by persona is enforced
+client-side, not by the queue itself. `KafkaJobQueue._matches_persona` requeues (not drops) a
+job that doesn't match a worker's own `--persona` filter; `RedisJobQueue` ignores persona
+entirely (one shared list, `job.persona` is only consulted later inside `RunWorkerJob`'s own
+dispatch). Both `scripts/dev.sh` and `deploy/docker-compose.dev.yml` start every worker replica
+with no `--persona` (catch-all) today, which is why this works — it is an accident of today's
+topology, not a guarantee in the code. This isn't new risk introduced by this section (every
+existing persona already depended on the same implicit assumption); it's a pre-existing gap this
+section's own job additionally now depends on.
+
+Fixed the observability half: `KafkaJobQueue`'s requeue path now increments
 `cys_job_queue_persona_requeued_total{persona=...}` (`cys_core/observability/metrics.py`,
 `record_job_queue_persona_requeued`) so silent starvation of one persona's queue is visible
 instead of invisible; documented the deployment invariant explicitly in `AGENTS.md` (worker pool
@@ -1574,44 +1585,43 @@ must always include a `persona=""` or `persona="planner"` instance). Also added
 `test_kafka_queue_catchall_worker_consumes_planner_job` (`tests/infrastructure/
 test_kafka_queue.py`) — the complementary case the existing persona-filter test suite was
 missing: a `persona=""` worker must return a `persona="planner"` job without requeuing it, not
-just that a persona-scoped worker correctly requeues jobs that aren't its own. This is
-queue-connector-level, not a full `WorkerDaemon`-through-`RunWorkerJob` end-to-end test (that
-would additionally need a real orchestrator/sandbox/bus stack).
+just that a persona-scoped worker correctly requeues jobs that aren't its own.
 
-**Re-examined whether that remaining gap is actually load-bearing** before writing a bigger test
-to close it: `WorkerOrchestrator.process_next()` (`interfaces/worker/orchestrator.py:259-263`) is
-exactly `job = await self.queue.adequeue(...); return await self.run_job(job)` — no persona logic
-of its own — and `WorkerDaemon.run()`'s polling loop just calls `process_next()` repeatedly,
-also persona-agnostic. Every bit of the actual routing risk (does a `persona=""` worker receive
-a `persona="planner"` job, does a persona-scoped worker correctly not swallow it) lives entirely
-inside the queue connector, which the new test above already exercises directly. A full
+**Re-examined whether a heavier end-to-end test was still needed** before writing one:
+`WorkerOrchestrator.process_next()` (`interfaces/worker/orchestrator.py:259-263`) is exactly
+`job = await self.queue.adequeue(...); return await self.run_job(job)` — no persona logic of its
+own — and `WorkerDaemon.run()`'s polling loop just calls `process_next()` repeatedly, also
+persona-agnostic. Every bit of the actual routing risk lives entirely inside the queue
+connector, which the new test above already exercises directly. A full
 `WorkerDaemon`-through-`RunWorkerJob` test would mostly re-integration-test the polling loop
 (already covered by `tests/workers/test_daemon.py` with a mocked orchestrator) wrapped around
-the queue connector (now covered directly) — not exercise any additional class of bug. Downgraded
-from "real gap" to "already sufficiently covered at the two layers where the risk actually
-lives"; not pursuing a heavier end-to-end test for this specific question.
+the queue connector (now covered directly) — not exercise any additional class of bug.
+Downgraded from "real gap" to "already sufficiently covered at the two layers where the risk
+actually lives"; not pursuing a heavier end-to-end test for this specific question.
 
-**Separately checked a different hypothesis this pass**: does moving the planner-job enqueue
-from a fire-and-forget background `asyncio` task (the old `plan_async_background`, called
-*after* the HTTP 202 was already sent) into `StartEngagement.execute()` itself (synchronous,
-*before* the response) introduce a new failure mode — an enqueue failure now propagating into
-the HTTP request instead of failing silently in the background? Checked the sibling code path
-before assuming a regression: `DispatchEvent.dispatch_async()` (`cys_core/application/use_cases/
+**Separately checked a different hypothesis**: does moving the planner-job enqueue from a
+fire-and-forget background `asyncio` task (the old `plan_async_background`, called *after* the
+HTTP 202 was already sent) into `StartEngagement.execute()` itself (synchronous, *before* the
+response) introduce a new failure mode — an enqueue failure now propagating into the HTTP
+request instead of failing silently in the background? Checked the sibling code path before
+assuming a regression: `DispatchEvent.dispatch_async()` (`cys_core/application/use_cases/
 dispatch_event.py`), the pre-existing path every non-META_LLM event/engagement already goes
 through, calls `enqueuer.enqueue_from_routing(...)` exactly the same way — synchronously, no
 try/except. This is the codebase's existing, established convention for this whole class of
 operation (relying on the queue connectors' own in-memory fallback for ordinary broker outages,
 plus `app.py`'s global exception handler for the rare case that still raises), not something
-`StartEngagement`'s new enqueue call deviates from. No fix needed here — confirmed not a
-regression rather than assumed it was fine.
+`StartEngagement`'s new enqueue call deviates from. No fix needed — confirmed not a regression
+rather than assumed it was fine.
 
-**Real bug found and fixed this pass**: `RunWorkerJob._execute_engagement_planner()` calls
-`self._job_finalizer.mark_success(job, investigation_id)` / `mark_runtime_failure(...)` on the
-original `persona="planner"` job exactly like any regular specialist job — but
-`WorkerJobFinalizer.mark_success()`/`finalize_failure()` only special-case follow-up planning
-jobs (`is_follow_up_payload` recognizes `work_kind="follow_up_plan"`), not the new
-`work_kind="engagement_plan"`. Two concrete consequences, traced by reading what the "regular
-job" code path actually does with `job.persona="planner"` rather than assuming it was inert:
+### 16.6. Real bug — planner job's own success/failure corrupting engagement state
+
+`RunWorkerJob._execute_engagement_planner()` calls `self._job_finalizer.mark_success(job,
+investigation_id)` / `mark_runtime_failure(...)` on the original `persona="planner"` job exactly
+like any regular specialist job — but `WorkerJobFinalizer.mark_success()`/`finalize_failure()`
+only special-case follow-up planning jobs (`is_follow_up_payload` recognizes
+`work_kind="follow_up_plan"`), not the new `work_kind="engagement_plan"`. Two concrete
+consequences, traced by reading what the "regular job" code path actually does with
+`job.persona="planner"` rather than assuming it was inert:
 
 1. **Success path, STAGED-mode plans only**: `mark_success()`'s `if not is_follow_up_payload(...)
    or is_follow_up_plan_iteration(...)` block calls `EnqueueNextPlannedPersona.execute(job)`
@@ -1631,13 +1641,12 @@ job" code path actually does with `job.persona="planner"` rather than assuming i
    member of `engagement.planner_plan`, corrupting the specialist-completion bookkeeping that
    `EnqueueSynthesisJob`/`Engagement.specialists_terminal()` read.
 
-**Fix**: added `is_engagement_plan_job(job.payload, persona=job.persona)` (already existed in
-`cys_core/domain/engagement/planner_job.py`, added in this same session) as an explicit
+**Fix**: added `is_engagement_plan_job(job.payload, persona=job.persona)` as an explicit
 exclusion in both `mark_success()` and `finalize_failure()` — the exact same shape of guard that
 already protects `follow_up_plan` jobs, just extended to cover the new job kind alongside it.
 `EngagementPlannerRunner` already fully owns "what happens after the planner job" (enqueuing the
-plan's own jobs on success, publishing an "error" status on failure); `job_finalizer.py` no longer
-duplicates or corrupts that. Locked in with
+plan's own jobs on success, publishing an "error" status on failure); `job_finalizer.py` no
+longer duplicates or corrupts that. Locked in with
 `tests/application/workers/test_engagement_plan_job_finalizer.py` — both new tests were verified
 to actually fail against the pre-fix code (not just pass trivially) before being committed.
 
@@ -1658,31 +1667,57 @@ pipeline special-cases an *existing* kind (here: follow-up jobs) and deciding ex
 the new kind needs the same treatment, not just wiring the new kind's own happy path and trusting
 the shared pipeline to no-op correctly by default.
 
-**Second real bug found this pass, same root cause, different location**: `EngagementPlannerRunner.
-execute()` builds the specialist jobs' payload as `enriched = {**event.payload,
-**self._meta_planner.to_worker_jobs_payload(plan)}`. `event.payload` is `job.payload` verbatim
-(the planner job's own payload, which carries `"work_kind": "engagement_plan"` — see
-`_engagement_plan_event`'s docstring), and `to_worker_jobs_payload()` never sets its own
-`"work_kind"` key to override it. Result: every specialist job a plan spawns (e.g. `"soc"`,
-`"network"`) inherited `work_kind="engagement_plan"` in its payload — data that belongs on the
-planner job, not on the specialist jobs it produces. Compared against
-`PlanFollowUpRunner` (the sibling this class mirrors) to see why *that* one doesn't have the same
-leak: `PlanFollowUpRunner`'s `_follow_up_plan_event()` builds its event payload **fresh** from
-engagement state (`goal`, `operator_message`, `profile_id`, ...) rather than passing the
-triggering job's payload through verbatim, so it never had a `work_kind` key to leak in the first
-place. `EngagementPlannerRunner`'s design choice to reuse `job.payload` directly (deliberate —
-api's `engagement_request_to_security_event()` already built the full event payload once, no
-need to reconstruct it from engagement state the way follow-up re-planning must) is what
-introduced the leak; the two runners solve the "what's in the event payload" problem in
-genuinely different ways, and the difference had a side effect neither implementation intended.
+### 16.7. Second real bug — payload leak into spawned specialist jobs
+
+Same root cause as §16.6, different location: `EngagementPlannerRunner.execute()` builds the
+specialist jobs' payload as `enriched = {**event.payload, **self._meta_planner.to_worker_jobs_payload(plan)}`.
+`event.payload` is `job.payload` verbatim (the planner job's own payload, which carries
+`"work_kind": "engagement_plan"` — see `_engagement_plan_event`'s docstring), and
+`to_worker_jobs_payload()` never sets its own `"work_kind"` key to override it. Result: every
+specialist job a plan spawns (e.g. `"soc"`, `"network"`) inherited `work_kind="engagement_plan"`
+in its payload — data that belongs on the planner job, not on the specialist jobs it produces.
+
+Compared against `PlanFollowUpRunner` (the sibling this class mirrors) to see why *that* one
+doesn't have the same leak: `PlanFollowUpRunner`'s `_follow_up_plan_event()` builds its event
+payload **fresh** from engagement state (`goal`, `operator_message`, `profile_id`, ...) rather
+than passing the triggering job's payload through verbatim, so it never had a `work_kind` key to
+leak in the first place. `EngagementPlannerRunner`'s design choice to reuse `job.payload`
+directly (deliberate — api's `engagement_request_to_security_event()` already built the full
+event payload once, no need to reconstruct it from engagement state the way follow-up
+re-planning must) is what introduced the leak; the two runners solve the "what's in the event
+payload" problem in genuinely different ways, and the difference had a side effect neither
+implementation intended.
 
 Checked the actual blast radius before deciding severity: every consumer of this codebase's new
 `is_engagement_plan_job()` checks `persona == "planner"` **and** `work_kind == "engagement_plan"`
 together, never bare `work_kind` alone, so the leaked value was inert everywhere it was actually
 read this session — not a live incident, but dirty data sitting on every specialist job's payload
 for no reason, and a real risk for the *next* person who adds a consumer that checks `work_kind`
-without also checking `persona` (the exact class of mistake this section's job-finalizer bug
-already was). Fixed with a one-line `enriched.pop("work_kind", None)` before enqueueing, with a
-regression test (`tests/integration/test_engagement_plan_e2e.py`) asserting the specialist jobs'
-payload never contains `"work_kind"` — verified failing without the fix (`git stash`) before
-committing, same discipline as the previous fix in this section.
+without also checking `persona` (the exact class of mistake §16.6 already was). Fixed with a
+one-line `enriched.pop("work_kind", None)` before enqueueing, with a regression test
+(`tests/integration/test_engagement_plan_e2e.py`) asserting the specialist jobs' payload never
+contains `"work_kind"` — verified failing without the fix (`git stash`) before committing, same
+discipline as §16.6.
+
+### 16.8. Verification sweep after §16.6/16.7 (payload-consumption safety, image freshness)
+
+Checked whether the *rest* of `event.payload`'s leaked fields (`goal`, `profile_id`,
+`workspace_id`, ...) beyond `work_kind` could also cause stale-data bugs in the spawned
+specialist jobs, before assuming §16.7's fix was complete: traced `WorkerContextBuilder.job_input()`
+and `RunWorkerJob._resolve_defn()`/`_workspace_id_for_job()`. Both consistently prefer the
+**engagement-store record** over `job.payload` for anything engagement-scoped (`goal` is
+overridden by `engagement.goal` if present; `workspace_id` for persona-resolution/authz is read
+from the engagement record, never from payload) — a real, intentional invariant, not an
+accident. `work_kind` was the only field with no such override, which is exactly why it was the
+one that leaked. No further fix needed here.
+
+Rebuilt `deploy/Dockerfile.worker` after the §16.6/16.7 fixes and asserted via
+`inspect.getsource()` inside the running container that both fixes are present in the built
+image, not just the local venv. Confirmed `docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md` (the
+sandboxed Agent-Execution-plane / `ExecutionBackend` isolation track, §1–§7 of the *other* plan
+document) is an unrelated, not-yet-implemented track — not stale relative to anything in this
+section. One minor, non-blocking observation from tracing through it: under
+`EXECUTION_BACKEND=subprocess`/`k8s` (not today's default — `docker-compose.secure.yml` doesn't
+set it), a `persona="planner"` job would get fully subprocess/pod-sandboxed like any regular
+agent job despite having `tools: []` and needing no MCP Gateway credentials — wasted overhead,
+not a correctness bug.
