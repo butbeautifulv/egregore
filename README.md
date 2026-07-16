@@ -37,22 +37,22 @@ Markdown SSOT: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/OBSERVABILI
 ## Быстрый старт
 
 ```bash
-cd api && uv sync
+cd backend && uv sync
 
 docker compose -f deploy/docker-compose.yml up -d   # Postgres + Redis + Redpanda + Qdrant
 
-cp api/.env.example api/.env   # LLM API key (local only, not committed)
+cp backend/.env.example backend/.env   # LLM API key (local only, not committed)
 
-cd api && uv run egregore info
-cd api && uv run egregore migrate   # apply migrations/*.sql
+cd backend && uv run egregore info
+cd backend && uv run egregore migrate   # apply migrations/*.sql
 ```
 
 ### Operator UI (full stack)
 
 ```bash
 make dev-infra                    # or: docker compose -f deploy/docker-compose.yml up -d
-cd api && uv run egregore serve --port 8080 # or: make dev-api
-cd api && uv run egregore worker --daemon # optional: make dev-worker
+cd backend && uv run egregore serve --port 8080 # or: make dev-api
+cd backend && uv run egregore worker --daemon # optional: make dev-worker
 
 cd web_ui && cp .env.local.example .env.local && bun install && bun run dev
 # or from repo root: make dev-web-ui
@@ -80,22 +80,22 @@ Docker app profile (no host Node/Python): `make dev-docker` (requires `.env`).
 
 ```bash
 # Ingest SIEM event → enqueue SOC worker
-cd api && uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
+cd backend && uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
 
 # Process queued worker job
-cd api && uv run egregore worker --once
+cd backend && uv run egregore worker --once
 
 # Control plane status
-cd api && uv run egregore status
+cd backend && uv run egregore status
 
 # Manual investigation (all workers)
-cd api && uv run egregore session -g "Assess CI/CD pipeline risks"
+cd backend && uv run egregore session -g "Assess CI/CD pipeline risks"
 
 # HTTP API
-cd api && uv run egregore serve --port 8080
+cd backend && uv run egregore serve --port 8080
 
 # Tests (low memory — one pytest process per tests/<dir>/)
-cd api && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## CLI
@@ -142,7 +142,7 @@ cd api && ./scripts/pytest_batches.sh --cov --domain-gate
 
 ```
 egregore/
-├── api/                    # Python/uv backend (pyproject.toml, src/, tests/, agents/)
+├── backend/                # Python/uv backend (pyproject.toml, src/, tests/, agents/)
 │   ├── src/                # cys_core, interfaces, bootstrap, connectors, authz, main.py
 │   ├── agents/             # Product personas, rules, plans, skills
 │   ├── migrations/         # SQL migrations
@@ -151,7 +151,7 @@ egregore/
 ├── web_ui/                 # Operator console (Next.js)
 ├── tui/                    # Operator TUI (Go Bubble Tea)
 ├── docs/
-├── Makefile                # thin dispatcher (Python → api/, UI → web_ui/)
+├── Makefile                # thin dispatcher (Python → backend/, UI → web_ui/)
 └── scripts/                # full-stack dev wrappers, security gates
 ```
 
@@ -184,12 +184,12 @@ egregore/
 | `EGREGORE_MAX_FOLLOW_UP_PLANS` | `3` | Max plan-mode follow-ups per engagement |
 | `PLANNER_TIMEOUT_SECONDS` | `120` | Fallback when async meta-planner stays in planning |
 
-Полный список: [`api/.env.example`](api/.env.example)
+Полный список: [`backend/.env.example`](backend/.env.example)
 
 ## Тестирование
 
 ```bash
-cd api && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## Документация

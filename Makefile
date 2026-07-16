@@ -1,7 +1,7 @@
 .PHONY: verify-architecture domain-gate run fga-validate dev-web-ui clean clean-cache
 
 verify-architecture domain-gate fga-validate:
-	$(MAKE) -C api $@
+	$(MAKE) -C backend $@
 
 run:
 	cd tui && $(MAKE) run

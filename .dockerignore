@@ -17,20 +17,20 @@ config
 .env
 .env.local
 
-# Python API tree — exclude dev/test bulk, keep runtime assets
-api/tests
-api/.venv
-api/.pytest_cache
-api/.ruff_cache
-api/.coverage
-api/docs
-api/scripts
+# Python backend tree — exclude dev/test bulk, keep runtime assets
+backend/tests
+backend/.venv
+backend/.pytest_cache
+backend/.ruff_cache
+backend/.coverage
+backend/docs
+backend/scripts
 
 # Root-level legacy paths (pre-split)
 /tests
 /scripts
 /migrations
 
-# Markdown except api README required by uv/hatch
+# Markdown except backend README required by uv/hatch
 *.md
-!api/README.md
+!backend/README.md

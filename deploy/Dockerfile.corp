@@ -7,17 +7,17 @@ ARG NEXUS_USER
 ARG NEXUS_PASSWORD
 
 FROM ${NEXUS_REGISTRY}/library/python:3.13-slim
-WORKDIR /app/api
+WORKDIR /app/backend
 RUN pip install --no-cache-dir uv
 
 ENV UV_INDEX_URL=https://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_PYPI_HOST}/repository/${NEXUS_PYPI_REPO}/simple
 
-COPY api/pyproject.toml api/uv.lock api/README.md ./
+COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY api/src ./src
-COPY api/agents ./agents
-COPY api/migrations ./migrations
+COPY backend/src ./src
+COPY backend/agents ./agents
+COPY backend/migrations ./migrations
 RUN uv sync --frozen --no-dev
 
 ENV PYTHONUNBUFFERED=1

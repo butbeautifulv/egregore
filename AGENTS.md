@@ -61,15 +61,15 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ## Платформенный код
 
-### Repo layout (`api/src/`)
+### Repo layout (`backend/src/`)
 
-Python backend packages live under **`api/src/`** (`api/src/cys_core`, `api/src/interfaces`, `api/src/bootstrap`, `api/src/connectors`, `api/src/authz`). Import names are unchanged (`from cys_core...`). ASGI entrypoint: **`api/src/main.py`**. Operator UI is **`web_ui/`** (not `ui/`). Product seed **`api/agents/`**. Docker/compose: **`deploy/`**.
+Python backend packages live under **`backend/src/`** (`backend/src/cys_core`, `backend/src/interfaces`, `backend/src/bootstrap`, `backend/src/connectors`, `backend/src/authz`). Import names are unchanged (`from cys_core...`). ASGI entrypoint: **`backend/src/main.py`**. Operator UI is **`web_ui/`** (not `ui/`). Product seed **`backend/agents/`**. Docker/compose: **`deploy/`**.
 
 ### Единые точки входа
 
 - **Events:** `interfaces/ingress/router.py` → `EventIngress`
 - **Workers:** `interfaces/worker/orchestrator.py` → `WorkerOrchestrator`
-- **CLI:** `cd api && uv run egregore`
+- **CLI:** `cd backend && uv run egregore`
 - **Operator UI:** `web_ui/` — Next.js 16, HTTP client to FastAPI (`lib/api-client.ts`)
 - **Operator TUI:** `tui/` — Go Bubble Tea, порт того же контракта (`internal/api/`)
 - **Контракт UI+TUI:** [docs/operator-console-contract.md](docs/operator-console-contract.md)
@@ -163,7 +163,7 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 
 ## Тесты
 
-**Агентам: только батчами** — `cd api && ./scripts/pytest_batches.sh`, не `uv run pytest` на весь `tests/` одним процессом.
+**Агентам: только батчами** — `cd backend && ./scripts/pytest_batches.sh`, не `uv run pytest` на весь `tests/` одним процессом.
 
 - **Точечно** после правок: только затронутые батчи (см. `.cursor/rules/project-egregore-pytest-batches.mdc`).
 - **Полный прогон** — перед PR / после cross-cutting рефакторинга.
@@ -171,14 +171,14 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 Правило: `.cursor/rules/project-egregore-pytest-batches.mdc`.
 
 ```bash
-cd api && ./scripts/pytest_batches.sh
-cd api && ./scripts/pytest_batches.sh --cov --domain-gate
-make -C api domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
-make -C api verify-architecture  # import boundaries + lint-imports + tests/architecture
+cd backend && ./scripts/pytest_batches.sh
+cd backend && ./scripts/pytest_batches.sh --cov --domain-gate
+make -C backend domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
+make -C backend verify-architecture  # import boundaries + lint-imports + tests/architecture
 checkov -d deploy --framework helm,dockerfile --config-file .checkov.yaml --soft-fail \
   --output sarif --output-file-path reports/checkov.sarif  # IaC gate smoke (from repo root)
-cd api && ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
-cd api && USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
+cd backend && ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
+cd backend && USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
 ```
 
 Architecture debt inventory: [`docs/ARCHITECTURE_DEBT.md`](docs/ARCHITECTURE_DEBT.md). Regenerate table: `python3 scripts/arch_inventory.py`.
@@ -203,15 +203,15 @@ Coverage gate: **100%** на `cys_core/domain`.
 
 ## Cursor Cloud specific instructions
 
-**egregore** — CLI + optional FastAPI (`cd api && uv run egregore serve`).
+**egregore** — CLI + optional FastAPI (`cd backend && uv run egregore serve`).
 
 ### Команды
 
 | Действие | Команда |
 |----------|---------|
-| Тесты | `cd api && ./scripts/pytest_batches.sh` |
-| Smoke | `cd api && USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
-| Event flow | `cd api && uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `cd api && uv run egregore worker --once` |
+| Тесты | `cd backend && ./scripts/pytest_batches.sh` |
+| Smoke | `cd backend && USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
+| Event flow | `cd backend && uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `cd backend && uv run egregore worker --once` |
 
 Без API-ключа: `info`, `ingest` (enqueue), `status`, `pytest`.
 
