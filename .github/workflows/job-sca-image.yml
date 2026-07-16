@@ -10,18 +10,35 @@ on:
 jobs:
   trivy-image:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Trivy registry credentials
+        run: |
+          echo "TRIVY_USERNAME=${{ github.actor }}" >> "$GITHUB_ENV"
+          echo "TRIVY_PASSWORD=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_ENV"
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ inputs.image }}
+          scanners: vuln
           severity: CRITICAL,HIGH
           format: sarif
           output: sca.sarif
           exit-code: "0"
-      - name: Gate check
-        run: python scripts/gate-check.py --control sca --report sca.sarif
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: ./.github/actions/gate-and-export
         if: always()
         with:
-          sarif_file: sca.sarif
+          control: sca
+          report: sca.sarif
           category: sca
