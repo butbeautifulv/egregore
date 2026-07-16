@@ -20,7 +20,7 @@ name: Release Gate
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/microservice-refactoring]
   push:
     branches: [main]
   workflow_dispatch:
@@ -239,7 +239,8 @@ jobs:
   build:
     if: |
       github.ref == 'refs/heads/main' ||
-      (github.event_name == 'workflow_dispatch' && inputs.run_supply_chain == true)
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true') ||
+      (github.event_name == 'pull_request' && github.head_ref == 'fix/ci-trivy-container-scan')
     needs: [release-gate]
     runs-on: ubuntu-latest
     permissions:
@@ -272,7 +273,8 @@ jobs:
   sbom:
     if: |
       github.ref == 'refs/heads/main' ||
-      (github.event_name == 'workflow_dispatch' && inputs.run_supply_chain == true)
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true') ||
+      (github.event_name == 'pull_request' && github.head_ref == 'fix/ci-trivy-container-scan')
     needs: [build]
     uses: ./.github/workflows/job-sbom.yml
     secrets: inherit
@@ -280,7 +282,8 @@ jobs:
   container-scan:
     if: |
       github.ref == 'refs/heads/main' ||
-      (github.event_name == 'workflow_dispatch' && inputs.run_supply_chain == true)
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true') ||
+      (github.event_name == 'pull_request' && github.head_ref == 'fix/ci-trivy-container-scan')
     needs: [build]
     uses: ./.github/workflows/job-sca-image.yml
     secrets: inherit
