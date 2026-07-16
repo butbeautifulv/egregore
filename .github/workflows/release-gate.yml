@@ -42,9 +42,12 @@ jobs:
 
   adversarial:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [contracts, worker, api]
     defaults:
       run:
-        working-directory: backend/shared
+        working-directory: backend/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -83,9 +86,12 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [contracts, worker, api]
     defaults:
       run:
-        working-directory: backend/shared
+        working-directory: backend/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -99,9 +105,12 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [contracts, worker, api]
     defaults:
       run:
-        working-directory: backend/shared
+        working-directory: backend/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -115,9 +124,12 @@ jobs:
 
   arch-lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [contracts, worker, api]
     defaults:
       run:
-        working-directory: backend/shared
+        working-directory: backend/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -139,7 +151,10 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend/shared
+        # cys_core/domain only physically lives in contracts/ — worker/api
+        # install it as an editable dependency, they don't have their own
+        # copy of the source tree to measure coverage against.
+        working-directory: backend/contracts
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -234,21 +249,17 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [release-gate]
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tag }}
+    strategy:
+      matrix:
+        service: [api, worker]
     steps:
       - uses: actions/checkout@v4
-      - id: meta
-        run: echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
       - name: Build image
         env:
           REGISTRY: ghcr.io/${{ github.repository }}
         run: |
-          if [ -f deploy/Dockerfile ]; then
-            docker build -f deploy/Dockerfile -t "${REGISTRY}:${{ github.sha }}" .
-          else
-            echo "No deploy/Dockerfile — skipping image build"
-          fi
+          docker build -f "deploy/Dockerfile.${{ matrix.service }}" \
+            -t "${REGISTRY}-${{ matrix.service }}:${{ github.sha }}" .
 
   sbom:
     if: github.ref == 'refs/heads/main'
@@ -259,16 +270,24 @@ jobs:
   container-scan:
     if: github.ref == 'refs/heads/main'
     needs: [build]
+    strategy:
+      matrix:
+        service: [api, worker]
     uses: ./.github/workflows/job-sca-image.yml
     secrets: inherit
     with:
-      image: ghcr.io/${{ github.repository }}:${{ github.sha }}
+      image: ghcr.io/${{ github.repository }}-${{ matrix.service }}:${{ github.sha }}
 
   sign:
     if: github.ref == 'refs/heads/main'
     needs: [container-scan]
+    strategy:
+      matrix:
+        service: [api, worker]
     uses: ./.github/workflows/job-sign.yml
     secrets: inherit
+    with:
+      image: ghcr.io/${{ github.repository }}-${{ matrix.service }}:${{ github.sha }}
 
   deploy-preprod:
     if: github.ref == 'refs/heads/main'

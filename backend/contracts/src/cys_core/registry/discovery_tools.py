@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from cys_core.application.ports.catalog import AgentCatalogPort
 from cys_core.application.ports.persona_ranking import PersonaRankingPort
 from cys_core.application.runtime_config import get_use_dynamic_catalog
@@ -11,6 +13,12 @@ from cys_core.registry.skill_registry import SkillRegistry
 
 _catalog_provider: AgentCatalogPort | None = None
 _ranking_provider: PersonaRankingPort | None = None
+#: cys_core.registry.tools (the LangChain tool registry) is worker-only —
+#: contracts can't import it by name. worker's container wires the real
+#: list_tools() in here at bootstrap; in an api build no provider is ever
+#: set and search_tools() degrades to an empty result instead of trying
+#: (and failing) to import a module that doesn't exist in this build.
+_tool_lister_provider: Callable[..., list[str]] | None = None
 
 
 def set_catalog_provider(catalog: AgentCatalogPort | None) -> None:
@@ -23,22 +31,27 @@ def set_persona_ranking_provider(port: PersonaRankingPort | None) -> None:
     _ranking_provider = port
 
 
+def set_tool_lister_provider(lister: Callable[..., list[str]] | None) -> None:
+    global _tool_lister_provider
+    _tool_lister_provider = lister
+
+
 def _default_catalog() -> AgentCatalogPort | None:
     if not get_use_dynamic_catalog():
         return None
     if _catalog_provider is not None:
         return _catalog_provider
+    # api's and worker's own wire_catalog_ports() call set_catalog_provider()
+    # explicitly at bootstrap — reaching for bootstrap.container here would be
+    # a layering violation (that module is api/worker's own composition root,
+    # structurally absent from contracts). Fallback only for contracts used
+    # standalone before either service's bootstrap has run.
     try:
-        from bootstrap.container import get_container
+        from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 
-        return get_container().get_agent_catalog()
+        return get_agent_catalog()
     except Exception:
-        try:
-            from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
-
-            return get_agent_catalog()
-        except Exception:
-            return None
+        return None
 
 
 def _persona_trust_score(name: str, catalog: AgentCatalogPort | None) -> float:
@@ -123,13 +136,13 @@ def search_tools(
     profile_id: str = "cybersec-soc",
     limit: int = 10,
 ) -> list[dict]:
-    # Lazy: cys_core.registry.tools is worker-only (the LangChain tool
-    # registry) — this function is only ever reached during agent tool
-    # discovery, never from the api build. See plan §2.
-    from cys_core.registry.tools import list_tools
-
+    if _tool_lister_provider is None:
+        # Never wired in an api build (cys_core.registry.tools, the LangChain
+        # tool registry, is worker-only — see plan §2) — this is only ever
+        # reached during agent tool discovery, which never runs from api.
+        return []
     q = query.lower()
-    names = list_tools(profile_id=profile_id)
+    names = _tool_lister_provider(profile_id=profile_id)
     hits = [name for name in names if q in name]
     allowed = [name for name in hits if allow_tool_for_profile(mode, name, profile_id)]
     return [{"name": name} for name in allowed[:limit]]

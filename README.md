@@ -36,23 +36,30 @@ Markdown SSOT: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/OBSERVABILI
 
 ## Быстрый старт
 
+Backend is split into three packages — `contracts` (shared domain/infra),
+`worker` (agent-execution runtime), `api` (FastAPI ingress). See
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md).
+
 ```bash
-cd backend/shared && uv sync
+cd backend/contracts && uv sync
+cd backend/worker && uv sync
+cd backend/api && uv sync
 
 docker compose -f deploy/docker-compose.yml up -d   # Postgres + Redis + Redpanda + Qdrant
 
-cp backend/shared/.env.example backend/shared/.env   # LLM API key (local only, not committed)
+cp backend/api/.env.example backend/api/.env       # LLM API key (local only, not committed)
+cp backend/worker/.env.example backend/worker/.env
 
-cd backend/shared && uv run egregore info
-cd backend/shared && uv run egregore migrate   # apply migrations/*.sql
+cd backend/api && uv run egregore info
+cd backend/api && uv run egregore migrate   # apply migrations/*.sql
 ```
 
 ### Operator UI (full stack)
 
 ```bash
 make dev-infra                    # or: docker compose -f deploy/docker-compose.yml up -d
-cd backend/shared && uv run egregore serve --port 8080 # or: make dev-api
-cd backend/shared && uv run egregore worker --daemon # optional: make dev-worker
+cd backend/api && uv run egregore serve --port 8080    # or: make dev-api
+cd backend/worker && uv run egregore worker --daemon   # optional: make dev-worker
 
 cd web_ui && cp .env.local.example .env.local && bun install && bun run dev
 # or from repo root: make dev-web-ui
@@ -62,7 +69,7 @@ Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8080
 
 **Smoke (consultant advisory):** goal «Как защититься от вирусов?» → Response shows consultant JSON, critic verdict (`critic:{engagement_id}`), coordinator narrative (`coordinator:{engagement_id}`). Enable `STREAM_AGENT_OUTPUT=true` in local env. If consultant findings are summary-only, re-seed catalog: `uv run egregore catalog seed` (ensures `ConsultantFinding` schema).
 
-**Smoke pitfalls:** use a **new** engagement after code/deploy changes (old `eng-smoke-*` rows may be pytest leftovers in Postgres). Restart `egregore serve` and `egregore worker` after env changes (avoid duplicate worker processes). Integration test [`test_shared_engagement_state`](tests/worker/test_shared_engagement_state.py) uses prefix `eng-test-shared-` and deletes its row — do not confuse with manual smoke.
+**Smoke pitfalls:** use a **new** engagement after code/deploy changes (old `eng-smoke-*` rows may be pytest leftovers in Postgres). Restart `egregore serve` and `egregore worker` after env changes (avoid duplicate worker processes). Integration test [`test_shared_engagement_state`](backend/worker/tests/worker/test_shared_engagement_state.py) uses prefix `eng-test-shared-` and deletes its row — do not confuse with manual smoke.
 
 **Langfuse traces ≠ UI progress:** planner/LLM spans in Langfuse do not mean worker jobs ran — check `worker_jobs.status` and Live events (`job_started`). **`GET /health/infra`** reports `queue.backend`, `queue.depth`, and `workers_hint` (`backlog` vs `processing`).
 
@@ -79,41 +86,45 @@ Docker app profile (no host Node/Python): `make dev-docker` (requires `.env`).
 ### CLI smoke test
 
 ```bash
-# Ingest SIEM event → enqueue SOC worker
-cd backend/shared && uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
+# Ingest SIEM event → enqueue SOC worker (api)
+cd backend/api && uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
 
-# Process queued worker job
-cd backend/shared && uv run egregore worker --once
+# Process queued worker job (worker)
+cd backend/worker && uv run egregore worker --once
 
-# Control plane status
-cd backend/shared && uv run egregore status
+# Control plane status (worker)
+cd backend/worker && uv run egregore status
 
-# Manual investigation (all workers)
-cd backend/shared && uv run egregore session -g "Assess CI/CD pipeline risks"
+# Manual investigation, all workers (api)
+cd backend/api && uv run egregore session -g "Assess CI/CD pipeline risks"
 
-# HTTP API
-cd backend/shared && uv run egregore serve --port 8080
+# HTTP API (api)
+cd backend/api && uv run egregore serve --port 8080
 
-# Tests (low memory — one pytest process per tests/<dir>/)
-cd backend/shared && ./scripts/pytest_batches.sh --cov --domain-gate
+# Tests (low memory — one pytest process per tests/<dir>/, run per package)
+cd backend/contracts && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/worker && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/api && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## CLI
 
-| Команда | Описание |
-|---------|----------|
-| `info` | Конфигурация, workers, control agents |
-| `ingest -t TYPE -p PAYLOAD` | Structured event → router → job queue |
-| `worker [--once\|--daemon] [--persona soc]` | Обработка jobs из очереди |
-| `router` | Kafka router consumer (`security.events.raw`) |
-| `critic` | Critic bus consumer (`bus.findings`) |
-| `coordinator` | Coordinator bus consumer |
-| `status` | Snapshot control plane (findings, narratives) |
-| `serve [--port 8080]` | FastAPI event/status server |
-| `session -g "..."` | Start engagement (`POST /v1/work-orders` preferred; legacy `POST /v1/engagements`) |
-| `migrate` | Apply SQL migrations to Postgres |
-| `agent <worker>` | Debug: один worker без очереди |
-| `adversarial-test` | `pytest tests/` |
+`egregore api` commands run from `backend/api/`; `egregore worker` commands run from `backend/worker/`.
+
+| Команда | Пакет | Описание |
+|---------|-------|----------|
+| `info` | api | Конфигурация, workers, control agents |
+| `ingest -t TYPE -p PAYLOAD` | api | Structured event → router → job queue |
+| `worker [--once\|--daemon] [--persona soc]` | worker | Обработка jobs из очереди |
+| `router` | api | Kafka router consumer (`security.events.raw`) |
+| `critic` | worker | Critic bus consumer (`bus.findings`) |
+| `coordinator` | worker | Coordinator bus consumer |
+| `status` | worker | Snapshot control plane (findings, narratives) |
+| `serve [--port 8080]` | api | FastAPI event/status server |
+| `session -g "..."` | api | Start engagement (`POST /v1/work-orders` preferred; legacy `POST /v1/engagements`) |
+| `migrate` | api | Apply SQL migrations to Postgres |
+| `agent <worker>` | worker | Debug: один worker без очереди |
+| `adversarial-test` | api | `pytest tests/` |
 
 ## Архитектура
 
@@ -143,17 +154,24 @@ cd backend/shared && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 egregore/
 ├── backend/
-│   └── shared/             # Python/uv backend (pyproject.toml, src/, tests/, agents/) —
-│       │                   #   being split into contracts/api/worker packages (task #38)
-│       ├── src/            # cys_core, interfaces, bootstrap, connectors, authz, main.py
-│       ├── agents/         # Product personas, rules, plans, skills
-│       ├── migrations/     # SQL migrations
-│       └── scripts/        # pytest_batches, verify_import_boundaries, …
-├── deploy/                 # Dockerfile, compose, k8s, helm, grafana
+│   ├── contracts/          # egregore-contracts: domain, ports, generic infra —
+│   │                       #   no fastapi routes, no langchain/langgraph/deepagents/litellm
+│   │   ├── src/            # cys_core (domain/application/infrastructure), bootstrap
+│   │   └── scripts/        # pytest_batches, verify_import_boundaries, …
+│   ├── worker/              # egregore-worker: agent-execution runtime (LangChain/LangGraph),
+│   │   │                    #   Tool Gateway, critic/coordinator daemons
+│   │   ├── src/             # cys_core.{runtime,llm,registry.tools,...}, interfaces.worker/control_plane/gateways
+│   │   └── scripts/
+│   ├── api/                 # egregore-api: FastAPI ingress/CRUD, event routing, HITL resume
+│   │   ├── src/              # interfaces.api, cys_core.application use_cases (CRUD side)
+│   │   └── scripts/
+│   ├── agents/              # Product personas, rules, plans, skills — sibling of the 3 packages
+│   └── shared/               # transitional pre-split monolith, retired after task #52
+├── deploy/                 # Dockerfile.api, Dockerfile.worker, compose, k8s, helm, grafana
 ├── web_ui/                 # Operator console (Next.js)
 ├── tui/                    # Operator TUI (Go Bubble Tea)
 ├── docs/
-├── Makefile                # thin dispatcher (Python → backend/shared/, UI → web_ui/)
+├── Makefile                # thin dispatcher (Python → backend/{contracts,worker,api}/, UI → web_ui/)
 └── scripts/                # full-stack dev wrappers, security gates
 ```
 
@@ -186,12 +204,14 @@ egregore/
 | `EGREGORE_MAX_FOLLOW_UP_PLANS` | `3` | Max plan-mode follow-ups per engagement |
 | `PLANNER_TIMEOUT_SECONDS` | `120` | Fallback when async meta-planner stays in planning |
 
-Полный список: [`backend/shared/.env.example`](backend/shared/.env.example)
+Полный список: [`backend/api/.env.example`](backend/api/.env.example), [`backend/worker/.env.example`](backend/worker/.env.example)
 
 ## Тестирование
 
 ```bash
-cd backend/shared && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/contracts && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/worker && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/api && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## Документация

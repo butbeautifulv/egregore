@@ -2,21 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
 from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
 from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy
-from interfaces.api.planner_tasks import spawn_engagement_planner
 
 
 async def handle_engagement_ingress(
-    request: Request,
     *,
     eng_request: EngagementRequest,
-    payload: dict[str, Any],
     record_event,
 ) -> dict[str, Any] | JSONResponse:
     start = get_container().get_start_engagement()
@@ -24,7 +21,8 @@ async def handle_engagement_ingress(
     event = engagement_request_to_security_event(eng_request, engagement.id)
     record_event(event.model_dump())
     if decision.reason == ASYNC_PLANNER_PENDING:
-        spawn_engagement_planner(request, start=start, event=event, payload=payload)
+        # StartEngagement.execute() already enqueued the planner WorkerJob —
+        # worker picks up planning from here, nothing left to trigger.
         return JSONResponse(
             status_code=202,
             content={

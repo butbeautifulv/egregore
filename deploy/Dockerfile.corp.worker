@@ -1,5 +1,5 @@
 # Corp / offline build — Nexus base + PyPI, no BuildKit cache mounts (Kaniko-compatible).
-# Build from egregore repo root: docker build -f deploy/Dockerfile.corp .
+# egregore-worker image. Build from egregore repo root: docker build -f deploy/Dockerfile.corp.worker .
 ARG NEXUS_REGISTRY=nexus.svo.aero:8345
 ARG NEXUS_PYPI_HOST=nexus.svo.aero:8443
 ARG NEXUS_PYPI_REPO=srsips-pypi
@@ -7,29 +7,30 @@ ARG NEXUS_USER
 ARG NEXUS_PASSWORD
 
 FROM ${NEXUS_REGISTRY}/library/python:3.13-slim
-WORKDIR /app/shared
+WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 ENV UV_INDEX_URL=https://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_PYPI_HOST}/repository/${NEXUS_PYPI_REPO}/simple
 
-COPY backend/shared/pyproject.toml backend/shared/uv.lock backend/shared/README.md ./
+COPY backend/contracts/pyproject.toml backend/contracts/uv.lock backend/contracts/README.md ./contracts/
+COPY backend/contracts/src ./contracts/src
+COPY backend/worker/pyproject.toml backend/worker/uv.lock backend/worker/README.md ./worker/
+WORKDIR /app/worker
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY backend/shared/src ./src
-COPY backend/shared/agents ./agents
-COPY backend/shared/migrations ./migrations
+COPY backend/worker/src ./src
+COPY backend/agents /app/agents
 RUN uv sync --frozen --no-dev
 
 ENV PYTHONUNBUFFERED=1
 ENV STAGE=prod
 ENV USE_MEMORY_FALLBACK=false
+ENV AGENTS_ROOT=../agents
 
 RUN groupadd -g 10001 app && useradd -u 10001 -g app -m app && chown -R app:app /app
 USER 10001
 
-EXPOSE 8080
-
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)" || exit 1
+  CMD ["uv", "run", "egregore", "status"]
 
-CMD ["uv", "run", "egregore", "serve", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uv", "run", "egregore", "worker", "--daemon", "--idle-timeout", "0"]

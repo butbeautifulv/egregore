@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
-from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
 from cys_core.domain.parsing.json_text import parse_json_text
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_ingress_role, require_reader_role
@@ -25,7 +24,6 @@ from interfaces.api.engagement_schemas import (
     PromotePlanIn,
     TenantMemoryOut,
 )
-from interfaces.api.planner_tasks import spawn_engagement_planner
 from interfaces.api.tenant_deps import require_tenant_match_http
 
 router = APIRouter(prefix="/v1", tags=["engagements"])  # deprecated: prefer /v1/work-orders
@@ -107,7 +105,6 @@ async def list_engagements(
 @router.post("/engagements", response_model=EngagementOut)
 async def create_engagement(
     body: EngagementCreateIn,
-    request: Request,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> EngagementOut | JSONResponse:
     tenant_id = require_tenant_match_http(_auth, body.tenant_id)
@@ -118,8 +115,8 @@ async def create_engagement(
     engagement, decision, job_ids = await start.execute(eng_request)
     out = _engagement_out(engagement, decision=decision, job_ids=job_ids)
     if decision.reason == ASYNC_PLANNER_PENDING:
-        event = engagement_request_to_security_event(eng_request, engagement.id)
-        spawn_engagement_planner(request, start=start, event=event, payload=dict(event.payload))
+        # StartEngagement.execute() already enqueued the planner WorkerJob —
+        # worker picks up planning from here, nothing left to trigger.
         return JSONResponse(
             status_code=202,
             content={

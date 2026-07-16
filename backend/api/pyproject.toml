@@ -1,7 +1,7 @@
 [project]
 name = "egregore-api"
 version = "0.1.0"
-description = "Egregore API service — FastAPI CRUD + ingress, no agent-execution frameworks except the accepted meta-planner exception (see docs/MICROSERVICES_SPLIT_PLAN.md, plan §1.2)."
+description = "Egregore API service — FastAPI CRUD + ingress only, zero agent-execution frameworks (langchain/langgraph/deepagents/litellm). Meta-LLM planning is enqueued as a WorkerJob and runs entirely in worker (docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2)."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
@@ -15,6 +15,10 @@ dependencies = [
     "structlog>=26.0.0",
     "httpx>=0.28.0",
     "pyyaml>=6.0",
+    # start_work_order.py::_validate_intake() validates a work order's
+    # declared intake_schema — was silently no-op'd (bare try/except
+    # ImportError) because this was never a declared dependency anywhere.
+    "jsonschema>=4.23.0",
     "pytest>=9.0.0",
     "pytest-asyncio>=1.4.0",
 ]
@@ -54,3 +58,59 @@ select = ["E", "F", "I", "W"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["bootstrap", "cys_core", "interfaces", "connectors", "authz"]
+
+[tool.coverage.run]
+source = ["src/cys_core/domain"]
+omit = ["*/__init__.py"]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+    "import-linter>=2.0",
+    "ty>=0.0.1a25",
+]
+
+[tool.importlinter]
+root_package = "cys_core"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain_independent"
+type = "forbidden"
+source_modules = ["cys_core.domain"]
+forbidden_modules = [
+    "cys_core.infrastructure",
+    "cys_core.registry",
+    "cys_core.runtime",
+    "cys_core.middleware",
+    "cys_core.security",
+    "cys_core.observability",
+    "cys_core.llm",
+    "cys_core.persistence",
+    "bootstrap",
+    "interfaces",
+]
+
+[[tool.importlinter.contracts]]
+name = "application_only_domain"
+type = "layers"
+layers = [
+    "cys_core.application",
+    "cys_core.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "no_config_in_domain_application"
+type = "forbidden"
+source_modules = ["cys_core.domain", "cys_core.application"]
+forbidden_modules = ["config", "bootstrap"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "cys_core.application.use_cases.evaluate_trace_critic -> bootstrap",
+    "cys_core.application.use_cases.run_step -> bootstrap",
+    "cys_core.application.use_cases.seed_catalog -> bootstrap",
+    "cys_core.application.use_cases.upsert_profile_policy -> bootstrap",
+    "cys_core.application.tools.providers.sandbox -> bootstrap",
+    "cys_core.application.use_cases.enqueue_follow_up -> bootstrap",
+]

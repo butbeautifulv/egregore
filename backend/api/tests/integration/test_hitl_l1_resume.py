@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from cys_core.domain.workers.models import JobResumeRequest, PendingHitlAction, WorkerJobStatus
-from interfaces.control_plane.job_store import JobStore
 from interfaces.api.hitl_resume import HitlResumeError, resume_worker_job
+from interfaces.control_plane.job_store import JobStore
 
 
 @pytest.mark.integration

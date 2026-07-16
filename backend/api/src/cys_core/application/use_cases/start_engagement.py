@@ -12,15 +12,16 @@ from cys_core.application.ports.tracing_ports import (
 )
 
 # re-export for callers
-from cys_core.application.use_cases.engagement_planner import (
-    ASYNC_PLANNER_PENDING,
-    use_async_engagement_planner,
-)
+from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
 from cys_core.domain.engagement.models import (
     Engagement,
     EngagementRequest,
     EngagementStatus,
     PlanStrategy,
+)
+from cys_core.domain.engagement.planner_job import (
+    ENGAGEMENT_PLAN_WORK_KIND,
+    ENGAGEMENT_PLANNER_PERSONA,
 )
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
 from cys_core.domain.security.factory import get_input_sanitizer
@@ -58,7 +59,6 @@ class StartEngagement:
         engagement_store: EngagementStateStore,
         dispatch,
         egress=None,
-        meta_planner=None,
         correlation_id_port: CorrelationIdPort | None = None,
         trace_flush_port: TraceFlushPort | None = None,
         application_tracing: ApplicationTracingPort | None = None,
@@ -66,7 +66,6 @@ class StartEngagement:
         self.engagement_store = engagement_store
         self.dispatch = dispatch
         self.egress = egress
-        self.meta_planner = meta_planner
         self._correlation_id = correlation_id_port
         self._trace_flush = trace_flush_port
         self._tracing = application_tracing or NOOP_APPLICATION_TRACING
@@ -129,52 +128,44 @@ class StartEngagement:
             )
             return engagement, decision, []
 
-        meta_planner_sync = False
-        if request.plan_strategy == PlanStrategy.META_LLM and self.meta_planner is not None:
-            if use_async_engagement_planner(event, payload):
-                self.meta_planner.begin_planning(event)
-                if self.egress is not None:
-                    self.egress.publish_status(engagement_id, "planning", {"tenant_id": request.tenant_id})
-                engagement = self.engagement_store.get(request.tenant_id, engagement_id) or engagement
-                decision = RoutingDecision(
-                    event_id=event.id,
-                    personas=[],
-                    playbook_id="engagement-meta-llm",
-                    notify_control=True,
-                    reason=ASYNC_PLANNER_PENDING,
-                )
-                return engagement, decision, []
-
+        if request.plan_strategy == PlanStrategy.META_LLM:
+            # Meta-LLM planning calls the real agent runtime
+            # (catalog_planner_strategy.py's self.runtime.arun(...)), which api
+            # must never construct (docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2).
+            # Enqueue a WorkerJob(persona="planner", work_kind="engagement_plan")
+            # instead of running a planner in-process — worker's RunWorkerJob
+            # recognizes it (is_engagement_plan_job) and hands it to
+            # EngagementPlannerRunner, the real planner with the real runtime,
+            # which enqueues the resulting persona jobs itself once the plan is
+            # ready. This is always async now; there is no in-process fallback.
+            engagement.begin_planning(goal=request.goal)
+            self.engagement_store.upsert(engagement)
             if self.egress is not None:
                 self.egress.publish_status(engagement_id, "planning", {"tenant_id": request.tenant_id})
-            plan = await self.meta_planner.execute(event, profile_id=request.profile_id)
-            decision = RoutingDecision(
-                event_id=event.id,
-                personas=plan.personas,
-                playbook_id="engagement-meta-llm",
-                notify_control=True,
-                reason="meta_planner",
-            )
-            enriched = {**payload, **self.meta_planner.to_worker_jobs_payload(plan)}
-            job_ids = await self.dispatch.enqueuer.enqueue_from_routing(
+            await self.dispatch.enqueuer.enqueue_from_routing(
                 event.id,
-                plan.personas,
-                playbook_id=decision.playbook_id,
-                payload=enriched,
+                [ENGAGEMENT_PLANNER_PERSONA],
+                playbook_id="engagement-meta-llm",
+                payload={**payload, "work_kind": ENGAGEMENT_PLAN_WORK_KIND},
                 correlation_id=engagement.correlation_id,
                 tenant_id=request.tenant_id,
                 sequential=False,
-                pipeline_staged=plan.is_pipeline_staged(),
             )
-            meta_planner_sync = True
-        else:
-            decision, job_ids = await self.dispatch.dispatch_async(event, payload)
+            engagement = self.engagement_store.get(request.tenant_id, engagement_id) or engagement
+            decision = RoutingDecision(
+                event_id=event.id,
+                personas=[],
+                playbook_id="engagement-meta-llm",
+                notify_control=True,
+                reason=ASYNC_PLANNER_PENDING,
+            )
+            return engagement, decision, []
+
+        decision, job_ids = await self.dispatch.dispatch_async(event, payload)
 
         engagement = self.engagement_store.get(request.tenant_id, engagement_id) or engagement
         engagement.mark_enqueued(job_ids)
         self.engagement_store.upsert(engagement)
-        if meta_planner_sync and self._trace_flush is not None:
-            self._trace_flush.flush_traces()
         if self.egress is not None:
             self.egress.publish_status(
                 engagement_id,
@@ -188,61 +179,3 @@ class StartEngagement:
         if state is None:
             return None
         return state
-
-    async def plan_async_background(self, event: SecurityEvent, payload: dict[str, Any]) -> list[str]:
-        """Run meta-LLM planner in background after HTTP 202."""
-        from cys_core.application.errors import PlanningFailedError
-
-        engagement_id = event.correlation_id or event.id
-        token = self._correlation_id.bind(engagement_id) if self._correlation_id is not None else None
-        try:
-            if self.meta_planner is None:
-                return []
-            self.meta_planner.begin_planning(event)
-            if self.egress is not None:
-                self.egress.publish_status(engagement_id, "planning", {"tenant_id": event.tenant_id})
-            try:
-                plan = await self.meta_planner.execute(
-                    event,
-                    profile_id=str(payload.get("profile_id") or event.payload.get("profile_id") or ""),
-                )
-                enriched = {**payload, **self.meta_planner.to_worker_jobs_payload(plan)}
-                job_ids = await self.dispatch.enqueuer.enqueue_from_routing(
-                    event.id,
-                    plan.personas,
-                    playbook_id="engagement-meta-llm",
-                    payload=enriched,
-                    correlation_id=engagement_id,
-                    tenant_id=event.tenant_id,
-                    sequential=False,
-                    pipeline_staged=plan.is_pipeline_staged(),
-                )
-                engagement = self.engagement_store.get(event.tenant_id, engagement_id)
-                if engagement is not None:
-                    engagement.mark_enqueued(job_ids)
-                    self.engagement_store.upsert(engagement)
-                if self.egress is not None:
-                    self.egress.publish_status(
-                        engagement_id,
-                        "enqueued",
-                        {
-                            "tenant_id": event.tenant_id,
-                            "job_ids": job_ids,
-                            "personas": plan.personas,
-                        },
-                    )
-                return job_ids
-            except Exception as exc:
-                if self.egress is not None:
-                    self.egress.publish_status(
-                        engagement_id,
-                        "error",
-                        {"tenant_id": event.tenant_id, "planner_error": str(exc)},
-                    )
-                raise PlanningFailedError(event.id, str(exc)) from exc
-            finally:
-                if self._trace_flush is not None:
-                    self._trace_flush.flush_traces()
-        finally:
-            if self._correlation_id is not None and token is not None:
-                self._correlation_id.reset(token)

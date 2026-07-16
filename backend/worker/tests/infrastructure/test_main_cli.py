@@ -30,7 +30,10 @@ def test_worker_cli_commands(monkeypatch, capsys):
     assert main.cmd_worker(SimpleNamespace(once=True, max_jobs=1, daemon=False, persona="", idle_timeout=30.0)) == 0
     assert _last_json_object(capsys.readouterr().out)["result"]["success"] is True
 
-    monkeypatch.setattr("interfaces.control_plane.status_store.get_status_store", lambda: SimpleNamespace(snapshot=lambda: {}))
+    monkeypatch.setattr(
+        "interfaces.control_plane.status_store.get_status_store",
+        lambda: SimpleNamespace(snapshot=lambda: {}),
+    )
     assert main.cmd_status(SimpleNamespace()) == 0
     capsys.readouterr()
 

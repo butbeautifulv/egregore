@@ -166,7 +166,11 @@ class EgressStreamingCallback(AsyncCallbackHandler):
             {**self._base_payload(), "delta": text, "seq": self._seq},
         )
 
-    async def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+    async def on_llm_new_token(self, token: str | list[str | dict[str, Any]], **kwargs: Any) -> None:
+        if not isinstance(token, str):
+            # Multimodal content-block streaming (list of str/dict chunks) —
+            # this callback only publishes plain-text deltas, not supported here.
+            return
         if not get_stream_agent_output():
             return
         self._streamed_this_turn = True

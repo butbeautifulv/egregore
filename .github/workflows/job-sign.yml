@@ -2,6 +2,10 @@ name: Sign Image
 
 on:
   workflow_call:
+    inputs:
+      image:
+        required: true
+        type: string
 
 jobs:
   cosign:
@@ -11,4 +15,4 @@ jobs:
     steps:
       - run: |
           echo "Manual signing job — configure cosign keyless OIDC or COSIGN_PRIVATE_KEY"
-          echo "cosign sign --yes ghcr.io/${{ github.repository }}:${{ github.sha }}"
+          echo "cosign sign --yes ${{ inputs.image }}"

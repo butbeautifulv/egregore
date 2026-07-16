@@ -34,7 +34,7 @@ spec:
           # the previous `worker.daemon --persona X --max-jobs 1` picked up whatever
           # was next in the shared queue, not necessarily this run_id). "uv run
           # egregore ..." not bare "egregore" — the image doesn't export the venv's
-          # bin/ onto PATH, only `uv run` resolves it (see deploy/Dockerfile CMD).
+          # bin/ onto PATH, only `uv run` resolves it (see deploy/Dockerfile.worker CMD).
           args: ["uv", "run", "egregore", "run-sandboxed-job", "--job-json", "env:JOB_PAYLOAD_JSON"]
           env:
             - name: RUN_ID

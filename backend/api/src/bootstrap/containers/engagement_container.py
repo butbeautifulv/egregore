@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from bootstrap.container import Container
@@ -13,19 +13,18 @@ class EngagementContainer:
     trimmed to the methods api's use-cases actually call — no orchestrator/
     bus-consumer wiring (get_worker_orchestrator, get_run_worker_job,
     get_agent_runtime, get_bus_ingress_router, wire_bus_router, wire_bus_reload
-    stay worker-only). See plan §1.2/§3: get_meta_planner()/
-    get_plan_investigation() pass runtime=None here — the real agent runtime
-    (cys_core.runtime.agent) pulls in most of what Phase B moved to worker/,
-    and duplicating that into api/ too was rejected as a worse cost than the
-    accepted regression (meta-LLM async planning, gated behind
-    ENGAGEMENT_ASYNC_PLANNING which defaults to true, stops working from the
-    api build until a real fix moves it to be genuinely worker-side).
+    stay worker-only). Meta-LLM planning (cys_core.application.use_cases.meta_planner)
+    is worker-only too — it needs the real agent runtime, which must never be
+    constructed in api. StartEngagement never builds a MetaPlanner here; for
+    PlanStrategy.META_LLM it enqueues a WorkerJob(persona="planner",
+    work_kind="engagement_plan") and returns — worker's RunWorkerJob recognizes
+    that job and runs EngagementPlannerRunner (the real planner, with the real
+    runtime) instead. See docs/MICROSERVICES_SPLIT_PLAN.md §1.2.
     """
 
     def __init__(self, container: "Container") -> None:
         self._container = container
         self._start_engagement = None
-        self._meta_planner = None
         self._event_router = None
         self._route_event = None
         self._route_and_enqueue = None
@@ -33,7 +32,6 @@ class EngagementContainer:
         self._dispatch_event = None
         self._engagement_bus_guard = None
         self._orchestration = None
-        self._plan_investigation = None
 
     @property
     def settings(self):
@@ -81,14 +79,17 @@ class EngagementContainer:
         if self._route_event is not None:
             return self._route_event
         from cys_core.application.use_cases.route_event import RouteEvent
+        from cys_core.application.use_cases.update_plan_quality import UpdatePlanQuality
 
         container = self._container
         metrics = container.get_metrics_port()
+        plan_quality = UpdatePlanQuality(
+            container.get_plan_catalog(), mutation=container.get_catalog_mutation_service()
+        )
         self._route_event = RouteEvent(
             self.get_event_router(),
-            plan_catalog=container.get_plan_catalog(),
             record_event_ingested=metrics.record_event_ingested,
-            mutation=container.get_catalog_mutation_service(),
+            record_plan_match=lambda plan_id, _rule_idx, jobs: plan_quality.record_match(plan_id, jobs=jobs),
         )
         return self._route_event
 
@@ -132,27 +133,6 @@ class EngagementContainer:
         self._event_ingress = EventIngress(route_and_enqueue=self.get_route_and_enqueue())
         return self._event_ingress
 
-    def get_meta_planner(self):
-        if self._meta_planner is not None:
-            return self._meta_planner
-        from cys_core.application.use_cases.meta_planner import MetaPlanner
-
-        container = self._container
-        # runtime=None: see module docstring — the real agent runtime is not
-        # available in the api build. Safe as long as the sync PlanInvestigation
-        # path (self.runtime.arun(...) in catalog_planner_strategy.py) is never
-        # actually reached from here; if it ever is, this raises immediately
-        # (AttributeError) instead of silently doing the wrong thing.
-        self._meta_planner = MetaPlanner(
-            runtime=None,
-            engagement_store=self.get_engagement_state_store(),
-            resource_source=container.get_resource_source_port(),
-            persona_ranking=container.get_persona_ranking_port(),
-            agent_catalog=container.get_agent_catalog(),
-            application_tracing=container.get_application_tracing_port(),
-        )
-        return self._meta_planner
-
     def wire_engagement_egress(self) -> None:
         from cys_core.infrastructure.engagement.factory import reset_engagement_egress_cache
 
@@ -168,7 +148,6 @@ class EngagementContainer:
             engagement_store=self.get_engagement_state_store(),
             dispatch=self.get_dispatch_event(),
             egress=self.get_engagement_egress(),
-            meta_planner=self.get_meta_planner(),
             correlation_id_port=container.get_correlation_id_port(),
             trace_flush_port=container.get_trace_flush_port(),
             application_tracing=container.get_application_tracing_port(),
@@ -228,22 +207,3 @@ class EngagementContainer:
         )
         return self._orchestration
 
-    def get_plan_investigation(self):
-        if self._plan_investigation is not None:
-            return self._plan_investigation
-        from cys_core.application.use_cases.plan_investigation import PlanInvestigation
-        from cys_core.infrastructure.catalog.catalog_registry import reload_agent_registry
-
-        container = self._container
-        # runtime=None — see get_meta_planner() above.
-        self._plan_investigation = PlanInvestigation(
-            runtime=None,
-            engagement_store=self.get_engagement_state_store(),
-            resource_source=container.get_resource_source_port(),
-            persona_ranking=container.get_persona_ranking_port(),
-            agent_catalog=container.get_agent_catalog(),
-            application_tracing=container.get_application_tracing_port(),
-            engagement_egress=self.get_engagement_egress(),
-            reload_personas=reload_agent_registry,
-        )
-        return self._plan_investigation

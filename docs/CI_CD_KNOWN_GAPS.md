@@ -40,7 +40,7 @@ Baseline skips in [`.checkov.yaml`](../.checkov.yaml):
 | `CKV_K8S_14` / `CKV_K8S_15` / `CKV_K8S_43` | Image tag, pull policy, and digest from deploy-time values (Nexus/Kaniko loop) |
 | `CKV2_K8S_6` | NetworkPolicy enforced at platform/nginx ingress layer, not in chart |
 
-`deploy/Dockerfile.corp` excluded via `skip-path` (offline Kaniko lifecycle).
+`deploy/Dockerfile.corp.api` / `deploy/Dockerfile.corp.worker` excluded via `skip-path` (offline Kaniko lifecycle).
 
 Helm templates harden pod/container `securityContext` and UI probes (commits on `feature/bypass-ci-lint`). Local smoke:
 

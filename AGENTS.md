@@ -61,15 +61,37 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ## Платформенный код
 
-### Repo layout (`backend/shared/src/`)
+### Repo layout (`backend/{contracts,worker,api}/src/`)
 
-Python backend packages live under **`backend/shared/src/`** (`backend/shared/src/cys_core`, `backend/shared/src/interfaces`, `backend/shared/src/bootstrap`, `backend/shared/src/connectors`, `backend/shared/src/authz`). Import names are unchanged (`from cys_core...`). ASGI entrypoint: **`backend/shared/src/main.py`**. Operator UI is **`web_ui/`** (not `ui/`). Product seed **`backend/shared/agents/`**. Docker/compose: **`deploy/`**.
+Python backend is split into three independently installable packages (see
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md)) — nothing
+except the queue message and Postgres rows may cross the api↔worker boundary:
+
+- **`backend/contracts/`** (`egregore-contracts`) — domain models, port
+  interfaces, generic infra (Postgres/Kafka/Redis, catalog, authz). No
+  fastapi router code, no langchain/langgraph/deepagents/litellm.
+- **`backend/worker/`** (`egregore-worker`) — agent-execution runtime
+  (LangChain/LangGraph today, swappable later), Tool Gateway, control-plane
+  daemons (critic/coordinator). Depends on `egregore-contracts` (editable
+  path dep).
+- **`backend/api/`** (`egregore-api`) — FastAPI ingress/CRUD, event routing,
+  HITL resume over HTTP. Depends on `egregore-contracts` only — no
+  langchain/langgraph/deepagents in this package's venv.
+
+Import names are unchanged (`from cys_core...`) — each package installs its
+own subset under that same namespace. ASGI entrypoint: `interfaces/api/app.py`
+(in `backend/api/`). Operator UI is **`web_ui/`** (not `ui/`). Product seed
+**`backend/agents/`** (sibling of the three packages, not nested in any one
+of them). Docker/compose: **`deploy/`** (`Dockerfile.api`, `Dockerfile.worker`).
+Transitional **`backend/shared/`** (the pre-split monolith) still exists
+until the zero-fallback verification gate passes (task #52) — do not add new
+code there.
 
 ### Единые точки входа
 
 - **Events:** `interfaces/ingress/router.py` → `EventIngress`
 - **Workers:** `interfaces/worker/orchestrator.py` → `WorkerOrchestrator`
-- **CLI:** `cd backend/shared && uv run egregore`
+- **CLI:** `cd backend/api && uv run egregore` (serve/ingest/session/migrate/info/router) or `cd backend/worker && uv run egregore` (worker/critic/coordinator/status/agent)
 - **Operator UI:** `web_ui/` — Next.js 16, HTTP client to FastAPI (`lib/api-client.ts`)
 - **Operator TUI:** `tui/` — Go Bubble Tea, порт того же контракта (`internal/api/`)
 - **Контракт UI+TUI:** [docs/operator-console-contract.md](docs/operator-console-contract.md)
@@ -163,55 +185,63 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 
 ## Тесты
 
-**Агентам: только батчами** — `cd backend/shared && ./scripts/pytest_batches.sh`, не `uv run pytest` на весь `tests/` одним процессом.
+**Агентам: только батчами**, и **отдельно на каждый пакет** —
+`cd backend/{contracts,worker,api} && ./scripts/pytest_batches.sh`, не
+`uv run pytest` на весь `tests/` одним процессом, и не из старого
+`backend/shared` (транзитный монолит, отключён от активной разработки).
 
-- **Точечно** после правок: только затронутые батчи (см. `.cursor/rules/project-egregore-pytest-batches.mdc`).
-- **Полный прогон** — перед PR / после cross-cutting рефакторинга.
+- **Точечно** после правок: только затронутые батчи, в том пакете, где лежит
+  правка (см. `.cursor/rules/project-egregore-pytest-batches.mdc`).
+- **Полный прогон** — перед PR / после cross-cutting рефакторинга: все три
+  пакета, не только тот, что менялся (контракт между ними — импорт-граф, а
+  не файл; изменение в contracts может сломать worker/api).
 
 Правило: `.cursor/rules/project-egregore-pytest-batches.mdc`.
 
 ```bash
-cd backend/shared && ./scripts/pytest_batches.sh
-cd backend/shared && ./scripts/pytest_batches.sh --cov --domain-gate
-make -C backend/shared domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
-make -C backend/shared verify-architecture  # import boundaries + lint-imports + tests/architecture
+for pkg in contracts worker api; do
+  (cd backend/$pkg && ./scripts/pytest_batches.sh)
+  (cd backend/$pkg && ./scripts/pytest_batches.sh --cov --domain-gate)
+  make -C backend/$pkg domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
+  make -C backend/$pkg verify-architecture   # import boundaries + lint-imports + tests/architecture
+done
 checkov -d deploy --framework helm,dockerfile --config-file .checkov.yaml --soft-fail \
   --output sarif --output-file-path reports/checkov.sarif  # IaC gate smoke (from repo root)
-cd backend/shared && ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
-cd backend/shared && USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
+cd backend/contracts && ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
+cd backend/contracts && USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
 ```
 
 Architecture debt inventory: [`docs/ARCHITECTURE_DEBT.md`](docs/ARCHITECTURE_DEBT.md). Regenerate table: `python3 scripts/arch_inventory.py`.
 
 **CI gates** (all required on PR): `arch-gate`, `adversarial-gate`, `agent-policy-gate`, `security-shift-left` (Fabrica B1–B6). See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#ci).
 
-Структура (батчи `pytest_batches.sh`):
+Структура (батчи `pytest_batches.sh`, каждый пакет — свой `tests/`):
 
-- `tests/domain/` — domain entities, policies, observability types
-- `tests/application/` — use cases
-- `tests/api/` — FastAPI routes
-- `tests/architecture/` — import boundaries, hexagon gates
-- `tests/bootstrap/` — container, product loader
+- `tests/domain/` — domain entities, policies, observability types (в основном contracts)
+- `tests/application/` — use cases (contracts + worker + api, по границе)
+- `tests/api/` — FastAPI routes (api)
+- `tests/architecture/` — import boundaries, hexagon gates (все три, копия `verify_import_boundaries.py` на пакет)
+- `tests/bootstrap/` — container, product loader (все три; `bootstrap.container` — namespace-split, свой у worker/api)
 - `tests/connectors/` — Langfuse, external connectors
 - `tests/infrastructure/` — sandbox, queue, stores
-- `tests/ingress/` — event ingress
+- `tests/ingress/` — event ingress (api)
 - `tests/observability/` — trace backends
-- `tests/registry/` — agents, tools
+- `tests/registry/` — agents, tools (registry.tools/mcp_tools — worker-only)
 - `tests/adversarial/` — security abuse cases
 
-Coverage gate: **100%** на `cys_core/domain`.
+Coverage gate: **100%** на `cys_core/domain` (в основном contracts).
 
 ## Cursor Cloud specific instructions
 
-**egregore** — CLI + optional FastAPI (`cd backend/shared && uv run egregore serve`).
+**egregore** — CLI + optional FastAPI (`cd backend/api && uv run egregore serve`).
 
 ### Команды
 
 | Действие | Команда |
 |----------|---------|
-| Тесты | `cd backend/shared && ./scripts/pytest_batches.sh` |
-| Smoke | `cd backend/shared && USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
-| Event flow | `cd backend/shared && uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `cd backend/shared && uv run egregore worker --once` |
+| Тесты | `cd backend/{contracts,worker,api} && ./scripts/pytest_batches.sh` (все три) |
+| Smoke | `cd backend/api && USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
+| Event flow | `cd backend/api && uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `cd backend/worker && uv run egregore worker --once` |
 
 Без API-ключа: `info`, `ingest` (enqueue), `status`, `pytest`.
 

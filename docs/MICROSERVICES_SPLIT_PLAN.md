@@ -1454,3 +1454,102 @@ failures), после первого в истории проекта полно
   .parents[1]` автоматически адаптируется к тому, в каком пакете лежит
   копия, поэтому один и тот же файл корректен во всех трёх местах без
   редактирования.
+
+## 16. Meta-planner moved fully to worker; dirty cross-package imports removed
+## (task #51 follow-up, done properly instead of deferred)
+
+§14's retrospective already named the meta-planner finding (`CatalogPlannerStrategy.execute()`
+actually calls `self.runtime.arun(...)`) as the sharpest irony of Phase A–C: the discipline
+"never guess, always verify by execution" was stated explicitly in the same session that
+misclassified this. The fix committed at the time was a stub, not a fix: `api`'s
+`EngagementContainer.get_meta_planner()`/`get_plan_investigation()` passed `runtime=None`
+into a real `MetaPlanner`/`PlanInvestigation`, and `interfaces/api/planner_tasks.py` ran
+`StartEngagement.plan_async_background()` as an in-process `asyncio` background task after
+the HTTP 202 — i.e. api's own process still owned the call site for agent-runtime code, just
+with the runtime object swapped for `None` and a loud comment. This was flagged at the time as
+a known, accepted regression (meta-LLM async planning silently doesn't work from the api
+build), not a design.
+
+**Fixed for real, not deferred further:**
+
+- `cys_core/application/planning/*` (catalog_planner_strategy.py, prompt_builder.py,
+  post_processors.py, runtime.py, signals.py) and `cys_core/application/use_cases/
+  {meta_planner,plan_investigation}.py` moved out of `contracts` entirely, into `worker` —
+  they need `PlannerRuntime`/`AgentRuntime`, they were never actually bi-consumed the way §1
+  first classified them.
+- `api`'s `StartEngagement` no longer accepts a `meta_planner` at all. For
+  `PlanStrategy.META_LLM` it enqueues `WorkerJob(persona="planner",
+  work_kind="engagement_plan")` via the existing `EnqueueWorkerJobs.enqueue_from_routing(...)`
+  — the same queue-producer path every other job already goes through — and returns
+  immediately. No `asyncio` background task, no runtime object, no langchain-adjacent code
+  anywhere in `api`. `interfaces/api/planner_tasks.py` and its three call sites
+  (`engagements.py`, `work_orders.py`, `engagement_ingress.py`) are deleted — the enqueue now
+  happens inside `StartEngagement.execute()` itself, so the HTTP layer has nothing left to
+  trigger after the 202.
+- New worker-side `cys_core/application/use_cases/run_engagement_planner.py`
+  (`EngagementPlannerRunner`) mirrors the existing `PlanFollowUpRunner` shape exactly (that
+  class already proved the pattern: a `WorkerJob` dispatched through the normal persona queue,
+  picked up by `RunWorkerJob.execute()`, running the real `MetaPlanner` and then enqueueing the
+  resulting persona jobs). `is_engagement_plan_job(payload, persona)`
+  (`cys_core/domain/engagement/planner_job.py`) is the new discriminator, checked in
+  `RunWorkerJob.execute()` right next to the existing `is_follow_up_plan_planner_job` check.
+  `"planner"` was already a registered catalog persona (`agents/planner/agent.yaml`, used
+  directly by `CatalogPlannerStrategy` for the planning prompt itself) — reusing the normal
+  per-persona job queue for the *dispatch* of planning (not just the LLM call inside it) was a
+  deliberate choice over adding a second, parallel consumer-daemon concept next to the
+  existing Router/Critic/Coordinator daemons: one queueing mechanism, not two.
+- Reviewing every `bootstrap.container` reach-in from `contracts` (not just the two `ty check`
+  had flagged before) surfaced the same mistake twice more, both worse than the meta-planner
+  case because nothing pointed at them until this pass:
+  - `cys_core/registry/product_context.py` and `discovery_tools.py` both had a
+    `try: from bootstrap.container import get_container ... except Exception:` fallback for
+    resolving the agent catalog — dead in practice (`set_catalog_provider()` is called by both
+    containers' `wire_catalog_ports()`), but structurally wrong: `contracts` reaching into
+    `api`/`worker`'s own composition root. Fixed by wiring `product_context.set_catalog_provider(...)`
+    into both `wire_catalog_ports()` methods (the same pattern `discovery_tools` already used)
+    and deleting the fallback import entirely. `discovery_tools.search_tools()`'s direct
+    `from cys_core.registry.tools import list_tools` (worker-only module, no fallback at all)
+    got the same treatment via a new `set_tool_lister_provider()`, wired only from worker.
+  - **Bigger find**: `contracts`'s shared `PersistenceContainer`/`CatalogContainer` — the ones
+    §1.1 described as having "zero worker/agent-runtime imports, even lazily" — actually
+    carried `get_sandbox_connector()`, `get_persistence_context()`/`get_async_persistence_context()`
+    (LangGraph checkpoint/store, `cys_core.persistence`), `get_context_summarizer()`,
+    `get_reflexion_store()`, and (`CatalogContainer`) `get_tool_registry_port()`, all backed by
+    modules that only exist in `worker`. `api`'s own `Container` delegated all five and even
+    called `configure_persistence_providers(self.get_persistence_context, ...)` unconditionally
+    at bootstrap — none of the five were ever actually invoked from any real `api` code path
+    (confirmed by grep), so this was a live footgun rather than a live crash: present, wired,
+    and guaranteed to `ModuleNotFoundError` the moment anything ever called them from `api`.
+    Fixed by deleting all five from the shared containers and api's `Container`, and moving
+    the real implementations directly onto `worker`'s own `Container` (same public method
+    names, same caching, just no longer claimed as generic).
+  - `cys_core/application/use_cases/route_event.py`'s `RouteEvent` took `plan_catalog=`/
+    `mutation=` constructor args used for nothing except lazily importing api-only
+    `UpdatePlanQuality` inside a `try/except Exception: pass` — silently a no-op every time
+    `worker`'s identical `get_route_event()` wiring called it (worker doesn't have that
+    module either, despite passing the same `plan_catalog=`/`mutation=` args). Replaced with
+    an injected `record_plan_match` hook: `api`'s container builds the real
+    `UpdatePlanQuality`-backed closure, `worker`'s passes none.
+- Running `uv run ty check src` for all three packages for the first time (not just planned in
+  §1's CI design) surfaced two more real, unrelated bugs it happened to catch along the way:
+  `jsonschema` used in `api`'s `start_work_order.py::_validate_intake()` behind a bare
+  `try/except ImportError: pass` was never actually a declared dependency anywhere, so intake
+  schema validation has been silently disabled this whole time — added as a real dependency,
+  removed the swallow. And `api`'s `app.py` had a live `POST /workers/process-one` route
+  calling `get_container().get_worker_orchestrator()` — a method that only exists on `worker`'s
+  `Container`, unconditionally reachable (no `CONTROL_MODE` guard, no try/except), that would
+  `AttributeError` on first real request; deleted (equivalent function is already
+  `egregore worker --once` on `worker`'s own CLI).
+
+**Why this took a second pass instead of being caught in Phase C**: Phase C's own
+"zero-shared-fallback" verification (§14 solution 1) proved `api` and `worker` each *build* and
+*import* independently — it did not prove that every method reachable on a *shared* contracts
+container actually *executes* successfully from both sides, only that both sides can construct
+the container object. A container method that imports its worker-only dependency lazily inside
+the method body passes both the import-boundary check and a full green test suite as long as
+nothing in the test suite happens to call that specific method from the api-configured
+container — which nothing did. The generalizable lesson (extending §14's own solution 5): for
+any container class installed identically into two sibling packages, "both packages can
+construct it" is not sufficient — every public method needs at least one test invoked from each
+sibling's own real wiring, or a lazy per-method import inside a supposedly-generic shared class
+is invisible until something in production finally calls it.

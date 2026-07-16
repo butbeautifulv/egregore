@@ -6,9 +6,12 @@ on:
 jobs:
   linter-security:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [contracts, worker, api]
     defaults:
       run:
-        working-directory: backend/shared
+        working-directory: backend/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -27,9 +30,9 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control linters --report backend/shared/linter.sarif --policy "$POLICY"
+          python scripts/gate-check.py --control linters --report backend/${{ matrix.service }}/linter.sarif --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: backend/shared/linter.sarif
-          category: linters
+          sarif_file: backend/${{ matrix.service }}/linter.sarif
+          category: linters-${{ matrix.service }}

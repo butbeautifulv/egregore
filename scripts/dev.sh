@@ -58,13 +58,13 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "[dev] starting API on :8080"
-(cd backend/shared && PROMETHEUS_MULTIPROC_DIR="$MPDIR" uv run egregore serve --port 8080) &
+(cd backend/api && PROMETHEUS_MULTIPROC_DIR="$MPDIR" uv run egregore serve --port 8080) &
 PIDS+=($!)
 
 if wait_for_redis; then
   for i in $(seq 1 "$REPLICAS"); do
     echo "[dev] starting worker $i/$REPLICAS"
-    (cd backend/shared && PROMETHEUS_MULTIPROC_DIR="$MPDIR" uv run egregore worker --daemon --idle-timeout "$IDLE") &
+    (cd backend/worker && PROMETHEUS_MULTIPROC_DIR="$MPDIR" uv run egregore worker --daemon --idle-timeout "$IDLE") &
     PIDS+=($!)
   done
 else

@@ -31,6 +31,7 @@ from interfaces.api.authz_helpers import (
     workspace_id_for_job,
 )
 from interfaces.api.engagements import _latest_egress_phase
+from interfaces.api.hitl_resume import HitlResumeError, resume_worker_job
 from interfaces.api.schemas import (
     InvestigationDetailOut,
     InvestigationJobsOut,
@@ -44,7 +45,6 @@ from interfaces.api.tracing_middleware import tracing_middleware
 from interfaces.control_plane.postgres_status_store import PostgresStatusStore
 from interfaces.control_plane.status_store import MemoryStatusStore, get_status_store
 from interfaces.ingress.router import EventIngress, get_event_ingress
-from interfaces.api.hitl_resume import HitlResumeError, resume_worker_job
 
 logger = structlog.get_logger(__name__)
 
@@ -191,8 +191,12 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
             # services (see deploy/docker-compose*.yml) rather than relying on this
             # fallback, which only still works in the transitional shared dev env.
             try:
-                from interfaces.control_plane.coordinator_service import get_coordinator_service
-                from interfaces.control_plane.critic_service import get_critic_service
+                from interfaces.control_plane.coordinator_service import (  # ty: ignore[unresolved-import]
+                    get_coordinator_service,
+                )
+                from interfaces.control_plane.critic_service import (  # ty: ignore[unresolved-import]
+                    get_critic_service,
+                )
 
                 get_critic_service()
                 get_coordinator_service()
@@ -218,9 +222,7 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
             if eng_request.tenant_id != tenant_id:
                 eng_request = eng_request.model_copy(update={"tenant_id": tenant_id})
             return await handle_engagement_ingress(
-                request,
                 eng_request=eng_request,
-                payload=event_in.payload,
                 record_event=store.record_event,
             )
 
@@ -502,13 +504,8 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         except HitlResumeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.post("/workers/process-one")
-    async def process_one_worker(
-        _auth: Annotated[AuthClaims | None, Depends(require_operator_role)],
-    ) -> dict[str, Any]:
-        result = await get_container().get_worker_orchestrator().process_next()
-        if result is None:
-            return {"status": "idle"}
-        return {"status": "done", "result": result.model_dump()}
+    # No /workers/process-one endpoint here: it would need a real
+    # WorkerOrchestrator (agent runtime), which api must never construct.
+    # Equivalent functionality is worker's own CLI: `egregore worker --once`.
 
     return app

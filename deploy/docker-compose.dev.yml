@@ -2,18 +2,18 @@ services:
   api:
     build:
       context: ..
-      dockerfile: deploy/Dockerfile
-    entrypoint: ["/app/shared/.venv/bin/egregore"]
+      dockerfile: deploy/Dockerfile.api
+    entrypoint: ["/app/api/.venv/bin/egregore"]
     command: ["serve", "--host", "0.0.0.0", "--port", "8080"]
     ports:
       - "8080:8080"
     env_file:
-      - ../backend/shared/.env
+      - ../backend/api/.env
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       UI_CORS_ORIGINS: http://localhost:3000
-      WORKER_IDLE_TIMEOUT: "0"
+      CONTROL_MODE: daemon
     depends_on:
       postgres:
         condition: service_healthy
@@ -26,11 +26,11 @@ services:
   worker:
     build:
       context: ..
-      dockerfile: deploy/Dockerfile
-    entrypoint: ["/app/shared/.venv/bin/egregore"]
+      dockerfile: deploy/Dockerfile.worker
+    entrypoint: ["/app/worker/.venv/bin/egregore"]
     command: ["worker", "--daemon", "--idle-timeout", "0"]
     env_file:
-      - ../backend/shared/.env
+      - ../backend/worker/.env
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis

@@ -31,6 +31,13 @@ dependencies = [
     # Base classes/schemas only (ModelConnector/ToolProviderPort port type
     # hints) — NOT the agent-execution engine. See plan §1.1/§0.2.
     "langchain-core>=1.4.0",
+    # interfaces/observability/connectors/langfuse/*.py lives here (generic
+    # trace/prompt/judge/eval backend, lazily imported by
+    # bootstrap/observability_factory.py only when OBS_*_BACKEND=langfuse)
+    # and is reachable from both api's and worker's ObservabilityContainer —
+    # not agent-execution specific, so this doesn't reintroduce the
+    # langchain/langgraph RAM cost this split exists to avoid.
+    "langfuse>=4.6.1",
     "pytest>=9.0.0",
     "pytest-asyncio>=1.4.0",
 ]
@@ -64,3 +71,59 @@ select = ["E", "F", "I", "W"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["bootstrap", "cys_core", "interfaces"]
+
+[tool.coverage.run]
+source = ["src/cys_core/domain"]
+omit = ["*/__init__.py"]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+    "import-linter>=2.0",
+    "ty>=0.0.1a25",
+]
+
+[tool.importlinter]
+root_package = "cys_core"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain_independent"
+type = "forbidden"
+source_modules = ["cys_core.domain"]
+forbidden_modules = [
+    "cys_core.infrastructure",
+    "cys_core.registry",
+    "cys_core.runtime",
+    "cys_core.middleware",
+    "cys_core.security",
+    "cys_core.observability",
+    "cys_core.llm",
+    "cys_core.persistence",
+    "bootstrap",
+    "interfaces",
+]
+
+[[tool.importlinter.contracts]]
+name = "application_only_domain"
+type = "layers"
+layers = [
+    "cys_core.application",
+    "cys_core.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "no_config_in_domain_application"
+type = "forbidden"
+source_modules = ["cys_core.domain", "cys_core.application"]
+forbidden_modules = ["config", "bootstrap"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "cys_core.application.use_cases.evaluate_trace_critic -> bootstrap",
+    "cys_core.application.use_cases.run_step -> bootstrap",
+    "cys_core.application.use_cases.seed_catalog -> bootstrap",
+    "cys_core.application.use_cases.upsert_profile_policy -> bootstrap",
+    "cys_core.application.tools.providers.sandbox -> bootstrap",
+    "cys_core.application.use_cases.enqueue_follow_up -> bootstrap",
+]

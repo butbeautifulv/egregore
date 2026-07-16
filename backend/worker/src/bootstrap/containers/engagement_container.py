@@ -82,11 +82,12 @@ class EngagementContainer:
 
         container = self._container
         metrics = container.get_metrics_port()
+        # No record_plan_match hook: UpdatePlanQuality is api-only bookkeeping
+        # (cys_core.application.use_cases.update_plan_quality doesn't exist in
+        # worker) — worker's routing path doesn't need it.
         self._route_event = RouteEvent(
             self.get_event_router(),
-            plan_catalog=container.get_plan_catalog(),
             record_event_ingested=metrics.record_event_ingested,
-            mutation=container.get_catalog_mutation_service(),
         )
         return self._route_event
 

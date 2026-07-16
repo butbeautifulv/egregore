@@ -35,17 +35,19 @@ def set_catalog_provider(catalog: AgentCatalogPort | None) -> None:
 def _default_catalog() -> AgentCatalogPort | None:
     if _catalog_provider is not None:
         return _catalog_provider
+    # api's and worker's own wire_catalog_ports() calls set_catalog_provider()
+    # explicitly at bootstrap (same pattern as discovery_tools.py) — reaching
+    # for bootstrap.container here would be a layering violation, since that
+    # module is api/worker's own composition root and structurally doesn't
+    # exist in contracts. If no provider was set (e.g. contracts used
+    # standalone, before either service's bootstrap ran), fall back to the
+    # generic catalog_registry.
     try:
-        from bootstrap.container import get_container
+        from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 
-        return get_container().get_agent_catalog()
+        return get_agent_catalog()
     except Exception:
-        try:
-            from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
-
-            return get_agent_catalog()
-        except Exception:
-            return None
+        return None
 
 
 def default_agents_root() -> Path:

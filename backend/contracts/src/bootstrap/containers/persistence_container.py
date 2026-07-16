@@ -5,23 +5,30 @@ from typing import TYPE_CHECKING
 from bootstrap.settings import Settings
 
 if TYPE_CHECKING:
-    from bootstrap.container import Container
-    from cys_core.application.ports import PersistenceContext
+    # Forward-ref only: Container is api's or worker's own composition
+    # root (whichever installs this sub-container), never a module inside
+    # contracts itself.
+    from bootstrap.container import Container  # ty: ignore[unresolved-import]
     from cys_core.application.ports.bus import AgentTransportConnector
     from cys_core.application.ports.job_queue import JobQueueConnector
     from cys_core.application.ports.memory import EpisodicMemoryStore
-    from cys_core.application.ports.sandbox import SandboxConnector
 
 
 class PersistenceContainer:
-    """Owns queue/transport/sandbox/persistence/memory store connectors."""
+    """Owns queue/transport/persistence/memory store connectors shared by api
+    and worker. Sandbox connector, LangGraph PersistenceContext (agent thread
+    checkpointing), context summarizer, and reflexion store are worker-only
+    (agent-execution concerns, cys_core.infrastructure.sandbox/cys_core.persistence/
+    context.factory/reflexion.memory don't exist outside worker) — those live
+    directly on worker's own Container now, not here. See
+    docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2 for why contracts must not carry
+    methods that only resolve inside one sibling package.
+    """
 
     def __init__(self, container: "Container") -> None:
         self._container = container
         self._bus_dedup_store = None
         self._workspace_store = None
-        self._context_summarizer = None
-        self._reflexion_store = None
 
     @property
     def settings(self) -> Settings:
@@ -36,22 +43,6 @@ class PersistenceContainer:
         from cys_core.infrastructure.bus_transport import get_bus_transport
 
         return get_bus_transport(settings=self.settings)
-
-    def get_sandbox_connector(self) -> "SandboxConnector":
-        from cys_core.infrastructure.sandbox import get_sandbox_connector
-
-        return get_sandbox_connector(settings=self.settings)
-
-    def get_persistence_context(self) -> "PersistenceContext":
-        from cys_core.persistence import get_persistence_connector
-
-        return get_persistence_connector(self.settings.persistence_connector).open()
-
-    async def get_async_persistence_context(self) -> "PersistenceContext":
-        from cys_core.persistence import get_persistence_connector
-
-        connector = get_persistence_connector(self.settings.persistence_connector)
-        return await connector.open_async()
 
     def get_job_store(self):
         from interfaces.control_plane.job_store import get_job_store
@@ -112,19 +103,3 @@ class PersistenceContainer:
             fallback_label="workspace_store",
         )
         return self._workspace_store
-
-    def get_context_summarizer(self):
-        if self._context_summarizer is not None:
-            return self._context_summarizer
-        from cys_core.infrastructure.context.factory import get_context_summarizer
-
-        self._context_summarizer = get_context_summarizer()
-        return self._context_summarizer
-
-    def get_reflexion_store(self):
-        if self._reflexion_store is not None:
-            return self._reflexion_store
-        from cys_core.infrastructure.reflexion.memory import get_reflexion_store
-
-        self._reflexion_store = get_reflexion_store()
-        return self._reflexion_store

@@ -61,7 +61,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_session(args: argparse.Namespace) -> int:
-    import asyncio
 
     from bootstrap.container import get_container
     from cys_core.domain.engagement.models import EngagementMode, EngagementRequest, PlanStrategy

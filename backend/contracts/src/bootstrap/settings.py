@@ -109,7 +109,14 @@ class Settings(BaseSettings):
     engagement_async_planning: bool = Field(
         default=True,
         validation_alias="ENGAGEMENT_ASYNC_PLANNING",
-        description="Defer meta-LLM engagement planning to background (API returns 202).",
+        description=(
+            "Defer meta-LLM engagement planning to background (API returns 202). "
+            "Since the api/worker split, api's StartEngagement always enqueues a "
+            "planner WorkerJob for PlanStrategy.META_LLM and never runs the planner "
+            "in-process (it would need the agent runtime, which api never has) — "
+            "this flag no longer has an effect on that path. Kept for other readers "
+            "of get_engagement_async_planning()."
+        ),
     )
     coordinator_llm_narrative: bool = Field(
         default=False,

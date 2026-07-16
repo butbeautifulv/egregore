@@ -13,6 +13,7 @@ from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp
 from cys_core.application.use_cases.enqueue_next_planned_persona import EnqueueNextPlannedPersona
 from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob
 from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
+from cys_core.application.use_cases.run_engagement_planner import EngagementPlannerRunner
 from cys_core.application.use_cases.run_worker_job import RunWorkerJob
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
@@ -128,8 +129,15 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         poll_s=get_follow_up_aggregator_poll_s(),
     )
     plan_follow_up_runner = None
+    engagement_planner_runner = None
     if deps.meta_planner is not None and deps.dispatch is not None:
         plan_follow_up_runner = PlanFollowUpRunner(
+            meta_planner=deps.meta_planner,
+            dispatch=deps.dispatch,
+            engagement_store=deps.engagement_store,
+            engagement_egress=deps.engagement_egress,
+        )
+        engagement_planner_runner = EngagementPlannerRunner(
             meta_planner=deps.meta_planner,
             dispatch=deps.dispatch,
             engagement_store=deps.engagement_store,
@@ -152,6 +160,7 @@ def build_worker_pipeline(deps: WorkerPipelineDeps) -> RunWorkerJob:
         resolve_legacy_tools=deps.resolve_legacy_tools,
         make_load_skill_tool=deps.make_load_skill_tool,
         plan_follow_up_runner=plan_follow_up_runner,
+        engagement_planner_runner=engagement_planner_runner,
         workspace_store=deps.workspace_store,
         metrics=deps.metrics,
         build_job_trace_metadata=deps.build_job_trace_metadata,

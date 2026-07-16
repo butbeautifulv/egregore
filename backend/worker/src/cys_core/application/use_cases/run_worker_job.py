@@ -12,6 +12,7 @@ from cys_core.application.ports.tracing_ports import WorkerTracingPort
 from cys_core.application.ports.workspace_store import WorkspaceStorePort
 from cys_core.application.runtime_config import get_worker_max_attempts, get_worker_triage_max_attempts
 from cys_core.application.use_cases.plan_follow_up import PlanFollowUpRunner
+from cys_core.application.use_cases.run_engagement_planner import EngagementPlannerRunner
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
 from cys_core.application.workers.evidence_gate import soc_evidence_gaps
@@ -41,6 +42,7 @@ from cys_core.application.workers.tool_execution_tracker import (
 )
 from cys_core.application.workspace.persona_resolver import resolve_worker_agent_definition
 from cys_core.domain.catalog.profile_id import resolve_profile_id
+from cys_core.domain.engagement.planner_job import is_engagement_plan_job
 from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
 from cys_core.domain.follow_up.models import (
     is_follow_up_orchestrator,
@@ -127,6 +129,7 @@ class RunWorkerJob:
         follow_up_publisher: FollowUpAnswerPublisher | None = None,
         follow_up_aggregator: FollowUpAggregator | None = None,
         plan_follow_up_runner: PlanFollowUpRunner | None = None,
+        engagement_planner_runner: EngagementPlannerRunner | None = None,
         workspace_store: WorkspaceStorePort | None = None,
         metrics: MetricsPort | None = None,
         build_job_trace_metadata: Any | None = None,
@@ -138,6 +141,7 @@ class RunWorkerJob:
         self._follow_up_publisher = follow_up_publisher
         self._follow_up_aggregator = follow_up_aggregator
         self._plan_follow_up_runner = plan_follow_up_runner
+        self._engagement_planner_runner = engagement_planner_runner
         self._job_finalizer = job_finalizer
         self._registry = registry
         self.sandbox = sandbox
@@ -349,6 +353,25 @@ class RunWorkerJob:
                     investigation_id=investigation_id,
                     error=str(exc),
                 )
+            await self._job_finalizer.mark_runtime_failure(job, str(exc), exc=exc)
+            return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
+
+    async def _execute_engagement_planner(
+        self, engagement_planner_runner: EngagementPlannerRunner, job: WorkerJob, investigation_id: str, session_id: str
+    ) -> RunResult:
+        try:
+            self._job_finalizer.mark_running(job, session_id)
+            self._job_finalizer.publish_job_started(job, investigation_id)
+            result = await engagement_planner_runner.execute(job, investigation_id)
+            await self._job_finalizer.mark_success(job, investigation_id)
+            return RunResult(
+                job_id=job.job_id,
+                persona=job.persona,
+                success=True,
+                finding=result,
+                sandbox_id="",
+            )
+        except Exception as exc:
             await self._job_finalizer.mark_runtime_failure(job, str(exc), exc=exc)
             return RunResult(job_id=job.job_id, persona=job.persona, success=False, error=str(exc))
 
@@ -859,6 +882,11 @@ class RunWorkerJob:
 
         if job.resume_checkpoint_ref:
             return await self._execute_resume(job, investigation_id)
+
+        if is_engagement_plan_job(job.payload, persona=job.persona) and self._engagement_planner_runner is not None:
+            return await self._execute_engagement_planner(
+                self._engagement_planner_runner, job, investigation_id, session_id
+            )
 
         if is_follow_up_plan_planner_job(job.payload, persona=job.persona) and self._plan_follow_up_runner is not None:
             return await self._execute_follow_up_plan_planner(

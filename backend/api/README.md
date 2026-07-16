@@ -6,11 +6,12 @@ models, port interfaces, and generic infra clients — never on
 plan for why: the queue message and Postgres rows are the only things
 allowed to cross the api/worker boundary.
 
-One accepted exception (plan §1.2): the meta-LLM engagement planner's
-background task (`interfaces/api/planner_tasks.py`) calls into
-`MetaPlanner`/`PlanInvestigation` with `runtime=None` here — the real agent
-runtime lives in `egregore-worker` and duplicating it into this package was
-rejected as worse than the alternative. This means meta-LLM async planning
-(gated behind `ENGAGEMENT_ASYNC_PLANNING`, default `true`) does not actually
-work from this build until a follow-up moves it to be genuinely
-worker-side (API enqueues a planning job instead of running it in-process).
+No exceptions: meta-LLM engagement planning needs the real agent runtime
+(`catalog_planner_strategy.py`'s `self.runtime.arun(...)`), so this package
+never constructs a `MetaPlanner`/`PlanInvestigation` at all. For
+`PlanStrategy.META_LLM`, `StartEngagement.execute()` enqueues a
+`WorkerJob(persona="planner", work_kind="engagement_plan")` and returns —
+worker's `RunWorkerJob` recognizes that job (`is_engagement_plan_job`) and
+runs `EngagementPlannerRunner`, the real planner with the real runtime,
+which enqueues the resulting persona jobs itself. See
+`docs/MICROSERVICES_SPLIT_PLAN.md` §16.

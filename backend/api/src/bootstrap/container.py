@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from bootstrap.containers.auth_container import AuthContainer
 from bootstrap.containers.catalog_container import CatalogContainer
@@ -45,7 +45,6 @@ def get_settings() -> Settings:
 
 
 if TYPE_CHECKING:
-    from cys_core.application.ports import PersistenceContext
     from cys_core.application.ports.bus import AgentTransportConnector
     from cys_core.application.ports.job_queue import JobQueueConnector
     from cys_core.application.ports.memory import EpisodicMemoryStore
@@ -103,9 +102,6 @@ class Container:
     def get_event_ingress(self):
         return self._engagement.get_event_ingress()
 
-    def get_meta_planner(self):
-        return self._engagement.get_meta_planner()
-
     def wire_engagement_egress(self) -> None:
         self._engagement.wire_engagement_egress()
 
@@ -124,9 +120,6 @@ class Container:
     def get_orchestration_port(self):
         return self._engagement.get_orchestration_port()
 
-    def get_plan_investigation(self):
-        return self._engagement.get_plan_investigation()
-
     # ------------------------------------------------------------------
     # Persistence / queue / transport / sandbox / memory
     # ------------------------------------------------------------------
@@ -136,12 +129,6 @@ class Container:
 
     def get_bus_transport(self) -> "AgentTransportConnector":
         return self._persistence.get_bus_transport()
-
-    def get_persistence_context(self) -> "PersistenceContext":
-        return self._persistence.get_persistence_context()
-
-    async def get_async_persistence_context(self) -> "PersistenceContext":
-        return await self._persistence.get_async_persistence_context()
 
     def get_job_store(self):
         return self._persistence.get_job_store()
@@ -163,12 +150,6 @@ class Container:
 
     def get_workspace_store(self):
         return self._persistence.get_workspace_store()
-
-    def get_context_summarizer(self):
-        return self._persistence.get_context_summarizer()
-
-    def get_reflexion_store(self):
-        return self._persistence.get_reflexion_store()
 
     # ------------------------------------------------------------------
     # Catalog / registry
@@ -218,9 +199,6 @@ class Container:
 
     def get_schema_registry_port(self):
         return self._catalog.get_schema_registry_port()
-
-    def get_tool_registry_port(self):
-        return self._catalog.get_tool_registry_port()
 
     def get_persona_ranking_port(self):
         return self._catalog.get_persona_ranking_port()
@@ -403,13 +381,15 @@ class Container:
     def wire_agent_definitions_loader(self) -> None:
         from bootstrap.agent_definitions_loader import get_default_agent_definitions_loader
         from bootstrap.otel_wiring import wire_otel
-        from cys_core.application.ports.persistence_provider import configure_persistence_providers
         from cys_core.application.ports.trace_callbacks import configure_trace_callbacks
         from cys_core.observability.langfuse_client import configure_trace_backend_factory
         from cys_core.registry.agents import configure_agent_definitions_loader
 
         wire_otel()
-        configure_persistence_providers(self.get_persistence_context, self.get_async_persistence_context)
+        # configure_persistence_providers() is NOT called here: it registers
+        # the LangGraph checkpoint/store connector (cys_core.persistence,
+        # worker-only) — api must never construct one. Only worker's
+        # Container wires this (see docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2).
 
         def _trace_callbacks():
             handler = self.get_trace_backend().get_callback_handler()
@@ -429,6 +409,9 @@ class Container:
         from cys_core.application.skills.catalog import configure_skill_registry, configure_skills_agents_root
         from cys_core.application.use_cases.extract_structured_output import configure_output_schema_catalog
         from cys_core.registry.discovery_tools import set_catalog_provider, set_persona_ranking_provider
+        from cys_core.registry.product_context import (
+            set_catalog_provider as set_product_context_catalog_provider,
+        )
 
         configure_resource_source(self.get_resource_source_port())
         configure_datasource_catalog(self.get_datasource_catalog_port())
@@ -446,6 +429,7 @@ class Container:
         configure_output_schema_catalog(self.get_agent_catalog())
         set_catalog_provider(self.get_agent_catalog())
         set_persona_ranking_provider(self.get_persona_ranking_port())
+        set_product_context_catalog_provider(self.get_agent_catalog())
 
 
 _container: Container | None = None

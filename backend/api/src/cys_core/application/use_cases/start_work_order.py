@@ -88,15 +88,12 @@ class StartWorkOrder:
         profile = self._profile_pack(request.profile_id)
         schema = profile.intake_schema if profile is not None else {}
         if schema:
+            import jsonschema
+
             try:
-                import jsonschema
-            except ImportError:
-                pass
-            else:
-                try:
-                    jsonschema.validate(instance=request.intake, schema=schema)
-                except jsonschema.ValidationError as exc:
-                    raise WorkOrderValidationError(str(exc.message), status_code=400) from exc
+                jsonschema.validate(instance=request.intake, schema=schema)
+            except jsonschema.ValidationError as exc:
+                raise WorkOrderValidationError(str(exc.message), status_code=400) from exc
         return intake
 
     def _engagement_request(

@@ -8,4 +8,5 @@ skip-check:
   - CKV2_K8S_6   # NetworkPolicy — enforced at platform/nginx layer
 
 skip-path:
-  - deploy/Dockerfile.corp   # offline/Kaniko path, separate lifecycle
+  - deploy/Dockerfile.corp.api      # offline/Kaniko path, separate lifecycle
+  - deploy/Dockerfile.corp.worker   # offline/Kaniko path, separate lifecycle

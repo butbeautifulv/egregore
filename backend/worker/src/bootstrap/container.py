@@ -84,6 +84,14 @@ class Container:
         self._tools = ToolsContainer(self)
         self._auth = AuthContainer(self)
         self._observability = ObservabilityContainer(self)
+        # Worker-only, cached directly here rather than on the shared
+        # PersistenceContainer/CatalogContainer (contracts) — these back onto
+        # cys_core.infrastructure.sandbox/cys_core.persistence/context.factory/
+        # reflexion.memory/registry.tool_registry_adapter, none of which exist
+        # in api. See docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2.
+        self._context_summarizer = None
+        self._reflexion_store = None
+        self._tool_registry_port = None
 
     # ------------------------------------------------------------------
     # Engagement / event routing / bus orchestration
@@ -168,13 +176,20 @@ class Container:
         return self._persistence.get_bus_transport()
 
     def get_sandbox_connector(self) -> SandboxConnector:
-        return self._persistence.get_sandbox_connector()
+        from cys_core.infrastructure.sandbox import get_sandbox_connector
+
+        return get_sandbox_connector(settings=self.settings)
 
     def get_persistence_context(self) -> PersistenceContext:
-        return self._persistence.get_persistence_context()
+        from cys_core.persistence import get_persistence_connector
+
+        return get_persistence_connector(self.settings.persistence_connector).open()
 
     async def get_async_persistence_context(self) -> PersistenceContext:
-        return await self._persistence.get_async_persistence_context()
+        from cys_core.persistence import get_persistence_connector
+
+        connector = get_persistence_connector(self.settings.persistence_connector)
+        return await connector.open_async()
 
     def get_job_store(self):
         return self._persistence.get_job_store()
@@ -198,10 +213,20 @@ class Container:
         return self._persistence.get_workspace_store()
 
     def get_context_summarizer(self):
-        return self._persistence.get_context_summarizer()
+        if self._context_summarizer is not None:
+            return self._context_summarizer
+        from cys_core.infrastructure.context.factory import get_context_summarizer
+
+        self._context_summarizer = get_context_summarizer()
+        return self._context_summarizer
 
     def get_reflexion_store(self):
-        return self._persistence.get_reflexion_store()
+        if self._reflexion_store is not None:
+            return self._reflexion_store
+        from cys_core.infrastructure.reflexion.memory import get_reflexion_store
+
+        self._reflexion_store = get_reflexion_store()
+        return self._reflexion_store
 
     # ------------------------------------------------------------------
     # Catalog / registry ports
@@ -253,7 +278,12 @@ class Container:
         return self._catalog.get_schema_registry_port()
 
     def get_tool_registry_port(self):
-        return self._catalog.get_tool_registry_port()
+        if self._tool_registry_port is not None:
+            return self._tool_registry_port
+        from cys_core.infrastructure.registry.tool_registry_adapter import build_tool_registry_port
+
+        self._tool_registry_port = build_tool_registry_port()
+        return self._tool_registry_port
 
     def get_persona_ranking_port(self):
         return self._catalog.get_persona_ranking_port()
@@ -488,7 +518,15 @@ class Container:
         from cys_core.application.skills.catalog import configure_skill_registry, configure_skills_agents_root
         from cys_core.application.tools.registry_provider import RegistryToolProvider, configure_default_tool_provider
         from cys_core.application.use_cases.extract_structured_output import configure_output_schema_catalog
-        from cys_core.registry.discovery_tools import set_catalog_provider, set_persona_ranking_provider
+        from cys_core.registry.discovery_tools import (
+            set_catalog_provider,
+            set_persona_ranking_provider,
+            set_tool_lister_provider,
+        )
+        from cys_core.registry.product_context import (
+            set_catalog_provider as set_product_context_catalog_provider,
+        )
+        from cys_core.registry.tools import list_tools
 
         configure_resource_source(self.get_resource_source_port())
         configure_datasource_catalog(self.get_datasource_catalog_port())
@@ -510,6 +548,8 @@ class Container:
         )
         set_catalog_provider(self.get_agent_catalog())
         set_persona_ranking_provider(self.get_persona_ranking_port())
+        set_product_context_catalog_provider(self.get_agent_catalog())
+        set_tool_lister_provider(list_tools)
 
     def wire_runtime(self) -> None:
         from cys_core.runtime.agent import configure_runtime_memory_reader

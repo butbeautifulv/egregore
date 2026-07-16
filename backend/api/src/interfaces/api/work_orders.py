@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
-from cys_core.application.use_cases.start_engagement import engagement_request_to_security_event
 from cys_core.application.use_cases.start_work_order import (
     INITIAL_QA_PENDING,
     WorkOrderValidationError,
@@ -16,7 +15,6 @@ from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_ingress_role, require_operator_role, require_reader_role
 from interfaces.api.authz_helpers import require_engagement_relation, visible_workspace_ids
 from interfaces.api.follow_up_schemas import FollowUpIn, FollowUpListOut, FollowUpOut, FollowUpTurnOut
-from interfaces.api.planner_tasks import spawn_engagement_planner
 from interfaces.api.tenant_deps import require_tenant_match_http
 from interfaces.api.work_order_schemas import WorkOrderCreateIn, WorkOrderListOut, WorkOrderOut
 
@@ -65,7 +63,6 @@ async def list_work_orders(
 @router.post("/work-orders", response_model=WorkOrderOut)
 async def create_work_order(
     body: WorkOrderCreateIn,
-    request: Request,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> WorkOrderOut | JSONResponse:
     tenant_id = require_tenant_match_http(_auth, body.tenant_id)
@@ -79,14 +76,8 @@ async def create_work_order(
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     out = WorkOrderOut.from_engagement(engagement, decision=decision, job_ids=job_ids)
     if decision.reason == ASYNC_PLANNER_PENDING:
-        eng_request = wo_request.to_engagement_request(engagement.id)
-        event = engagement_request_to_security_event(eng_request, engagement.id)
-        spawn_engagement_planner(
-            request,
-            start=get_container().get_start_engagement(),
-            event=event,
-            payload=dict(event.payload),
-        )
+        # StartWorkOrder delegates to StartEngagement.execute(), which already
+        # enqueued the planner WorkerJob — nothing left to trigger here.
         return JSONResponse(status_code=202, content=out.model_dump(mode="json"))
     if decision.reason == INITIAL_QA_PENDING:
         return JSONResponse(status_code=202, content=out.model_dump(mode="json"))

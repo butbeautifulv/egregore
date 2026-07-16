@@ -14,8 +14,8 @@ from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.ports.metrics import MetricsPort
 from cys_core.application.use_cases.fail_engagement_guardrail import maybe_trip_engagement
-from cys_core.domain.findings.noop import is_noop_finding
 from cys_core.domain.engagement.models import EngagementStatus
+from cys_core.domain.findings.noop import is_noop_finding
 from cys_core.domain.workers.job_factory import jobs_for_routing
 from cys_core.domain.workers.models import WorkerJob
 

@@ -13,7 +13,11 @@ jobs:
           python-version: "3.13"
       - uses: hadolint/hadolint-action@v3.3.0
         with:
-          dockerfile: deploy/Dockerfile
+          dockerfile: deploy/Dockerfile.api
+          failure-threshold: warning
+      - uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: deploy/Dockerfile.worker
           failure-threshold: warning
       - name: Gate check
         if: always()

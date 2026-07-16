@@ -13,17 +13,26 @@ from cys_core.infrastructure.catalog.registry_factory import (
 )
 
 if TYPE_CHECKING:
-    from bootstrap.container import Container
+    # Forward-ref only: Container is api's or worker's own composition
+    # root (whichever installs this sub-container), never a module inside
+    # contracts itself.
+    from bootstrap.container import Container  # ty: ignore[unresolved-import]
 
 
 class CatalogContainer:
-    """Owns catalog/registry ports and catalog seed/mutation services."""
+    """Owns catalog/registry ports and catalog seed/mutation services.
+
+    get_tool_registry_port() is worker-only (cys_core.infrastructure.registry.
+    tool_registry_adapter wraps the LangChain tool registry, worker-only per
+    docs/MICROSERVICES_SPLIT_PLAN.md §1) — it lives directly on worker's own
+    Container now, not here, so this shared container never reaches for a
+    module that doesn't exist in api.
+    """
 
     def __init__(self, container: "Container") -> None:
         self._container = container
         self._agent_registry_port = None
         self._schema_registry_port = None
-        self._tool_registry_port = None
         self._persona_ranking_port = None
         self._skill_registry_port = None
         self._resource_source_port = None
@@ -134,14 +143,6 @@ class CatalogContainer:
 
         self._schema_registry_port = build_schema_registry_port()
         return self._schema_registry_port
-
-    def get_tool_registry_port(self):
-        if self._tool_registry_port is not None:
-            return self._tool_registry_port
-        from cys_core.infrastructure.registry.tool_registry_adapter import build_tool_registry_port
-
-        self._tool_registry_port = build_tool_registry_port()
-        return self._tool_registry_port
 
     def get_persona_ranking_port(self):
         if self._persona_ranking_port is not None:

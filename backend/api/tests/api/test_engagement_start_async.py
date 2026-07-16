@@ -45,7 +45,6 @@ async def test_post_engagement_start_returns_202(monkeypatch):
     )
     fake_start = MagicMock()
     fake_start.execute = AsyncMock(return_value=(engagement, decision, []))
-    fake_start.plan_async_background = AsyncMock(return_value=[])
     import bootstrap.container as container_mod
 
     catalog = MagicMock()

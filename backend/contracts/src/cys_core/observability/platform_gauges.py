@@ -6,7 +6,7 @@ from cys_core.observability.metrics import metrics
 def refresh_platform_gauges(*, tenant_id: str = "default", engagement_store=None, job_store=None) -> None:
     """Update gauges that are derived from stores (HITL queue, active engagements)."""
     if job_store is None:
-        from bootstrap.container import get_container
+        from bootstrap.container import get_container  # ty: ignore[unresolved-import]
 
         job_store = get_container().get_job_store()
     try:
@@ -16,7 +16,7 @@ def refresh_platform_gauges(*, tenant_id: str = "default", engagement_store=None
         pass
 
     if engagement_store is None:
-        from bootstrap.container import get_container
+        from bootstrap.container import get_container  # ty: ignore[unresolved-import]
 
         engagement_store = get_container().get_engagement_state_store()
     try:
