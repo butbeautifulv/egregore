@@ -1576,7 +1576,31 @@ test_kafka_queue.py`) — the complementary case the existing persona-filter tes
 missing: a `persona=""` worker must return a `persona="planner"` job without requeuing it, not
 just that a persona-scoped worker correctly requeues jobs that aren't its own. This is
 queue-connector-level, not a full `WorkerDaemon`-through-`RunWorkerJob` end-to-end test (that
-would additionally need a real orchestrator/sandbox/bus stack) — a real, if smaller, gap than
-originally scoped remains: nothing yet exercises the actual `WorkerDaemon.run()` loop against a
-real (in-memory-backed) queue picking up and completing a `persona="planner"` job, consistent
-with the identical (also-untested-at-that-level) follow-up-planning path this design mirrors.
+would additionally need a real orchestrator/sandbox/bus stack).
+
+**Re-examined whether that remaining gap is actually load-bearing** before writing a bigger test
+to close it: `WorkerOrchestrator.process_next()` (`interfaces/worker/orchestrator.py:259-263`) is
+exactly `job = await self.queue.adequeue(...); return await self.run_job(job)` — no persona logic
+of its own — and `WorkerDaemon.run()`'s polling loop just calls `process_next()` repeatedly,
+also persona-agnostic. Every bit of the actual routing risk (does a `persona=""` worker receive
+a `persona="planner"` job, does a persona-scoped worker correctly not swallow it) lives entirely
+inside the queue connector, which the new test above already exercises directly. A full
+`WorkerDaemon`-through-`RunWorkerJob` test would mostly re-integration-test the polling loop
+(already covered by `tests/workers/test_daemon.py` with a mocked orchestrator) wrapped around
+the queue connector (now covered directly) — not exercise any additional class of bug. Downgraded
+from "real gap" to "already sufficiently covered at the two layers where the risk actually
+lives"; not pursuing a heavier end-to-end test for this specific question.
+
+**Separately checked a different hypothesis this pass**: does moving the planner-job enqueue
+from a fire-and-forget background `asyncio` task (the old `plan_async_background`, called
+*after* the HTTP 202 was already sent) into `StartEngagement.execute()` itself (synchronous,
+*before* the response) introduce a new failure mode — an enqueue failure now propagating into
+the HTTP request instead of failing silently in the background? Checked the sibling code path
+before assuming a regression: `DispatchEvent.dispatch_async()` (`cys_core/application/use_cases/
+dispatch_event.py`), the pre-existing path every non-META_LLM event/engagement already goes
+through, calls `enqueuer.enqueue_from_routing(...)` exactly the same way — synchronously, no
+try/except. This is the codebase's existing, established convention for this whole class of
+operation (relying on the queue connectors' own in-memory fallback for ordinary broker outages,
+plus `app.py`'s global exception handler for the rare case that still raises), not something
+`StartEngagement`'s new enqueue call deviates from. No fix needed here — confirmed not a
+regression rather than assumed it was fine.
