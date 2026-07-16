@@ -83,9 +83,9 @@ own subset under that same namespace. ASGI entrypoint: `interfaces/api/app.py`
 (in `backend/api/`). Operator UI is **`web_ui/`** (not `ui/`). Product seed
 **`backend/agents/`** (sibling of the three packages, not nested in any one
 of them). Docker/compose: **`deploy/`** (`Dockerfile.api`, `Dockerfile.worker`).
-Transitional **`backend/shared/`** (the pre-split monolith) still exists
-until the zero-fallback verification gate passes (task #52) — do not add new
-code there.
+The transitional `backend/shared/` pre-split monolith has been deleted
+(task #52's zero-fallback verification gate passed — contracts/worker/api
+each build, import, and test fully independently with zero fallback).
 
 ### Единые точки входа
 
@@ -187,8 +187,8 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 
 **Агентам: только батчами**, и **отдельно на каждый пакет** —
 `cd backend/{contracts,worker,api} && ./scripts/pytest_batches.sh`, не
-`uv run pytest` на весь `tests/` одним процессом, и не из старого
-`backend/shared` (транзитный монолит, отключён от активной разработки).
+`uv run pytest` на весь `tests/` одним процессом. `backend/shared`
+(транзитный монолит) удалён — три пакета полностью независимы.
 
 - **Точечно** после правок: только затронутые батчи, в том пакете, где лежит
   правка (см. `.cursor/rules/project-egregore-pytest-batches.mdc`).

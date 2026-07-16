@@ -1,7 +1,9 @@
 name: egregore-codeql
 
 paths:
-  - backend/shared/src
+  - backend/contracts/src
+  - backend/worker/src
+  - backend/api/src
 
 dataExtensions:
   - .github/codeql/python-extensions.yml

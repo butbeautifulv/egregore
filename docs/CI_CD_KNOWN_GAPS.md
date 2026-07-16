@@ -8,9 +8,9 @@
 
 | Job | Verification |
 |-----|----------------|
-| `lint` | `cd backend/shared && uv run ruff check src tests && uv run ty check src` |
-| `unit-tests` | `cd backend/shared && ./scripts/pytest_batches.sh` (29/29 batches) |
-| `arch-lint` | `make -C backend/shared verify-architecture` |
+| `lint` | matrixed over contracts/worker/api: `cd backend/<pkg> && uv run ruff check src tests && uv run ty check src` |
+| `unit-tests` | matrixed over contracts/worker/api: `cd backend/<pkg> && ./scripts/pytest_batches.sh` |
+| `arch-lint` | matrixed over contracts/worker/api: `make -C backend/<pkg> verify-architecture` |
 | `domain-coverage` | `pytest tests/domain/ --cov=src/cys_core/domain --cov-fail-under=100` |
 | `adversarial` | `pytest tests/adversarial/ -m adversarial` (0 xfail) |
 | `secret-scan` / `sast` / `osa` | security scanners + `gate-check.py` |

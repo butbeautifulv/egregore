@@ -25,8 +25,8 @@ def _settings_env_files() -> tuple[str, ...]:
 
     Does not look for "this module's own nearest pyproject.toml" the way it
     used to — `bootstrap.settings` now lives in the shared `contracts`
-    package, installed into multiple sibling services (backend/shared,
-    backend/api, backend/worker), so `Path(__file__)` here always points
+    package, installed into multiple sibling services (backend/api,
+    backend/worker), so `Path(__file__)` here always points
     into `contracts/`, never into whichever service is actually running.
     CWD already covers the "this service's own .env" case correctly.
     """

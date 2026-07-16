@@ -9,7 +9,7 @@ def find_package_root(start: Path | None = None) -> Path:
     Callers should pass their own `Path(__file__)` as `start` if they need
     *their own* package's root — this module (bootstrap.paths) now lives in
     the shared `contracts` package, installed into multiple sibling
-    services (backend/shared, backend/api, backend/worker), so relying on
+    services (backend/api, backend/worker), so relying on
     the default (this module's own location) only ever resolves to
     contracts' root, not the caller's.
     """

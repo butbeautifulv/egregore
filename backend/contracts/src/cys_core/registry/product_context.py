@@ -14,7 +14,7 @@ from cys_core.domain.security.system_prompt_assembler import assemble_trusted_sy
 
 # Not Path(__file__)-relative: this module now lives in the shared
 # `contracts` package, installed into multiple sibling services
-# (backend/shared, backend/api, backend/worker) at different nesting
+# (backend/api, backend/worker) at different nesting
 # depths — `Path(__file__).resolve().parents[N]` broke once this stopped
 # being one level below whichever service was actually running.
 # `uv run egregore ...` always invokes with CWD set to that service's own
