@@ -18,13 +18,13 @@ config
 .env.local
 
 # Python backend tree — exclude dev/test bulk, keep runtime assets
-backend/tests
-backend/.venv
-backend/.pytest_cache
-backend/.ruff_cache
-backend/.coverage
-backend/docs
-backend/scripts
+backend/shared/tests
+backend/shared/.venv
+backend/shared/.pytest_cache
+backend/shared/.ruff_cache
+backend/shared/.coverage
+backend/shared/docs
+backend/shared/scripts
 
 # Root-level legacy paths (pre-split)
 /tests
@@ -33,4 +33,4 @@ backend/scripts
 
 # Markdown except backend README required by uv/hatch
 *.md
-!backend/README.md
+!backend/shared/README.md

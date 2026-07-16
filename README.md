@@ -37,22 +37,22 @@ Markdown SSOT: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/OBSERVABILI
 ## Быстрый старт
 
 ```bash
-cd backend && uv sync
+cd backend/shared && uv sync
 
 docker compose -f deploy/docker-compose.yml up -d   # Postgres + Redis + Redpanda + Qdrant
 
-cp backend/.env.example backend/.env   # LLM API key (local only, not committed)
+cp backend/shared/.env.example backend/shared/.env   # LLM API key (local only, not committed)
 
-cd backend && uv run egregore info
-cd backend && uv run egregore migrate   # apply migrations/*.sql
+cd backend/shared && uv run egregore info
+cd backend/shared && uv run egregore migrate   # apply migrations/*.sql
 ```
 
 ### Operator UI (full stack)
 
 ```bash
 make dev-infra                    # or: docker compose -f deploy/docker-compose.yml up -d
-cd backend && uv run egregore serve --port 8080 # or: make dev-api
-cd backend && uv run egregore worker --daemon # optional: make dev-worker
+cd backend/shared && uv run egregore serve --port 8080 # or: make dev-api
+cd backend/shared && uv run egregore worker --daemon # optional: make dev-worker
 
 cd web_ui && cp .env.local.example .env.local && bun install && bun run dev
 # or from repo root: make dev-web-ui
@@ -80,22 +80,22 @@ Docker app profile (no host Node/Python): `make dev-docker` (requires `.env`).
 
 ```bash
 # Ingest SIEM event → enqueue SOC worker
-cd backend && uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
+cd backend/shared && uv run egregore ingest -t siem.alert -p '{"alert":"powershell encoded command"}' -s high
 
 # Process queued worker job
-cd backend && uv run egregore worker --once
+cd backend/shared && uv run egregore worker --once
 
 # Control plane status
-cd backend && uv run egregore status
+cd backend/shared && uv run egregore status
 
 # Manual investigation (all workers)
-cd backend && uv run egregore session -g "Assess CI/CD pipeline risks"
+cd backend/shared && uv run egregore session -g "Assess CI/CD pipeline risks"
 
 # HTTP API
-cd backend && uv run egregore serve --port 8080
+cd backend/shared && uv run egregore serve --port 8080
 
 # Tests (low memory — one pytest process per tests/<dir>/)
-cd backend && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/shared && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## CLI
@@ -142,16 +142,18 @@ cd backend && ./scripts/pytest_batches.sh --cov --domain-gate
 
 ```
 egregore/
-├── backend/                # Python/uv backend (pyproject.toml, src/, tests/, agents/)
-│   ├── src/                # cys_core, interfaces, bootstrap, connectors, authz, main.py
-│   ├── agents/             # Product personas, rules, plans, skills
-│   ├── migrations/         # SQL migrations
-│   └── scripts/            # pytest_batches, verify_import_boundaries, …
+├── backend/
+│   └── shared/             # Python/uv backend (pyproject.toml, src/, tests/, agents/) —
+│       │                   #   being split into contracts/api/worker packages (task #38)
+│       ├── src/            # cys_core, interfaces, bootstrap, connectors, authz, main.py
+│       ├── agents/         # Product personas, rules, plans, skills
+│       ├── migrations/     # SQL migrations
+│       └── scripts/        # pytest_batches, verify_import_boundaries, …
 ├── deploy/                 # Dockerfile, compose, k8s, helm, grafana
 ├── web_ui/                 # Operator console (Next.js)
 ├── tui/                    # Operator TUI (Go Bubble Tea)
 ├── docs/
-├── Makefile                # thin dispatcher (Python → backend/, UI → web_ui/)
+├── Makefile                # thin dispatcher (Python → backend/shared/, UI → web_ui/)
 └── scripts/                # full-stack dev wrappers, security gates
 ```
 
@@ -184,12 +186,12 @@ egregore/
 | `EGREGORE_MAX_FOLLOW_UP_PLANS` | `3` | Max plan-mode follow-ups per engagement |
 | `PLANNER_TIMEOUT_SECONDS` | `120` | Fallback when async meta-planner stays in planning |
 
-Полный список: [`backend/.env.example`](backend/.env.example)
+Полный список: [`backend/shared/.env.example`](backend/shared/.env.example)
 
 ## Тестирование
 
 ```bash
-cd backend && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/shared && ./scripts/pytest_batches.sh --cov --domain-gate
 ```
 
 ## Документация

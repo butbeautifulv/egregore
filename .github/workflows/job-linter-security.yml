@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: backend/shared
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -27,9 +27,9 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           POLICY="${SECURITY_POLICY:-config/security-gate-policy.yaml}"
-          python scripts/gate-check.py --control linters --report backend/linter.sarif --policy "$POLICY"
+          python scripts/gate-check.py --control linters --report backend/shared/linter.sarif --policy "$POLICY"
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: backend/linter.sarif
+          sarif_file: backend/shared/linter.sarif
           category: linters

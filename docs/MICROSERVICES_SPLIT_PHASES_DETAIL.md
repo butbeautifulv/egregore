@@ -577,10 +577,10 @@ DockerExecutionBackend'а в `engagement_container.py`. Пусто по умол
 тест-сессии (`POSTGRES_DB=cys_agi` вместо `egregore`, попавшее в реальный `os.environ`
 child-процесса через `litellm/__init__.py`'s implicit `load_dotenv()`, который ищет
 `.env` вверх по дереву от собственного расположения пакета внутри `.venv/`, находит
-`backend/.env` раньше repo-root `.env` — но только когда оба файла реально существуют и
+`backend/shared/.env` раньше repo-root `.env` — но только когда оба файла реально существуют и
 расходятся в значении). Настоящий баг репозитория тут не в дуальном `_settings_env_files()`
 (она работает как задумано), а в том, что *любой* процесс, импортирующий litellm, может
-словить эту гонку, если когда-нибудь `backend/.env` и repo-root `.env` разойдутся — стоит
+словить эту гонку, если когда-нибудь `backend/shared/.env` и repo-root `.env` разойдутся — стоит
 иметь в виду, не обязательно чинить сейчас.
 
 Все три ExecutionBackend'а (`in_process`, `subprocess`, `docker`) прогнаны сквозь

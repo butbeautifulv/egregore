@@ -2,18 +2,18 @@
 # cxado/egregore — API + worker (same image, different command).
 # Build from egregore repo root: docker build -f deploy/Dockerfile .
 FROM python:3.13-slim AS base
-WORKDIR /app/backend
+WORKDIR /app/shared
 COPY --from=ghcr.io/astral-sh/uv:0.11.12 /uv /usr/local/bin/uv
 
 # Layer 1: lockfile only — deps install cached until pyproject.toml / uv.lock change.
-COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
+COPY backend/shared/pyproject.toml backend/shared/uv.lock backend/shared/README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # Layer 2: source — only reinstalls the local project wheel, not all PyPI deps.
-COPY backend/src ./src
-COPY backend/agents ./agents
-COPY backend/migrations ./migrations
+COPY backend/shared/src ./src
+COPY backend/shared/agents ./agents
+COPY backend/shared/migrations ./migrations
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 

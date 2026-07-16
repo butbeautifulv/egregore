@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 TOPICS_JOB = REPO_ROOT / "contracts" / "k8s" / "cxado-offline" / "15-redpanda-topics-job.yaml"
 
 

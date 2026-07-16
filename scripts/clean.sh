@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Remove regenerable cache artifacts from projects/egregore (post backend/ split).
+# Remove regenerable cache artifacts from projects/egregore (post backend/shared split).
 #
 # Usage:
 #   ./scripts/clean.sh           # cache only (default)
 #   ./scripts/clean.sh cache
 #   ./scripts/clean.sh venv-root
-#   ./scripts/clean.sh all       # cache + root .venv (keeps backend/.venv)
+#   ./scripts/clean.sh all       # cache + root .venv (keeps backend/shared/.venv)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -36,20 +36,20 @@ clean_tool_caches() {
   rm_path htmlcov
   rm -f .coverage.* 2>/dev/null || true
 
-  rm_path backend/.pytest_cache
-  rm_path backend/.ruff_cache
-  rm_path backend/.import_linter_cache
-  rm_path backend/.coverage
-  rm_path backend/htmlcov
-  rm -f backend/.coverage.* 2>/dev/null || true
+  rm_path backend/shared/.pytest_cache
+  rm_path backend/shared/.ruff_cache
+  rm_path backend/shared/.import_linter_cache
+  rm_path backend/shared/.coverage
+  rm_path backend/shared/htmlcov
+  rm -f backend/shared/.coverage.* 2>/dev/null || true
 }
 
 clean_build_artifacts() {
   rm_path build
   rm_path dist
   rm_path wheels
-  rm_path backend/build
-  rm_path backend/dist
+  rm_path backend/shared/build
+  rm_path backend/shared/dist
   while IFS= read -r -d '' egg; do
     rm_path "$egg"
   done < <(find . -maxdepth 4 -type d -name '*.egg-info' -print0 2>/dev/null || true)
@@ -57,11 +57,11 @@ clean_build_artifacts() {
 
 clean_pycache() {
   find . \
-    \( -path './.venv' -o -path './backend/.venv' -o -path './web_ui' -o -path './.claude' \) -prune -o \
+    \( -path './.venv' -o -path './backend/shared/.venv' -o -path './web_ui' -o -path './.claude' \) -prune -o \
     -depth -type d -name '__pycache__' -print -exec rm -rf {} + 2>/dev/null || true
 
   find . \
-    \( -path './.venv' -o -path './backend/.venv' -o -path './web_ui' -o -path './.claude' \) -prune -o \
+    \( -path './.venv' -o -path './backend/shared/.venv' -o -path './web_ui' -o -path './.claude' \) -prune -o \
     -type f \( -name '*.pyc' -o -name '*.pyo' \) -print -delete 2>/dev/null || true
 }
 

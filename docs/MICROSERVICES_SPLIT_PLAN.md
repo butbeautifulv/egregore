@@ -47,10 +47,10 @@ placement) смысл.
 
 | Сервис | Entrypoint | Файл | Deploy |
 |---|---|---|---|
-| API | `egregore serve` | `backend/src/interfaces/api/app.py` (`FastAPI`, 501 строк) | отдельный контейнер, `deploy/docker-compose.dev.yml:1-24` |
-| Worker | `egregore worker --daemon` | `backend/src/interfaces/worker/daemon.py` | отдельный контейнер, `deploy/docker-compose.dev.yml:26-45` |
-| MCP Tool Gateway | отдельное FastAPI-приложение | `backend/src/interfaces/gateways/tool/server.py` | уже отдельный сервис (PEP для tool I/O) |
-| Router / Critic / Coordinator | `egregore router|critic|coordinator` | `backend/src/interfaces/ingress/router_consumer.py`, `backend/src/interfaces/control_plane/{critic,coordinator}_daemon.py` | consumer-демоны на шине, уже отдельные процессы |
+| API | `egregore serve` | `backend/shared/src/interfaces/api/app.py` (`FastAPI`, 501 строк) | отдельный контейнер, `deploy/docker-compose.dev.yml:1-24` |
+| Worker | `egregore worker --daemon` | `backend/shared/src/interfaces/worker/daemon.py` | отдельный контейнер, `deploy/docker-compose.dev.yml:26-45` |
+| MCP Tool Gateway | отдельное FastAPI-приложение | `backend/shared/src/interfaces/gateways/tool/server.py` | уже отдельный сервис (PEP для tool I/O) |
+| Router / Critic / Coordinator | `egregore router|critic|coordinator` | `backend/shared/src/interfaces/ingress/router_consumer.py`, `backend/shared/src/interfaces/control_plane/{critic,coordinator}_daemon.py` | consumer-демоны на шине, уже отдельные процессы |
 
 Всё это — **один и тот же Docker-образ** (`deploy/Dockerfile`, комментарий в самом
 файле: *"API + worker (same image, different command)"*), с общим `bootstrap.container`

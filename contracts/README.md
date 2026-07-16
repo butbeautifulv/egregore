@@ -17,7 +17,7 @@ Vendored artifacts used by contract tests in `backend/tests/contracts/`. These f
    ```
    (paths relative to cxado meta-repo root)
 2. If topics, partition counts, or topic names changed, copy the upstream file and restore the header comment on line 1.
-3. Run `cd backend && uv run pytest tests/contracts/test_kafka_topics_k8s.py -q`
+3. Run `cd backend/shared && uv run pytest tests/contracts/test_kafka_topics_k8s.py -q`
 4. Commit with message `test(contracts): refresh redpanda topics snapshot`
 
 Commit snapshot updates whenever platform topic layout changes or egregore's `WORKER_JOBS_TOPIC` constant is updated.
