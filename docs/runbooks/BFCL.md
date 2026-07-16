@@ -21,7 +21,7 @@ uv run python scripts/evals/sgr_bfcl_ab.py --help
 
 ## Artifacts
 
-- Fixture: `tests/fixtures/eval_ci_small.json`
+- Fixture: `backend/worker/tests/fixtures/eval_ci_small.json`
 - Trajectory metrics: `BfclAdapterSkeleton.trajectory_score`
 
 ## Grafana
