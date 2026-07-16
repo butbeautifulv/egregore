@@ -285,6 +285,10 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true') ||
       (github.event_name == 'pull_request' && github.head_ref == 'fix/ci-trivy-container-scan')
     needs: [build]
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
     uses: ./.github/workflows/job-sca-image.yml
     secrets: inherit
     with:
