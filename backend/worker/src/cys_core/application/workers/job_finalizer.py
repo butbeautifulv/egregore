@@ -16,6 +16,7 @@ from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesi
 from cys_core.application.workers.follow_up_publisher import FollowUpAnswerPublisher
 from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.engagement.models import EngagementStatus
+from cys_core.domain.engagement.planner_job import is_engagement_plan_job
 from cys_core.domain.follow_up.models import (
     is_follow_up_payload,
     is_follow_up_plan_iteration,
@@ -118,6 +119,16 @@ class WorkerJobFinalizer:
                     investigation_id=investigation_id,
                     error=error,
                 )
+        elif is_engagement_plan_job(job.payload, persona=job.persona):
+            # Nothing further to do here: EngagementPlannerRunner already
+            # published an "error" egress status, and CatalogPlannerStrategy's
+            # own exception handling already wrote planner_status="error" to
+            # the engagement store for LLM-side failures. "planner" is never
+            # a specialist in engagement.planner_plan — calling
+            # mark_persona_failed here would incorrectly add it to
+            # engagement.failed_personas, and there is no pipeline/synthesis
+            # to advance since no specialist jobs were ever produced.
+            pass
         else:
             await asyncio.to_thread(self.mark_persona_failed, job)
             await self._enqueue_pipeline_next(job)
@@ -195,7 +206,16 @@ class WorkerJobFinalizer:
                 "job_finished",
                 {"tenant_id": job.tenant_id, "persona": job.persona, "job_id": job.job_id, "success": True},
             )
-        if not is_follow_up_payload(job.payload) or is_follow_up_plan_iteration(job.payload):
+        # engagement_plan jobs (the initial meta-LLM planner, see
+        # docs/MICROSERVICES_SPLIT_PLAN.md §16) already enqueue the plan's
+        # own persona jobs themselves (EngagementPlannerRunner honors
+        # pipeline_staged correctly) — running this again here would
+        # duplicate-enqueue the first staged persona's job, exactly the bug
+        # is_follow_up_payload already prevents for the analogous
+        # follow_up_plan job.
+        if not is_engagement_plan_job(job.payload, persona=job.persona) and (
+            not is_follow_up_payload(job.payload) or is_follow_up_plan_iteration(job.payload)
+        ):
             if self._enqueue_next_planned_persona is not None:
                 await self._enqueue_next_planned_persona.execute(job)
             if self._enqueue_synthesis_job is not None:

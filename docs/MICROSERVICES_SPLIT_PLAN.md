@@ -1604,3 +1604,56 @@ operation (relying on the queue connectors' own in-memory fallback for ordinary 
 plus `app.py`'s global exception handler for the rare case that still raises), not something
 `StartEngagement`'s new enqueue call deviates from. No fix needed here — confirmed not a
 regression rather than assumed it was fine.
+
+**Real bug found and fixed this pass**: `RunWorkerJob._execute_engagement_planner()` calls
+`self._job_finalizer.mark_success(job, investigation_id)` / `mark_runtime_failure(...)` on the
+original `persona="planner"` job exactly like any regular specialist job — but
+`WorkerJobFinalizer.mark_success()`/`finalize_failure()` only special-case follow-up planning
+jobs (`is_follow_up_payload` recognizes `work_kind="follow_up_plan"`), not the new
+`work_kind="engagement_plan"`. Two concrete consequences, traced by reading what the "regular
+job" code path actually does with `job.persona="planner"` rather than assuming it was inert:
+
+1. **Success path, STAGED-mode plans only**: `mark_success()`'s `if not is_follow_up_payload(...)
+   or is_follow_up_plan_iteration(...)` block calls `EnqueueNextPlannedPersona.execute(job)`
+   unconditionally for anything that isn't a recognized follow-up payload. `EngagementPlannerRunner`
+   had *already* enqueued the plan's jobs itself (honoring `pipeline_staged` — for STAGED plans,
+   only the first persona's job is actually queued, the rest wait as pending). `EnqueueNextPlannedPersona`
+   then finds that same first persona (nothing in `completed_personas`/`failed_personas` yet) and
+   enqueues its job *again* — a deterministic duplicate job for the first staged persona on every
+   STAGED-mode engagement plan (not a rare edge case: STAGED is a real, supported execution mode
+   for dependency-chained investigations, just not the default). PARALLEL-mode plans (today's
+   default) don't trigger this, since `EnqueueNextPlannedPersona.execute()` returns early for
+   `ExecutionMode.PARALLEL` — which is exactly why the contracts/worker/api test suites (dominated
+   by PARALLEL-mode fixtures) never caught it.
+2. **Failure path**: `finalize_failure()`'s `else` branch (reached because `is_follow_up_payload`
+   doesn't recognize `engagement_plan` either) calls `mark_persona_failed(job)`, which writes
+   `job.persona` (`"planner"`) into `engagement.failed_personas` — a persona that is never a
+   member of `engagement.planner_plan`, corrupting the specialist-completion bookkeeping that
+   `EnqueueSynthesisJob`/`Engagement.specialists_terminal()` read.
+
+**Fix**: added `is_engagement_plan_job(job.payload, persona=job.persona)` (already existed in
+`cys_core/domain/engagement/planner_job.py`, added in this same session) as an explicit
+exclusion in both `mark_success()` and `finalize_failure()` — the exact same shape of guard that
+already protects `follow_up_plan` jobs, just extended to cover the new job kind alongside it.
+`EngagementPlannerRunner` already fully owns "what happens after the planner job" (enqueuing the
+plan's own jobs on success, publishing an "error" status on failure); `job_finalizer.py` no longer
+duplicates or corrupts that. Locked in with
+`tests/application/workers/test_engagement_plan_job_finalizer.py` — both new tests were verified
+to actually fail against the pre-fix code (not just pass trivially) before being committed.
+
+**Root cause, 5-whys style**: (1) why did this ship untested — because `EngagementPlannerRunner`
+was built by mirroring `PlanFollowUpRunner`'s *enqueue* behavior, but `job_finalizer.py`'s
+*downstream* success/failure handling was never audited for the same follow-up-shaped
+special-casing it needed; (2) why wasn't that audit automatic — because `is_follow_up_payload`
+and `is_engagement_plan_job` are structurally the same kind of "job kind" check but live in two
+different modules (`follow_up/models.py` vs `engagement/planner_job.py`) with no shared registry
+or lint rule forcing every consumer of one to also consider the other; (3) why did tests not
+catch it — PARALLEL is the default execution mode and every fixture in this session's new test
+files used it, so the STAGED-only code path was never exercised; (4) why is that not obviously
+wrong in review — the bug is in what does *not* happen (a skipped `if` that should also skip a
+new case), which is inherently harder to spot by reading a diff than an added line that does
+something wrong; (5) *(root cause)* — introducing a new job "kind" that reuses an existing
+generic pipeline (`RunWorkerJob`/`WorkerJobFinalizer`) requires enumerating every place that
+pipeline special-cases an *existing* kind (here: follow-up jobs) and deciding explicitly whether
+the new kind needs the same treatment, not just wiring the new kind's own happy path and trusting
+the shared pipeline to no-op correctly by default.
