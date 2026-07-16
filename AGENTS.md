@@ -87,6 +87,21 @@ The transitional `backend/shared/` pre-split monolith has been deleted
 (task #52's zero-fallback verification gate passed — contracts/worker/api
 each build, import, and test fully independently with zero fallback).
 
+**Deployment invariant — worker pool must include a catch-all instance.**
+Job routing by persona is enforced client-side, not by the queue: Kafka's
+`KafkaJobQueue` requeues (not drops) a job whose persona doesn't match a
+given worker's `--persona` flag, and Redis's `RedisJobQueue` ignores persona
+entirely (one shared list). Both `scripts/dev.sh` and
+`deploy/docker-compose.dev.yml` start every worker replica with no
+`--persona` (catch-all) today, which is why this works — it is not
+guaranteed by the code. If workers are ever partitioned by persona (e.g.
+for isolation/scaling), the pool **must** still include an instance with
+`persona=""` or `persona="planner"`, or engagement/follow-up meta-planning
+(`WorkerJob(persona="planner", work_kind="engagement_plan"|"follow_up_plan")`)
+silently stalls forever with no error — the job just gets endlessly
+requeued. Watch `cys_job_queue_persona_requeued_total{persona="planner"}`
+for this failure mode. See docs/MICROSERVICES_SPLIT_PLAN.md §16.
+
 ### Единые точки входа
 
 - **Events:** `interfaces/ingress/router.py` → `EventIngress`

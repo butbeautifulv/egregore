@@ -102,6 +102,13 @@ class CysMetrics:
             "Fallbacks from durable infrastructure adapters to in-memory paths",
             ["component", "reason"],
         )
+        self.job_queue_persona_requeued = Counter(
+            "cys_job_queue_persona_requeued_total",
+            "Job dequeued but persona didn't match this worker's filter, requeued "
+            "unconsumed — repeated growth for one persona means no listening "
+            "worker instance exists for it (starvation, not an error).",
+            ["persona"],
+        )
         self.sgr_reasoning_steps_total = Counter(
             "cys_sgr_reasoning_steps_total",
             "Schema-guided reasoning steps recorded",
@@ -244,6 +251,9 @@ class CysMetrics:
 
     def record_infrastructure_fallback(self, component: str, *, reason: str) -> None:
         self.infrastructure_fallback.labels(component=component, reason=reason).inc()
+
+    def record_job_queue_persona_requeued(self, persona: str) -> None:
+        self.job_queue_persona_requeued.labels(persona=persona).inc()
 
     def record_bus_dedup_dropped(self, reason: str) -> None:
         self.bus_dedup_dropped.labels(reason=reason).inc()

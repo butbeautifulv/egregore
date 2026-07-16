@@ -1553,3 +1553,30 @@ any container class installed identically into two sibling packages, "both packa
 construct it" is not sufficient — every public method needs at least one test invoked from each
 sibling's own real wiring, or a lazy per-method import inside a supposedly-generic shared class
 is invisible until something in production finally calls it.
+
+**Follow-up 5-whys pass on this section itself**: does the new `WorkerJob(persona="planner",
+work_kind="engagement_plan")` design actually get consumed in a real deployment, not just in
+unit tests that construct `RunWorkerJob`/`EngagementPlannerRunner` directly? Traced the real
+queue-consumption path (`KafkaJobQueue`/`RedisJobQueue`) instead of assuming: job routing by
+persona is enforced client-side, not by the queue itself. `KafkaJobQueue._matches_persona`
+requeues (not drops) a job that doesn't match a worker's own `--persona` filter; `RedisJobQueue`
+ignores persona entirely (one shared list, `job.persona` is only consulted later inside
+`RunWorkerJob`'s own dispatch). Both `scripts/dev.sh` and `deploy/docker-compose.dev.yml` start
+every worker replica with no `--persona` (catch-all) today, which is why this works — it is an
+accident of today's topology, not a guarantee in the code. This isn't new risk introduced by
+this section (every existing persona already depended on the same implicit assumption); it's a
+pre-existing gap this section's own job additionally now depends on. Fixed the observability
+half: `KafkaJobQueue`'s requeue path now increments
+`cys_job_queue_persona_requeued_total{persona=...}` (`cys_core/observability/metrics.py`,
+`record_job_queue_persona_requeued`) so silent starvation of one persona's queue is visible
+instead of invisible; documented the deployment invariant explicitly in `AGENTS.md` (worker pool
+must always include a `persona=""` or `persona="planner"` instance). Also added
+`test_kafka_queue_catchall_worker_consumes_planner_job` (`tests/infrastructure/
+test_kafka_queue.py`) — the complementary case the existing persona-filter test suite was
+missing: a `persona=""` worker must return a `persona="planner"` job without requeuing it, not
+just that a persona-scoped worker correctly requeues jobs that aren't its own. This is
+queue-connector-level, not a full `WorkerDaemon`-through-`RunWorkerJob` end-to-end test (that
+would additionally need a real orchestrator/sandbox/bus stack) — a real, if smaller, gap than
+originally scoped remains: nothing yet exercises the actual `WorkerDaemon.run()` loop against a
+real (in-memory-backed) queue picking up and completing a `persona="planner"` job, consistent
+with the identical (also-untested-at-that-level) follow-up-planning path this design mirrors.

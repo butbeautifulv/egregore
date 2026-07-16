@@ -104,12 +104,45 @@ async def test_kafka_queue_persona_filter_requeues_other_persona_jobs() -> None:
         requeued.append(job)
         return job.job_id
 
+    from cys_core.observability.metrics import metrics
+
+    before = metrics.job_queue_persona_requeued.labels(persona="soc")._value.get()
     with patch.object(queue, "_dequeue_one_record", side_effect=_dequeue_one):
         with patch.object(queue, "aenqueue", side_effect=_capture_enqueue):
             job = await queue.adequeue(timeout=1.0)
+    after = metrics.job_queue_persona_requeued.labels(persona="soc")._value.get()
 
     assert job is not None
     assert job.job_id == "j-consultant"
     assert len(requeued) == 1
     assert requeued[0].job_id == "j-soc"
-    assert requeued[0].persona == "soc"
+    assert after == before + 1
+
+
+@pytest.mark.asyncio
+async def test_kafka_queue_catchall_worker_consumes_planner_job() -> None:
+    """A worker started with no --persona (empty string, e.g. scripts/dev.sh's and
+    deploy/docker-compose.dev.yml's default) must consume a WorkerJob(persona="planner")
+    without requeuing it — this is the deployment invariant documented in AGENTS.md
+    and docs/MICROSERVICES_SPLIT_PLAN.md §16 that api's StartEngagement enqueue path
+    (task #56/#57) depends on. persona="" here, not a truthy scoped value.
+    """
+    queue = KafkaJobQueue(persona="", bootstrap_servers="localhost:19092")
+    planner_job = _job(job_id="j-planner", persona="planner")
+
+    async def _dequeue_one(_wait: float) -> WorkerJob | None:
+        return planner_job
+
+    requeued: list[WorkerJob] = []
+
+    async def _capture_enqueue(job: WorkerJob) -> str:
+        requeued.append(job)
+        return job.job_id
+
+    with patch.object(queue, "_dequeue_one_record", side_effect=_dequeue_one):
+        with patch.object(queue, "aenqueue", side_effect=_capture_enqueue):
+            job = await queue.adequeue(timeout=1.0)
+
+    assert job is not None
+    assert job.job_id == "j-planner"
+    assert requeued == []
