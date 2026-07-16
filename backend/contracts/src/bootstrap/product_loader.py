@@ -52,10 +52,18 @@ def _load_agent_from_dir(agent_dir: Path, product: ProductContext) -> AgentDefin
     _, body = _parse_prompt_md(prompt_path)
     sample_path = agent_dir / config.sample
     sample_input = sample_path.read_text(encoding="utf-8").strip() if sample_path.exists() else None
-    from bootstrap.container import get_container
+    from bootstrap.observability_factory import build_prompt_backend
+    from bootstrap.settings import get_settings
+    from cys_core.application.observability.prompt_resolver import PromptResolver
     from cys_core.domain.observability.models import PromptRef
 
-    resolved = get_container().get_prompt_resolver().resolve(
+    # Built directly rather than via bootstrap.container.get_container(): that
+    # composition root only exists in api/worker, not here in contracts,
+    # while a PromptResolver only ever needs the (contracts-level) prompt
+    # backend + settings — see ObservabilityContainer.get_prompt_resolver(),
+    # which does the same construction for api/worker's own containers.
+    resolver = PromptResolver(build_prompt_backend(get_settings().obs_prompt_backend))
+    resolved = resolver.resolve(
         PromptRef(name=config.name),
         fallback_text=body,
     )

@@ -104,12 +104,6 @@ class Container:
     def get_dispatch_event(self):
         return self._engagement.get_dispatch_event()
 
-    def get_route_and_enqueue(self):
-        return self._engagement.get_route_and_enqueue()
-
-    def get_event_ingress(self):
-        return self._engagement.get_event_ingress()
-
     def get_worker_orchestrator(self, persona: str | None = None):
         return self._engagement.get_worker_orchestrator(persona)
 
@@ -145,17 +139,11 @@ class Container:
     def wire_engagement_egress(self) -> None:
         self._engagement.wire_engagement_egress()
 
-    def get_start_engagement(self):
-        return self._engagement.get_start_engagement()
-
     def get_engagement_state_store(self):
         return self._engagement.get_engagement_state_store()
 
     def get_engagement_egress(self):
         return self._engagement.get_engagement_egress()
-
-    def get_reconcile_stuck_engagements(self):
-        return self._engagement.get_reconcile_stuck_engagements()
 
     def get_bus_ingress_router(self):
         return self._engagement.get_bus_ingress_router()
@@ -365,48 +353,6 @@ class Container:
         from cys_core.infrastructure.runs.factory import get_run_state_store
 
         return get_run_state_store()
-
-    def get_work_order_store(self):
-        from cys_core.infrastructure.work_order.adapter import WorkOrderStore
-
-        return WorkOrderStore(self.get_engagement_state_store())
-
-    def get_enqueue_follow_up(self):
-        from cys_core.application.use_cases.enqueue_follow_up import EnqueueFollowUp
-
-        return EnqueueFollowUp(
-            engagement_store=self.get_engagement_state_store(),
-            memory_writer=self.get_memory_write_service(),
-            memory_reader=self.get_memory_read_service(),
-            job_store=self.get_job_store(),
-            queue=self.get_job_queue(),
-            run_state_store=self.get_run_state_store(),
-            engagement_egress=self.get_engagement_egress(),
-            metrics=self.get_metrics_port(),
-        )
-
-    def get_start_work_order(self):
-        from cys_core.application.use_cases.start_work_order import StartWorkOrder
-
-        authz = self.get_authz_service()
-
-        def _write_authz_tuples(tuples):
-            authz.write_tuples(tuples)
-
-        return StartWorkOrder(
-            work_order_store=self.get_work_order_store(),
-            start_engagement=self.get_start_engagement(),
-            memory_writer=self.get_memory_write_service(),
-            memory_reader=self.get_memory_read_service(),
-            agent_catalog=self.get_agent_catalog(),
-            metrics=self.get_metrics_port(),
-            job_store=self.get_job_store(),
-            queue=self.get_job_queue(),
-            engagement_egress=self.get_engagement_egress(),
-            engagement_store=self.get_engagement_state_store(),
-            workspace_store=self.get_workspace_store(),
-            authz_tuple_writer=_write_authz_tuples if authz.mode != "off" else None,
-        )
 
     def get_build_job_trace_metadata(self):
         from cys_core.observability.trace_attributes import build_job_trace_metadata

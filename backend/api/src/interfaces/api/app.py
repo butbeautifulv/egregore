@@ -183,11 +183,24 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
         _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)],
     ) -> dict[str, Any] | JSONResponse:
         if get_settings().control_mode != "daemon":
-            from interfaces.control_plane.coordinator_service import get_coordinator_service
-            from interfaces.control_plane.critic_service import get_critic_service
+            # interfaces.control_plane is worker-only (see plan §2) — CONTROL_MODE
+            # defaults to "inprocess" from before the api/worker split, when a single
+            # process could run critic/coordinator inline. In a real split deployment
+            # (api has no egregore-worker installed) this is unreachable; set
+            # CONTROL_MODE=daemon explicitly wherever api and worker run as separate
+            # services (see deploy/docker-compose*.yml) rather than relying on this
+            # fallback, which only still works in the transitional shared dev env.
+            try:
+                from interfaces.control_plane.coordinator_service import get_coordinator_service
+                from interfaces.control_plane.critic_service import get_critic_service
 
-            get_critic_service()
-            get_coordinator_service()
+                get_critic_service()
+                get_coordinator_service()
+            except ImportError:
+                structlog.get_logger(__name__).warning(
+                    "inprocess_control_mode_unavailable",
+                    detail="egregore-worker not installed; set CONTROL_MODE=daemon",
+                )
 
         eng_request = None
         from interfaces.api.engagement_ingress import engagement_request_from_event, handle_engagement_ingress

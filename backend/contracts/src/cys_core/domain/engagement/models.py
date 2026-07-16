@@ -59,6 +59,9 @@ class EngagementPlan(BaseModel):
             return ExecutionMode.STAGED
         return ExecutionMode.PARALLEL
 
+    def is_pipeline_staged(self) -> bool:
+        return self.effective_execution_mode() == ExecutionMode.STAGED and len(self.personas) > 1
+
 
 class EngagementRequest(BaseModel):
     profile_id: str = "cybersec-soc"

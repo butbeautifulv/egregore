@@ -22,10 +22,25 @@ dependencies = [
     "httpx>=0.28.0",
     "rapidfuzz>=3.13.0",
     "pyyaml>=6.0",
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.4.0",
 ]
 
 [tool.uv.sources]
 egregore-contracts = { path = "../contracts", editable = true }
+
+[project.scripts]
+egregore = "interfaces.cli.main:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+markers = [
+    "unit: fast isolated tests",
+    "integration: multi-module wiring",
+    "adversarial: security abuse cases",
+]
+addopts = "--strict-markers"
 
 [build-system]
 requires = ["hatchling"]
