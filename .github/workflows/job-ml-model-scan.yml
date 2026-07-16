@@ -8,6 +8,6 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: echo '{"runs":[{"results":[]}]}' > ml-model.sarif
       - run: python scripts/gate-check.py --control ml_model --report ml-model.sarif

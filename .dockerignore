@@ -17,6 +17,12 @@ config
 .env
 .env.local
 
+reports/
+*.sarif
+hadolint.sarif
+skill-scan.sarif
+results.sarif
+
 # Python API tree — exclude dev/test bulk, keep runtime assets
 api/tests
 api/.venv

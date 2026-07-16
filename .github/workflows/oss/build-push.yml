@@ -21,7 +21,7 @@ jobs:
       image: ${{ steps.meta.outputs.image }}
       image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Resolve registry
         id: meta
         env:
@@ -52,7 +52,7 @@ jobs:
         run: bash scripts/registry-login.sh
       - name: Build and push
         if: steps.meta.outputs.image_tag != 'none'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true

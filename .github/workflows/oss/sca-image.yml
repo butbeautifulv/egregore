@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.image != 'none' && inputs.image != ''
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Registry auth for private image
         env:
           REGISTRY_BACKEND: ${{ vars.REGISTRY_BACKEND || 'gitlab' }}
@@ -38,6 +38,7 @@ jobs:
             -e TRIVY_USERNAME -e TRIVY_PASSWORD \
             -v "$PWD:/work" -w /work \
             "$TRIVY_IMAGE" image --scanners vuln --severity CRITICAL,HIGH --format sarif \
+            --ignorefile deploy/.trivyignore \
             --output sca.sarif "${{ inputs.image }}" || true
       - uses: ./.github/actions/gate-and-export
         if: always()

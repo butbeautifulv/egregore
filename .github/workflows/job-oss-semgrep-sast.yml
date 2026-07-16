@@ -11,7 +11,7 @@ jobs:
   semgrep:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Semgrep scan
         run: |
           IMAGE="${OSS_SEMGREP_IMAGE:-returntocorp/semgrep:1.117.0}"

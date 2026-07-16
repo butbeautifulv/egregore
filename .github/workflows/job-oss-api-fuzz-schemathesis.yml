@@ -28,7 +28,7 @@ jobs:
       API_BASE_URL: ${{ inputs.api_base_url }}
       SCHEMATHESIS_PHASES: ${{ inputs.phases }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Schemathesis API fuzz
         run: |
           IMAGE="${OSS_SCHEMATHESIS_IMAGE:-ghcr.io/schemathesis/schemathesis:4.21.7}"
@@ -66,7 +66,7 @@ jobs:
           DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
           DEFECTDOJO_API_TOKEN: ${{ secrets.DEFECTDOJO_API_TOKEN }}
         run: python scripts/aspm-export.py --control fuzzing --report reports/schemathesis-junit.xml || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: schemathesis-junit
           path: reports/schemathesis-junit.xml

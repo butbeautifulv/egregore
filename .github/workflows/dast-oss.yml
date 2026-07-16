@@ -13,7 +13,7 @@ jobs:
   zap:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: ZAP baseline
         run: |
           IMAGE="${OSS_ZAPROXY_IMAGE:-ghcr.io/zaproxy/zaproxy:2.16.0}"
@@ -31,7 +31,7 @@ jobs:
           DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
           DEFECTDOJO_API_TOKEN: ${{ secrets.DEFECTDOJO_API_TOKEN }}
         run: python scripts/aspm-export.py --control dast --report reports/zap-baseline.json || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: zap-report
           path: reports/zap-baseline.json

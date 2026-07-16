@@ -7,13 +7,13 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python scripts/ai-ml-scan.py ml_bom --report ml-bom.json
       - run: python scripts/gate-check.py --control ml_bom --report ml-bom.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ml-bom
           path: ml-bom.json

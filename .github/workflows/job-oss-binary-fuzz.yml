@@ -22,7 +22,7 @@ jobs:
       FUZZ_TIME: ${{ inputs.fuzz_time }}
       FUZZ_TARGETS: ${{ inputs.fuzz_targets }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Binary fuzz (AFL++ / Go / Jazzer)
         run: |
           chmod +x scripts/run-binary-fuzz.sh
@@ -40,7 +40,7 @@ jobs:
           DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
           DEFECTDOJO_API_TOKEN: ${{ secrets.DEFECTDOJO_API_TOKEN }}
         run: python3 scripts/aspm-export.py --control binary_fuzz --report reports/binary-fuzz-junit.xml || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: binary-fuzz-junit
           path: reports/binary-fuzz-junit.xml

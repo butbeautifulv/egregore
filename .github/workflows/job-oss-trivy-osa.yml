@@ -11,7 +11,7 @@ jobs:
   trivy-osa:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Scan filesystem
         run: |
           IMAGE="${OSS_TRIVY_IMAGE:-aquasec/trivy:0.63.0}"

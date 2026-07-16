@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: preprod
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: ZAP full scan (OSS IAST)
         env:
           PREPROD_URL: ${{ inputs.preprod_url }}
@@ -47,7 +47,7 @@ jobs:
           DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
           DEFECTDOJO_API_TOKEN: ${{ secrets.DEFECTDOJO_API_TOKEN }}
         run: python3 scripts/aspm-export.py --control iast --report reports/zap-iast-full.json || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: zap-iast-full
           path: reports/zap-iast-full.*

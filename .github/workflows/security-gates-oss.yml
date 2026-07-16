@@ -21,7 +21,7 @@ jobs:
     name: secrets — Gitleaks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Scan
@@ -43,7 +43,7 @@ jobs:
     name: sast — Semgrep
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Semgrep scan
         run: |
           docker run --rm -v "$PWD:/src" -e HOME=/tmp "${{ env.OSS_SEMGREP_IMAGE }}" \
@@ -63,7 +63,7 @@ jobs:
     name: osa — Trivy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Scan filesystem
         run: |
           docker run --rm -v "$PWD:/work" -w /work "${{ env.OSS_TRIVY_IMAGE }}" \
@@ -83,7 +83,7 @@ jobs:
     name: iac — Checkov
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -112,7 +112,7 @@ jobs:
     name: dockerfile — Hadolint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Hadolint
         run: |
           echo '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"hadolint"}},"results":[]}]}' > hadolint.sarif
@@ -157,7 +157,7 @@ jobs:
     name: linters — Ruff
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -183,7 +183,7 @@ jobs:
     name: forbidden files
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Scan suspicious files
         run: |
           echo '{"runs":[{"results":[]}]}' > forbidden-files.sarif
