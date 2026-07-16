@@ -61,6 +61,24 @@ async def test_subprocess_backend_handles_unparseable_output():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_subprocess_backend_reports_failure_when_child_logs_leak_to_stdout():
+    """Regression for Discovery H.1 (docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md):
+    the real production bug was a child that leaked structlog JSON lines onto
+    stdout ahead of its final RunResult, breaking the single-JSON IPC
+    contract. The real fix (configure_logging(stream=sys.stderr)) keeps a
+    correct child's stdout clean, but this test locks in that *if* a child
+    ever does leak extra lines again, the backend fails loud and
+    predictable — `run_sandboxed_job_unparseable_output` — rather than
+    crashing or silently losing the job. Before this fixture existed, that
+    degradation path was only ever exercised by a live docker-compose run."""
+    backend = _backend("noisy")
+    result = await backend.execute(_job(), _job(), "session-1", {})
+    assert result.success is False
+    assert result.error == "run_sandboxed_job_unparseable_output"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_subprocess_backend_kills_child_on_cancellation():
     import asyncio
 

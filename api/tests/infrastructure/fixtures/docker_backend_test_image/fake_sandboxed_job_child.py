@@ -29,6 +29,14 @@ def main() -> int:
         print("boom", file=sys.stderr)
         return 2
 
+    if mode == "noisy":
+        # Regression fixture for Discovery H.1 (docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md):
+        # before that fix, configure_logging() wrote structlog JSON lines to
+        # stdout, corrupting the single-JSON IPC contract. Simulates a child
+        # that (incorrectly) leaks log lines to stdout before its result.
+        print(json.dumps({"event": "tool_call_started", "level": "info"}))
+        print(json.dumps({"event": "skill_loaded", "level": "info"}))
+
     result = {
         "job_id": job["job_id"],
         "persona": job["persona"],

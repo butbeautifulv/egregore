@@ -197,6 +197,12 @@ def get_manifest_port() -> TrackerManifestAdapter:
 # `engagement.evidence_manifests[persona]` (re-hydrated via `EvidenceManifest.model_validate`),
 # or carry the merged manifest directly on the bus finding payload. See also the mirrored note in
 # cys_core/application/use_cases/process_finding_critic.py.
+#
+# UPDATE (5-whys root cause #1, docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md): implemented as
+# `resolve_persona_manifest()` below — `ProcessFindingCritic` and `CriticService._enqueue_revision`
+# now both read through `EngagementStateStore` first (cross-process-safe) and only fall back to
+# `get_persona_manifests()` (this in-process tracker) when no store is wired. The SOC grounding
+# gate is no longer a silent no-op in a real multi-container deployment.
 def record_evidence_manifest(job_id: str, tool_name: str, manifest: EvidenceManifest) -> None:
     if not job_id:
         return
@@ -229,6 +235,39 @@ def get_persona_manifests(investigation_id: str) -> dict[str, EvidenceManifest]:
         return {}
     with _lock:
         return dict(_persona_manifests.get(investigation_id, {}))
+
+
+def resolve_persona_manifest(
+    engagement_store: Any,
+    *,
+    tenant_id: str | None,
+    investigation_id: str | None,
+    persona: str,
+) -> EvidenceManifest | None:
+    """Cross-process-safe manifest lookup for consumers (the critic) that run
+    in a separate process/container from the worker that populated the
+    module-level tracker above — see the long note above
+    `record_evidence_manifest` for why `get_persona_manifests` alone is
+    typically empty there in a real deployment. Prefers the durable,
+    Postgres-backed `EngagementStateStore` (both worker and critic read/write
+    the same engagement row — see `finding_publisher.append_engagement_finding`,
+    which persists `manifest.model_dump(mode="json")` into
+    `engagement.evidence_manifests[persona]`); falls back to the
+    process-local tracker only when no store is wired or it has nothing yet
+    (tests, or a genuinely single-process dev deployment) — preserves prior
+    behavior there."""
+    if engagement_store is not None and tenant_id and investigation_id:
+        engagement = engagement_store.get(tenant_id, investigation_id)
+        if engagement is not None:
+            raw = engagement.evidence_manifests.get(persona)
+            if raw is not None:
+                try:
+                    return EvidenceManifest.model_validate(raw)
+                except Exception:
+                    pass
+    if investigation_id:
+        return get_persona_manifests(investigation_id).get(persona)
+    return None
 
 
 def hydrate_job_from_snapshot(job_id: str, snapshot) -> None:

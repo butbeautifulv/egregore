@@ -4,12 +4,13 @@ from typing import Any
 
 import structlog
 
+from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.schema_registry import SchemaRegistryPort
 from cys_core.application.ports.tracing_ports import ApplicationTracingPort
 from cys_core.application.runtime_config import get_critic_default_confidence, get_critic_trust_threshold
 from cys_core.application.workers.evidence_gate import soc_evidence_gaps
 from cys_core.application.workers.noop_finding import is_noop_finding
-from cys_core.application.workers.tool_execution_tracker import get_persona_manifests
+from cys_core.application.workers.tool_execution_tracker import resolve_persona_manifest
 from cys_core.domain.evidence.coercion import coerce_sparse_soc_finding
 
 logger = structlog.get_logger(__name__)
@@ -50,26 +51,32 @@ class ProcessFindingCritic:
         application_tracing: ApplicationTracingPort | None = None,
         schema_registry: SchemaRegistryPort | None = None,
         trust_threshold: float | None = None,
+        engagement_store: EngagementStateStore | None = None,
     ) -> None:
         self._policy_port = policy_port
         self._application_tracing = application_tracing
         self._schema_registry = schema_registry
+        self._engagement_store = engagement_store
         self.trust_threshold = (
             trust_threshold
             if trust_threshold is not None
             else get_critic_trust_threshold()
         )
 
-    # NOTE(evidence-grounding-consolidation, 2026-07-14): this reads `get_persona_manifests`
-    # (investigation-keyed), while run_worker_job._apply_soc_sparse_coerce reads
-    # `get_merged_manifest` (job-keyed) from the same tool_execution_tracker module for the
-    # *same finding*. Investigated whether to unify these onto one lookup; deliberately left
-    # as-is. Full rationale — including why both lookups are process-local and typically empty
-    # in the critic's process in a real (multi-container) deployment, and why the fix is not a
-    # simple key swap — is documented above `record_evidence_manifest` in
-    # cys_core/application/workers/tool_execution_tracker.py. Do not "fix" this without reading
-    # that note first.
-    def _resolve_trust_score(self, finding: dict[str, Any], persona: str, investigation_id: str | None) -> float:
+    # NOTE(evidence-grounding-consolidation, 2026-07-14, updated by 5-whys root cause #1 fix):
+    # this used to read `get_persona_manifests` (investigation-keyed, process-local) directly,
+    # which is typically empty here in a real (multi-container) deployment because the worker
+    # that populates it runs in a separate process — see the note above `record_evidence_manifest`
+    # in cys_core/application/workers/tool_execution_tracker.py. Now goes through
+    # `resolve_persona_manifest()`, which reads the durable, cross-process EngagementStateStore
+    # first and only falls back to the process-local tracker when no store is wired.
+    def _resolve_trust_score(
+        self,
+        finding: dict[str, Any],
+        persona: str,
+        investigation_id: str | None,
+        tenant_id: str | None = None,
+    ) -> float:
         default_confidence = get_critic_default_confidence()
         try:
             confidence = float(
@@ -78,17 +85,31 @@ class ProcessFindingCritic:
         except (TypeError, ValueError):
             confidence = default_confidence
         if persona == "soc" and investigation_id:
-            manifests = get_persona_manifests(investigation_id)
-            manifest = manifests.get(persona)
+            manifest = resolve_persona_manifest(
+                self._engagement_store,
+                tenant_id=tenant_id,
+                investigation_id=investigation_id,
+                persona=persona,
+            )
             if manifest is not None:
                 return min(confidence, manifest.max_confidence)
         return confidence
 
-    def _structural_issues(self, persona: str, finding: dict[str, Any], investigation_id: str | None) -> list[str]:
+    def _structural_issues(
+        self,
+        persona: str,
+        finding: dict[str, Any],
+        investigation_id: str | None,
+        tenant_id: str | None = None,
+    ) -> list[str]:
         if persona != "soc" or not investigation_id:
             return []
-        manifests = get_persona_manifests(investigation_id)
-        manifest = manifests.get(persona)
+        manifest = resolve_persona_manifest(
+            self._engagement_store,
+            tenant_id=tenant_id,
+            investigation_id=investigation_id,
+            persona=persona,
+        )
         if manifest is None:
             return []
         normalized = dict(finding)
@@ -106,8 +127,8 @@ class ProcessFindingCritic:
         if is_noop_finding(finding):
             return {"passed": True, "auto_passed": True, "trust_score": 1.0, "issues_detected": []}
 
-        issues = self._structural_issues(persona, finding, investigation_id)
-        trust_score = self._resolve_trust_score(finding, persona, investigation_id)
+        issues = self._structural_issues(persona, finding, investigation_id, tenant_id)
+        trust_score = self._resolve_trust_score(finding, persona, investigation_id, tenant_id)
         passed = trust_score >= self.trust_threshold and not issues
         result = {
             "passed": passed,

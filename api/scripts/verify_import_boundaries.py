@@ -72,6 +72,14 @@ ALLOWLIST_INTERFACES_API_INFRASTRUCTURE: frozenset[str] = frozenset(
     }
 )
 
+# 5-whys root cause #2 (docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md, Открытие B):
+# HITL resume once called get_runtime()/.aresume() directly from an HTTP
+# handler, bypassing WorkerOrchestrator/ExecutionBackend entirely — no test
+# would have caught a second occurrence of that shortcut. Empty and meant to
+# stay empty: any code under interfaces/api that needs the agent runtime
+# must go through the job queue, never touch cys_core.runtime directly.
+ALLOWLIST_INTERFACES_API_RUNTIME: frozenset[str] = frozenset()
+
 # Phase 4 audit: infrastructure wrapping use cases (shrink toward zero)
 ALLOWLIST_INFRASTRUCTURE_USE_CASES: frozenset[str] = frozenset()
 
@@ -236,6 +244,28 @@ def check_interfaces_api_no_infrastructure() -> list[str]:
     return violations
 
 
+def check_interfaces_api_no_runtime() -> list[str]:
+    """src/interfaces/api must never call the agent runtime directly (docs/
+    MICROSERVICES_SPLIT_PHASES_DETAIL.md, Открытие B / 5-whys root cause #2)
+    — HTTP handlers enqueue jobs through WorkerOrchestrator/ExecutionBackend;
+    only RunWorkerJob's execution path (via WorkerAgentExecutor) is allowed
+    to touch cys_core.runtime."""
+    violations: list[str] = []
+    api_root = ROOT / "src" / "interfaces" / "api"
+    if not api_root.exists():
+        return violations
+    for path in api_root.rglob("*.py"):
+        rel = path.relative_to(ROOT).as_posix()
+        if rel in ALLOWLIST_INTERFACES_API_RUNTIME:
+            continue
+        for mod in _imports_in_file(path):
+            if mod.startswith("cys_core.runtime"):
+                violations.append(f"{rel}: {mod}")
+        for mod in _lazy_module_imports_in_file(path, "cys_core.runtime"):
+            violations.append(f"{rel}: {mod}")
+    return violations
+
+
 def check_infrastructure_no_use_cases() -> list[str]:
     """Infrastructure adapters should not import application use cases (hexagon inversion)."""
     violations: list[str] = []
@@ -327,6 +357,11 @@ def main() -> int:
             "src/interfaces/api → infrastructure",
             check_interfaces_api_no_infrastructure(),
             len(ALLOWLIST_INTERFACES_API_INFRASTRUCTURE),
+        ),
+        (
+            "src/interfaces/api → runtime",
+            check_interfaces_api_no_runtime(),
+            len(ALLOWLIST_INTERFACES_API_RUNTIME),
         ),
         (
             "infrastructure → application.use_cases",

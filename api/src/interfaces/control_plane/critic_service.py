@@ -12,7 +12,7 @@ from cys_core.application.control_plane.critic_display import (
 from cys_core.application.engagement_bus_guard import get_engagement_bus_guard
 from cys_core.application.engagement_streaming import publish_assistant_snapshot
 from cys_core.application.workers.noop_finding import is_noop_finding
-from cys_core.application.workers.tool_execution_tracker import get_persona_manifests
+from cys_core.application.workers.tool_execution_tracker import resolve_persona_manifest
 from cys_core.domain.security.bus_messages import BusMessageType
 from cys_core.infrastructure.bus_transport import get_bus_transport
 from interfaces.control_plane.control_message_handler import ControlMessageHandler
@@ -31,6 +31,7 @@ class CriticService(ControlMessageHandler):
             policy_port=container.get_profile_policy_port(),
             application_tracing=container.get_application_tracing_port(),
             schema_registry=container.get_schema_registry_port(),
+            engagement_store=container.get_engagement_state_store(),
         )
 
     async def _enqueue_revision(self, envelope: dict[str, Any], feedback: str) -> bool:
@@ -42,12 +43,18 @@ class CriticService(ControlMessageHandler):
         )
         engagement_id = extract_engagement_id(correlation_id=correlation_id, payload=payload)
         if persona == "soc" and engagement_id:
-            # NOTE(evidence-grounding-consolidation, 2026-07-14): this in-memory lookup is
-            # process-local and will generally be empty here in a real deployment (this
-            # CriticService instance runs in a different process/container than the worker
-            # that populated it). See the note above `record_evidence_manifest` in
-            # cys_core/application/workers/tool_execution_tracker.py. Not fixed here.
-            manifest = get_persona_manifests(engagement_id).get("soc")
+            # NOTE(evidence-grounding-consolidation, 2026-07-14, fixed by 5-whys root cause #1):
+            # now reads through the durable EngagementStateStore first (worker and this
+            # CriticService instance run in separate processes/containers in every real
+            # deployment topology here) — see resolve_persona_manifest() and the note above
+            # record_evidence_manifest in cys_core/application/workers/tool_execution_tracker.py.
+            tenant_id = str(payload.get("tenant_id", "default"))
+            manifest = resolve_persona_manifest(
+                get_container().get_engagement_state_store(),
+                tenant_id=tenant_id,
+                investigation_id=engagement_id,
+                persona="soc",
+            )
             if manifest is not None:
                 feedback = f"{feedback}{format_soc_revision_manifest_hint(manifest)}"
         settings = get_container().settings

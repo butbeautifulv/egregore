@@ -20,6 +20,7 @@ _EXPECTED_ALLOWLIST_SIZES: dict[str, int] = {
     "ALLOWLIST_INFRASTRUCTURE_INTERFACES": 0,
     "ALLOWLIST_REGISTRY_INTERFACES": 0,
     "ALLOWLIST_INTERFACES_API_INFRASTRUCTURE": 1,
+    "ALLOWLIST_INTERFACES_API_RUNTIME": 0,
     "ALLOWLIST_INFRASTRUCTURE_USE_CASES": 0,
     "ALLOWLIST_BOOTSTRAP_INTERFACES": 31,
 }
@@ -46,6 +47,13 @@ def test_interfaces_api_infra_allowlist_only_app_health():
     assert boundaries.ALLOWLIST_INTERFACES_API_INFRASTRUCTURE == frozenset(
         {"src/interfaces/api/app.py"}
     )
+
+
+def test_interfaces_api_runtime_allowlist_empty():
+    """5-whys root cause #2 (Открытие B): no exception allowed for
+    interfaces/api touching cys_core.runtime directly — resume must always
+    go through the job queue."""
+    assert boundaries.ALLOWLIST_INTERFACES_API_RUNTIME == frozenset()
 
 
 def test_infrastructure_use_cases_allowlist_empty():
