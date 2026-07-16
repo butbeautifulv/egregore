@@ -17,6 +17,17 @@ dependencies = [
     "pyyaml>=6.0",
     "pyjwt[crypto]>=2.10.0",
     "openfga-sdk>=0.10.4",
+    "prometheus-client>=0.21.0",
+    # Needed by cys_core.observability.http (mount_metrics) — used by both
+    # the api service's app.py and the worker's own Tool Gateway FastAPI app.
+    "fastapi>=0.115.0",
+    "opentelemetry-api>=1.29.0",
+    "opentelemetry-sdk>=1.29.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.29.0",
+    "opentelemetry-instrumentation-fastapi>=0.50b0",
+    "opentelemetry-instrumentation-httpx>=0.50b0",
+    "opentelemetry-instrumentation-redis>=0.50b0",
+    "opentelemetry-instrumentation-psycopg>=0.50b0",
     # Base classes/schemas only (ModelConnector/ToolProviderPort port type
     # hints) — NOT the agent-execution engine. See plan §1.1/§0.2.
     "langchain-core>=1.4.0",
@@ -27,7 +38,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cys_core", "src/bootstrap"]
+packages = ["src/cys_core", "src/bootstrap", "src/interfaces"]
 
 [tool.uv]
 package = true
@@ -40,4 +51,4 @@ line-length = 120
 select = ["E", "F", "I", "W"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["bootstrap", "cys_core"]
+known-first-party = ["bootstrap", "cys_core", "interfaces"]

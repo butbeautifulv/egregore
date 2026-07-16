@@ -12,7 +12,16 @@ from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.security.prompt_context import TrustedSystemContext
 from cys_core.domain.security.system_prompt_assembler import assemble_trusted_system_context
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# Not Path(__file__)-relative: this module now lives in the shared
+# `contracts` package, installed into multiple sibling services
+# (backend/shared, backend/api, backend/worker) at different nesting
+# depths — `Path(__file__).resolve().parents[N]` broke once this stopped
+# being one level below whichever service was actually running.
+# `uv run egregore ...` always invokes with CWD set to that service's own
+# directory (where its `agents/` lives), so CWD is what "this service's
+# own root" actually means now — same fix as bootstrap/settings.py's
+# _settings_env_files().
+PROJECT_ROOT = Path.cwd()
 RULES_SKIP = frozenset({"README.md"})
 
 _catalog_provider: AgentCatalogPort | None = None

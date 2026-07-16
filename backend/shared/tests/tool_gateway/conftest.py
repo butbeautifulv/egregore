@@ -51,6 +51,7 @@ def auth_settings(monkeypatch):
     verifier = _FakeVerifier()
     monkeypatch.setattr(auth_factory, "get_token_verifier", lambda: verifier)
     monkeypatch.setattr("interfaces.api.auth.get_token_verifier", lambda: verifier)
+    monkeypatch.setattr("interfaces.gateways.tool.auth.get_token_verifier", lambda: verifier)
 
     def _token(role_names: list[str]) -> str:
         payload = {
