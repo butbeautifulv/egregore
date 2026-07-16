@@ -44,7 +44,7 @@ from interfaces.api.tracing_middleware import tracing_middleware
 from interfaces.control_plane.postgres_status_store import PostgresStatusStore
 from interfaces.control_plane.status_store import MemoryStatusStore, get_status_store
 from interfaces.ingress.router import EventIngress, get_event_ingress
-from interfaces.worker.hitl_resume import HitlResumeError, resume_worker_job
+from interfaces.api.hitl_resume import HitlResumeError, resume_worker_job
 
 logger = structlog.get_logger(__name__)
 

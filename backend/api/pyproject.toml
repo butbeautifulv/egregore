@@ -1,0 +1,56 @@
+[project]
+name = "egregore-api"
+version = "0.1.0"
+description = "Egregore API service — FastAPI CRUD + ingress, no agent-execution frameworks except the accepted meta-planner exception (see docs/MICROSERVICES_SPLIT_PLAN.md, plan §1.2)."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    "egregore-contracts",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "python-multipart>=0.0.20",
+    "pyjwt[crypto]>=2.10.0",
+    "pydantic>=2.13.4",
+    "structlog>=26.0.0",
+    "httpx>=0.28.0",
+    "pyyaml>=6.0",
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+markers = [
+    "unit: fast isolated tests",
+    "integration: multi-module wiring",
+    "adversarial: security abuse cases",
+]
+addopts = "--strict-markers"
+
+[tool.uv.sources]
+egregore-contracts = { path = "../contracts", editable = true }
+
+[project.scripts]
+egregore = "interfaces.cli.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cys_core", "src/interfaces", "src/bootstrap", "src/connectors", "src/authz"]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bootstrap", "cys_core", "interfaces", "connectors", "authz"]

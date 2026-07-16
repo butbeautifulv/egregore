@@ -79,6 +79,7 @@ def get_catalog_write_gate(*, reload=None):
             skill_catalog=get_skill_catalog(),
             plan_catalog=get_plan_catalog(),
             mcp_catalog=get_mcp_catalog(),
+            tool_catalog=get_tool_catalog(),
             audit=get_catalog_audit(),
             reload=reload or reload_agent_registry,
         )

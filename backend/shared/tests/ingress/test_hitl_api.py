@@ -34,7 +34,7 @@ async def test_hitl_api_job_status_and_resume(monkeypatch):
     fake_queue = SimpleNamespace(aenqueue=AsyncMock(return_value="resume-job-hitl"))
     monkeypatch.setattr("bootstrap.container.Container.get_job_queue", lambda self, persona=None: fake_queue)
     monkeypatch.setattr(
-        "interfaces.worker.hitl_resume.params_hash",
+        "interfaces.api.hitl_resume.params_hash",
         lambda _args: "deadbeef",
     )
 

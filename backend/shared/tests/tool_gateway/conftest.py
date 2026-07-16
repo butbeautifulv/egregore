@@ -50,8 +50,19 @@ def auth_settings(monkeypatch):
 
     verifier = _FakeVerifier()
     monkeypatch.setattr(auth_factory, "get_token_verifier", lambda: verifier)
-    monkeypatch.setattr("interfaces.api.auth.get_token_verifier", lambda: verifier)
-    monkeypatch.setattr("interfaces.gateways.tool.auth.get_token_verifier", lambda: verifier)
+    # This fixture is shared across tests/api/ (imports it directly, see
+    # tests/api/conftest.py) and tests/tool_gateway/ — but interfaces.api and
+    # interfaces.gateways now live in separate packages (backend/api,
+    # backend/worker respectively per task #38's split) that are never both
+    # installed in the same venv. Patch whichever is actually importable.
+    try:
+        monkeypatch.setattr("interfaces.api.auth.get_token_verifier", lambda: verifier)
+    except (ImportError, ModuleNotFoundError, AttributeError):
+        pass
+    try:
+        monkeypatch.setattr("interfaces.gateways.tool.auth.get_token_verifier", lambda: verifier)
+    except (ImportError, ModuleNotFoundError, AttributeError):
+        pass
 
     def _token(role_names: list[str]) -> str:
         payload = {

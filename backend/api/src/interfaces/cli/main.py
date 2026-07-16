@@ -12,7 +12,6 @@ from cys_core.observability.logging_setup import configure_logging
 from cys_core.observability.otel import setup_otel
 from cys_core.observability.prometheus_setup import register_multiprocess_shutdown
 from cys_core.registry.agents import get_agent_registry
-from cys_core.runtime.agent import get_runtime
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
@@ -216,7 +215,14 @@ def cmd_session(args: argparse.Namespace) -> int:
 
 
 def cmd_agent(args: argparse.Namespace) -> int:
+    # Lazy: cys_core.runtime.agent is worker-only (not installed in the api
+    # build at all — see plan §1.2/§2). This command only works when
+    # egregore-worker happens to be on the path too (e.g. the transitional
+    # backend/shared dev environment); the api service's own Docker image
+    # never invokes it. Fails loudly here if actually called from a
+    # worker-less install, rather than blocking module import entirely.
     from cys_core.observability.logging_setup import configure_logging
+    from cys_core.runtime.agent import get_runtime
 
     configure_logging("egregore-agent")
     setup_otel(service_name="egregore-agent")

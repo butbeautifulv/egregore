@@ -11,6 +11,7 @@ from cys_core.application.ports.registry_catalogs import (
     PlanCatalogPort,
     SkillCatalogPort,
 )
+from cys_core.application.ports.tool_catalog import ToolCatalogPort
 from cys_core.domain.agents.control import is_control_persona
 from cys_core.domain.catalog.models import (
     AgentCatalogEntry,
@@ -40,6 +41,7 @@ class CatalogWriteGate:
         skill_catalog: SkillCatalogPort,
         plan_catalog: PlanCatalogPort,
         mcp_catalog: McpServerCatalogPort,
+        tool_catalog: ToolCatalogPort,
         audit: CatalogAuditPort,
         validator: CrossRefValidator | None = None,
         reload: Callable[[], None] | None = None,
@@ -48,6 +50,7 @@ class CatalogWriteGate:
         self._skills = skill_catalog
         self._plans = plan_catalog
         self._mcp = mcp_catalog
+        self._tools = tool_catalog
         self._audit = audit
         self._validator = validator or CrossRefValidator()
         self._reload = reload or (lambda: None)
@@ -57,9 +60,12 @@ class CatalogWriteGate:
         return {entry.id for entry in self._skills.list_skills(enabled_only=False)}
 
     def _tool_names(self) -> set[str]:
-        from cys_core.registry.tools import tool_registry
-
-        return set(tool_registry.names())
+        # DB-backed tool_catalog (seeded from the same tool-provider
+        # definitions the live LangChain registry would report), not
+        # cys_core.registry.tools directly — that registry is worker-only
+        # (agent-runtime tool binding) and this validation runs on every
+        # catalog write from the api service too. See plan §2.
+        return {entry.id for entry in self._tools.list_tools(enabled_only=False)}
 
     def _normalize_agent_entry(self, entry: AgentCatalogEntry, *, actor: str) -> AgentCatalogEntry:
         sanitizer = get_input_sanitizer()

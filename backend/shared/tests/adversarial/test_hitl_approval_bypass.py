@@ -6,7 +6,7 @@ from bootstrap.container import get_container
 from cys_core.domain.workers.models import JobResumeRequest, PendingHitlAction
 from interfaces.control_plane.job_store import JobStore
 from interfaces.gateways.tool.approval import params_hash
-from interfaces.worker.hitl_resume import HitlResumeError, resume_worker_job
+from interfaces.api.hitl_resume import HitlResumeError, resume_worker_job
 
 
 @pytest.mark.adversarial

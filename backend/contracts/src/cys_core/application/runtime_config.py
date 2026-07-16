@@ -5,6 +5,26 @@ from dataclasses import dataclass
 from typing import Any, TypedDict
 
 from cys_core.application.catalog_singletons import rebind_catalog_singletons_if_needed
+from cys_core.domain.reasoning.sgr_models import SgrMode
+
+
+def normalize_sgr_mode(mode: str) -> SgrMode:
+    """Map env aliases (soft/iron) to domain SgrMode.
+
+    Lives here (not cys_core.application.reasoning.sgr_tooling, which is
+    worker-only per the api/worker split) because configure_from_settings()
+    below calls it unconditionally during every Container's __init__ — both
+    api's and worker's. sgr_tooling.py re-exports this same function for
+    backwards-compat call sites within worker.
+    """
+    key = (mode or "off").lower().strip()
+    if key in {"soft", "sgr_hybrid", "hybrid"}:
+        return "sgr_hybrid"
+    if key in {"iron", "sgr_iron"}:
+        return "sgr_iron"
+    if key in {"off", "sgr_off"}:
+        return "off"
+    return "off"
 
 
 class LlmSettings(TypedDict):
@@ -210,10 +230,7 @@ def configure_from_settings(settings: Any) -> None:
     _python_sandbox_timeout = settings.python_sandbox_timeout
     _python_sandbox_image = settings.python_sandbox_image
     _use_sgr_reasoning = settings.use_sgr_reasoning
-    _sgr_default_mode = settings.sgr_default_mode
-    from cys_core.application.reasoning.sgr_tooling import normalize_sgr_mode
-
-    _sgr_default_mode = normalize_sgr_mode(_sgr_default_mode)
+    _sgr_default_mode = normalize_sgr_mode(settings.sgr_default_mode)
     _sgr_iron_max_retries = settings.sgr_iron_max_retries
     _use_run_kernel = getattr(settings, "use_run_kernel", False)
     _budget_use_api_usage = settings.budget_use_api_usage

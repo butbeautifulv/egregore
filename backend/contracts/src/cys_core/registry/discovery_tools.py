@@ -8,7 +8,6 @@ from cys_core.infrastructure.catalog.profile_policy import get_trust_floor
 from cys_core.infrastructure.policy.mode_policy_adapter import allow_tool_for_profile
 from cys_core.registry.agents import AgentRegistry
 from cys_core.registry.skill_registry import SkillRegistry
-from cys_core.registry.tools import list_tools
 
 _catalog_provider: AgentCatalogPort | None = None
 _ranking_provider: PersonaRankingPort | None = None
@@ -124,6 +123,11 @@ def search_tools(
     profile_id: str = "cybersec-soc",
     limit: int = 10,
 ) -> list[dict]:
+    # Lazy: cys_core.registry.tools is worker-only (the LangChain tool
+    # registry) — this function is only ever reached during agent tool
+    # discovery, never from the api build. See plan §2.
+    from cys_core.registry.tools import list_tools
+
     q = query.lower()
     names = list_tools(profile_id=profile_id)
     hits = [name for name in names if q in name]

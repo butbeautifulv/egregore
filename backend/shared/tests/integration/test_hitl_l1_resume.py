@@ -6,7 +6,7 @@ import pytest
 
 from cys_core.domain.workers.models import JobResumeRequest, PendingHitlAction, WorkerJobStatus
 from interfaces.control_plane.job_store import JobStore
-from interfaces.worker.hitl_resume import HitlResumeError, resume_worker_job
+from interfaces.api.hitl_resume import HitlResumeError, resume_worker_job
 
 
 @pytest.mark.integration
@@ -27,7 +27,7 @@ async def test_hitl_resume_rejects_forged_approval(monkeypatch):
     )
     container = MagicMock()
     container.get_job_store.return_value = store
-    monkeypatch.setattr("interfaces.worker.hitl_resume.get_container", lambda: container)
+    monkeypatch.setattr("interfaces.api.hitl_resume.get_container", lambda: container)
     with pytest.raises(HitlResumeError, match="approval_id"):
         await resume_worker_job(
             "job-bad",

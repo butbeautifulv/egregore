@@ -2,22 +2,12 @@ from __future__ import annotations
 
 from cys_core.application.policy_resolver import get_profile_policy_resolver
 from cys_core.application.reasoning.sgr_policy import ResolvedSgrPolicy, resolve_sgr_policy
-from cys_core.application.runtime_config import get_sgr_default_mode, get_use_sgr_reasoning
+from cys_core.application.runtime_config import get_sgr_default_mode, get_use_sgr_reasoning, normalize_sgr_mode
 from cys_core.domain.agents.models import AgentDefinition
 from cys_core.domain.policy.pure import filter_tools_pure
-from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL, SgrMode
+from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL
 
-
-def normalize_sgr_mode(mode: str) -> SgrMode:
-    """Map env aliases (soft/iron) to domain SgrMode."""
-    key = (mode or "off").lower().strip()
-    if key in {"soft", "sgr_hybrid", "hybrid"}:
-        return "sgr_hybrid"
-    if key in {"iron", "sgr_iron"}:
-        return "sgr_iron"
-    if key in {"off", "sgr_off"}:
-        return "off"
-    return "off"
+__all__ = ["normalize_sgr_mode"]
 
 
 def resolve_sgr_for_agent(
