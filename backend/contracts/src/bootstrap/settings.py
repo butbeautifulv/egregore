@@ -19,8 +19,18 @@ _DEFAULT_BUS_SIGNING_KEY = "cys-agi-bus-key"
 
 
 def _settings_env_files() -> tuple[str, ...]:
-    """Load api/.env, optional repo-root .env, then deploy/.secrets."""
-    from bootstrap.paths import find_api_root, find_repo_root
+    """Load the running service's own .env (via CWD — `uv run egregore ...`
+    is always invoked with CWD set to that service's own directory), then
+    repo-root .env, then deploy/.secrets.
+
+    Does not look for "this module's own nearest pyproject.toml" the way it
+    used to — `bootstrap.settings` now lives in the shared `contracts`
+    package, installed into multiple sibling services (backend/shared,
+    backend/api, backend/worker), so `Path(__file__)` here always points
+    into `contracts/`, never into whichever service is actually running.
+    CWD already covers the "this service's own .env" case correctly.
+    """
+    from bootstrap.paths import find_repo_root
 
     files: list[str] = []
     seen: set[str] = set()
@@ -35,14 +45,10 @@ def _settings_env_files() -> tuple[str, ...]:
     _add(Path.cwd() / ".env")
 
     try:
-        api_root = find_api_root(Path(__file__).resolve().parent)
         repo_root = find_repo_root(Path(__file__).resolve().parent)
     except RuntimeError:
-        api_root = None
         repo_root = None
 
-    if api_root is not None:
-        _add(api_root / ".env")
     if repo_root is not None:
         _add(repo_root / ".env")
         _add(repo_root / "deploy" / ".secrets" / "egregore-local.env")

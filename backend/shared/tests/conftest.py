@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -157,12 +158,15 @@ def _reset_container_and_memory_catalog(monkeypatch: pytest.MonkeyPatch) -> None
         "cys_core.infrastructure.catalog.registry_factory._use_postgres",
         lambda: False,
     )
-    from bootstrap.paths import find_api_root
     from cys_core.application.skills.catalog import configure_skills_agents_root
 
     class _AgentsRoot:
         def agents_root(self):
-            return find_api_root() / "agents"
+            # bootstrap.paths.find_api_root() now lives in the shared
+            # `contracts` package and would resolve to contracts' own root,
+            # not this service's — pytest always runs with CWD set to this
+            # service's own directory (backend/shared), so use that instead.
+            return Path.cwd() / "agents"
 
     configure_skills_agents_root(_AgentsRoot())
     yield
