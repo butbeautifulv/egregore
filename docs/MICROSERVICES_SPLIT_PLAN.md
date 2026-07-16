@@ -1657,3 +1657,32 @@ generic pipeline (`RunWorkerJob`/`WorkerJobFinalizer`) requires enumerating ever
 pipeline special-cases an *existing* kind (here: follow-up jobs) and deciding explicitly whether
 the new kind needs the same treatment, not just wiring the new kind's own happy path and trusting
 the shared pipeline to no-op correctly by default.
+
+**Second real bug found this pass, same root cause, different location**: `EngagementPlannerRunner.
+execute()` builds the specialist jobs' payload as `enriched = {**event.payload,
+**self._meta_planner.to_worker_jobs_payload(plan)}`. `event.payload` is `job.payload` verbatim
+(the planner job's own payload, which carries `"work_kind": "engagement_plan"` — see
+`_engagement_plan_event`'s docstring), and `to_worker_jobs_payload()` never sets its own
+`"work_kind"` key to override it. Result: every specialist job a plan spawns (e.g. `"soc"`,
+`"network"`) inherited `work_kind="engagement_plan"` in its payload — data that belongs on the
+planner job, not on the specialist jobs it produces. Compared against
+`PlanFollowUpRunner` (the sibling this class mirrors) to see why *that* one doesn't have the same
+leak: `PlanFollowUpRunner`'s `_follow_up_plan_event()` builds its event payload **fresh** from
+engagement state (`goal`, `operator_message`, `profile_id`, ...) rather than passing the
+triggering job's payload through verbatim, so it never had a `work_kind` key to leak in the first
+place. `EngagementPlannerRunner`'s design choice to reuse `job.payload` directly (deliberate —
+api's `engagement_request_to_security_event()` already built the full event payload once, no
+need to reconstruct it from engagement state the way follow-up re-planning must) is what
+introduced the leak; the two runners solve the "what's in the event payload" problem in
+genuinely different ways, and the difference had a side effect neither implementation intended.
+
+Checked the actual blast radius before deciding severity: every consumer of this codebase's new
+`is_engagement_plan_job()` checks `persona == "planner"` **and** `work_kind == "engagement_plan"`
+together, never bare `work_kind` alone, so the leaked value was inert everywhere it was actually
+read this session — not a live incident, but dirty data sitting on every specialist job's payload
+for no reason, and a real risk for the *next* person who adds a consumer that checks `work_kind`
+without also checking `persona` (the exact class of mistake this section's job-finalizer bug
+already was). Fixed with a one-line `enriched.pop("work_kind", None)` before enqueueing, with a
+regression test (`tests/integration/test_engagement_plan_e2e.py`) asserting the specialist jobs'
+payload never contains `"work_kind"` — verified failing without the fix (`git stash`) before
+committing, same discipline as the previous fix in this section.

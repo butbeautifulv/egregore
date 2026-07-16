@@ -52,6 +52,16 @@ class EngagementPlannerRunner:
         try:
             plan = await self._meta_planner.execute(event, profile_id=profile_id)
             enriched = {**event.payload, **self._meta_planner.to_worker_jobs_payload(plan)}
+            # event.payload is job.payload verbatim (see _engagement_plan_event's
+            # docstring) — it carries "work_kind": "engagement_plan" from the
+            # planner job itself, and to_worker_jobs_payload() doesn't set its
+            # own "work_kind" to override it. Left in place, every specialist
+            # job this plan spawns would incorrectly claim to be an
+            # engagement-plan job too (harmless today only because every
+            # consumer of is_engagement_plan_job() also checks persona=="planner",
+            # never bare work_kind — still not data that belongs on a specialist
+            # job's payload).
+            enriched.pop("work_kind", None)
             job_ids = await self._dispatch.enqueuer.enqueue_from_routing(
                 event.id,
                 plan.personas,

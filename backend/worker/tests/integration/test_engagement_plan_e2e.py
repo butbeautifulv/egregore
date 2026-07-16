@@ -76,6 +76,10 @@ async def test_engagement_planner_runner_enqueues_personas_and_marks_enqueued() 
     dispatch.enqueuer.enqueue_from_routing.assert_awaited_once()
     call_args = dispatch.enqueuer.enqueue_from_routing.call_args
     assert call_args.args[1] == ["soc", "network"]
+    # Regression: job.payload's "work_kind": "engagement_plan" must not leak
+    # into the specialist jobs this plan spawns — they are regular "soc"/
+    # "network" jobs, not engagement-plan jobs themselves.
+    assert "work_kind" not in call_args.kwargs["payload"]
     egress.publish_status.assert_any_call(
         "eng-1",
         "enqueued",
