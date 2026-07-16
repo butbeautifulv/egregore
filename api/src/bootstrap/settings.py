@@ -440,6 +440,24 @@ class Settings(BaseSettings):
     auth_enabled: bool = Field(default=False, validation_alias="AUTH_ENABLED")
     rbac_enabled: bool = Field(default=False, validation_alias="RBAC_ENABLED")
     authz_mode: str = Field(default="off", validation_alias="AUTHZ_MODE")
+    allow_legacy_tenant_tokens: bool = Field(
+        default=False,
+        validation_alias="ALLOW_LEGACY_TENANT_TOKENS",
+        description="Whether require_tenant_match() trusts the requested tenant_id when the "
+        "JWT lacks an organization_id claim (docs/MICROSERVICES_SPLIT_PLAN.md §11.3 — this used "
+        "to be unconditional 'legacy token' backward-compat behavior; now it's opt-in). Default "
+        "False is a behavior change from before this flag existed — a missing organization_id "
+        "claim now rejects the request instead of silently trusting the caller.",
+    )
+    allow_insecure_prod_authz: bool = Field(
+        default=False,
+        validation_alias="ALLOW_INSECURE_PROD_AUTHZ",
+        description="Explicit, temporary override to let STAGE=prod start with "
+        "AUTH_ENABLED=0/RBAC_ENABLED=0/AUTHZ_MODE!=enforce (docs/MICROSERVICES_SPLIT_PLAN.md "
+        "§11.2 — these three switches are off by default so the API authenticates/authorizes "
+        "nobody out of the box). Never set this for a real deployment; it exists only so a "
+        "prod-STAGE box mid-migration to enforce mode isn't hard-blocked from starting at all.",
+    )
     openfga_api_url: str = Field(default="", validation_alias="OPENFGA_API_URL")
     openfga_store_id: str = Field(default="", validation_alias="OPENFGA_STORE_ID")
     openfga_api_token: str = Field(default="", validation_alias="OPENFGA_API_TOKEN")
@@ -716,6 +734,19 @@ class Settings(BaseSettings):
                 raise ValueError("POSTGRES_PASSWORD must not use the default value in prod")
             if self.bus_signing_key.get_secret_value() == _DEFAULT_BUS_SIGNING_KEY:
                 raise ValueError("BUS_SIGNING_KEY must not use the default value in prod")
+            if not self.allow_insecure_prod_authz:
+                if not self.auth_enabled:
+                    raise ValueError(
+                        "AUTH_ENABLED must be true when STAGE=prod (see "
+                        "docs/MICROSERVICES_SPLIT_PLAN.md §11.2) — set ALLOW_INSECURE_PROD_AUTHZ=1 "
+                        "only for a deliberate, temporary exception"
+                    )
+                if self.authz_mode.lower() != "enforce":
+                    raise ValueError(
+                        "AUTHZ_MODE must be 'enforce' when STAGE=prod (see "
+                        "docs/MICROSERVICES_SPLIT_PLAN.md §11.2) — set ALLOW_INSECURE_PROD_AUTHZ=1 "
+                        "only for a deliberate, temporary exception"
+                    )
 
         return self
 

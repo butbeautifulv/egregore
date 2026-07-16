@@ -16,6 +16,7 @@ from cys_core.domain.catalog.models import ProfilePack
 from cys_core.domain.engagement.models import Engagement, EngagementRequest
 from cys_core.domain.events.models import RoutingDecision
 from cys_core.domain.follow_up.models import FOLLOW_UP_PHASE
+from cys_core.domain.security.factory import get_input_sanitizer
 from cys_core.domain.work_order.intake import WorkOrderIntake
 from cys_core.domain.work_order.models import WorkOrderRequest
 from cys_core.domain.workers.models import WorkerJob
@@ -272,7 +273,13 @@ class StartWorkOrder:
     async def execute(self, request: WorkOrderRequest) -> tuple[Engagement, RoutingDecision, list[str]]:
         request = self._with_workspace(request)
         intake = self._validate_intake(request)
-        goal = request.goal.strip() or intake.normalized_goal()
+        # 5-whys root cause fix (docs/MICROSERVICES_SPLIT_PLAN.md §11.7/§13 Phase 12):
+        # `goal` here reaches _enqueue_initial_qa_job's WorkerJob payload and
+        # _persist_initial_turn's memory write *directly*, independent of
+        # StartEngagement.execute()'s own sanitization — this is the one place in
+        # this method both of those paths converge, so sanitizing here (not just in
+        # StartEngagement) is required to actually close the gap for work-orders.
+        goal = get_input_sanitizer().filter_patterns(request.goal.strip() or intake.normalized_goal())
         work_kind = classify_operator_intent(
             goal,
             mode=request.intent_mode,  # type: ignore[arg-type]

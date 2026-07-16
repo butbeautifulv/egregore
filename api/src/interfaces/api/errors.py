@@ -19,6 +19,13 @@ def tenant_mismatch_http(message: str) -> HTTPException:
     )
 
 
+def missing_organization_claim_http(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={"code": "MISSING_ORGANIZATION_CLAIM", "message": message},
+    )
+
+
 def workspace_active_jobs_http(*, count: int) -> HTTPException:
     return HTTPException(
         status_code=409,

@@ -6,10 +6,15 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
-from cys_core.application.authz.tenant_bind import TenantMismatchError, require_tenant_match
+from bootstrap.container import get_container
+from cys_core.application.authz.tenant_bind import (
+    MissingOrganizationClaimError,
+    TenantMismatchError,
+    require_tenant_match,
+)
 from cys_core.domain.security.auth_models import AuthClaims
 from interfaces.api.auth import require_reader_role
-from interfaces.api.errors import tenant_mismatch_http
+from interfaces.api.errors import missing_organization_claim_http, tenant_mismatch_http
 
 
 def require_tenant_match_http(
@@ -19,10 +24,15 @@ def require_tenant_match_http(
     enforce: bool = True,
 ) -> str:
     """FastAPI-friendly wrapper raising HTTP 403 with stable error code."""
+    allow_legacy_tokens = get_container().settings.allow_legacy_tenant_tokens
     try:
-        return require_tenant_match(auth, tenant_id, enforce=enforce)
+        return require_tenant_match(
+            auth, tenant_id, enforce=enforce, allow_legacy_tokens=allow_legacy_tokens
+        )
     except TenantMismatchError as exc:
         raise tenant_mismatch_http(str(exc)) from exc
+    except MissingOrganizationClaimError as exc:
+        raise missing_organization_claim_http(str(exc)) from exc
 
 
 def TenantBound(param: str = "tenant_id"):

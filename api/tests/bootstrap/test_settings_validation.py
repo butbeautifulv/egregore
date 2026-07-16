@@ -57,6 +57,49 @@ def test_settings_prod_rejects_memory_fallback(monkeypatch: pytest.MonkeyPatch) 
         )
 
 
+def _prod_kwargs(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "STAGE": "prod",
+        "USE_MEMORY_FALLBACK": False,
+        "REDIS_PASSWORD": "secret-redis",
+        "POSTGRES_PASSWORD": "secret-pg",
+        "BUS_SIGNING_KEY": "secret-bus",
+        "AUTH_ENABLED": True,
+        "AUTHZ_MODE": "enforce",
+        "KEYCLOAK_ISSUER": "https://issuer.example",
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.unit
+def test_settings_prod_rejects_auth_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """5-whys root cause #2 fix (docs/MICROSERVICES_SPLIT_PLAN.md §11.2/§13
+    Phase 8): STAGE=prod with AUTH_ENABLED off must refuse to start rather than
+    silently authenticating nobody."""
+    monkeypatch.setenv("USE_MEMORY_FALLBACK", "false")
+    with pytest.raises(ValidationError, match="AUTH_ENABLED"):
+        Settings(**_prod_kwargs(AUTH_ENABLED=False))
+
+
+@pytest.mark.unit
+def test_settings_prod_rejects_authz_mode_not_enforce(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("USE_MEMORY_FALLBACK", "false")
+    with pytest.raises(ValidationError, match="AUTHZ_MODE"):
+        Settings(**_prod_kwargs(AUTHZ_MODE="shadow"))
+
+
+@pytest.mark.unit
+def test_settings_prod_allows_insecure_authz_with_explicit_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("USE_MEMORY_FALLBACK", "false")
+    settings = Settings(
+        **_prod_kwargs(AUTH_ENABLED=False, AUTHZ_MODE="off", ALLOW_INSECURE_PROD_AUTHZ=True)
+    )
+    assert settings.allow_insecure_prod_authz is True
+
+
 @pytest.mark.unit
 def test_settings_repr_hides_secret_values() -> None:
     settings = Settings(

@@ -25,6 +25,7 @@ from cys_core.domain.engagement.models import (
     PlanStrategy,
 )
 from cys_core.domain.events.models import RoutingDecision, SecurityEvent
+from cys_core.domain.security.factory import get_input_sanitizer
 
 
 def engagement_request_to_security_event(request: EngagementRequest, engagement_id: str) -> SecurityEvent:
@@ -80,6 +81,16 @@ class StartEngagement:
         return f"eng-{uuid.uuid4().hex[:12]}"
 
     async def execute(self, request: EngagementRequest) -> tuple[Engagement, RoutingDecision, list[str]]:
+        # 5-whys root cause fix (docs/MICROSERVICES_SPLIT_PLAN.md §11.7/§13 Phase 12):
+        # this is the one place every ingress path (POST /v1/engagements,
+        # engagement_ingress.py's event-driven path, and any future one) converges
+        # before `goal` is persisted/published — sanitizing here means no ingress
+        # route can forget to, and every downstream consumer of the queue/job_store
+        # (not just the worker, which already sanitizes on its own before an LLM
+        # call) sees filtered content, not a raw injection payload.
+        request = request.model_copy(
+            update={"goal": get_input_sanitizer().filter_patterns(request.goal)}
+        )
         engagement_id = request.correlation_id or self._new_id()
         with self._tracing.span(
             "engagement.start",
