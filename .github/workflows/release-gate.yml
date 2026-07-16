@@ -20,9 +20,15 @@ name: Release Gate
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/microservice-refactoring]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_supply_chain:
+        description: Run build+scan jobs (smoke)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -231,34 +237,58 @@ jobs:
   # ---------------------------------------------------------------------
 
   build:
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true') ||
+      (github.event_name == 'pull_request' && github.head_ref == 'fix/ci-trivy-container-scan')
     needs: [release-gate]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
         run: echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-      - name: Build image
-        env:
-          REGISTRY: ghcr.io/${{ github.repository }}
-        run: |
-          if [ -f deploy/Dockerfile ]; then
-            docker build -f deploy/Dockerfile -t "${REGISTRY}:${{ github.sha }}" .
-          else
-            echo "No deploy/Dockerfile — skipping image build"
-          fi
+      - uses: docker/login-action@v3
+        if: hashFiles('deploy/Dockerfile') != ''
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        if: hashFiles('deploy/Dockerfile') != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+      - name: Skip image build
+        if: hashFiles('deploy/Dockerfile') == ''
+        run: echo "No deploy/Dockerfile — skipping image build"
 
   sbom:
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true') ||
+      (github.event_name == 'pull_request' && github.head_ref == 'fix/ci-trivy-container-scan')
     needs: [build]
     uses: ./.github/workflows/job-sbom.yml
     secrets: inherit
 
   container-scan:
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true') ||
+      (github.event_name == 'pull_request' && github.head_ref == 'fix/ci-trivy-container-scan')
     needs: [build]
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
     uses: ./.github/workflows/job-sca-image.yml
     secrets: inherit
     with:

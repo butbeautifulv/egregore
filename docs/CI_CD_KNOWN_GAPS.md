@@ -22,6 +22,7 @@ Archived for Kaizen reference — not open gaps:
 
 - `release-gate.yml` needed `permissions.actions: read` for reusable CodeQL workflow.
 - Trivy action tag `0.28.0` → `v0.36.0`.
+- `container-scan`: `build` must push to GHCR; `job-sca-image` needs `packages:read` + Trivy registry creds (run 29441601106).
 - SARIF fallback placeholders replaced with schema-valid minimal documents.
 - CodeQL SARIF path + severity handling documented in commit history on this branch.
 - `attachment_store.py` path-injection fix + regression test.
