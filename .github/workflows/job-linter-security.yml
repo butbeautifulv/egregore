@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api]
+        service: [worker, api, tool-gateway]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}

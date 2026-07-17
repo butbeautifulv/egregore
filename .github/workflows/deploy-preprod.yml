@@ -14,3 +14,4 @@ jobs:
         run: |
           echo "kubectl set image deployment/api api=ghcr.io/${{ github.repository }}-api:${{ github.sha }} -n preprod"
           echo "kubectl set image deployment/worker worker=ghcr.io/${{ github.repository }}-worker:${{ github.sha }} -n preprod"
+          echo "kubectl set image deployment/tool-gateway tool-gateway=ghcr.io/${{ github.repository }}-tool-gateway:${{ github.sha }} -n preprod"

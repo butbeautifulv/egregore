@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api]
+        service: [worker, api, tool-gateway]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api]
+        service: [worker, api, tool-gateway]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api]
+        service: [worker, api, tool-gateway]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -138,7 +138,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api]
+        service: [worker, api, tool-gateway]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -163,13 +163,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api]
+        service: [worker, api, tool-gateway]
     defaults:
       run:
-        # cys_core/domain is physically duplicated into both worker/ and
-        # api/ (backend/contracts retired, see
-        # docs/MICROSERVICES_SPLIT_PLAN.md §18) — each package measures its
-        # own copy independently.
+        # cys_core/domain is physically duplicated into worker/, api/, and
+        # tool-gateway/ (backend/contracts retired, see
+        # docs/MICROSERVICES_SPLIT_PLAN.md §18/§21.6) — each package
+        # measures its own copy independently.
         working-directory: backend/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v5
@@ -278,7 +278,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        service: [api, worker]
+        service: [api, worker, tool-gateway]
     steps:
       - uses: actions/checkout@v5
       - uses: docker/login-action@v4
@@ -313,7 +313,7 @@ jobs:
       packages: read
     strategy:
       matrix:
-        service: [api, worker]
+        service: [api, worker, tool-gateway]
     uses: ./.github/workflows/job-sca-image.yml
     secrets: inherit
     with:
@@ -324,7 +324,7 @@ jobs:
     needs: [container-scan]
     strategy:
       matrix:
-        service: [api, worker]
+        service: [api, worker, tool-gateway]
     uses: ./.github/workflows/job-sign.yml
     secrets: inherit
     with:

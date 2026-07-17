@@ -6,4 +6,5 @@ description = "adversarial security test fixtures"
 paths = [
   '''(?i)backend/worker/tests/adversarial/''',
   '''(?i)backend/api/tests/adversarial/''',
+  '''(?i)backend/tool-gateway/tests/adversarial/''',
 ]

@@ -19,6 +19,10 @@ jobs:
         with:
           dockerfile: deploy/Dockerfile.worker
           failure-threshold: warning
+      - uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: deploy/Dockerfile.tool-gateway
+          failure-threshold: warning
       - name: Gate check
         if: always()
         run: |
