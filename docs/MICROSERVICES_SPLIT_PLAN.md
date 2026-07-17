@@ -1743,3 +1743,37 @@ a public API endpoint changes client-facing contracts and needs a decision on th
 (fold `/v1/engagements` into a thin alias of work-orders? remove it and migrate callers?) that
 only the user can make. Tracked here so it isn't lost track of the way the original meta-planner
 regression (§16.1) sat as "accepted" for a full session before being revisited.
+
+**Evidence gathered for whoever makes the call**: checked real client usage before proposing
+anything. Both `web_ui/lib/api-client.ts`'s `createWorkOrder()` and `tui/internal/api/
+client.go`'s `CreateWorkOrderWithIntake()` already call `POST /v1/work-orders` first and only
+fall back to `POST /v1/engagements` on a 404 ("server predates work-orders") — and the
+standalone `createEngagement()`/`CreateEngagement()` functions that hit `/v1/engagements`
+directly have zero real callers in either UI (confirmed by grep, not assumed). `/v1/work-orders`
+is already the de facto primary path by both client authors' own design; `/v1/engagements`
+`POST` is legacy-compat plumbing already. Proposed (not implemented): don't delete the endpoint
+(unknown external API consumers may call it directly, and both clients' fallback logic still
+assumes the URL exists) — instead make `POST /v1/engagements`'s handler delegate to
+`StartWorkOrder` instead of the thinner `StartEngagement` it uses today, so there's exactly one
+real implementation left underneath and the URL keeps working unchanged for anyone depending on
+it.
+
+### 16.10. Domain-coverage gate: new file needed its own domain-layer test
+
+Caught by actually running `docs/CI_CD_KNOWN_GAPS.md`'s `domain-coverage` gate
+(`pytest tests/domain/ --cov=src/cys_core/domain --cov-fail-under=100`) against `contracts`
+directly, not assumed passing because the rest of the suite was green. `cys_core/domain/
+engagement/planner_job.py` (§16.2/§16.6, `is_engagement_plan_job`) had 0% coverage from
+`contracts`'s own `tests/domain/` — the only test exercising it lived in `worker`'s test suite
+(`tests/worker/test_engagement_planner_dispatch.py`), which satisfies "this function is tested"
+but not "this package's domain layer is 100% covered by this package's own domain tests," which
+is what the CI gate actually checks, per-package. Added
+`tests/domain/engagement/test_planner_job.py` (mirroring the existing `tests/domain/follow_up/
+test_follow_up_models.py` pattern for `is_follow_up_plan_planner_job`), closing this session's
+specific gap.
+
+Checked before assuming this was all on me: even after the fix, `contracts`'s domain coverage is
+99.88%, not 100% — the remaining 4 gaps (`engagement/ids.py`, `engagement/models.py`,
+`memory/services.py`, `policy/product_payloads.py`) are all pre-existing files untouched this
+session, so this pass fixed the one gap it introduced and correctly left the pre-existing ones
+alone rather than scope-creeping into an unrelated coverage backlog.
