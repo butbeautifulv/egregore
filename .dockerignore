@@ -17,20 +17,39 @@ config
 .env
 .env.local
 
+reports/
+*.sarif
+hadolint.sarif
+skill-scan.sarif
+results.sarif
+
 # Python backend tree — exclude dev/test bulk, keep runtime assets
-backend/shared/tests
-backend/shared/.venv
-backend/shared/.pytest_cache
-backend/shared/.ruff_cache
-backend/shared/.coverage
-backend/shared/docs
-backend/shared/scripts
+backend/contracts/tests
+backend/contracts/.venv
+backend/contracts/.pytest_cache
+backend/contracts/.ruff_cache
+backend/contracts/.coverage
+backend/contracts/docs
+backend/worker/tests
+backend/worker/.venv
+backend/worker/.pytest_cache
+backend/worker/.ruff_cache
+backend/worker/.coverage
+backend/worker/docs
+backend/api/tests
+backend/api/.venv
+backend/api/.pytest_cache
+backend/api/.ruff_cache
+backend/api/.coverage
+backend/api/docs
 
 # Root-level legacy paths (pre-split)
 /tests
 /scripts
 /migrations
 
-# Markdown except backend README required by uv/hatch
+# Markdown except backend READMEs required by uv/hatch
 *.md
-!backend/shared/README.md
+!backend/contracts/README.md
+!backend/worker/README.md
+!backend/api/README.md

@@ -1,0 +1,7 @@
+# Debian 13 (trixie) base: no DSA/fixed packages yet (security-tracker <no-dsa>).
+# Runtime hardened in deploy/Dockerfile.api and deploy/Dockerfile.worker
+# (perl-base/gzip/login/util-linux/mount purged).
+# Revisit when trixie point release ships ncurses, acl, util-linux fixes.
+CVE-2025-69720
+CVE-2026-53615
+CVE-2026-54369

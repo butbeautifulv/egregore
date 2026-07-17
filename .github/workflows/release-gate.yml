@@ -20,9 +20,15 @@ name: Release Gate
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/microservice-refactoring]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_supply_chain:
+        description: Run build+scan jobs (smoke)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -49,8 +55,8 @@ jobs:
       run:
         working-directory: backend/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: uv sync
@@ -63,8 +69,8 @@ jobs:
       run:
         working-directory: web_ui
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: "1.3.14"
       - run: bun install --frozen-lockfile
@@ -93,8 +99,8 @@ jobs:
       run:
         working-directory: backend/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: uv sync
@@ -112,8 +118,8 @@ jobs:
       run:
         working-directory: backend/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: uv sync
@@ -131,8 +137,8 @@ jobs:
       run:
         working-directory: backend/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: uv sync
@@ -156,8 +162,8 @@ jobs:
         # copy of the source tree to measure coverage against.
         working-directory: backend/contracts
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: uv sync
@@ -252,30 +258,49 @@ jobs:
   # ---------------------------------------------------------------------
 
   build:
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true')
     needs: [release-gate]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         service: [api, worker]
     steps:
-      - uses: actions/checkout@v4
-      - name: Build image
-        env:
-          REGISTRY: ghcr.io/${{ github.repository }}
-        run: |
-          docker build -f "deploy/Dockerfile.${{ matrix.service }}" \
-            -t "${REGISTRY}-${{ matrix.service }}:${{ github.sha }}" .
+      - uses: actions/checkout@v5
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/Dockerfile.${{ matrix.service }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}-${{ matrix.service }}:${{ github.sha }}
 
   sbom:
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true')
     needs: [build]
     uses: ./.github/workflows/job-sbom.yml
     secrets: inherit
 
   container-scan:
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_supply_chain == 'true')
     needs: [build]
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
     strategy:
       matrix:
         service: [api, worker]

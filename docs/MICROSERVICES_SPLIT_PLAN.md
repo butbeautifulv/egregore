@@ -1838,3 +1838,49 @@ leaving them for a separate pass:
 Verified the exact `release-gate.yml` command directly after the fix: `Required test coverage of
 100% reached. Total coverage: 100.00%`, `521 passed`. This is the real gate, run for real, not
 approximated.
+
+## 17. Trivy/SCA container-scan fix ported from `fix/ci-trivy-container-scan`
+
+That branch forked from `main` at the same point as this one, before the `backend/{contracts,
+worker,api}` reorg — it fixed the container-scan/Trivy pipeline against the old single-package
+`api/`/`contracts/` layout (20 CVEs patched via base-image hardening, 3 genuinely unfixable
+trixie-base CVEs ignored with a documented `.trivyignore`, plus a real GHCR-permissions bug in
+`ci.yml`). Ported the fixes here, adapted to the matrixed `[api, worker]` layout:
+
+- **Real bug found while adapting, not present on the source branch**: `release-gate.yml`'s
+  `build` job only ran `docker build` locally and never pushed to GHCR, so `container-scan`'s
+  `image: ghcr.io/...-${{ matrix.service }}:${{ github.sha }}` could never actually be pulled —
+  the SCA gate was structurally unable to scan anything on this branch. Fixed by adding
+  `docker/login-action` + `docker/build-push-action` (`push: true`) and `packages: write`/
+  `packages: read` permissions to `build`/`container-scan`.
+- `job-sca-image.yml`: added GHCR auth (`docker/login-action` + `TRIVY_USERNAME`/`TRIVY_PASSWORD`
+  env for `aquasecurity/trivy-action`), `trivyignores: deploy/.trivyignore`, swapped the manual
+  gate-check+upload-sarif steps for the existing `./.github/actions/gate-and-export` composite
+  action (parity with every other scan job in this file).
+- `deploy/Dockerfile.api` / `deploy/Dockerfile.worker`: split each into `builder`/`runtime`
+  stages, pinned base images by digest, `apt-get upgrade` + purge `perl-base gzip login
+  util-linux mount` in the runtime stage (removes the packages the 3 ignored trixie CVEs and most
+  of the 20 patched ones live in), non-root `chown` copy from builder.
+  **Second real bug found while adapting** (not present on the source branch, which never split
+  into multiple packages): the `builder`→`runtime` copy only copied `/app/api` (or `/app/worker`)
+  but not `/app/contracts/src` — `egregore-contracts`' editable install writes an absolute-path
+  `.pth` file (`/app/contracts/src`) into the venv, so the runtime stage's Python couldn't resolve
+  `bootstrap.containers.*` (the `contracts`/`api`/`worker` namespace-package merge depends on both
+  paths existing on disk, not just being importable at build time). Fixed by also copying
+  `/app/contracts/src` into the runtime stage. Verified by actually running
+  `docker run ... egregore --help` against both built images before and after the fix — failed
+  with `ModuleNotFoundError: bootstrap.containers.auth_container` before, clean argparse output
+  after.
+- `deploy/.trivyignore` (new) and `.gitleaks.toml` (new, paths adapted to
+  `backend/{contracts,worker,api}/tests/adversarial/` instead of the old `api/tests/adversarial/`).
+- `.dockerignore`: while touching it, found and fixed stale `backend/shared/*` exclusion rules
+  (that directory was deleted in §15/task #52) — the `*.md` blanket-exclude with a
+  `!backend/shared/README.md` negation meant the three current packages' `README.md` files (each
+  explicitly `COPY`'d by the Dockerfiles for `uv sync`) were silently excluded from every build
+  context. Untested because no one had rebuilt the split images since `backend/shared` was
+  deleted; would have broken `uv sync --no-install-project` on the next real build regardless of
+  the Trivy work.
+- Verified end-to-end locally (not just YAML-parsed): both Dockerfiles build, both images run
+  their CLI entrypoint cleanly, and a local Trivy scan against both built images with
+  `deploy/.trivyignore` applied reports **0 CRITICAL/HIGH findings** — matching the source
+  branch's reported outcome.

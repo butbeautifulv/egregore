@@ -15,7 +15,7 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -74,7 +74,7 @@ jobs:
     container:
       image: semgrep/semgrep:1.117.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Semgrep scan
         run: semgrep scan --config p/ci --sarif -o semgrep.sarif .
       - name: Gate check

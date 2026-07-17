@@ -1,0 +1,10 @@
+title = "egregore gitleaks"
+
+# Adversarial fixtures use fake PII/API keys to test redaction (not real secrets).
+[allowlist]
+description = "adversarial security test fixtures"
+paths = [
+  '''(?i)backend/contracts/tests/adversarial/''',
+  '''(?i)backend/worker/tests/adversarial/''',
+  '''(?i)backend/api/tests/adversarial/''',
+]
