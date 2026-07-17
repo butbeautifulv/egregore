@@ -11,7 +11,7 @@
 | `lint` | matrixed over contracts/worker/api: `cd backend/<pkg> && uv run ruff check src tests && uv run ty check src` |
 | `unit-tests` | matrixed over contracts/worker/api: `cd backend/<pkg> && ./scripts/pytest_batches.sh` |
 | `arch-lint` | matrixed over contracts/worker/api: `make -C backend/<pkg> verify-architecture` |
-| `domain-coverage` | `pytest tests/domain/ --cov=src/cys_core/domain --cov-fail-under=100` |
+| `domain-coverage` | `backend/contracts` only, via `make domain-gate` → `./scripts/pytest_batches.sh tests/domain --cov --domain-gate`. The 100% threshold applies only to `coverage report --include="src/cys_core/domain/{runs,catalog,observability}/*"` — **not** all of `cys_core/domain` (e.g. `domain/engagement/*` is not in scope). See `scripts/pytest_batches.sh`'s `--domain-gate` branch for the authoritative `--include` list. |
 | `adversarial` | `pytest tests/adversarial/ -m adversarial` (0 xfail) |
 | `secret-scan` / `sast` / `osa` | security scanners + `gate-check.py` |
 | `iac-scan` / `dockerfile-lint` / `linter-security` / `skill-scanner` | reusable scanner jobs |

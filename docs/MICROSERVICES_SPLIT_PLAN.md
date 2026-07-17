@@ -1777,3 +1777,24 @@ Checked before assuming this was all on me: even after the fix, `contracts`'s do
 `memory/services.py`, `policy/product_payloads.py`) are all pre-existing files untouched this
 session, so this pass fixed the one gap it introduced and correctly left the pre-existing ones
 alone rather than scope-creeping into an unrelated coverage backlog.
+
+**Correction (next round): the "would fail CI" claim above was wrong** — trusted
+`docs/CI_CD_KNOWN_GAPS.md`'s description of the gate instead of reading the actual script that
+implements it. Ran `make -C backend/contracts domain-gate` for real (`./scripts/pytest_batches.sh
+tests/domain --cov --domain-gate`) and read its `--domain-gate` branch: the 100% threshold is
+enforced via `coverage report --include="src/cys_core/domain/{runs,catalog,observability}/*"
+--fail-under=100` — a hardcoded, narrow `--include` list that has never covered
+`domain/engagement/*` at all. The gate was passing before this round's fix and would have kept
+passing without it; `planner_job.py` was never in scope for `--domain-gate` regardless of its
+own coverage. `docs/CI_CD_KNOWN_GAPS.md`'s one-line summary of the gate was itself stale/wrong
+(simplified to "all of `cys_core/domain`" when the real script only ever checked three
+subdirectories) — fixed that doc to point at the script as the source of truth instead of
+restating a simplification that can drift.
+
+The new `tests/domain/engagement/test_planner_job.py` test from last round is still worth
+keeping — direct domain-layer coverage for a domain-layer function is good practice regardless
+of whether a specific CI gate happens to enforce it — but the framing of that round's finding
+("real, concrete, CI-breaking issue") overstated it. Correcting the record rather than leaving
+the overclaim standing: this is the same "verify by execution, not by trusting a description"
+discipline this whole document has been built on, applied to my own prior conclusion this time,
+not just to the code.
