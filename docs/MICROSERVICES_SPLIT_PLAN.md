@@ -2112,6 +2112,29 @@ swap). This needs a scoping conversation with the user before implementation —
 architecturally the larger of the two parts of this instruction and was explicitly still open
 when this handoff was written.
 
+**New finding, this audit round — changes the shape of Part 2**: nothing in this repo actually
+*serves* `create_app()` anywhere. Confirmed by exhaustive grep: no `uvicorn.run()` call anywhere
+in `backend/worker/src`; `interfaces/cli/main.py` has only `worker`/`run-sandboxed-job`/`critic`/
+`coordinator`/`status`/`agent` subcommands, no `serve-gateway`; `deploy/Dockerfile.worker`'s CMD
+is `["worker", "--daemon", "--idle-timeout", "0"]`, not a gateway server; `deploy/k8s/` has a
+`networkpolicy.yaml` that references label `app: tool-gateway` and `worker-job-template.yaml`
+that points spawned sandbox pods at `http://tool-gateway:8090`, but **no `Deployment`/`Service`
+manifest for `tool-gateway` exists anywhere under `deploy/k8s/` or `deploy/helm/`** — the
+NetworkPolicy and job template both assume a service that has no manifest defining it. Worse:
+`docs/DEVELOPMENT.md:66-69` documents `make dev-tool-gateway` as how to start it locally for
+dev — **that Makefile target does not exist** (`grep -n "gateway" Makefile` → zero hits). So the
+10 test files that import `create_app()` directly and exercise it via FastAPI's in-process
+`TestClient` are the *only* code path in the whole repo that ever actually runs this app; nothing
+production-shaped (CLI, Docker CMD, k8s manifest, or even the documented dev Make target) does.
+This means "replace FastAPI in a live service" was the wrong framing to start scoping from —
+the real open question is whether the Tool Gateway is (a) unfinished infrastructure that was
+never wired to a real serving process and needs that gap closed (with or without FastAPI), or
+(b) intentionally deferred/aspirational and the `NetworkPolicy`/`worker-job-template.yaml`/
+`docs/DEVELOPMENT.md` references are themselves the stale ones. Either answer is a user decision,
+not something to resolve unilaterally — flagged here instead of acted on. `api`'s
+`bootstrap/settings.py:tool_gateway_url` setting is also declared but never actually read
+anywhere in `api/src` beyond the `Field(...)` declaration itself — dead config, same root cause.
+
 ### 20.3. Still-open items carried forward unchanged from earlier in the session (untouched here)
 
 - Branch-protection gap: `main`'s active ruleset has no `required_status_checks` naming
