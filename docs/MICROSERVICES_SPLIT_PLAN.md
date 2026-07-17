@@ -1884,3 +1884,46 @@ trixie-base CVEs ignored with a documented `.trivyignore`, plus a real GHCR-perm
   their CLI entrypoint cleanly, and a local Trivy scan against both built images with
   `deploy/.trivyignore` applied reports **0 CRITICAL/HIGH findings** — matching the source
   branch's reported outcome.
+
+## 18. Next planned refactor (not started): drop `contracts`, go pure `api` + `worker`
+
+**Explicit user instruction (2026-07-17), not yet implemented — captured here for whoever
+picks this up next.** The three-package layout (`contracts` + `worker` + `api`, §2) is to be
+replaced with **two** independent packages: `backend/api/` and `backend/worker/`, with **no
+shared package between them at all** — not even the pure-data-model/port-interface layer that
+`contracts` was scoped down to in §0/§1.1.
+
+- **`backend/contracts/` goes away entirely.** Whatever it currently holds (`cys_core.domain`,
+  `cys_core.application.ports`, generic Postgres/Kafka/Redis infra, the `bootstrap` settings/
+  sub-containers) gets physically duplicated into both `api/src/` and `worker/src/` rather than
+  installed once as a shared editable dependency.
+- **Duplication is accepted, explicitly, by the user** — "even if it will duplicate." This is a
+  deliberate reversal of §0's earlier framing (a shared `contracts` package as an acceptable
+  "translation layer, never an architectural dependency"). The user's instruction this round
+  overrides that framing: two fully independent codebases, not one shared plus two thin
+  consumers. Do not re-litigate this by re-introducing a shared package "to avoid drift" — that
+  was already considered and explicitly rejected.
+- **Hard constraint, unchanged and if anything reinforced**: `backend/api/` must still never
+  contain, import, or transitively depend on any agent-runtime/LLM-orchestration library —
+  no `langchain`, `langchain-core`, `langgraph`, `langgraph-checkpoint-postgres`, `deepagents`,
+  `litellm`, and no code that only exists to be called by that stack (`cys_core.runtime.agent`,
+  `cys_core.llm`, `cys_core/middleware/*`, the tool-provider/model-connector implementations that
+  return `langchain_core.BaseChatModel`, etc.). This was the whole point of the original split
+  (§0) and stays exactly as important with two packages as it was with three — the elimination
+  of `contracts` must not become a backdoor through which agent-runtime code (or its transitive
+  deps) re-enters `api/`'s dependency tree via a duplicated-then-diverged copy.
+- **What this means concretely for whoever implements it**: everything in the current
+  `backend/contracts/src/` that `api/` actually uses gets copied into `backend/api/src/` as its
+  own local code (own `cys_core.domain`, own `bootstrap`, etc., no `../contracts` path
+  dependency in `pyproject.toml`); everything `worker/` uses gets copied into
+  `backend/worker/src/` the same way. The two copies are allowed to diverge over time — that is
+  the point of removing the shared package, not an accident to prevent. `deploy/Dockerfile.api`
+  and `deploy/Dockerfile.worker` lose their `COPY backend/contracts/...` layers entirely (this
+  also removes the exact class of bug found in §17 — the runtime-stage/editable-install `.pth`
+  mismatch — since there is no longer a second package's `src/` that the venv depends on at an
+  absolute path).
+- **Not implemented this session.** Per the user's own framing ("than your session is done"),
+  this is recorded as the next session's starting point, not executed now. Whoever picks it up
+  should re-run this plan's own §7 "reusable package-split checklist" in reverse (merge instead
+  of extract) and re-verify the full local/CI test and Docker-build/Trivy-scan matrix (§17) after
+  the merge, the same way each phase in §5/§14/§15 was verified before moving on.
