@@ -1,7 +1,12 @@
 name: Release Gate
 
-# Canonical CI/CD gate for egregore — the single required status check that
-# blocks broken builds and known vulnerabilities from reaching `main`.
+# Canonical CI/CD gate for egregore — *designed* to be the single required
+# status check that blocks broken builds and known vulnerabilities from
+# reaching `main`. As of 2026-07-17 this is only true within the workflow
+# itself (the aggregate `release-gate` job below fails the run if any listed
+# job doesn't succeed) — `main`'s active ruleset does not yet have a
+# `required_status_checks` rule naming `release-gate`, so nothing in GitHub
+# actually stops a merge on a red run. See docs/CI_CD_KNOWN_GAPS.md.
 #
 # Supersedes ci.yml, arch-gate.yml, adversarial-gate.yml, security-shift-left.yml
 # and ci-profile.yml, which raced as five independent, uncoordinated workflows
@@ -16,7 +21,8 @@ name: Release Gate
 # same blocker/warn split (GitLab's `.egregore_blocker` / `.egregore_warn`).
 #
 # All quality and security jobs below are blocking (no continue-on-error).
-# Historical remediation notes: docs/CI_CD_KNOWN_GAPS.md (resolved).
+# Historical remediation notes: docs/CI_CD_KNOWN_GAPS.md (workflow-level
+# resolved; GitHub branch-protection enforcement still open, see above).
 
 on:
   pull_request:

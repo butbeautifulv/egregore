@@ -1,8 +1,19 @@
 # CI/CD known gaps (release-gate.yml)
 
-**Status: resolved** — all `release-gate.yml` jobs are blocking as of
-`feature/bypass-ci-lint` (Phase F complete). Require the aggregate
-`release-gate` check in branch protection.
+**Status: workflow-level resolved, GitHub-enforcement gap open** — all
+`release-gate.yml` jobs are blocking *within the workflow* (the aggregate
+`release-gate` job fails the whole run if any listed job doesn't succeed) as
+of `feature/bypass-ci-lint` (Phase F complete). **Verified 2026-07-17 via
+`gh api repos/{owner}/{repo}/rulesets` that this is not yet true at the
+GitHub-enforcement layer**: `main` has no classic branch protection
+(`GET .../branches/main/protection` → 404) and the one active ruleset
+("Minimal Ruleset", ~DEFAULT_BRANCH) only enforces `deletion`,
+`non_fast_forward`, GitHub-native `code_quality`, and GitHub-native
+`code_scanning` (CodeQL alerts) — it has no `required_status_checks` rule
+naming `release-gate` or any other job from this file. A PR can merge to
+`main` today with every job in this workflow red. Adding that rule is a
+live branch-protection change and needs an explicit decision (owner
+confirmation, not an automated pass) before it's made.
 
 ## Resolved gates
 
