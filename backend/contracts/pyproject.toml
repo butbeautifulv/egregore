@@ -81,6 +81,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "import-linter>=2.0",
     "ty>=0.0.1a25",
+    "ruff>=0.15.21",
 ]
 
 [tool.importlinter]
