@@ -1997,3 +1997,137 @@ needed... api doesn't have any langchain or etc"). Mechanics, in order:
    `.gitleaks.toml`) all reduced from the `[contracts, worker, api]` matrix to `[worker, api]`;
    `domain-coverage` now runs per package against its own physical `cys_core/domain` copy instead
    of the single `backend/contracts` job it used to be.
+
+## 20. Session handoff (2026-07-17): stale-reference sweeps, two verified-green CI runs,
+## and the next not-yet-started instruction (langchain-core out of api, fastapi out of worker)
+
+Written for whoever picks this up next (user is switching to a different agent/session).
+Everything below §19's point 6 up through the current moment, in order.
+
+### 20.1. Two further stale-reference sweeps after §19, both driven by the recurring audit loop
+
+The user has a standing `/loop` cron (`20m`, session-only, auto-expires after 7 days) firing:
+"go ahead. stick to the plan. did you forget something? is there any problem. make 5 whys and
+5 todos from whys. always read the microservice refactoring md for info". Two genuine findings
+came out of these audit rounds after §19 was written, each fixed and pushed as its own commit:
+
+1. **Real CI-only failure, `5129a47`**: `release-gate.yml`'s `lint (worker)` / `lint (api)` jobs
+   (which run `uv run ty check src` — not invoked by local `ruff`/`pytest`) failed on 7
+   `unused-ignore-comment` diagnostics per package. Root cause: `# ty: ignore[unresolved-import]`
+   comments on `from bootstrap.container import ...` inside several
+   `bootstrap/containers/*.py` files were correct when `bootstrap.container` was genuinely
+   cross-package (unreachable from `contracts`'s static-analysis perspective in the old
+   three-package layout); after §19's physical merge, `ty` resolves the import fine, so the
+   suppression itself became a flagged diagnostic. Fixed by deleting the 14 stale ignore comments
+   (7 per package) plus the adjacent prose that referenced the now-nonexistent `contracts`
+   package boundary. `interfaces/api/app.py`'s two remaining `ty:ignore` comments (on
+   `interfaces.control_plane.*` imports, genuinely absent from api's tree) were checked and
+   correctly left alone. This is the session's clearest demonstration yet of why CI must be
+   dispatched for real, not inferred from local test/lint runs.
+2. **Second-pass doc/prose staleness, `24f88f1`**: the first docs-cleanup pass (`f5e9f8a`) only
+   grepped for literal `backend/contracts` / `egregore-contracts` strings, missing descriptive
+   prose that referenced "contracts" without the literal path (e.g. "this module now lives in
+   the shared `contracts` package", "structurally absent from contracts"). Found via
+   `grep -rln "in contracts\|contracts'\|contracts is\|contracts has\|contracts package\|contracts
+   only\|contracts-only\|only exists for.*contracts\|lives.*in contracts"` across
+   `backend/{worker,api}/src`, then a final broad `grep -rln "contracts"` swept to confirm zero
+   hits remained. Fixed across 7 distinct source files (14 counting both packages' copies) via
+   exact-match string replacement, each `assert`-checked before replacing to avoid corrupting
+   anything: `bootstrap/container.py` (both packages, different blocks), `bootstrap/containers/
+   persistence_container.py`, `bootstrap/paths.py`, `bootstrap/settings.py`, `bootstrap/
+   product_loader.py`, `cys_core/registry/discovery_tools.py`, `cys_core/registry/
+   product_context.py`.
+
+**Both commits dispatched to real CI and confirmed green**, not just locally tested:
+- Run `29566520652` (after `5129a47`, `run_supply_chain=true` — full chain including
+  `build`/`sbom`/`container-scan` Trivy scans for both images) — all green.
+- Run `29568147267` (after `24f88f1`, `run_supply_chain=false`) — confirmed green via
+  `gh run view 29568147267 --json status,conclusion` → `{"conclusion":"success",
+  "status":"completed"}`. Note: `gh run watch` itself hit a transient `unexpected EOF` network
+  glitch at the very end of this dispatch — that is a tooling glitch, not a CI failure; the
+  authoritative check is always `gh run view --json status,conclusion` (or the jobs API), never
+  the watch command's own exit behavior.
+
+Working tree is clean as of this handoff — everything above is committed and pushed to
+`origin/feature/microservice-refactoring` (`git log --oneline -10` head is `24f88f1`).
+
+### 20.2. Current instruction, authorized but NOT YET STARTED — no files edited for this yet
+
+User's exact words: **"you should fullt remove lanchain from api. even the core. and fully
+remove fastapi from worker."** Two parts:
+
+**Part 1 — remove `langchain-core` from `api`, reversing the §1.1/§0.2 accepted exception.**
+Investigation done so far (read-only, nothing changed): `grep -rl "langchain_core"
+backend/api/src --include="*.py"` finds exactly 3 files:
+- `backend/api/src/cys_core/application/ports/llm.py` — `ModelConnector.create_model() ->
+  BaseChatModel` (the port this whole exception existed for).
+- `backend/api/src/cys_core/application/ports/tool_provider.py` — `ToolProviderPort`, same
+  pattern.
+- `backend/api/src/interfaces/observability/connectors/langfuse/trace.py` — generic
+  trace/span helpers behind `OBS_*_BACKEND=langfuse`; check whether this file's langchain_core
+  usage is incidental (e.g. type hints on a callback handler) or load-bearing before deciding
+  whether it can be rewritten framework-free or must be deleted along with the langfuse
+  integration in api.
+`backend/api/pyproject.toml:43` has `"langchain-core>=1.4.0"` with a comment block explicitly
+framing it as the accepted exception from §1.1/§0.2 — that comment (and `langfuse>=4.6.1` at
+line 47, which may or may not need to go too depending on what `trace.py` investigation finds)
+needs updating/removing once the code no longer needs it. **Not yet determined**: whether
+`ModelConnector`/`ToolProviderPort` are actually *called* anywhere in api's own live code paths,
+or whether they're only reachable through the already-stubbed `runtime=None` path from §1.2
+(api passes `runtime=None` into `MetaPlanner`/`PlanInvestigation`, so the async meta-planning
+LLM call was already established as non-functional from api in this session — if these ports
+are only ever consumed by that dead path, deleting them outright, not just rewriting their type
+hints, may be the right move). Whoever picks this up should trace actual call sites (`grep -rn
+"ModelConnector\|ToolProviderPort" backend/api/src`) before deciding delete-vs-rewrite.
+Also re-check `AGENTS.md`'s current line ("a base `langchain-core` dependency is an accepted
+exception for port type hints only") and plan doc §19 point 6's claim ("no
+`langchain`(non-core)/... imports anywhere") — both go stale the moment langchain-core itself is
+gone and should be corrected in the same commit, not left dangling.
+
+**Part 2 — remove FastAPI from `worker` entirely.** This is *not* a dead-dependency deletion —
+AGENTS.md documents the Tool Gateway as "its own separate FastAPI app inside worker/", a real,
+currently-serving HTTP subsystem, so this is a transport-layer replacement, a genuine design
+decision, not a cleanup. Investigation done so far: `grep -rl "fastapi\|FastAPI"
+backend/worker/src --include="*.py"` finds exactly 4 files:
+- `backend/worker/src/interfaces/gateways/tool/server.py` — almost certainly the Tool Gateway's
+  actual `FastAPI()` app instance + route registration; **not yet read this session**.
+- `backend/worker/src/interfaces/gateways/tool/auth.py` — likely FastAPI dependency-injection
+  (`Depends(...)`) for request auth on the Gateway; **not yet read this session**.
+- `backend/worker/src/cys_core/observability/http.py` — likely generic HTTP-server
+  instrumentation/middleware (OTel?), needs reading to know if it's FastAPI-specific or
+  framework-agnostic.
+- `backend/worker/src/cys_core/observability/otel.py` — likely
+  `opentelemetry-instrumentation-fastapi` wiring; check whether this is conditional/optional or
+  a hard import.
+None of these four have been read yet this session — **do not delete `fastapi`/`uvicorn` from
+`backend/worker/pyproject.toml` until `server.py` and `auth.py` are read in full and a concrete
+replacement transport is chosen** (candidates to weigh, not yet decided with the user: a
+lighter ASGI-less framework like `starlette` directly, a raw `http.server`/`aiohttp`
+implementation, or converting the Gateway to something that isn't HTTP at all if nothing outside
+`worker/` actually needs to reach it over a network socket — check first whether anything
+*outside* worker's own process/container calls this Gateway over HTTP, since if it's purely
+intra-process the fix might be "delete the HTTP layer entirely and call the handler functions
+directly," which is a much bigger and more valuable simplification than a like-for-like FastAPI
+swap). This needs a scoping conversation with the user before implementation — it is
+architecturally the larger of the two parts of this instruction and was explicitly still open
+when this handoff was written.
+
+### 20.3. Still-open items carried forward unchanged from earlier in the session (untouched here)
+
+- Branch-protection gap: `main`'s active ruleset has no `required_status_checks` naming
+  `release-gate` — flagged repeatedly, needs explicit user decision before touching live GitHub
+  config.
+- PR #25 (`fix/ci-trivy-container-scan` → `feature/microservice-refactoring`, now superseded,
+  shows `CONFLICTING`) — flagged for the user to close manually; not closed by the assistant.
+- Whether/when to open a PR from `feature/microservice-refactoring` into `main` — CI is
+  verifiably green (§20.1) but this remains the user's call, not acted on.
+- Phase 10 (persona-level ReBAC on the Tool Gateway, §4/§11.4) and Phase 11 (sandbox-token
+  verification never threaded through the agent runtime, §4/§11.5) — real, documented,
+  deliberately deferred security gaps, still open, untouched this session.
+- The broader "looks unused but might be a real unwired feature" list from §19 point 4
+  (Keycloak `idp_sync.py`, budget tracking `budget_adapter.py`, `reflexion`/`execution_backend`
+  ports, a duplicate/superseded pair of Tool Gateway adapter files under `interfaces/gateways/
+  tool/adapters/`) — deliberately left alone, flagged for a dedicated follow-up pass.
+- The recurring `/loop` cron job (`20m` interval, job id `2194b2de` from earlier in the session)
+  is still active and will keep firing the standing audit prompt into whatever session/agent the
+  user switches to next, unless explicitly cancelled with `CronDelete`.
