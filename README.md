@@ -102,9 +102,9 @@ cd backend/api && uv run egregore session -g "Assess CI/CD pipeline risks"
 cd backend/api && uv run egregore serve --port 8080
 
 # Tests (low memory — one pytest process per tests/<dir>/, run per package)
-cd backend/contracts && ./scripts/pytest_batches.sh --cov --domain-gate
-cd backend/worker && ./scripts/pytest_batches.sh --cov --domain-gate
-cd backend/api && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/contracts && ./scripts/pytest_batches.sh --cov --domain-gate  # only package with domain-gate; see below
+cd backend/worker && ./scripts/pytest_batches.sh --cov
+cd backend/api && ./scripts/pytest_batches.sh --cov
 ```
 
 ## CLI
@@ -209,9 +209,9 @@ egregore/
 ## Тестирование
 
 ```bash
-cd backend/contracts && ./scripts/pytest_batches.sh --cov --domain-gate
-cd backend/worker && ./scripts/pytest_batches.sh --cov --domain-gate
-cd backend/api && ./scripts/pytest_batches.sh --cov --domain-gate
+cd backend/contracts && ./scripts/pytest_batches.sh --cov --domain-gate  # cys_core/domain живёт только тут
+cd backend/worker && ./scripts/pytest_batches.sh --cov
+cd backend/api && ./scripts/pytest_batches.sh --cov
 ```
 
 ## Документация

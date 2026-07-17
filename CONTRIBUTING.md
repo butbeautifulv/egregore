@@ -8,11 +8,15 @@
    ```bash
    ./scripts/pytest_batches.sh
    ```
-   With coverage + domain gate:
+   With coverage:
    ```bash
-   ./scripts/pytest_batches.sh --cov --domain-gate
+   ./scripts/pytest_batches.sh --cov
    ```
-4. Domain only (fast):
+   `--domain-gate` only applies in `backend/contracts` — `cys_core/domain`
+   physically lives there; `worker`/`api` install it as an editable path
+   dependency, so the coverage `--include` filter can never find data under
+   their own `src/` tree.
+4. Domain only (fast, `backend/contracts` only):
    ```bash
    USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q \
      --cov=cys_core/domain --cov-fail-under=100

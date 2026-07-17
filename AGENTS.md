@@ -216,10 +216,12 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 ```bash
 for pkg in contracts worker api; do
   (cd backend/$pkg && ./scripts/pytest_batches.sh)
-  (cd backend/$pkg && ./scripts/pytest_batches.sh --cov --domain-gate)
-  make -C backend/$pkg domain-gate           # 100% on domain/runs, domain/catalog, domain/observability
   make -C backend/$pkg verify-architecture   # import boundaries + lint-imports + tests/architecture
 done
+# cys_core/domain physically lives only in backend/contracts/src — worker and
+# api install it as an editable path dependency, so the domain-gate coverage
+# check can never find data under their own src/ tree. contracts-only:
+make -C backend/contracts domain-gate        # 100% on domain/runs, domain/catalog, domain/observability
 checkov -d deploy --framework helm,dockerfile --config-file .checkov.yaml --soft-fail \
   --output sarif --output-file-path reports/checkov.sarif  # IaC gate smoke (from repo root)
 cd backend/contracts && ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно

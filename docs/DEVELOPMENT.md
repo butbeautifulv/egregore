@@ -215,16 +215,15 @@ docker compose ps postgres redis
 
 ## CI
 
-Local gates mirror GitHub Actions (`.github/workflows/ci.yml`):
+`.github/workflows/ci.yml` is superseded (see its own header comment) —
+`release-gate.yml` is the live gate, matrixed over `backend/{contracts,worker,api}`.
+Local equivalents, run per package or from repo root:
 
 ```bash
-make test-batches           # all pytest batches
-make domain-gate            # 100% coverage on cys_core/domain/{runs,catalog,observability}
-make verify-architecture    # no langfuse in core + import boundaries
-make arch-gate              # tests/architecture batch
-make verify-import-boundaries
+cd backend/<pkg> && ./scripts/pytest_batches.sh   # unit-tests job
+make verify-architecture                          # arch-lint job (all 3 packages)
+make domain-gate                                   # domain-coverage job (backend/contracts only)
+cd backend/<pkg> && uv run ruff check src tests && uv run ty check src   # lint job
 ```
 
-CI jobs: `lint` (ruff), `unit-batches`, `domain-gate`, `verify-architecture`, `arch-gate`, plus Fabrica security gates via `security-shift-left.yml` (B1–B6).
-
-Required on PR: `arch-gate`, `adversarial-gate`, `agent-policy-gate`, `security-shift-left`.
+CI jobs (`release-gate.yml`): `lint`, `unit-tests`, `arch-lint`, `domain-coverage`, `adversarial`, plus `secret-scan`/`sast`/`osa`/`iac-scan`/`dockerfile-lint`/`linter-security`/`skill-scanner`. See `docs/CI_CD_KNOWN_GAPS.md` for exact per-job commands and open gaps.

@@ -2,6 +2,11 @@
 
 Phases R0–R8 and shim removal (R5.10) are done.
 
+**Historical**: paths below predate the `backend/{contracts,worker,api}`
+package split (`docs/MICROSERVICES_SPLIT_PLAN.md`) — `cys_core/domain/` etc.
+now live under `backend/contracts/src/cys_core/domain/`, and the `Verify
+locally` command below only applies as-is within `backend/contracts`.
+
 ## Layout
 
 | Layer | Path |
@@ -31,6 +36,6 @@ Phases R0–R8 and shim removal (R5.10) are done.
 ```bash
 uv run lint-imports
 uv run ruff check .
-./scripts/pytest_batches.sh --cov --domain-gate
+./scripts/pytest_batches.sh --cov --domain-gate   # backend/contracts only
 uv run python scripts/arch_audit.py
 ```
