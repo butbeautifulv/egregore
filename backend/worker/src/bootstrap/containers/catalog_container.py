@@ -13,10 +13,8 @@ from cys_core.infrastructure.catalog.registry_factory import (
 )
 
 if TYPE_CHECKING:
-    # Forward-ref only: Container is api's or worker's own composition
-    # root (whichever installs this sub-container), never a module inside
-    # contracts itself.
-    from bootstrap.container import Container  # ty: ignore[unresolved-import]
+    # Forward-ref only, for the type hint below.
+    from bootstrap.container import Container
 
 
 class CatalogContainer:

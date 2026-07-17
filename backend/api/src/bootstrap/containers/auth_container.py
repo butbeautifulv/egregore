@@ -3,10 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    # Forward-ref only: Container is api's or worker's own composition
-    # root (whichever installs this sub-container), never a module inside
-    # contracts itself.
-    from bootstrap.container import Container  # ty: ignore[unresolved-import]
+    # Forward-ref only, for the type hint below.
+    from bootstrap.container import Container
 
 
 class AuthContainer:

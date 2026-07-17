@@ -5,10 +5,8 @@ from typing import TYPE_CHECKING
 from bootstrap.settings import Settings
 
 if TYPE_CHECKING:
-    # Forward-ref only: Container is api's or worker's own composition
-    # root (whichever installs this sub-container), never a module inside
-    # contracts itself.
-    from bootstrap.container import Container  # ty: ignore[unresolved-import]
+    # Forward-ref only, for the type hint below.
+    from bootstrap.container import Container
     from cys_core.application.ports.bus import AgentTransportConnector
     from cys_core.application.ports.job_queue import JobQueueConnector
     from cys_core.application.ports.memory import EpisodicMemoryStore

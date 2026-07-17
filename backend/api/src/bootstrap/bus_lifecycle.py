@@ -18,7 +18,7 @@ async def wire_async_bus() -> None:
     not both a lazy import and an optional call.
     """
     set_bus_main_event_loop(asyncio.get_running_loop())
-    from bootstrap.container import get_container  # ty: ignore[unresolved-import]
+    from bootstrap.container import get_container
 
     wire_bus_router = getattr(get_container(), "wire_bus_router", None)
     if wire_bus_router is not None:
