@@ -3,6 +3,7 @@
 verify-architecture domain-gate:
 	$(MAKE) -C backend/worker $@
 	$(MAKE) -C backend/api $@
+	$(MAKE) -C backend/tool-gateway $@
 
 fga-validate:
 	$(MAKE) -C backend/api $@
@@ -14,7 +15,7 @@ dev-web-ui:
 	cd web_ui && bun run dev
 
 dev-tool-gateway:
-	cd backend/worker && uv run egregore tool-gateway
+	cd backend/tool-gateway && uv run egregore tool-gateway
 
 clean:
 	./scripts/clean.sh all

@@ -61,33 +61,42 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ## Платформенный код
 
-### Repo layout (`backend/{worker,api}/src/`)
+### Repo layout (`backend/{worker,api,tool-gateway}/src/`)
 
-Python backend is split into two fully independent packages, each with its
+Python backend is split into three fully independent packages, each with its
 own physical copy of `cys_core.domain`/`bootstrap`/generic infra — no shared
-package between them (see
-[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18):
-nothing except the queue message and Postgres rows may cross the api↔worker
-boundary, and duplication between the two packages is accepted deliberately,
-not an oversight.
+package between any of them (see
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18,
+§21.6): nothing except the queue message, Postgres rows, and the Tool
+Gateway's own HTTP contract may cross a package boundary, and duplication is
+accepted deliberately, not an oversight.
 
 - **`backend/worker/`** (`egregore-worker`) — agent-execution runtime
-  (LangChain/LangGraph today, swappable later), Tool Gateway, control-plane
-  daemons (critic/coordinator), plus its own copy of domain models, port
-  interfaces, and generic infra (Postgres/Kafka/Redis, catalog, authz).
+  (LangChain/LangGraph today, swappable later), control-plane daemons
+  (critic/coordinator), plus its own copy of domain models, port interfaces,
+  and generic infra (Postgres/Kafka/Redis, catalog, authz). Still has its own
+  copy of `interfaces/gateways/tool/` (kept, unused-but-harmless — this
+  repo's own established convention is duplication over shared coupling; see
+  plan doc §21.6) — `backend/tool-gateway/` is the one actually deployed.
 - **`backend/api/`** (`egregore-api`) — FastAPI ingress/CRUD, event routing,
   HITL resume over HTTP, plus its own copy of domain models/generic infra.
   This package must never contain or depend on langchain/langchain-core/
   langgraph/deepagents/litellm at all — no exceptions (the earlier
   `langchain-core`-for-port-type-hints exception from plan doc §1.1/§0.2 was
   reversed once `ModelConnector`/`ToolProviderPort` were confirmed unused in
-  api and deleted, see plan doc §21).
+  api and deleted, see plan doc §21.1).
+- **`backend/tool-gateway/`** (`egregore-tool-gateway`) — the MCP Tool
+  Gateway, the PEP for sandboxed agent tool calls. No agent-execution
+  frameworks either (not even `langchain-core`) — every tool it can invoke is
+  a plain-function adapter (`cys_core/infrastructure/tools/adapters/`).
+  Async stdlib-only HTTP (`asyncio.start_server`, no FastAPI/Starlette). Run:
+  `egregore tool-gateway`, or `make dev-tool-gateway`. See plan doc §21.2–§21.6.
 
 Import names are unchanged (`from cys_core...`) — each package has its own
 physical `src/cys_core/...` tree, no editable path dependency between them.
 ASGI entrypoint: `interfaces/api/app.py` (in `backend/api/`). Operator UI is
-**`web_ui/`** (not `ui/`). Product seed **`backend/agents/`** (sibling of the
-two packages, not nested in either). Docker/compose: **`deploy/`**
+**`web_ui/`** (not `ui/`). Product seed **`backend/agents/`** (sibling of all
+three packages, not nested in any). Docker/compose: **`deploy/`**
 (`Dockerfile.api`, `Dockerfile.worker`). `backend/contracts/` (the earlier
 three-package shared layer) and the transitional `backend/shared/` pre-split
 monolith have both been deleted — worker and api build, import, and test
@@ -207,10 +216,10 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 ## Тесты
 
 **Агентам: только батчами**, и **отдельно на каждый пакет** —
-`cd backend/{worker,api} && ./scripts/pytest_batches.sh`, не
+`cd backend/{worker,api,tool-gateway} && ./scripts/pytest_batches.sh`, не
 `uv run pytest` на весь `tests/` одним процессом. `backend/contracts`
 (промежуточный shared-слой) и `backend/shared` (транзитный монолит до него)
-оба удалены — два пакета полностью независимы, каждый со своей физической
+оба удалены — три пакета полностью независимы, каждый со своей физической
 копией `cys_core.domain`.
 
 - **Точечно** после правок: только затронутые батчи, в том пакете, где лежит
@@ -259,7 +268,7 @@ Coverage gate: **100%** на `cys_core/domain` — отдельно в worker и
 
 | Действие | Команда |
 |----------|---------|
-| Тесты | `cd backend/{worker,api} && ./scripts/pytest_batches.sh` (оба) |
+| Тесты | `cd backend/{worker,api,tool-gateway} && ./scripts/pytest_batches.sh` (все три) |
 | Smoke | `cd backend/api && USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
 | Event flow | `cd backend/api && uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `cd backend/worker && uv run egregore worker --once` |
 
