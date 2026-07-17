@@ -6,7 +6,6 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
-    "egregore-contracts",
     "deepagents>=0.4.0",
     "langchain>=1.3.6",
     "langchain-core>=1.4.0",
@@ -18,16 +17,31 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.34.0",
     "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
     "structlog>=26.0.0",
     "httpx>=0.28.0",
     "rapidfuzz>=3.13.0",
     "pyyaml>=6.0",
+    # Absorbed from egregore-contracts (backend/contracts retired, see
+    # docs/MICROSERVICES_SPLIT_PLAN.md §18): generic Postgres/Kafka/Redis
+    # infra, auth, observability wiring that cys_core.infrastructure/bootstrap
+    # depend on, physically duplicated into this package's own src/.
+    "psycopg[binary]>=3.3.0",
+    "redis>=8.0.0",
+    "aiokafka>=0.12.0",
+    "pyjwt[crypto]>=2.10.0",
+    "openfga-sdk>=0.10.4",
+    "prometheus-client>=0.21.0",
+    "opentelemetry-api>=1.29.0",
+    "opentelemetry-sdk>=1.29.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.29.0",
+    "opentelemetry-instrumentation-fastapi>=0.50b0",
+    "opentelemetry-instrumentation-httpx>=0.50b0",
+    "opentelemetry-instrumentation-redis>=0.50b0",
+    "opentelemetry-instrumentation-psycopg>=0.50b0",
     "pytest>=9.0.0",
     "pytest-asyncio>=1.4.0",
 ]
-
-[tool.uv.sources]
-egregore-contracts = { path = "../contracts", editable = true }
 
 [project.scripts]
 egregore = "interfaces.cli.main:main"

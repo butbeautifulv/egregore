@@ -468,60 +468,10 @@ name = "egregore-api"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "egregore-contracts" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "jsonschema" },
-    { name = "pydantic" },
-    { name = "pyjwt", extra = ["crypto"] },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "structlog" },
-    { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "import-linter" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "ty" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "egregore-contracts", editable = "../contracts" },
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "httpx", specifier = ">=0.28.0" },
-    { name = "jsonschema", specifier = ">=4.23.0" },
-    { name = "pydantic", specifier = ">=2.13.4" },
-    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10.0" },
-    { name = "pytest", specifier = ">=9.0.0" },
-    { name = "pytest-asyncio", specifier = ">=1.4.0" },
-    { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "structlog", specifier = ">=26.0.0" },
-    { name = "uvicorn", specifier = ">=0.34.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "import-linter", specifier = ">=2.0" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "ruff", specifier = ">=0.15.21" },
-    { name = "ty", specifier = ">=0.0.1a25" },
-]
-
-[[package]]
-name = "egregore-contracts"
-version = "0.1.0"
-source = { editable = "../contracts" }
-dependencies = [
     { name = "aiokafka" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "jsonschema" },
     { name = "langchain-core" },
     { name = "langfuse" },
     { name = "openfga-sdk" },
@@ -539,10 +489,20 @@ dependencies = [
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "rapidfuzz" },
     { name = "redis" },
     { name = "structlog" },
+    { name = "uvicorn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "import-linter" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "ty" },
 ]
 
 [package.metadata]
@@ -550,6 +510,7 @@ requires-dist = [
     { name = "aiokafka", specifier = ">=0.12.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.28.0" },
+    { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "langchain-core", specifier = ">=1.4.0" },
     { name = "langfuse", specifier = ">=4.6.1" },
     { name = "openfga-sdk", specifier = ">=0.10.4" },
@@ -567,10 +528,12 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10.0" },
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rapidfuzz", specifier = ">=3.13.0" },
     { name = "redis", specifier = ">=8.0.0" },
     { name = "structlog", specifier = ">=26.0.0" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
 ]
 
 [package.metadata.requires-dev]

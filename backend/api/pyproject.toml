@@ -6,19 +6,45 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
-    "egregore-contracts",
     "fastapi>=0.115.0",
     "uvicorn>=0.34.0",
     "python-multipart>=0.0.20",
     "pyjwt[crypto]>=2.10.0",
     "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
     "structlog>=26.0.0",
     "httpx>=0.28.0",
     "pyyaml>=6.0",
+    "rapidfuzz>=3.13.0",
     # start_work_order.py::_validate_intake() validates a work order's
     # declared intake_schema — was silently no-op'd (bare try/except
     # ImportError) because this was never a declared dependency anywhere.
     "jsonschema>=4.23.0",
+    # Absorbed from egregore-contracts (backend/contracts retired, see
+    # docs/MICROSERVICES_SPLIT_PLAN.md §18): generic Postgres/Kafka/Redis
+    # infra, auth, observability wiring that cys_core.infrastructure/bootstrap
+    # depend on, physically duplicated into this package's own src/.
+    "psycopg[binary]>=3.3.0",
+    "redis>=8.0.0",
+    "aiokafka>=0.12.0",
+    "openfga-sdk>=0.10.4",
+    "prometheus-client>=0.21.0",
+    "opentelemetry-api>=1.29.0",
+    "opentelemetry-sdk>=1.29.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.29.0",
+    "opentelemetry-instrumentation-fastapi>=0.50b0",
+    "opentelemetry-instrumentation-httpx>=0.50b0",
+    "opentelemetry-instrumentation-redis>=0.50b0",
+    "opentelemetry-instrumentation-psycopg>=0.50b0",
+    # Base classes/schemas only (ModelConnector/ToolProviderPort port type
+    # hints in cys_core.application.ports) — NOT the agent-execution engine.
+    # See docs/MICROSERVICES_SPLIT_PLAN.md §1.1/§0.2 for why this is an
+    # accepted exception to the no-agent-runtime-in-api constraint.
+    "langchain-core>=1.4.0",
+    # interfaces/observability/connectors/langfuse/*.py — generic trace/
+    # prompt/judge/eval backend, lazily imported only when
+    # OBS_*_BACKEND=langfuse. Not agent-execution specific.
+    "langfuse>=4.6.1",
     "pytest>=9.0.0",
     "pytest-asyncio>=1.4.0",
 ]
@@ -32,9 +58,6 @@ markers = [
     "adversarial: security abuse cases",
 ]
 addopts = "--strict-markers"
-
-[tool.uv.sources]
-egregore-contracts = { path = "../contracts", editable = true }
 
 [project.scripts]
 egregore = "interfaces.cli.main:main"
