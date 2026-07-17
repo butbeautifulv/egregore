@@ -2312,3 +2312,101 @@ written against a different assumption than the one `settings.py` documents. Nee
 
 This section intentionally stops at "documented and scoped," not "implemented" — matching how §18
 was written a session before §19 executed it.
+
+### 21.5. §21.4 point 2 resolved (same session): registry decoupled from the Tool Gateway's
+### execution path — "fully clean" chosen and implemented, not deferred
+
+User's answer to §21.4 point 2, same session: "полностью чистый" (fully clean) — extract the
+real logic out of every `langchain_core.tools`-typed registry tool the gateway could reach, rather
+than accepting `langchain-core` as a dependency of a future standalone package. Implemented here,
+not deferred — this is a change to the *existing* worker package's execution path, independent of
+whether/when the standalone package from §21.4 point 3 gets built.
+
+**Walked the actual call path first, not just import statements** (the distinction that matters
+for "does the gateway need langchain to *run*", not "does langchain appear in a grep"):
+`InvokeTool._execute_tool()` calls `self.invoke_adapter(...)` first; only when that returns `None`
+did it fall back to `base = self.tool_registry.get(name); base.invoke(args)` — a real,
+load-bearing LangChain `BaseTool.invoke()` call, exercised today by e.g. `dedup_alerts` (used in
+`test_gateway_invoke_success`), not merely a theoretical code path.
+
+**Categorized all ~30 tools in `cys_core/registry/tools.py`'s `_ALL_TOOLS`** (excluding the
+already-adapter-covered veil/siem/nessus dynamic sets):
+- **5 already thin wrappers over existing langchain-free adapter functions**
+  (`web_search`, `read_document`, `python_sandbox`, `vision_analyze`,
+  `search_archived_webpage`, in `cys_core/infrastructure/tools/adapters/*.py`) — zero new code,
+  just missing from `ADAPTERS`.
+- **`query_siem_readonly`/`rag_query`** already route through `_GatewayToolBackend`
+  (`bootstrap/container.py`) to the *same* adapter functions already in `ADAPTERS` — already
+  duplication-free, just needed the registration.
+- **`search_personas`/`search_skills`/`search_tools`** delegate to `cys_core/registry/
+  discovery_tools.py` (already langchain-free) — new thin wrapper module reshapes the `list[dict]`
+  return into the gateway's required `dict[str, Any]` shape (`{"results": [...]}`); the registry's
+  own `@tool` wrappers were **not** touched for these three, since their LangChain-facing JSON
+  output shape (`[...]` at top level) must stay exactly what it was — reshaping only happens on the
+  gateway's own call path, not the agent-facing one.
+- **`run_active_scan`/`enrich_ioc`** delegate to `veneno_mcp_client`/`veil_mcp_client` (already
+  langchain-free).
+- **16 tools with real inline logic but no langchain dependency in the logic itself**
+  (`read_repo_metadata`, `parse_sast_report`, `analyze_workflow`, `parse_netflow`,
+  `correlate_dns`, `dedup_alerts`, `build_timeline`, `correlate_findings`, `check_control`,
+  `map_framework`, `audit_evidence`, `execute_command`, `plan_tool_calls`,
+  `create_report_outline`, `browser_use`, `transcribe_audio`) — extracted verbatim into a new
+  `cys_core/infrastructure/tools/adapters/soc_stubs.py`; the registry's `@tool` wrappers were
+  rewritten to call these same functions (`return json.dumps(_run(...), ensure_ascii=False)`),
+  eliminating the duplication risk rather than creating a second copy that could drift — **zero**
+  behavior change to the JSON these tools produce for the agent runtime, confirmed by full test
+  suite plus a live diff-by-eye of each extracted function against its original inline body.
+- **8 tools deliberately excluded, not extracted — a scope decision, not an oversight**:
+  `reasoning_step`, `reasoning_check`, `extract_structured_output`, `delegate_research`,
+  `spawn_worker`/`_aspawn_worker`, `ask_user`, `update_todos`. These are agent-runtime-internal
+  primitives — `extract_structured_output` literally calls the LLM directly
+  (`model.ainvoke(prompt)` on a `langchain_core.language_models.BaseChatModel`),
+  `reasoning_check` reads the judge backend and the agent's own trace,
+  `delegate_research`/`spawn_worker` mutate run state and enqueue new agent jobs. None of these
+  are "external tool I/O" in the sense the Tool Gateway PEP exists for (SIEM/RAG/web/files/sandbox)
+  — even in the target sandboxed-execution architecture (§2/§4), these stay inside the agent
+  runtime process, never crossing the gateway's HTTP boundary. Confirmed safe to exclude by tracing
+  the actual dispatch: `run_worker_job.py`'s `resolve_legacy_tools=tool_registry.resolve` (the
+  **default**, `USE_TOOL_GATEWAY=false`) attaches raw LangChain `BaseTool` objects straight to the
+  agent's LangGraph graph, **never** touching `InvokeTool`/the gateway at all — only
+  `resolve_mcp_tools=mcp_tool_registry.resolve` (opt-in) routes through the gateway. So this change
+  has **zero effect** on default in-process agent tool-calling; it only changes what happens if one
+  of these 8 tool names were ever routed through `USE_TOOL_GATEWAY=true` (from a silent langchain
+  fallback execution to a clear rejection error) — which was already an accidental, not designed-for
+  path.
+
+**`InvokeTool._execute_tool()`** (`cys_core/application/use_cases/invoke_tool.py`): the
+`tool_registry.get(...).invoke(...)` fallback is gone entirely, replaced with a `KeyError` (caught
+by the existing exception handling in `_execute_inner`, same `success=False` shape as before for
+any invocation failure) — `"tool {name!r} has no Tool Gateway adapter — either unregistered, or an
+agent-runtime-internal tool not routable through the gateway"`. The now-dead `_normalize_raw_result`
+helper (only used by the removed fallback) and its now-unused `json` import were also removed.
+`tool_registry`/`ToolRegistryPort` stays as a constructor param — `_validate_args()` still uses it
+as a soft, gracefully-degrading fallback for JSON-schema hints (`fetch_tool_input_schema`) on tools
+outside the small hardcoded `GATEWAY_ADAPTER_SCHEMAS` dict — but this is no longer a *load-bearing*
+dependency: if it raises, is `None`, or is swapped for a lighter non-langchain implementation,
+schema pre-validation is just skipped, execution is unaffected.
+
+**Net result — the actual question this section answers**: `interfaces/gateways/tool/` and its
+entire execution path (`InvokeTool`, `ADAPTERS`, every adapter module) now runs zero
+`langchain_core` code to serve a `/invoke` request, for every tool meant to reach it. A future
+standalone `backend/tool-gateway/` package (§21.4 point 1/3, still not started) would not need
+`langchain-core` as a dependency at all, only for the optional schema-hint soft-fallback if that
+package chooses to keep it wired to a real registry — not a hard requirement.
+
+**Test fixed, not just tests re-run green**: `tests/application/test_invoke_tool.py::
+test_invoke_tool_executes_registry_tool` asserted the exact old fallback contract (mocked
+`tool_registry.get(...).invoke(...)` returning `success=True`) — replaced with
+`test_invoke_tool_rejects_tool_with_no_adapter`, asserting the new contract explicitly (clear
+error, `record_tool_invocation` still called once, schema-hint `.get()` still tolerated via
+`side_effect` without the test depending on whether it's called). One other existing test
+(`test_invoke_tool_uses_adapter_when_present`) already covered the adapter-present path and needed
+no change.
+
+**Verified**: full worker suite via `scripts/pytest_batches.sh` — 26/26 batches green, 0 failed.
+`ty check src` clean. `make verify-architecture` clean (import-linter contracts, no-langfuse-in-core
+check, architecture tests) — 616 files / 2668 dependencies analyzed, 3/3 contracts kept. Live
+end-to-end smoke test against the real running server: `dedup_alerts`, `read_repo_metadata`,
+`search_personas`, `web_search`, `execute_command` all return correct `success:true` payloads;
+`reasoning_step` (with valid args, past schema validation) returns the new explicit rejection
+error instead of executing; unknown paths still 404.

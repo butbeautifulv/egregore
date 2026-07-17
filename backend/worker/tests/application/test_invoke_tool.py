@@ -21,9 +21,16 @@ def _command(**overrides) -> ToolInvokeCommand:
 
 
 @pytest.mark.unit
-def test_invoke_tool_executes_registry_tool():
+def test_invoke_tool_rejects_tool_with_no_adapter():
+    """No fallback to tool_registry.get(...).invoke(...) — a tool with no gateway
+    adapter (agent-runtime-internal, e.g. reasoning/orchestration primitives) is
+    rejected with a clear error instead of silently executing via the registry.
+    See docs/MICROSERVICES_SPLIT_PLAN.md §21.5."""
     registry = MagicMock()
-    registry.get.return_value = MagicMock(invoke=MagicMock(return_value={"ok": True}))
+    # .get() raising simulates "no schema hint available" — fetch_tool_input_schema
+    # catches this and skips pre-invoke schema validation; the point of this test is
+    # that execution itself never reaches .invoke() on whatever .get() would return.
+    registry.get.side_effect = KeyError("no schema for this tool")
     recorded: list[tuple[ToolInvokeCommand, object]] = []
 
     invoke = InvokeTool(
@@ -34,9 +41,9 @@ def test_invoke_tool_executes_registry_tool():
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda cmd, res: recorded.append((cmd, res)),
     )
-    result = invoke.execute(_command())
-    assert result.success is True
-    assert result.data == {"ok": True}
+    result = invoke.execute(_command(tool_name="reasoning_step"))
+    assert result.success is False
+    assert "no Tool Gateway adapter" in result.error
     assert len(recorded) == 1
 
 

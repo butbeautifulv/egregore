@@ -23,89 +23,57 @@ def configure_tool_backend(backend: ToolBackend) -> None:
 @tool
 def read_repo_metadata(repo_path: str) -> str:
     """Read repository metadata (languages, branches, recent commits). Stub for authorized scope."""
-    return json.dumps(
-        {
-            "repo_path": repo_path,
-            "languages": ["python", "yaml"],
-            "default_branch": "main",
-            "ci": "github_actions",
-        },
-        ensure_ascii=False,
-    )
+    from cys_core.infrastructure.tools.adapters.soc_stubs import read_repo_metadata as _run
+
+    return json.dumps(_run(repo_path), ensure_ascii=False)
 
 
 @tool
 def parse_sast_report(report_json: str) -> str:
     """Parse SAST report JSON and extract high-signal findings."""
-    try:
-        data = json.loads(report_json) if report_json.strip().startswith("{") else {"raw": report_json}
-    except json.JSONDecodeError:
-        data = {"raw": report_json[:2000]}
-    return json.dumps({"parsed_findings": data, "count": len(str(data))}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import parse_sast_report as _run
+
+    return json.dumps(_run(report_json), ensure_ascii=False)
 
 
 @tool
 def analyze_workflow(workflow_yaml: str) -> str:
     """Analyze CI/CD workflow for risky patterns (pull_request_target, secrets in env)."""
-    risks = []
-    lower = workflow_yaml.lower()
-    if "pull_request_target" in lower:
-        risks.append("pull_request_target usage detected")
-    if "aws_access_key" in lower or "secret" in lower:
-        risks.append("secrets referenced in workflow environment")
-    return json.dumps({"risks": risks or ["no obvious workflow risks in stub"]}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import analyze_workflow as _run
+
+    return json.dumps(_run(workflow_yaml), ensure_ascii=False)
 
 
 @tool
 def run_active_scan(target: str) -> str:
     """Run active security scan on authorized target. Requires HITL approval."""
-    from cys_core.integrations.veneno_mcp_client import call_veneno_mcp_tool, veneno_mcp_enabled
+    from cys_core.infrastructure.tools.adapters.soc_stubs import run_active_scan as _run
 
-    if veneno_mcp_enabled():
-        result = call_veneno_mcp_tool("run_active_scan", {"target": target})
-        return json.dumps(result, ensure_ascii=False)
-    return json.dumps(
-        {"status": "simulated", "target": target, "note": "PoC analysis only; enable VENENO_MCP_ENABLED for execution"},
-        ensure_ascii=False,
-    )
+    return json.dumps(_run(target), ensure_ascii=False)
 
 
 @tool
 def parse_netflow(netflow_text: str) -> str:
     """Parse NetFlow summary text into structured indicators."""
-    return json.dumps(
-        {
-            "source": "netflow_stub",
-            "indicators": ["periodic_tls", "non_browser_traffic"] if "90s" in netflow_text else [],
-            "raw_excerpt": netflow_text[:500],
-        },
-        ensure_ascii=False,
-    )
+    from cys_core.infrastructure.tools.adapters.soc_stubs import parse_netflow as _run
+
+    return json.dumps(_run(netflow_text), ensure_ascii=False)
 
 
 @tool
 def enrich_ioc(ioc: str) -> str:
     """Enrich IP/domain IOC via Veil threat-intel when available."""
-    from cys_core.integrations.veil_mcp_client import call_veil_mcp_tool, veil_mcp_enabled
+    from cys_core.infrastructure.tools.adapters.soc_stubs import enrich_ioc as _run
 
-    if veil_mcp_enabled():
-        result = call_veil_mcp_tool("ti_search_in_category", {"query": ioc, "category": "ti", "limit": 5})
-        if result.get("success"):
-            return json.dumps(
-                {"ioc": ioc, "source": "veil-mcp", "enrichment": result.get("content")},
-                ensure_ascii=False,
-            )
-        return json.dumps(
-            {"ioc": ioc, "source": "veil-mcp", "error": result.get("error", "Veil enrichment failed")},
-            ensure_ascii=False,
-        )
-    return json.dumps({"ioc": ioc, "reputation": "suspicious", "tags": ["stub"], "source": "stub"}, ensure_ascii=False)
+    return json.dumps(_run(ioc), ensure_ascii=False)
 
 
 @tool
 def correlate_dns(dns_events: str) -> str:
     """Correlate DNS events for beaconing patterns."""
-    return json.dumps({"pattern": "periodic_lookup", "confidence": 0.7}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import correlate_dns as _run
+
+    return json.dumps(_run(dns_events), ensure_ascii=False)
 
 
 @tool
@@ -133,54 +101,57 @@ def rag_query(query: str, persona: str = "soc", tenant: str = "default") -> str:
 @tool
 def dedup_alerts(alerts_text: str) -> str:
     """Deduplicate and cluster SIEM alerts."""
-    return json.dumps({"deduplicated_count": 1, "clusters": ["powershell_encoded"]}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import dedup_alerts as _run
+
+    return json.dumps(_run(alerts_text), ensure_ascii=False)
 
 
 @tool
 def build_timeline(events_text: str) -> str:
     """Build incident timeline from correlated events."""
-    return json.dumps(
-        {"timeline": ["T+0 EDR alert", "T+2m proxy anomaly", "T+10m dedup repeat"]},
-        ensure_ascii=False,
-    )
+    from cys_core.infrastructure.tools.adapters.soc_stubs import build_timeline as _run
+
+    return json.dumps(_run(events_text), ensure_ascii=False)
 
 
 @tool
 def correlate_findings(findings_json: str) -> str:
     """Correlate findings across telemetry sources."""
-    return json.dumps({"correlated": True, "priority": "P2"}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import correlate_findings as _run
+
+    return json.dumps(_run(findings_json), ensure_ascii=False)
 
 
 @tool
 def check_control(framework: str, control_id: str, evidence: str) -> str:
     """Check compliance control against provided evidence."""
-    return json.dumps(
-        {
-            "framework": framework,
-            "control_id": control_id,
-            "status": "partial",
-            "gaps": ["missing quarterly access review"] if "60%" in evidence else [],
-        },
-        ensure_ascii=False,
-    )
+    from cys_core.infrastructure.tools.adapters.soc_stubs import check_control as _run
+
+    return json.dumps(_run(framework, control_id, evidence), ensure_ascii=False)
 
 
 @tool
 def map_framework(observation: str) -> str:
     """Map observation to compliance framework controls."""
-    return json.dumps({"framework": "SOC2", "controls": ["CC6.1", "CC7.2"]}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import map_framework as _run
+
+    return json.dumps(_run(observation), ensure_ascii=False)
 
 
 @tool
 def audit_evidence(evidence_text: str) -> str:
     """Audit evidence retention and auditability."""
-    return json.dumps({"auditability": "partial", "ticket_coverage": "60%"}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import audit_evidence as _run
+
+    return json.dumps(_run(evidence_text), ensure_ascii=False)
 
 
 @tool
 def execute_command(command: str) -> str:
     """Execute shell command. RESTRICTED — should be denied for most agents."""
-    return json.dumps({"executed": command, "status": "denied_by_policy"}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import execute_command as _run
+
+    return json.dumps(_run(command), ensure_ascii=False)
 
 
 @tool
@@ -529,47 +500,33 @@ spawn_worker = StructuredTool.from_function(
 @tool
 def plan_tool_calls(goal: str, steps_json: str) -> str:
     """ReWOO-style upfront tool plan (search → read → extract) without reactive loops."""
-    try:
-        steps = json.loads(steps_json) if steps_json.strip().startswith("[") else []
-    except json.JSONDecodeError:
-        steps = []
-    return json.dumps({"goal": goal, "planned_steps": steps, "status": "planned"}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import plan_tool_calls as _run
+
+    return json.dumps(_run(goal, steps_json), ensure_ascii=False)
 
 
 @tool
 def create_report_outline(title: str, sections_json: str = "[]") -> str:
     """Skeleton-of-Thoughts: create report outline before section fill."""
-    try:
-        sections = json.loads(sections_json) if sections_json.strip().startswith("[") else []
-    except json.JSONDecodeError:
-        sections = []
-    if not sections:
-        sections = ["summary", "findings", "recommendations"]
-    return json.dumps({"title": title, "sections": sections}, ensure_ascii=False)
+    from cys_core.infrastructure.tools.adapters.soc_stubs import create_report_outline as _run
+
+    return json.dumps(_run(title, sections_json), ensure_ascii=False)
 
 
 @tool
 def browser_use(url: str, action: str = "navigate") -> str:
     """Headless browser actions. Disabled unless BROWSER_ENABLED=true."""
-    from cys_core.application.runtime_config import get_browser_enabled
-    from cys_core.security.monitor import AgentMonitor
+    from cys_core.infrastructure.tools.adapters.soc_stubs import browser_use as _run
 
-    AgentMonitor("conductor").log_orchestration_tool("browser", "browser_use", {"url": url, "action": action})
-    if not get_browser_enabled():
-        return json.dumps(
-            {"success": False, "error": "browser disabled", "hint": "set BROWSER_ENABLED=true with HITL"},
-            ensure_ascii=False,
-        )
-    return json.dumps({"success": False, "stub": True, "url": url, "action": action}, ensure_ascii=False)
+    return json.dumps(_run(url, action), ensure_ascii=False)
 
 
 @tool
 def transcribe_audio(path: str) -> str:
     """Transcribe audio attachment (stub — wire STT provider in production)."""
-    return json.dumps(
-        {"success": False, "path": path, "note": "STT stub — integrate Whisper or cloud STT"},
-        ensure_ascii=False,
-    )
+    from cys_core.infrastructure.tools.adapters.soc_stubs import transcribe_audio as _run
+
+    return json.dumps(_run(path), ensure_ascii=False)
 
 
 @tool

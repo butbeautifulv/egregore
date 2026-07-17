@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from typing import Any
 
@@ -18,20 +17,6 @@ from cys_core.domain.datasources.authz import AuthorizationDecision
 from cys_core.domain.datasources.schema_models import ModelFamily
 from cys_core.domain.tools.exceptions import ToolChainDepthExceeded
 from cys_core.domain.tools.models import ToolInvokeCommand, ToolInvokeResult
-
-
-def _normalize_raw_result(raw: Any) -> dict[str, Any]:
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            return {"raw": raw}
-        return {"raw": raw}
-    return {"result": raw}
 
 
 class InvokeTool:
@@ -150,9 +135,17 @@ class InvokeTool:
         adapter_result = self.invoke_adapter(command.tool_name, command.args)
         if adapter_result is not None:
             return adapter_result
-        base = self.tool_registry.get(command.tool_name)
-        raw = base.invoke(command.args)
-        return _normalize_raw_result(raw)
+        # No fallback to tool_registry.get(...).invoke(...) here by design: every
+        # tool meant to be reachable through the Tool Gateway (external I/O —
+        # SIEM/RAG/web/files/sandbox/veil/nessus) has a plain-function adapter
+        # registered above. Tools with no adapter are agent-runtime-internal
+        # primitives (reasoning/orchestration/LLM calls) that only make sense
+        # inside the in-process LangGraph loop and were never meant to cross
+        # this HTTP boundary — see docs/MICROSERVICES_SPLIT_PLAN.md §21.5.
+        raise KeyError(
+            f"tool {command.tool_name!r} has no Tool Gateway adapter — either unregistered, "
+            "or an agent-runtime-internal tool not routable through the gateway"
+        )
 
     def execute(self, command: ToolInvokeCommand) -> ToolInvokeResult:
         profile_id = command.profile_id or DEFAULT_PROFILE_ID
