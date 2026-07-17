@@ -36,11 +36,6 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.50b0",
     "opentelemetry-instrumentation-redis>=0.50b0",
     "opentelemetry-instrumentation-psycopg>=0.50b0",
-    # Base classes/schemas only (ModelConnector/ToolProviderPort port type
-    # hints in cys_core.application.ports) — NOT the agent-execution engine.
-    # See docs/MICROSERVICES_SPLIT_PLAN.md §1.1/§0.2 for why this is an
-    # accepted exception to the no-agent-runtime-in-api constraint.
-    "langchain-core>=1.4.0",
     # interfaces/observability/connectors/langfuse/*.py — generic trace/
     # prompt/judge/eval backend, lazily imported only when
     # OBS_*_BACKEND=langfuse. Not agent-execution specific.

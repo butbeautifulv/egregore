@@ -9,7 +9,6 @@ from cys_core.application.ports.eval_runner import EvalBackendPort, EvalRunnerPo
 from cys_core.application.ports.hitl import HitlPauseRegistry
 from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.kafka_publisher import KafkaPublisherPort
-from cys_core.application.ports.llm import ModelConnector
 from cys_core.application.ports.managed_resource import Closeable, ManagedResource
 from cys_core.application.ports.orchestration import OrchestrationPort
 from cys_core.application.ports.persistence import PersistenceConnector, PersistenceContext
@@ -20,7 +19,6 @@ from cys_core.application.ports.status_notifier import InvestigationStatusNotifi
 from cys_core.application.ports.token_verifier import TokenVerifier
 from cys_core.application.ports.tool_backend import ToolBackend
 from cys_core.application.ports.tool_gateway import ToolExecutionGatewayPort
-from cys_core.application.ports.tool_provider import ToolProviderPort
 
 __all__ = [
     "AgentRunner",
@@ -38,7 +36,6 @@ __all__ = [
     "JobQueueConnector",
     "KafkaPublisherPort",
     "ManagedResource",
-    "ModelConnector",
     "OrchestrationPort",
     "PersistenceConnector",
     "PersistenceContext",
@@ -48,5 +45,4 @@ __all__ = [
     "TokenVerifier",
     "ToolBackend",
     "ToolExecutionGatewayPort",
-    "ToolProviderPort",
 ]

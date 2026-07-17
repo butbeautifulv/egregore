@@ -77,10 +77,11 @@ not an oversight.
   interfaces, and generic infra (Postgres/Kafka/Redis, catalog, authz).
 - **`backend/api/`** (`egregore-api`) — FastAPI ingress/CRUD, event routing,
   HITL resume over HTTP, plus its own copy of domain models/generic infra.
-  No fastapi-only exception here — this package must never contain or
-  depend on langchain/langgraph/deepagents/litellm (a base `langchain-core`
-  dependency is an accepted exception for port type hints only, see the
-  plan doc §1.1/§0.2).
+  This package must never contain or depend on langchain/langchain-core/
+  langgraph/deepagents/litellm at all — no exceptions (the earlier
+  `langchain-core`-for-port-type-hints exception from plan doc §1.1/§0.2 was
+  reversed once `ModelConnector`/`ToolProviderPort` were confirmed unused in
+  api and deleted, see plan doc §21).
 
 Import names are unchanged (`from cys_core...`) — each package has its own
 physical `src/cys_core/...` tree, no editable path dependency between them.

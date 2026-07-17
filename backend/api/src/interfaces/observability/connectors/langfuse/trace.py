@@ -151,18 +151,12 @@ class CompositeTraceBackend:
         self._backends = backends
 
     def get_callback_handler(self) -> Any | None:
+        # Only ever returns a single handler: OtelTraceBackend.get_callback_handler()
+        # always returns None, so LangfuseTraceBackend is the only sink that can
+        # produce one here. No langchain_core CallbackManager merge needed.
         handlers = [backend.get_callback_handler() for backend in self._backends]
         handlers = [h for h in handlers if h is not None]
-        if not handlers:
-            return None
-        if len(handlers) == 1:
-            return handlers[0]
-        try:
-            from langchain_core.callbacks import CallbackManager
-
-            return CallbackManager(handlers)
-        except Exception:
-            return handlers[0]
+        return handlers[0] if handlers else None
 
     def start_span(self, ctx) -> str:
         ids = [backend.start_span(ctx) for backend in self._backends]
