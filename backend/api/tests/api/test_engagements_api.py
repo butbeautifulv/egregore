@@ -34,11 +34,13 @@ async def test_post_engagement_returns_job_ids(monkeypatch):
         notify_control=True,
         reason="declarative",
     )
+    # POST /v1/engagements delegates to StartWorkOrder (task #61 - one real
+    # implementation underneath both /v1/engagements and /v1/work-orders).
     fake_start = MagicMock()
     fake_start.execute = AsyncMock(return_value=(engagement, decision, ["job-soc"]))
     monkeypatch.setattr(
         "interfaces.api.engagements.get_container",
-        lambda: MagicMock(get_start_engagement=lambda: fake_start),
+        lambda: MagicMock(get_start_work_order=lambda: fake_start),
     )
 
     app = create_app()
@@ -54,6 +56,10 @@ async def test_post_engagement_returns_job_ids(monkeypatch):
         body = resp.json()
         assert body["engagement_id"] == "eng-1"
         assert body["job_ids"] == ["job-soc"]
+        fake_start.execute.assert_awaited_once()
+        wo_request = fake_start.execute.await_args.args[0]
+        assert wo_request.goal == "test goal"
+        assert wo_request.plan_strategy == PlanStrategy.DECLARATIVE
 
 
 @pytest.mark.unit

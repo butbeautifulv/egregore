@@ -7,8 +7,13 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from bootstrap.container import get_container
 from cys_core.application.use_cases.engagement_planner import ASYNC_PLANNER_PENDING
+from cys_core.application.use_cases.start_work_order import (
+    INITIAL_QA_PENDING,
+    WorkOrderValidationError,
+)
 from cys_core.domain.parsing.json_text import parse_json_text
 from cys_core.domain.security.auth_models import AuthClaims
+from cys_core.domain.work_order.models import WorkOrderRequest
 from interfaces.api.auth import require_ingress_role, require_reader_role
 from interfaces.api.authz_helpers import (
     filter_by_visible_workspaces,
@@ -26,7 +31,7 @@ from interfaces.api.engagement_schemas import (
 )
 from interfaces.api.tenant_deps import require_tenant_match_http
 
-router = APIRouter(prefix="/v1", tags=["engagements"])  # deprecated: prefer /v1/work-orders
+router = APIRouter(prefix="/v1", tags=["engagements"])  # legacy alias — delegates to StartWorkOrder
 
 
 def _latest_egress_phase(snapshot: list) -> str | None:
@@ -107,16 +112,34 @@ async def create_engagement(
     body: EngagementCreateIn,
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> EngagementOut | JSONResponse:
+    # Legacy entry point — delegates to StartWorkOrder (the same use case
+    # POST /v1/work-orders calls) so there is exactly one real
+    # implementation underneath both routes. See
+    # docs/MICROSERVICES_SPLIT_PLAN.md §16.9/task #61: kept for callers that
+    # depend on this URL directly rather than removed, since both existing
+    # UI clients already prefer /v1/work-orders and only fall back here on
+    # 404.
     tenant_id = require_tenant_match_http(_auth, body.tenant_id)
-    eng_request = body.to_domain_request()
-    if eng_request.tenant_id != tenant_id:
-        eng_request = eng_request.model_copy(update={"tenant_id": tenant_id})
-    start = get_container().get_start_engagement()
-    engagement, decision, job_ids = await start.execute(eng_request)
+    wo_request = WorkOrderRequest(
+        profile_id=body.profile_id,
+        domain_id=body.domain_id,
+        workspace_id=body.workspace_id,
+        goal=body.goal,
+        intake=body.input,
+        mode=body.mode,
+        plan_strategy=body.plan_strategy,
+        tenant_id=tenant_id,
+        correlation_id=body.correlation_id,
+    )
+    start = get_container().get_start_work_order()
+    try:
+        engagement, decision, job_ids = await start.execute(wo_request)
+    except WorkOrderValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     out = _engagement_out(engagement, decision=decision, job_ids=job_ids)
-    if decision.reason == ASYNC_PLANNER_PENDING:
-        # StartEngagement.execute() already enqueued the planner WorkerJob —
-        # worker picks up planning from here, nothing left to trigger.
+    if decision.reason in (ASYNC_PLANNER_PENDING, INITIAL_QA_PENDING):
+        # StartWorkOrder already enqueued the planner/initial-QA WorkerJob —
+        # worker picks up from here, nothing left to trigger.
         return JSONResponse(
             status_code=202,
             content={
