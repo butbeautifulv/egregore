@@ -216,7 +216,8 @@ docker compose ps postgres redis
 ## CI
 
 `.github/workflows/ci.yml` is superseded (see its own header comment) —
-`release-gate.yml` is the live gate, matrixed over `backend/{worker,api}`.
+`release-gate.yml` is the live gate, matrixed over
+`backend/{worker,api,tool-gateway}`.
 Local equivalents, run per package or from repo root:
 
 ```bash

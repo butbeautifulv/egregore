@@ -2410,3 +2410,176 @@ end-to-end smoke test against the real running server: `dedup_alerts`, `read_rep
 `search_personas`, `web_search`, `execute_command` all return correct `success:true` payloads;
 `reasoning_step` (with valid args, past schema validation) returns the new explicit rejection
 error instead of executing; unknown paths still 404.
+
+## 21.6. §21.4 points 1/3/4 implemented (same session): `backend/tool-gateway/` extracted as a
+## real standalone package, deployed for real (Docker/Helm/K8s), fully wired into CI/CD
+
+User's instruction, mid-session: "давай вынеси пож" (go extract it). Confirmed scope via three
+questions before starting: (1) deployment entrypoint — add the CLI command (already done in
+§21.2, this section builds on it); (2) test strategy — real sockets, not mocks (already
+established, reused here); (3) CI/CD — user chose **"полностью, включая деплой"** (fully,
+including deploy): the full `release-gate.yml` matrix (adversarial/lint/unit-tests/arch-lint/
+domain-coverage **and** build/push/container-scan/sign), not just local tests. That third answer
+is why this section also touches `.github/workflows/*.yml`, `deploy-preprod.yml`,
+`.gitleaks.toml`, and `.github/codeql/codeql-config.yml`, not only `backend/tool-gateway/` itself.
+
+### 21.6.1. Package created via the established physical-copy pattern, then pruned empirically
+
+Followed §18/§19's own methodology exactly: `rsync` a full copy of `backend/worker/` into
+`backend/tool-gateway/` (excluding `.venv`/`__pycache__`/`uv.lock`), rename the package
+(`egregore-tool-gateway`), strip `langchain*`/`langgraph*`/`litellm`/`deepagents` from
+`pyproject.toml` (already unnecessary per §21.5 — the gateway's own execution path was already
+langchain-free before this session's most recent turn), then find out what breaks empirically
+rather than trying to hand-trace the full `bootstrap/container.py` composition root up front —
+the same lesson §19 point 4 already learned: a pure import-graph reachability script over-counts,
+because `Container`'s many `get_X()` methods use *deferred* (function-body) imports for
+capabilities that are never actually called by this package's entrypoint, and static analysis
+can't tell "exists but unreachable" from "genuinely needed" the way actually running `uv run
+egregore tool-gateway --help` (then `ty check src`, which — unlike a live run — *does* flag every
+defined-but-uncalled method's imports) can.
+
+**Iterative loop, ~15 rounds**: run the CLI/`ty check` → read the traceback/diagnostic → decide
+per import whether it's (a) genuinely worker/agent-runtime-only and safe to delete outright, (b) a
+legitimate optional/gracefully-degrading enhancement worth keeping behind a `try/except` with a
+`# ty: ignore[unresolved-import]` comment (not a hack — these are import statements that are
+*designed* to fail in this package and already have working fallback behavior; see 21.6.2), or
+(c) actually needed and just needs `langfuse` added back to `pyproject.toml`.
+
+**Deleted entirely** (agent-execution/worker-job-pipeline surface, confirmed zero callers from
+`interfaces/gateways/tool/` at each step): `cys_core/registry/{tools,veil_tools,siem_tools,
+nessus_tools,skills_tool,mcp_tools}.py` (the full LangChain agent tool catalog — the gateway's own
+adapters in `cys_core/infrastructure/tools/adapters/` are a *different*, already-langchain-free
+module tree, see §21.5), `cys_core/application/tools/{registry_provider,composite_provider,
+schema_exporter,tool_matrix}.py`, `cys_core/application/reasoning/{sgr_iron,sgr_runtime}.py`,
+`cys_core/application/runs/message_trim.py`, `cys_core/application/evals/trajectory_suites.py`,
+`cys_core/infrastructure/observability/{egress_streaming_callback,budget_usage_callback}.py`,
+`cys_core/infrastructure/registry/tool_registry_adapter.py`, `cys_core/observability/
+platform_gauges.py`, `cys_core/application/workers/` (whole dir — `agent_executor.py`,
+`tool_execution_tracker.py`, `pipeline_builder.py`, `finding_publisher.py`, etc.),
+`cys_core/application/use_cases/{run_worker_job,process_finding_critic,manage_run,run_step,
+evaluate_trace_critic}.py`, `cys_core/infrastructure/execution/` (whole dir — subprocess/k8s/
+docker execution backends, `sandboxed_entrypoint.py`), `cys_core/infrastructure/{sandbox,
+sandbox_v2,k8s_sandbox}.py`, `cys_core/infrastructure/context/{factory,summarizer}.py`,
+`cys_core/application/ports/{context_summarizer,execution_backend}.py`, `interfaces/worker/`,
+`interfaces/control_plane/`, `cys_core/runtime/`, `cys_core/llm/`, `cys_core/middleware/`,
+`cys_core/persistence.py`, `cys_core/benchmarks/`. Matching test files deleted alongside (tests
+for deleted modules; kept everything else, including `tests/domain/` wholesale — still 100%
+covered, verified, see 21.6.4).
+
+**`bootstrap/container.py`/`bootstrap/containers/{engagement_container,persistence_container,
+tools_container}.py` trimmed method-by-method, not wholesale-rewritten** — every deleted method
+got a one-line comment explaining what it was and why it's gone (`get_worker_orchestrator`,
+`get_run_worker_job`, `get_agent_runtime`, `get_meta_planner`, `get_bus_ingress_router`,
+`wire_bus_router`, `get_plan_investigation`, `wire_bus_reload`, `wire_runtime`, `wire_hitl_pause`,
+`get_event_router`, `get_route_event`, `get_dispatch_event`, `get_orchestration_port`,
+`get_job_store`, `get_sandbox_connector`, `get_context_summarizer`, `get_persistence_context`/
+`get_async_persistence_context`, `ensure_bus_router_wired`) — so a future diff against worker's
+copy shows *why* each divergence exists, not just that it does. `ToolsContainer.get_invoke_tool()`
+no longer imports `require_sandbox` from `cys_core.registry.mcp_tools` (worker's own HTTP *client*
+to this gateway, not part of this package) — inlined as a 2-line private function instead.
+`Container.get_tool_registry_port()` no longer resolves to the real LangChain-backed registry —
+returns a minimal `_EmptyToolRegistry` (raises `KeyError` on `.get()`, empty lists otherwise),
+which is exactly the behavior `InvokeTool._validate_args()`'s already-existing graceful-degrade
+path expects (§21.5 already made this a soft fallback, not load-bearing — this just supplies the
+langchain-free registry that fallback was designed to tolerate).
+
+### 21.6.2. Two genuinely different reasons an import can be "wrong," found and handled differently
+
+Not every `cys_core.llm`/`litellm` import found was dead code — two were real, already-designed
+optional-enhancement paths that this package simply can't fulfill, and treating them the same as
+the dead-code cases (deleting the calling code) would have been a real functionality regression,
+not a cleanup:
+
+- `cys_core/infrastructure/tools/adapters/multimodal.py`'s `vision_analyze()` and `search_stack.py`'s
+  `_judge_search_relevance_llm()` both already wrap their `cys_core.llm.reasoning` import in a
+  `try/except` that gracefully degrades (`vision_analyze` → `{"success": False, "note": "Vision
+  model unavailable..."}`; the search judge → `None`, meaning "skip LLM-based relevance judging").
+  This is the *existing*, already-shipped behavior for any environment where the reasoning model
+  isn't configured — this package just makes that the *permanent* state rather than a transient
+  one. Kept the import, added `# ty: ignore[unresolved-import]` with a comment explaining it's
+  deliberate, not stale (mirroring the exact `ty: ignore` pattern already validated in this same
+  plan doc, §20.1 point 1 — the key difference there was staleness, not the mechanism itself).
+- `cys_core/infrastructure/rag/store.py`'s `_embedding_vector()` — same pattern, `litellm.embedding`
+  guarded behind `settings.use_real_embeddings`, already falls back to a deterministic
+  pseudo-embedding hash when unavailable.
+
+Live-verified both are non-fatal: `vision_analyze` against a real (missing) file path returned
+`{"success": false, "error": "file not found: ..."}` through the real running server — the
+graceful-degrade path, not a crash, confirming the `ty: ignore` didn't paper over an actual bug.
+
+### 21.6.3. Docker, Helm/K8s, and the port-mismatch fix
+
+- `deploy/Dockerfile.tool-gateway` — same two-stage builder/runtime shape as `Dockerfile.worker`,
+  `ENTRYPOINT ["egregore"]` / `CMD ["tool-gateway"]`. `HEALTHCHECK` can't reuse `egregore status`
+  (that CLI command doesn't exist in this package — it was control-plane-only, deleted per
+  21.6.1) — uses a `python -c` one-liner hitting `/health` instead. Built and run as a real
+  container: `/health`, `/invoke`, and real MCP tool execution all verified working end to end
+  inside `docker run`, not just `uv run` on the host.
+- `deploy/helm/egregore/templates/tool-gateway-deployment.yaml` (new) — Service + Deployment,
+  modeled on `api-deployment.yaml`'s combined-file pattern. Own image block
+  (`toolGateway.image.repository/tag`) rather than sharing the chart's single `image:` value —
+  matches the *existing* precedent for `ui.image` in the same `values.yaml`, not a new convention.
+  `values.yaml` gained `toolGateway:` (replicas/port/image), `resources.toolGateway`,
+  `rollout.toolGateway`; `_helpers.tpl` gained `egregore.toolGatewayImage`.
+- `configmap.yaml` now sets `TOOL_GATEWAY_URL=http://tool-gateway:8092` and
+  `USE_TOOL_GATEWAY={{ .Values.toolGateway.enabled }}` (default `true`) — closes the gap noted in
+  §21.4: worker previously had no way to actually reach a real gateway instance in this
+  deployment; now it does.
+- **Real, previously-unflagged bug fixed**: `deploy/k8s/networkpolicy.yaml` and
+  `worker-job-template.yaml` both pointed sandboxed job pods at `http://tool-gateway:8090` — but
+  `8090` is Veil Graph API (`bootstrap/settings.py`'s own field description says so explicitly),
+  not this service. Both now point at `8092`, matching `tool_gateway_url`'s actual default and the
+  new Helm Service's actual port. This was flagged as a real mismatch in §21.4 and left
+  unresolved "as part of writing the real manifest" — now that the manifest exists, resolved.
+
+### 21.6.4. CI/CD — full matrix, per the user's explicit "включая деплой" answer
+
+`release-gate.yml`: all 8 `service:` matrix occurrences (`adversarial`, `lint`, `unit-tests`,
+`arch-lint`, `domain-coverage`, `build`, `container-scan`, `sign`) now include `tool-gateway`.
+Verified `domain-coverage`'s 100% threshold actually holds for this package's copy of
+`cys_core/domain` before adding it (535 tests, 100.00% — not assumed). `job-linter-security.yml`'s
+matrix likewise; verified `ruff check src tests` is clean first. `job-dockerfile-lint.yml` gained
+a third explicit `hadolint-action` step for `deploy/Dockerfile.tool-gateway` (this file lints each
+Dockerfile individually, not via a matrix). `deploy-preprod.yml` gained a third `kubectl set
+image` echo line (this job is a placeholder/stub — echoes intent, doesn't actually run kubectl —
+so this is a safe, non-destructive addition). `.gitleaks.toml`'s adversarial-fixture allowlist and
+`.github/codeql/codeql-config.yml`'s scanned-paths list both gained the new package. Confirmed
+`dast.yml`/`job-sec-func-tests.yml`/`job-iast-preprod.yml`/`job-sbom.yml`/`job-sca-image.yml`/
+`job-sign.yml` are all already generic (whole-repo or `inputs.image`-parameterized) — genuinely no
+changes needed there, not an oversight.
+
+Not run against real GitHub Actions this session (no push/PR dispatched) — matches this session's
+own established practice of local-first verification before dispatch; whoever picks up the next
+session should confirm a real CI run is green before treating this as fully closed, same as
+§20.1's own standard ("CI must be dispatched for real, not inferred from local test/lint runs").
+
+### 21.6.5. Deliberate decision: worker keeps its own (now redundant) copy of the Tool Gateway
+
+`backend/worker/src/interfaces/gateways/tool/` (added earlier this session, §21.2) was **not**
+deleted from worker even though `backend/tool-gateway/` now fully replaces its deployed role. Two
+reasons, not an oversight: (1) this repo has an explicit, user-stated philosophy for exactly this
+situation — §18's "Duplication is accepted, explicitly, by the user... even if it will duplicate
+[...] two fully independent codebases, not one shared plus two thin consumers" — worker keeping
+its own copy is consistent with that, not a violation of "clean separation"; (2) removing it
+would require re-doing a meaningful slice of this same trimming exercise *inside worker*, risking
+worker's currently-100%-green test suite for a cleanup with no functional benefit (nothing routes
+real traffic to worker's copy once the Helm deployment only stands up `backend/tool-gateway/`).
+Net effect: worker's copy becomes dormant-but-harmless, not deleted-and-risky. `egregore
+tool-gateway` remains a valid worker CLI command too (harmless — the two implementations happen to
+be identical at this commit, having diverged from a common ancestor only in `backend/tool-gateway`'s
+extra pruning). Flagged here for whoever eventually wants to revisit it, not silently left
+unexplained.
+
+### 21.6.6. Verified
+
+Package-local: `uv run egregore tool-gateway --help` clean; `uv run ty check src` — **all checks
+passed** (0 diagnostics, down from 49 found on the first pass); `./scripts/pytest_batches.sh` —
+14/14 batches, only the same 2 known pre-existing environmental proxy failures from §21.5 (verified
+to disappear with `ALL_PROXY` unset, unrelated to this extraction); `make verify-architecture`
+clean (528 files, 1930 dependencies, 3/3 contracts kept); `ruff check src tests` clean;
+`uv tree | grep -i "langchain\|langgraph\|litellm\|deepagents"` — zero hits, confirmed empty
+dependency tree, not just absent from `pyproject.toml`. Docker: image builds clean, container runs
+with real health check, `/invoke` verified against multiple tool types (stub, catalog-search,
+web-search, and the deliberately-excluded-tool rejection path) both via `docker run -p` and via
+`uv run egregore tool-gateway` directly on the host. Root `make verify-architecture` (all three
+packages via the updated root `Makefile`) green.
