@@ -1798,3 +1798,43 @@ of whether a specific CI gate happens to enforce it — but the framing of that 
 the overclaim standing: this is the same "verify by execution, not by trusting a description"
 discipline this whole document has been built on, applied to my own prior conclusion this time,
 not just to the code.
+
+### 16.11. Correction to the correction: the real CI gate was failing, and now it's fixed
+
+§16.10's "correction" was itself wrong — checked `Makefile`'s local `domain-gate` convenience
+target (`pytest_batches.sh --domain-gate`, narrow `--include="runs/,catalog/,observability/"`)
+and concluded that was authoritative, without checking whether `release-gate.yml`'s actual
+`domain-coverage` CI job calls that target at all. It doesn't: the job runs its own direct
+`pytest tests/domain/ -q --cov=src/cys_core/domain --cov-report=term-missing --cov-fail-under=100`
+inline in the YAML, no `--include` narrowing, covering the whole `cys_core/domain` tree — exactly
+what §16.10's original (pre-"correction") finding tested and what
+`docs/CI_CD_KNOWN_GAPS.md`'s one-liner actually described correctly all along. There are
+genuinely two different, differently-scoped domain-coverage checks living side by side in this
+codebase (the Makefile target and the CI job); conflating them was the real mistake, not the
+original finding.
+
+Ran the actual `release-gate.yml` command directly: **it was failing, for real, at 99.88%** —
+not just for `planner_job.py` (already fixed in the original §16.10 pass) but for four
+pre-existing files never touched this session (`engagement/ids.py`, `engagement/models.py`,
+`memory/services.py`, `policy/product_payloads.py`), meaning `domain-coverage` has been broken
+on this branch (and likely on `main`) independent of anything in this session — contradicting
+`docs/CI_CD_KNOWN_GAPS.md`'s own "Status: resolved" / "all `release-gate.yml` jobs are blocking"
+claim. Given the fix was small (5 missing lines total across 4 files, each a single untested
+branch) and directly blocks merges via the required aggregate check, fixed all four rather than
+leaving them for a separate pass:
+
+- `engagement/ids.py`: `extract_engagement_id`/`normalize_correlation_id`'s "no engagement id
+  pattern found" fallback branches were never exercised — added a test with input containing no
+  `eng-[a-f0-9]{12}` match.
+- `engagement/models.py`: `EngagementPlan.effective_execution_mode()`'s single-persona-no-explicit-mode
+  → `ExecutionMode.PARALLEL` fallback was never tested (only the STAGED/multi-persona and
+  explicit-mode paths were).
+- `memory/services.py`: `query_conversation_turns()`'s `memory_type != "conversation"` skip
+  branch was untested — every existing fixture only ever passed all-conversation entries.
+- `policy/product_payloads.py`: `profile_policy_for("general-assistant")`'s
+  `datasource_allowlist` branch was untested — only `"gaia-benchmark"` and the default
+  (`"cybersec-soc"`) profiles had test coverage.
+
+Verified the exact `release-gate.yml` command directly after the fix: `Required test coverage of
+100% reached. Total coverage: 100.00%`, `521 passed`. This is the real gate, run for real, not
+approximated.

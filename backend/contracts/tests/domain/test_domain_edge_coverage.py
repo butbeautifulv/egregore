@@ -26,6 +26,7 @@ from cys_core.domain.engagement.bus_routing import (
     off_plan_bus_enqueue_reason,
 )
 from cys_core.domain.engagement.ids import extract_engagement_id, normalize_correlation_id
+from cys_core.domain.engagement.models import EngagementPlan, ExecutionMode
 from cys_core.domain.eval.models import EvalRun, EvalRunStatus
 from cys_core.domain.evidence.coercion import coerce_data_gaps, coerce_evidence_refs
 from cys_core.domain.evidence.incident_mitre import infer_suggested_mitre_techniques
@@ -146,6 +147,12 @@ def test_engagement_ids_extract_and_normalize() -> None:
     payload = {"data": {"incident_id": "wrap eng-abcdef012345 here"}}
     assert extract_engagement_id(payload=payload) == "eng-abcdef012345"
     assert normalize_correlation_id(" noisy ", payload=payload) == "eng-abcdef012345"
+
+
+@pytest.mark.unit
+def test_engagement_ids_no_match_falls_back_to_stripped_raw() -> None:
+    assert extract_engagement_id(correlation_id="no id here") == ""
+    assert normalize_correlation_id("  no id here  ", payload={"data": {}}) == "no id here"
 
 
 @pytest.mark.unit
@@ -444,3 +451,35 @@ def test_memory_read_conversation_and_list_by_tenant() -> None:
     listed = reader.list_by_tenant("t1", agent="soc")
     assert len(listed) == 1
     assert reader.list_by_tenant("t2", requesting_tenant_id="t1") == []
+
+
+@pytest.mark.unit
+def test_engagement_plan_single_persona_defaults_to_parallel() -> None:
+    plan = EngagementPlan(personas=["soc"])
+    assert plan.effective_execution_mode() == ExecutionMode.PARALLEL
+    assert plan.is_pipeline_staged() is False
+
+
+@pytest.mark.unit
+def test_memory_read_conversation_turns_skips_non_conversation_entries() -> None:
+    from cys_core.domain.memory.models import MemoryEntry, MemoryScope
+    from cys_core.domain.memory.services import MemoryReadService
+
+    class MemoryStore:
+        def __init__(self, entries: list[MemoryEntry]) -> None:
+            self._entries = entries
+
+        def query(self, scope: MemoryScope, *, limit: int = 20) -> list[MemoryEntry]:
+            return [entry for entry in self._entries if entry.scope == scope][:limit]
+
+    scope = MemoryScope(tenant_id="t1", investigation_id="inv-1")
+    finding_entry = MemoryEntry(
+        scope=scope,
+        content="not a conversation turn",
+        memory_type="finding",
+        source_agent="soc",
+        source_job_id="job-1",
+        created_at=datetime.now(timezone.utc),
+    )
+    reader = MemoryReadService(MemoryStore([finding_entry]), signing_key=b"key")
+    assert reader.query_conversation_turns("t1", "inv-1") == []
