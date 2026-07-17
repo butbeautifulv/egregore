@@ -13,13 +13,9 @@ ENV UV_LINK_MODE=copy
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.11.12@sha256:027318b213a7804ecd085ea7efdcdc4d44fa202c6e676c86ce86c0206d38f65c /uv /usr/local/bin/uv
 
-# Layer 1: lockfiles + contracts' own source (egregore-worker depends on
-# egregore-contracts as an editable ../contracts path dependency, so uv
-# needs contracts' src/ present to install it even before worker's own
-# source is copied) — cached until either package's deps or contracts' src
-# change.
-COPY backend/contracts/pyproject.toml backend/contracts/uv.lock backend/contracts/README.md ./contracts/
-COPY backend/contracts/src ./contracts/src
+# Layer 1: lockfile only — egregore-worker is fully self-contained (no
+# backend/contracts path dependency, see docs/MICROSERVICES_SPLIT_PLAN.md
+# §18) — cached until worker's own deps change.
 COPY backend/worker/pyproject.toml backend/worker/uv.lock backend/worker/README.md ./worker/
 WORKDIR /app/worker
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -49,7 +45,6 @@ RUN apt-get update \
  && groupadd --gid 10001 app \
  && useradd --uid 10001 --gid app --home-dir /app --no-create-home app
 
-COPY --from=builder --chown=app:app /app/contracts/src /app/contracts/src
 COPY --from=builder --chown=app:app /app/worker /app/worker
 COPY --from=builder --chown=app:app /app/agents /app/agents
 

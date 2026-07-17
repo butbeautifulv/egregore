@@ -24,12 +24,6 @@ skill-scan.sarif
 results.sarif
 
 # Python backend tree — exclude dev/test bulk, keep runtime assets
-backend/contracts/tests
-backend/contracts/.venv
-backend/contracts/.pytest_cache
-backend/contracts/.ruff_cache
-backend/contracts/.coverage
-backend/contracts/docs
 backend/worker/tests
 backend/worker/.venv
 backend/worker/.pytest_cache
@@ -50,6 +44,5 @@ backend/api/docs
 
 # Markdown except backend READMEs required by uv/hatch
 *.md
-!backend/contracts/README.md
 !backend/worker/README.md
 !backend/api/README.md

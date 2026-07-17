@@ -4,7 +4,6 @@ title = "egregore gitleaks"
 [allowlist]
 description = "adversarial security test fixtures"
 paths = [
-  '''(?i)backend/contracts/tests/adversarial/''',
   '''(?i)backend/worker/tests/adversarial/''',
   '''(?i)backend/api/tests/adversarial/''',
 ]

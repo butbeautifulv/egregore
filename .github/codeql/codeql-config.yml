@@ -1,7 +1,6 @@
 name: egregore-codeql
 
 paths:
-  - backend/contracts/src
   - backend/worker/src
   - backend/api/src
 

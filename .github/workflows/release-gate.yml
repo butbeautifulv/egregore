@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [contracts, worker, api]
+        service: [worker, api]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [contracts, worker, api]
+        service: [worker, api]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [contracts, worker, api]
+        service: [worker, api]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -138,7 +138,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [contracts, worker, api]
+        service: [worker, api]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -161,12 +161,16 @@ jobs:
 
   domain-coverage:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [worker, api]
     defaults:
       run:
-        # cys_core/domain only physically lives in contracts/ — worker/api
-        # install it as an editable dependency, they don't have their own
-        # copy of the source tree to measure coverage against.
-        working-directory: backend/contracts
+        # cys_core/domain is physically duplicated into both worker/ and
+        # api/ (backend/contracts retired, see
+        # docs/MICROSERVICES_SPLIT_PLAN.md §18) — each package measures its
+        # own copy independently.
+        working-directory: backend/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6

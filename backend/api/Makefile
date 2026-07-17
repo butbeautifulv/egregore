@@ -1,4 +1,4 @@
-.PHONY: verify-architecture fga-validate clean
+.PHONY: verify-architecture domain-gate fga-validate clean
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .import_linter_cache .coverage htmlcov
@@ -16,10 +16,8 @@ verify-architecture:
 	uv run lint-imports
 	uv run pytest tests/architecture/ -q
 
-# No domain-gate target here: cys_core/domain physically lives only in
-# backend/contracts/src (this package installs it as an editable path
-# dependency, and this package has no tests/domain/ of its own). Use
-# `make -C ../contracts domain-gate` for the real gate.
+domain-gate:
+	./scripts/pytest_batches.sh tests/domain --cov --domain-gate
 
 fga-validate:
 	@if command -v fga >/dev/null 2>&1; then \

@@ -1,4 +1,4 @@
-.PHONY: verify-architecture clean
+.PHONY: verify-architecture domain-gate clean
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .import_linter_cache .coverage htmlcov
@@ -16,8 +16,5 @@ verify-architecture:
 	uv run lint-imports
 	uv run pytest tests/architecture/ -q
 
-# No domain-gate target here: cys_core/domain physically lives only in
-# backend/contracts/src (this package installs it as an editable path
-# dependency), so `coverage --include=src/cys_core/domain/*` can never find
-# data under this package's own src/ tree. Use `make -C ../contracts
-# domain-gate` for the real gate.
+domain-gate:
+	./scripts/pytest_batches.sh tests/domain --cov --domain-gate

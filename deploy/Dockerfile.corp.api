@@ -12,8 +12,6 @@ RUN pip install --no-cache-dir uv
 
 ENV UV_INDEX_URL=https://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_PYPI_HOST}/repository/${NEXUS_PYPI_REPO}/simple
 
-COPY backend/contracts/pyproject.toml backend/contracts/uv.lock backend/contracts/README.md ./contracts/
-COPY backend/contracts/src ./contracts/src
 COPY backend/api/pyproject.toml backend/api/uv.lock backend/api/README.md ./api/
 WORKDIR /app/api
 RUN uv sync --frozen --no-dev --no-install-project

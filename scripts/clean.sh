@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Remove regenerable cache artifacts from projects/egregore (contracts/worker/api split).
+# Remove regenerable cache artifacts from projects/egregore (worker/api split).
 #
 # Usage:
 #   ./scripts/clean.sh           # cache only (default)
@@ -36,7 +36,7 @@ clean_tool_caches() {
   rm_path htmlcov
   rm -f .coverage.* 2>/dev/null || true
 
-  for pkg in contracts worker api; do
+  for pkg in worker api; do
     rm_path "backend/$pkg/.pytest_cache"
     rm_path "backend/$pkg/.ruff_cache"
     rm_path "backend/$pkg/.import_linter_cache"
@@ -50,7 +50,7 @@ clean_build_artifacts() {
   rm_path build
   rm_path dist
   rm_path wheels
-  for pkg in contracts worker api; do
+  for pkg in worker api; do
     rm_path "backend/$pkg/build"
     rm_path "backend/$pkg/dist"
   done
@@ -61,12 +61,12 @@ clean_build_artifacts() {
 
 clean_pycache() {
   find . \
-    \( -path './.venv' -o -path './backend/contracts/.venv' -o -path './backend/worker/.venv' \
+    \( -path './.venv' -o -path './backend/worker/.venv' \
        -o -path './backend/api/.venv' -o -path './web_ui' -o -path './.claude' \) -prune -o \
     -depth -type d -name '__pycache__' -print -exec rm -rf {} + 2>/dev/null || true
 
   find . \
-    \( -path './.venv' -o -path './backend/contracts/.venv' -o -path './backend/worker/.venv' \
+    \( -path './.venv' -o -path './backend/worker/.venv' \
        -o -path './backend/api/.venv' -o -path './web_ui' -o -path './.claude' \) -prune -o \
     -type f \( -name '*.pyc' -o -name '*.pyo' \) -print -delete 2>/dev/null || true
 }
