@@ -41,7 +41,13 @@ class GatewayTestClient:
         self._thread.start()
         if not self._ready.wait(timeout=5):
             raise RuntimeError("tool gateway test server failed to start")
-        self._client = httpx.Client(base_url=f"http://127.0.0.1:{self._port}", timeout=10.0)
+        # trust_env=False: this client only ever talks to a localhost port
+        # this same process just bound — an ambient HTTP_PROXY/ALL_PROXY in
+        # the shell environment must never be consulted for it (and some
+        # proxy configs, e.g. bare "socks://" instead of "socks5://", make
+        # httpx raise at Client construction time rather than just being
+        # irrelevant).
+        self._client = httpx.Client(base_url=f"http://127.0.0.1:{self._port}", timeout=10.0, trust_env=False)
 
     def _run(self) -> None:
         asyncio.set_event_loop(self._loop)
