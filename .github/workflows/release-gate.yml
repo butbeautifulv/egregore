@@ -167,7 +167,13 @@ jobs:
             --cov=src/cys_core/domain --cov-report=term-missing --cov-fail-under=100
 
   # ---------------------------------------------------------------------
-  # Warn-only — runs and reports on every PR, does not block merge yet.
+  # Stale comment removed: these four were originally warn-only, but are
+  # now required — release-gate's `needs:`/aggregate check below fails the
+  # whole gate if any of them doesn't succeed, same as every other job in
+  # this file (see the "All quality and security jobs below are blocking"
+  # note at the top). docs/CI_CD_KNOWN_GAPS.md already classifies them as
+  # "Resolved gates", matching actual behavior — only this inline comment
+  # had drifted from it.
   # ---------------------------------------------------------------------
 
   iac-scan:
