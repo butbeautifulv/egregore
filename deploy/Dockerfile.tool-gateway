@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1
+# cxado/egregore-tool-gateway — the MCP Tool Gateway, the PEP for sandboxed
+# agent tool calls (SIEM/RAG/web/files/sandbox/veil/nessus). No
+# agent-execution frameworks (langchain/langgraph/deepagents/litellm) — every
+# tool it can invoke is a plain-function adapter. See
+# docs/MICROSERVICES_SPLIT_PLAN.md §21.
+# Build from egregore repo root: docker build -f deploy/Dockerfile.tool-gateway .
+#
+# Builder: deps + uv sync. Runtime: fresh slim, OS upgraded, perl-base removed (SCA surface).
+
+FROM python:3.13-slim@sha256:bffeb7bd6a85767587059c6ba23e1e9122078e3aa3fa836099171b9bb5a9bb00 AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+WORKDIR /app
+COPY --from=ghcr.io/astral-sh/uv:0.11.12@sha256:027318b213a7804ecd085ea7efdcdc4d44fa202c6e676c86ce86c0206d38f65c /uv /usr/local/bin/uv
+
+# Layer 1: lockfile only — egregore-tool-gateway is fully self-contained,
+# same physical-copy pattern as api/worker (see plan doc §18/§21.6) —
+# cached until this package's own deps change.
+COPY backend/tool-gateway/pyproject.toml backend/tool-gateway/uv.lock backend/tool-gateway/README.md ./tool-gateway/
+WORKDIR /app/tool-gateway
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+# Layer 2: this package's own source — only reinstalls its local wheel, not
+# all deps.
+COPY backend/tool-gateway/src ./src
+COPY backend/agents /app/agents
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+FROM python:3.13-slim@sha256:bffeb7bd6a85767587059c6ba23e1e9122078e3aa3fa836099171b9bb5a9bb00 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV STAGE=prod
+ENV USE_MEMORY_FALLBACK=false
+ENV AGENTS_ROOT=../agents
+ENV UV_CACHE_DIR=/tmp/uv-cache
+WORKDIR /app/tool-gateway
+
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && apt-get purge -y --allow-remove-essential \
+      perl-base gzip login util-linux mount \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 10001 app \
+ && useradd --uid 10001 --gid app --home-dir /app --no-create-home app
+
+COPY --from=builder --chown=app:app /app/tool-gateway /app/tool-gateway
+COPY --from=builder --chown=app:app /app/agents /app/agents
+
+USER 10001
+ENV PATH="/app/tool-gateway/.venv/bin:$PATH"
+EXPOSE 8092
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"TOOL_GATEWAY_BIND_PORT\", \"8092\")}/health', timeout=3)"]
+
+ENTRYPOINT ["egregore"]
+CMD ["tool-gateway"]

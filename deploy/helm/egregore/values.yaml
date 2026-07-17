@@ -27,11 +27,27 @@ worker:
     maxReplicas: 4
     targetCPUUtilization: 70
 
+# The PEP for sandboxed agent tool calls — see docs/MICROSERVICES_SPLIT_PLAN.md
+# §21.6. Own image (own Dockerfile.tool-gateway, own package, no langchain/
+# agent-execution frameworks), same pattern as `ui` above rather than sharing
+# `image:`.
+toolGateway:
+  enabled: true
+  image:
+    repository: cxado/egregore-tool-gateway
+    tag: local
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 8092
+
 rollout:
   api:
     maxSurge: 1
     maxUnavailable: 0
   worker:
+    maxSurge: 1
+    maxUnavailable: 0
+  toolGateway:
     maxSurge: 1
     maxUnavailable: 0
 
@@ -138,6 +154,13 @@ resources:
     limits:
       cpu: 1000m
       memory: 1536Mi
+  toolGateway:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
   ui:
     requests:
       cpu: 50m

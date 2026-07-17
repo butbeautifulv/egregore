@@ -24,6 +24,10 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- printf "%s:%s" .Values.ui.image.repository .Values.ui.image.tag }}
 {{- end }}
 
+{{- define "egregore.toolGatewayImage" -}}
+{{- printf "%s:%s" .Values.toolGateway.image.repository .Values.toolGateway.image.tag }}
+{{- end }}
+
 {{- define "egregore.podSecurityContext" -}}
 automountServiceAccountToken: false
 securityContext:

@@ -89,6 +89,8 @@ data:
   REDIS_HOST: {{ .Values.redis.host | quote }}
   REDIS_PORT: {{ .Values.redis.port | quote }}
   QDRANT_URL: {{ .Values.qdrant.url | quote }}
+  TOOL_GATEWAY_URL: {{ printf "http://tool-gateway:%v" .Values.toolGateway.port | quote }}
+  USE_TOOL_GATEWAY: {{ .Values.toolGateway.enabled | quote }}
   VEIL_MCP_URL: {{ .Values.veil.mcpUrl | quote }}
   {{- if .Values.veil.mcpEnabled }}
   VEIL_MCP_ENABLED: {{ .Values.veil.mcpEnabled | quote }}

@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tool-gateway
+  labels:
+    {{- include "egregore.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: tool-gateway
+  ports:
+    - port: {{ .Values.toolGateway.port }}
+      targetPort: {{ .Values.toolGateway.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-gateway
+  labels:
+    app: tool-gateway
+    {{- include "egregore.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.toolGateway.replicas }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.rollout.toolGateway.maxSurge }}
+      maxUnavailable: {{ .Values.rollout.toolGateway.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: tool-gateway
+  template:
+    metadata:
+      labels:
+        app: tool-gateway
+    spec:
+      enableServiceLinks: false
+      {{- include "egregore.podSecurityContext" . | nindent 6 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.toolGateway.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.toolGateway.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: tool-gateway
+          image: {{ include "egregore.toolGatewayImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- include "egregore.containerSecurityContext" . | nindent 10 }}
+          command: ["egregore", "tool-gateway", "--host", "0.0.0.0", "--port", "{{ .Values.toolGateway.port }}"]
+          ports:
+            - containerPort: {{ .Values.toolGateway.port }}
+          envFrom:
+            - configMapRef:
+                name: egregore-env
+            - secretRef:
+                name: egregore-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: egregore-tool-gateway
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: /tmp/prom-multiproc
+          {{- with .Values.resources.toolGateway }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: prom-multiproc
+              mountPath: /tmp/prom-multiproc
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.toolGateway.port }}
+            initialDelaySeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.toolGateway.port }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: prom-multiproc
+          {{- if .Values.prometheus.multiprocHostPath }}
+          hostPath:
+            path: {{ .Values.prometheus.multiprocHostPath }}
+            type: DirectoryOrCreate
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

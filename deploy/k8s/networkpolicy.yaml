@@ -15,8 +15,13 @@ spec:
             matchLabels:
               app: tool-gateway
       ports:
+        # 8092, not 8090 — 8090 is Veil Graph API, a different service. See
+        # docs/MICROSERVICES_SPLIT_PLAN.md §21.4/§21.6 (this was a real,
+        # previously-unflagged mismatch against bootstrap/settings.py's
+        # tool_gateway_url default, found while standing up the real
+        # deploy/helm/egregore/templates/tool-gateway-deployment.yaml).
         - protocol: TCP
-          port: 8090
+          port: 8092
     - to:
         - namespaceSelector: {}
       ports:
