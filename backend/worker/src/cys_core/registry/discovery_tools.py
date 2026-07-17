@@ -14,10 +14,11 @@ from cys_core.registry.skill_registry import SkillRegistry
 _catalog_provider: AgentCatalogPort | None = None
 _ranking_provider: PersonaRankingPort | None = None
 #: cys_core.registry.tools (the LangChain tool registry) is worker-only —
-#: contracts can't import it by name. worker's container wires the real
-#: list_tools() in here at bootstrap; in an api build no provider is ever
-#: set and search_tools() degrades to an empty result instead of trying
-#: (and failing) to import a module that doesn't exist in this build.
+#: this generic registry module can't import it by name. worker's container
+#: wires the real list_tools() in here at bootstrap; in an api build no
+#: provider is ever set and search_tools() degrades to an empty result
+#: instead of trying (and failing) to import a module that doesn't exist
+#: in this build.
 _tool_lister_provider: Callable[..., list[str]] | None = None
 
 
@@ -43,9 +44,9 @@ def _default_catalog() -> AgentCatalogPort | None:
         return _catalog_provider
     # api's and worker's own wire_catalog_ports() call set_catalog_provider()
     # explicitly at bootstrap — reaching for bootstrap.container here would be
-    # a layering violation (that module is api/worker's own composition root,
-    # structurally absent from contracts). Fallback only for contracts used
-    # standalone before either service's bootstrap has run.
+    # a layering violation: this is a lower-level registry module, the
+    # composition root is above it. Fallback only for this code path being
+    # reached before bootstrap has run.
     try:
         from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 

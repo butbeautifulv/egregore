@@ -19,8 +19,8 @@ class PersistenceContainer:
     (agent-execution concerns, cys_core.infrastructure.sandbox/cys_core.persistence/
     context.factory/reflexion.memory don't exist outside worker) — those live
     directly on worker's own Container now, not here. See
-    docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2 for why contracts must not carry
-    methods that only resolve inside one sibling package.
+    docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2 for why this generic container
+    must not carry methods that only resolve inside one sibling package.
     """
 
     def __init__(self, container: "Container") -> None:

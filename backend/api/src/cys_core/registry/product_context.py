@@ -12,11 +12,11 @@ from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.security.prompt_context import TrustedSystemContext
 from cys_core.domain.security.system_prompt_assembler import assemble_trusted_system_context
 
-# Not Path(__file__)-relative: this module now lives in the shared
-# `contracts` package, installed into multiple sibling services
-# (backend/api, backend/worker) at different nesting
-# depths — `Path(__file__).resolve().parents[N]` broke once this stopped
-# being one level below whichever service was actually running.
+# Not Path(__file__)-relative: this module is physically duplicated into
+# both backend/api and backend/worker (no shared package between them, see
+# docs/MICROSERVICES_SPLIT_PLAN.md §18) at different nesting depths —
+# `Path(__file__).resolve().parents[N]` broke once this stopped being one
+# level below whichever service was actually running.
 # `uv run egregore ...` always invokes with CWD set to that service's own
 # directory (where its `agents/` lives), so CWD is what "this service's
 # own root" actually means now — same fix as bootstrap/settings.py's
@@ -37,11 +37,10 @@ def _default_catalog() -> AgentCatalogPort | None:
         return _catalog_provider
     # api's and worker's own wire_catalog_ports() calls set_catalog_provider()
     # explicitly at bootstrap (same pattern as discovery_tools.py) — reaching
-    # for bootstrap.container here would be a layering violation, since that
-    # module is api/worker's own composition root and structurally doesn't
-    # exist in contracts. If no provider was set (e.g. contracts used
-    # standalone, before either service's bootstrap ran), fall back to the
-    # generic catalog_registry.
+    # for bootstrap.container here would be a layering violation: this is a
+    # lower-level registry module, the composition root is above it. If no
+    # provider was set (e.g. this code path reached before bootstrap ran),
+    # fall back to the generic catalog_registry.
     try:
         from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
 

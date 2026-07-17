@@ -23,12 +23,13 @@ def _settings_env_files() -> tuple[str, ...]:
     is always invoked with CWD set to that service's own directory), then
     repo-root .env, then deploy/.secrets.
 
-    Does not look for "this module's own nearest pyproject.toml" the way it
-    used to — `bootstrap.settings` now lives in the shared `contracts`
-    package, installed into multiple sibling services (backend/api,
-    backend/worker), so `Path(__file__)` here always points
-    into `contracts/`, never into whichever service is actually running.
-    CWD already covers the "this service's own .env" case correctly.
+    Does not look for "this module's own nearest pyproject.toml" — this
+    module (bootstrap.settings) is physically duplicated into both
+    backend/api and backend/worker (no shared package between them, see
+    docs/MICROSERVICES_SPLIT_PLAN.md §18), so `Path(__file__)` here only
+    ever resolves to the package this copy happens to live in, not
+    necessarily the service actually running. CWD already covers the
+    "this service's own .env" case correctly.
     """
     from bootstrap.paths import find_repo_root
 

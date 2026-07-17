@@ -54,12 +54,13 @@ class Container:
     """Composition root for the api service.
 
     Api's own copy of worker's bootstrap/container.py — same 5 generic
-    sub-containers (Policy/Catalog/Persistence/Observability/Auth, all in
-    egregore-contracts) plus api's own EngagementContainer
+    sub-containers (Policy/Catalog/Persistence/Observability/Auth, each
+    package holds its own physical copy — no shared package, see plan §18)
+    plus api's own EngagementContainer
     (bootstrap/containers/engagement_container.py, trimmed — no orchestrator/
     bus-consumer wiring). No ToolsContainer here at all: tool-chain
     policy/invocation/gateway construction is worker-only (the Tool Gateway
-    is its own separate FastAPI app inside worker/). See plan §2/§3.
+    is its own separate FastAPI app inside worker/). See plan §2/§3/§18.
     """
 
     def __init__(self, settings: Settings | None = None) -> None:

@@ -7,11 +7,11 @@ def find_package_root(start: Path | None = None) -> Path:
     """Return the nearest ancestor directory that contains pyproject.toml.
 
     Callers should pass their own `Path(__file__)` as `start` if they need
-    *their own* package's root — this module (bootstrap.paths) now lives in
-    the shared `contracts` package, installed into multiple sibling
-    services (backend/api, backend/worker), so relying on
-    the default (this module's own location) only ever resolves to
-    contracts' root, not the caller's.
+    *their own* package's root — this module (bootstrap.paths) is physically
+    duplicated into both backend/api and backend/worker (no shared package
+    between them, see docs/MICROSERVICES_SPLIT_PLAN.md §18), so relying on
+    the default (this module's own location) only ever resolves to the
+    package this copy happens to live in, not necessarily the caller's.
     """
     current = (start or Path(__file__).resolve()).parent
     for candidate in (current, *current.parents):

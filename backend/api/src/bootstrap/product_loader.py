@@ -57,11 +57,13 @@ def _load_agent_from_dir(agent_dir: Path, product: ProductContext) -> AgentDefin
     from cys_core.application.observability.prompt_resolver import PromptResolver
     from cys_core.domain.observability.models import PromptRef
 
-    # Built directly rather than via bootstrap.container.get_container(): that
-    # composition root only exists in api/worker, not here in contracts,
-    # while a PromptResolver only ever needs the (contracts-level) prompt
-    # backend + settings — see ObservabilityContainer.get_prompt_resolver(),
-    # which does the same construction for api/worker's own containers.
+    # Built directly rather than via bootstrap.container.get_container():
+    # product_loader is a lower-level bootstrap module — reaching up to the
+    # full composition root from here would be a layering violation (and
+    # risks a circular/premature construction during bootstrap), while a
+    # PromptResolver only ever needs the prompt backend + settings — see
+    # ObservabilityContainer.get_prompt_resolver(), which does the same
+    # construction for the container's own use.
     resolver = PromptResolver(build_prompt_backend(get_settings().obs_prompt_backend))
     resolved = resolver.resolve(
         PromptRef(name=config.name),

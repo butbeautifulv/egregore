@@ -84,11 +84,11 @@ class Container:
         self._tools = ToolsContainer(self)
         self._auth = AuthContainer(self)
         self._observability = ObservabilityContainer(self)
-        # Worker-only, cached directly here rather than on the shared
-        # PersistenceContainer/CatalogContainer (contracts) — these back onto
+        # Worker-only, cached directly here rather than on the generic
+        # PersistenceContainer/CatalogContainer — these back onto
         # cys_core.infrastructure.sandbox/cys_core.persistence/context.factory/
         # reflexion.memory/registry.tool_registry_adapter, none of which exist
-        # in api. See docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2.
+        # in api. See docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2/§18.
         self._context_summarizer = None
         self._reflexion_store = None
         self._tool_registry_port = None
