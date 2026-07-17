@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
 from cys_core.domain.rag.models import ChunkACL, DocumentProvenance, RagChunk
 from interfaces.gateways.tool.adapters.rag import rag_query_tool
-from interfaces.gateways.tool.server import create_app
 from interfaces.rag.store import MemoryVectorStore
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 def _seed(store: MemoryVectorStore) -> None:
@@ -41,7 +40,7 @@ def test_gateway_invoke_rag_query(monkeypatch):
     monkeypatch.setattr("cys_core.infrastructure.rag.retrieve.get_vector_store", lambda: store)
 
     get_container()
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     response = client.post(
         "/invoke",
         json={

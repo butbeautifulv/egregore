@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
-from interfaces.gateways.tool.server import create_app
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 @pytest.mark.integration
 def test_invoke_sanitizes_and_returns_payload():
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     response = client.post(
         "/invoke",
         json={

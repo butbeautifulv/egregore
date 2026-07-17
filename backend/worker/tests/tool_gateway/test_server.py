@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
-from interfaces.gateways.tool.server import create_app
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 @pytest.mark.unit
 def test_gateway_health():
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     assert client.get("/health").json() == {"status": "ok"}
 
 
 @pytest.mark.unit
 def test_gateway_invoke_success():
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     response = client.post(
         "/invoke",
         json={
@@ -34,7 +33,7 @@ def test_gateway_invoke_success():
 
 @pytest.mark.unit
 def test_gateway_invoke_denies_host_sandbox():
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     response = client.post(
         "/invoke",
         json={

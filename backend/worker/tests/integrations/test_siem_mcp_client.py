@@ -4,11 +4,10 @@ import json
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 
 from cys_core.integrations.siem_mcp_client import call_siem_mcp_tool
 from interfaces.gateways.tool.adapters.siem_mcp import call_siem_tool
-from interfaces.gateways.tool.server import create_app
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 def _patch_invoke_mcp_sync(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
@@ -89,7 +88,7 @@ def test_gateway_invoke_investigate_incident(monkeypatch: pytest.MonkeyPatch) ->
     mock_client = httpx.Client(transport=httpx.MockTransport(handler))
     _patch_invoke_mcp_sync(monkeypatch, mock_client)
 
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     response = client.post(
         "/invoke",
         json={

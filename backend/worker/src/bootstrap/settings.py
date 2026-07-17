@@ -327,6 +327,8 @@ class Settings(BaseSettings):
         description="egregore MCP Tool Gateway (avoid :8090 — Veil Graph API).",
     )
     use_tool_gateway: bool = Field(default=False, validation_alias="USE_TOOL_GATEWAY")
+    tool_gateway_bind_host: str = Field(default="0.0.0.0", validation_alias="TOOL_GATEWAY_BIND_HOST")
+    tool_gateway_bind_port: int = Field(default=8092, validation_alias="TOOL_GATEWAY_BIND_PORT")
 
     veil_mcp_url: str = Field(
         default="http://localhost:8091/mcp",

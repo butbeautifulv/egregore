@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
 from interfaces.gateways.tool.audit import build_audit_record, clear_audit_records, get_audit_records
 from interfaces.gateways.tool.models import ToolInvokeRequest, ToolInvokeResponse
-from interfaces.gateways.tool.server import create_app
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 @pytest.mark.unit
@@ -28,7 +27,7 @@ def test_build_audit_record_shape():
 @pytest.mark.unit
 def test_gateway_records_audit_on_invoke():
     clear_audit_records()
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     client.post(
         "/invoke",
         json={

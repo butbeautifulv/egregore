@@ -5,11 +5,10 @@ from contextlib import contextmanager
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 
 from cys_core.integrations.veil_mcp_client import call_veil_mcp_tool
 from interfaces.gateways.tool.adapters.veil_mcp import call_veil_tool
-from interfaces.gateways.tool.server import create_app
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 def _patch_sync_http_client(monkeypatch: pytest.MonkeyPatch, mock_client: httpx.Client) -> None:
@@ -77,7 +76,7 @@ def test_gateway_invoke_playbook_search(monkeypatch):
     mock_client = httpx.Client(transport=httpx.MockTransport(handler))
     _patch_sync_http_client(monkeypatch, mock_client)
 
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     response = client.post(
         "/invoke",
         json={

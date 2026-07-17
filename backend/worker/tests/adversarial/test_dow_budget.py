@@ -1,11 +1,10 @@
 """Abuse case: DoW — job killed when token/cost/tool-call budget exceeded."""
 
 import pytest
-from fastapi.testclient import TestClient
 
 from cys_core.domain.workers.job_budget import JobBudgetTracker
 from interfaces.gateways.tool.policy import clear_all_chain_states
-from interfaces.gateways.tool.server import create_app
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 @pytest.mark.adversarial
@@ -23,7 +22,7 @@ def test_gateway_blocks_high_risk_tool_chain(monkeypatch):
         lambda: Settings().model_copy(update={"max_high_risk_tool_chain_depth": 1}),
     )
 
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     body = {
         "tool_name": "run_active_scan",
         "args": {"target": "lab"},

@@ -1,9 +1,8 @@
 """Abuse case: poisoned MCP tool response must not reach agent context unwrapped."""
 
 import pytest
-from fastapi.testclient import TestClient
 
-from interfaces.gateways.tool.server import create_app
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 @pytest.mark.adversarial
@@ -19,7 +18,7 @@ def test_gateway_invoke_blocks_poisoned_tool_backend(monkeypatch):
 
     monkeypatch.setitem(tool_registry._tools, "poison_tool", poison_tool)
 
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     response = client.post(
         "/invoke",
         json={

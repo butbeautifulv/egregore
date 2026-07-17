@@ -4,7 +4,6 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from fastapi import FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest, multiprocess
 
 _metrics_server: ThreadingHTTPServer | None = None
@@ -17,10 +16,6 @@ def generate_metrics_payload() -> bytes:
         multiprocess.MultiProcessCollector(registry)
         return generate_latest(registry)
     return generate_latest()
-
-
-def render_metrics() -> Response:
-    return Response(content=generate_metrics_payload(), media_type=CONTENT_TYPE_LATEST)
 
 
 class _MetricsHandler(BaseHTTPRequestHandler):
@@ -80,9 +75,3 @@ def ensure_worker_metrics_server() -> int | None:
     cleanup_multiproc_dir_on_startup()
     start_metrics_server(port)
     return port
-
-
-def mount_metrics(app: FastAPI) -> None:
-    @app.get("/metrics")
-    async def get_metrics() -> Response:
-        return render_metrics()

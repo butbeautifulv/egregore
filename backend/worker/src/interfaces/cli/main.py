@@ -110,6 +110,19 @@ def cmd_run_sandboxed_job(args: argparse.Namespace) -> int:
     return 0 if out["result"]["success"] else 1
 
 
+def cmd_tool_gateway(args: argparse.Namespace) -> int:
+    from interfaces.gateways.tool.server import serve_forever
+
+    get_container()
+    configure_logging("egregore-tool-gateway")
+    setup_otel(service_name="egregore-tool-gateway")
+    host = args.host or settings.tool_gateway_bind_host
+    port = args.port or settings.tool_gateway_bind_port
+    print(json.dumps({"service": "tool-gateway", "host": host, "port": port}, indent=2))
+    asyncio.run(serve_forever(host, port))
+    return 0
+
+
 def cmd_critic(args: argparse.Namespace) -> int:
     from interfaces.control_plane.critic_daemon import run_critic_daemon
 
@@ -188,6 +201,11 @@ def build_parser() -> argparse.ArgumentParser:
         "or 'env:VAR_NAME' to read from that env var (K8s/Docker backends)",
     )
     run_sandboxed.set_defaults(func=cmd_run_sandboxed_job)
+
+    tool_gateway = sub.add_parser("tool-gateway", help="Run the MCP Tool Gateway (PEP for sandboxed tool calls)")
+    tool_gateway.add_argument("--host", default=None, help="Bind host. Default: TOOL_GATEWAY_BIND_HOST")
+    tool_gateway.add_argument("--port", type=int, default=None, help="Bind port. Default: TOOL_GATEWAY_BIND_PORT")
+    tool_gateway.set_defaults(func=cmd_tool_gateway)
 
     critic = sub.add_parser("critic", help="Run critic bus consumer daemon")
     critic.add_argument("--idle-timeout", type=float, default=0.0, help="Exit after N seconds idle (0=run forever)")

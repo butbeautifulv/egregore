@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
 from interfaces.gateways.tool.adapters.siem import query_siem_readonly_search
 from interfaces.gateways.tool.handler import invoke_tool
 from interfaces.gateways.tool.models import ToolInvokeRequest
-from interfaces.gateways.tool.server import create_app
+from tests.tool_gateway.gateway_client import GatewayTestClient
 
 
 @pytest.mark.unit
@@ -22,7 +21,7 @@ def test_gateway_invoke_query_siem_readonly():
     from bootstrap.container import get_container
 
     get_container()
-    client = TestClient(create_app())
+    client = GatewayTestClient()
     response = client.post(
         "/invoke",
         json={

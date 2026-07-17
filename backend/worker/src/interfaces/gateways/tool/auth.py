@@ -1,27 +1,30 @@
 from __future__ import annotations
 
-from typing import Annotated
-
-from fastapi import Header, HTTPException
-
 from bootstrap.container import get_container
 from cys_core.domain.security.auth_models import AuthClaims, AuthError
 
 # Self-contained rather than importing interfaces.api.auth.require_role_setting
 # (interfaces/api/ is api-only per the split — see plan §0.1/§1 — this Tool
-# Gateway is worker's own separate FastAPI app and must not depend on it).
+# Gateway is worker's own separate HTTP service and must not depend on it).
 # Same logic as interfaces/api/auth.py's require_role_setting; kept small
 # enough that duplicating it here is simpler than a shared abstraction over
 # a get_container() that api and worker will eventually implement differently.
+
+
+class GatewayAuthError(Exception):
+    """Transport-agnostic auth failure — server.py maps this to an HTTP status."""
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
 
 
 def get_token_verifier():
     return get_container().get_token_verifier()
 
 
-async def require_gateway_role(
-    authorization: Annotated[str | None, Header()] = None,
-) -> AuthClaims | None:
+async def require_gateway_role(authorization: str | None) -> AuthClaims | None:
     settings = get_container().settings
     if not settings.auth_enabled:
         return None
@@ -33,11 +36,11 @@ async def require_gateway_role(
     try:
         claims = verifier.verify_bearer(authorization)
     except AuthError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        raise GatewayAuthError(401, str(exc)) from exc
     if settings.rbac_enabled:
         if not claims.has_any_role(settings.rbac_role_gateway):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise GatewayAuthError(403, "Forbidden")
     return claims
 
 
-__all__ = ["require_gateway_role"]
+__all__ = ["GatewayAuthError", "require_gateway_role"]

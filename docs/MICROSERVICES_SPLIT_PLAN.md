@@ -2154,3 +2154,161 @@ anywhere in `api/src` beyond the `Field(...)` declaration itself — dead config
 - The recurring `/loop` cron job (`20m` interval, job id `2194b2de` from earlier in the session)
   is still active and will keep firing the standing audit prompt into whatever session/agent the
   user switches to next, unless explicitly cancelled with `CronDelete`.
+
+## 21. §20.2 implemented (2026-07-17, new session): langchain-core out of api, FastAPI out of
+## worker's Tool Gateway
+
+Picked up by a fresh session/agent per the §20 handoff. Before implementing, asked the user to
+confirm the two open decisions from §20.2 plus the deploy-completeness question the audit-finding
+commit (`9ec4dcc`, written concurrently by another session on this same branch and pulled in via
+`git reset --hard origin/feature/microservice-refactoring` after this session's own worktree
+isolation defaulted to branching from `origin/main`) had already raised. User's answers: (1)
+delete `ModelConnector`/`ToolProviderPort` outright, not just retype them; (2) keep the Tool
+Gateway as a real service — rewrite it on stdlib-only **async** (no FastAPI, no Starlette, no
+aiohttp); (3) also add the CLI entrypoint that never existed, since the point is for it to be
+servable, not just framework-swapped.
+
+### 21.1. Part 1 — `langchain-core` removed from `api`
+
+Re-verified deadness beyond the original 3-file `grep -rl "langchain_core"` from §20.2: `create_model(` has zero implementations or callers anywhere in `api`; `get_trace_callbacks()` — the
+one function that would ever consume `ModelConnector.callbacks()`'s output via
+`configure_trace_callbacks()` — is wired in `bootstrap/container.py` but **never called** by
+anything in `api`. Also checked `cys_core/observability/trace_attributes.py::merge_langchain_config`
+(matched a broader `grep -rl "langchain"`, not just `langchain_core`) — it doesn't import
+`langchain_core` at all, just shapes a dict to LangChain's `RunnableConfig` metadata/tags
+convention by name; unused outside its own unit test, doesn't change the dependency picture.
+
+- Deleted `cys_core/application/ports/llm.py` (`ModelConnector`) and `.../tool_provider.py`
+  (`ToolProviderPort`) from `api` outright; removed their re-exports from `ports/__init__.py`.
+  Worker's own copies of these same two files are untouched — worker genuinely implements and
+  calls both (8 live references), this was an `api`-only dead-code problem.
+- `CompositeTraceBackend.get_callback_handler()` (`interfaces/observability/connectors/langfuse/
+  trace.py`): proved the `langchain_core.callbacks.CallbackManager` merge branch was
+  unreachable — `OtelTraceBackend.get_callback_handler()` always returns `None`, so in `api`'s
+  only two-sink composite (Langfuse + Otel) at most one handler is ever non-`None`. Simplified to
+  `return handlers[0] if handlers else None`, no langchain import left in the file.
+- Removed `"langchain-core>=1.4.0"` and its explanatory comment from `backend/api/pyproject.toml`.
+  `uv lock` dropped it plus 12 transitive deps (`langsmith`, `langchain-protocol`, `orjson`,
+  `tenacity`, `jsonpatch`, `jsonpointer`, `distro`, `requests-toolbelt`, `sniffio`, `uuid-utils`,
+  `websockets`, `zstandard`, `xxhash`). `fastapi`/`uvicorn`/`starlette` remain in `api` —
+  unrelated; that's `api`'s own ingress ASGI app (`interfaces/api/app.py`), never in scope here.
+- Fixed the now-stale `AGENTS.md` line describing the old "accepted exception for port type hints
+  only" — `api` now has zero exceptions, langchain/langchain-core/langgraph/deepagents/litellm
+  are all fully absent.
+- Verification: full `api` suite green — **938 passed, 5 skipped, 0 failed**; `uv run ty check
+  src` — all checks passed.
+
+### 21.2. Part 2 — FastAPI removed from worker's Tool Gateway (kept as a real service)
+
+- `server.py` rewritten on `asyncio.start_server` plus a small hand-rolled HTTP/1.1 layer
+  (request-line/header parsing, `Content-Length`-based body read, JSON responses,
+  `Connection: close` on every response — no keep-alive; matches this service's low
+  request-volume, per-tool-call usage pattern and avoids pipelining/persistent-connection
+  complexity that nothing here needs). Routes unchanged: `GET /health`, `GET /metrics`,
+  `POST /invoke`. The synchronous work underneath (`invoke_tool`, `generate_metrics_payload`)
+  runs through `asyncio.to_thread` so one slow tool call can't block other connections on the
+  same event loop.
+- `auth.py`: `require_gateway_role()` is now a plain `async def` taking the raw `Authorization`
+  header value directly — no FastAPI `Depends`/`Header` machinery. Raises a new
+  `GatewayAuthError(status_code, detail)` instead of `HTTPException`; `server.py`'s router maps
+  it to the actual HTTP response. Same `verify_bearer`/RBAC logic underneath, byte-for-byte same
+  externally observable behavior (401 on missing/invalid token, 403 on wrong role) — confirmed by
+  the rewritten `test_gateway_auth.py` passing unchanged assertions.
+- `cys_core/observability/http.py`: removed `mount_metrics()`/`render_metrics()` (both
+  FastAPI-`Response`-typed, both dead once nothing mounts onto a FastAPI app anymore) and the
+  `fastapi` import. Kept `generate_metrics_payload()` — now called directly by both the gateway's
+  new `/metrics` route and the pre-existing worker-daemon `ThreadingHTTPServer` metrics path
+  (`EGREGORE_METRICS_PORT`), unrelated to this change and untouched.
+- `cys_core/observability/otel.py`: removed `instrument_fastapi()` — confirmed zero callers
+  anywhere in worker *before* deleting it (it was already dead prior to this session, not made
+  dead by this change).
+- **New CLI entrypoint**: `egregore tool-gateway [--host HOST] [--port PORT]`
+  (`interfaces/cli/main.py`), calling `asyncio.run(serve_forever(...))`. Plus
+  `make dev-tool-gateway` in the repo-root `Makefile` (`cd backend/worker && uv run egregore
+  tool-gateway`) — `docs/DEVELOPMENT.md` has referenced this exact make target for a while
+  (per audit commit `9ec4dcc`) but it never existed until now. This specifically closes the
+  "nothing anywhere ever serves `create_app()`" gap that commit flagged — it is the deploy-
+  completeness fix for the *process* layer, not scope creep beyond the user's instruction.
+- New settings: `tool_gateway_bind_host` (default `0.0.0.0`), `tool_gateway_bind_port` (default
+  `8092`, matching the port already documented on `tool_gateway_url`'s field description).
+- `backend/worker/pyproject.toml`: removed `fastapi`, `uvicorn`, `opentelemetry-instrumentation-
+  fastapi` (confirmed zero remaining references anywhere in `worker/src` first via
+  `grep -rln "fastapi\|FastAPI\|starlette\|uvicorn"` — zero hits). `uv lock` dropped 7 packages:
+  `fastapi`, `starlette`, `uvicorn`, `opentelemetry-instrumentation-fastapi`,
+  `opentelemetry-instrumentation-asgi`, `asgiref`, `annotated-doc`.
+- **Tests**: all 11 files using `fastapi.testclient.TestClient(create_app())` — `tool_gateway/
+  {test_server,test_gateway_auth,test_audit,test_siem_adapter,test_rag_adapter,
+  test_veil_mcp_adapter}.py`, `integration/test_tool_gateway_chain.py`,
+  `adversarial/{test_dow_budget,test_tool_gateway_poison}.py`,
+  `integrations/test_siem_mcp_client.py` — rewritten against a new
+  `tests/tool_gateway/gateway_client.py`: a `TestClient`-shaped `GatewayTestClient` that starts
+  the real `asyncio` server on an ephemeral `127.0.0.1` port in a background thread and talks to
+  it over real `httpx` requests, so these tests exercise the actual wire protocol (parsing, auth,
+  status codes) instead of FastAPI's in-process ASGI shortcut. `tests/observability/
+  test_http_metrics.py` needed a different rewrite since it tested `mount_metrics`/
+  `render_metrics` directly and both are gone — replaced with a direct
+  `generate_metrics_payload()` unit test plus one real `/metrics` request through
+  `GatewayTestClient`.
+- **Verification**: a bare `uv run pytest -q` from `backend/worker` fails at collection — two
+  **pre-existing, unrelated** same-basename collisions (`tests/application/test_policy_gate.py`
+  vs `tests/observability/test_policy_gate.py`; `tests/domain/datasources/test_models.py` vs
+  `tests/tool_gateway/test_models.py`), neither pair touched this session, not introduced by
+  this change. The established fix already exists — `scripts/pytest_batches.sh` (used by
+  `release-gate.yml`, matches the "worker 26/26 batches" pattern from §19 point 6) — run instead:
+  **26/26 batches green, 0 failed** (`tests/tool_gateway` batch alone: 29 passed).
+
+### 21.3. Found along the way, not acted on
+
+`backend/worker/tests/conftest.py`'s `fastapi_app` fixture imports `interfaces.api.app.create_app`
+— a module that does not exist anywhere in `backend/worker/src` (that's `api`-only per the
+package split). Zero test files reference this fixture (`grep -rln "fastapi_app" tests/` → only
+its own definition), so it never actually executes and doesn't fail the suite — but it's dead,
+pre-existing (predates this session), and unrelated to the langchain/FastAPI work. Flagged here,
+not removed, to keep this session's diff scoped to what was asked.
+
+### 21.4. Future work (explicit user request, not implemented this session): Tool Gateway as its
+### own deployable service
+
+User's exact ask, mid-session: *"if we can we should write for the future to separate tool_gateway
+into separate service."* Documented here rather than attempted — a real package/Dockerfile/deploy
+split is substantially larger than the framework swap above and deserves its own scoping pass, not
+a same-session bolt-on.
+
+**Real constraint found while scoping this, not obvious from the outside**: `interfaces/gateways/
+tool/` itself has zero langchain imports anywhere (confirmed by `grep -rln "langchain"
+interfaces/gateways/tool/` → no hits), but its one real dependency chain is not actually
+langchain-free: `get_tool_execution_gateway()` → `InvokeTool` → `container.get_tool_registry_port()`
+resolves to `cys_core.registry.tools`, and that module is built **directly** on
+`langchain_core.tools` (`BaseTool`, `StructuredTool`, the `@tool` decorator — every registered
+tool, including the ones the gateway itself invokes, is a LangChain tool object). So a fully
+standalone Tool Gateway package could drop the heaviest agent-orchestration dependencies
+(`langgraph`, `langgraph-checkpoint-postgres`, `litellm`, `deepagents`, `langfuse` — the actual
+LLM-runtime stack) but **could not** drop `langchain-core` itself without a separate, deeper
+refactor: replacing the registry's `BaseTool`-typed catalog with a plain domain type (e.g. a
+`ToolDefinition` protocol/dataclass) that both the agent runtime and the gateway can consume
+without either one requiring a LangChain dependency. That's the same shape of problem §8 of this
+plan already raises for domain-agnostic core generally — just not previously scoped down to the
+tool registry specifically.
+
+**Also found while scoping**: `deploy/k8s/networkpolicy.yaml` and `worker-job-template.yaml` both
+point the Tool Gateway's K8s-internal address at **port 8090** (`http://tool-gateway:8090`), but
+`bootstrap/settings.py`'s `tool_gateway_url` field — and its own description string — say **8092**,
+explicitly calling out that *"8090 is Veil Graph API"*, a different service entirely. This is a
+real, previously-unflagged mismatch: either the K8s manifests have the wrong port, or they were
+written against a different assumption than the one `settings.py` documents. Needs resolving
+*as part of* writing the real manifest below, not guessed at now.
+
+**Recommended shape, not started**:
+1. New `backend/tool-gateway/` package, following the exact physical-copy pattern §18/§19 already
+   used for `api`/`worker` — own `src/cys_core`, own `bootstrap`, own `pyproject.toml` with no
+   `fastapi`/`starlette`/`uvicorn` (already true) and a deliberate decision on point 2 below.
+2. Decide: take the `langchain-core` dependency for now (pragmatic, ships sooner, matches today's
+   registry) or wait on the registry-decoupling refactor above (cleaner, bigger, blocks this until
+   done). Not decided here — a real trade-off for the user, not an implementation detail.
+3. Its own `Dockerfile.tool-gateway` and `deploy/k8s/tool-gateway-deployment.yaml` + `Service` —
+   closing the gap the audit commit (`9ec4dcc`) already found: no manifest for `tool-gateway`
+   exists under any name today.
+4. Resolve the 8090-vs-8092 port mismatch above as part of writing that manifest.
+
+This section intentionally stops at "documented and scoped," not "implemented" — matching how §18
+was written a session before §19 executed it.
