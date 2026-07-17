@@ -12,11 +12,11 @@
    ```bash
    ./scripts/pytest_batches.sh --cov
    ```
-   `--domain-gate` only applies in `backend/contracts` — `cys_core/domain`
-   physically lives there; `worker`/`api` install it as an editable path
-   dependency, so the coverage `--include` filter can never find data under
-   their own `src/` tree.
-4. Domain only (fast, `backend/contracts` only):
+   `--domain-gate` applies in both `backend/worker` and `backend/api` — each
+   has its own physical copy of `cys_core/domain` (no shared package
+   between them, see docs/MICROSERVICES_SPLIT_PLAN.md §18), so run it once
+   per package.
+4. Domain only (fast, run once per package):
    ```bash
    USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q \
      --cov=cys_core/domain --cov-fail-under=100

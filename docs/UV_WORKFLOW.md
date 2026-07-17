@@ -38,6 +38,6 @@ export USE_MEMORY_FALLBACK=true
 |------|---------|
 | Import boundaries | `uv run python scripts/verify_import_boundaries.py` |
 | Architecture | `./scripts/pytest_batches.sh tests/architecture tests/arch` |
-| Domain coverage (`backend/contracts` only) | `./scripts/pytest_batches.sh --cov --domain-gate` |
+| Domain coverage (run per package — worker and api each own a physical copy) | `./scripts/pytest_batches.sh --cov --domain-gate` |
 
 See also [PYTHON_RUNTIME_HARDENING.md](PYTHON_RUNTIME_HARDENING.md) and [CATALOG_SEED.md](CATALOG_SEED.md).

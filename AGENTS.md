@@ -61,31 +61,36 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ## Платформенный код
 
-### Repo layout (`backend/{contracts,worker,api}/src/`)
+### Repo layout (`backend/{worker,api}/src/`)
 
-Python backend is split into three independently installable packages (see
-[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md)) — nothing
-except the queue message and Postgres rows may cross the api↔worker boundary:
+Python backend is split into two fully independent packages, each with its
+own physical copy of `cys_core.domain`/`bootstrap`/generic infra — no shared
+package between them (see
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18):
+nothing except the queue message and Postgres rows may cross the api↔worker
+boundary, and duplication between the two packages is accepted deliberately,
+not an oversight.
 
-- **`backend/contracts/`** (`egregore-contracts`) — domain models, port
-  interfaces, generic infra (Postgres/Kafka/Redis, catalog, authz). No
-  fastapi router code, no langchain/langgraph/deepagents/litellm.
 - **`backend/worker/`** (`egregore-worker`) — agent-execution runtime
   (LangChain/LangGraph today, swappable later), Tool Gateway, control-plane
-  daemons (critic/coordinator). Depends on `egregore-contracts` (editable
-  path dep).
+  daemons (critic/coordinator), plus its own copy of domain models, port
+  interfaces, and generic infra (Postgres/Kafka/Redis, catalog, authz).
 - **`backend/api/`** (`egregore-api`) — FastAPI ingress/CRUD, event routing,
-  HITL resume over HTTP. Depends on `egregore-contracts` only — no
-  langchain/langgraph/deepagents in this package's venv.
+  HITL resume over HTTP, plus its own copy of domain models/generic infra.
+  No fastapi-only exception here — this package must never contain or
+  depend on langchain/langgraph/deepagents/litellm (a base `langchain-core`
+  dependency is an accepted exception for port type hints only, see the
+  plan doc §1.1/§0.2).
 
-Import names are unchanged (`from cys_core...`) — each package installs its
-own subset under that same namespace. ASGI entrypoint: `interfaces/api/app.py`
-(in `backend/api/`). Operator UI is **`web_ui/`** (not `ui/`). Product seed
-**`backend/agents/`** (sibling of the three packages, not nested in any one
-of them). Docker/compose: **`deploy/`** (`Dockerfile.api`, `Dockerfile.worker`).
-The transitional `backend/shared/` pre-split monolith has been deleted
-(task #52's zero-fallback verification gate passed — contracts/worker/api
-each build, import, and test fully independently with zero fallback).
+Import names are unchanged (`from cys_core...`) — each package has its own
+physical `src/cys_core/...` tree, no editable path dependency between them.
+ASGI entrypoint: `interfaces/api/app.py` (in `backend/api/`). Operator UI is
+**`web_ui/`** (not `ui/`). Product seed **`backend/agents/`** (sibling of the
+two packages, not nested in either). Docker/compose: **`deploy/`**
+(`Dockerfile.api`, `Dockerfile.worker`). `backend/contracts/` (the earlier
+three-package shared layer) and the transitional `backend/shared/` pre-split
+monolith have both been deleted — worker and api build, import, and test
+fully independently with zero shared package.
 
 **Deployment invariant — worker pool must include a catch-all instance.**
 Job routing by persona is enforced client-side, not by the queue: Kafka's
@@ -201,31 +206,28 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 ## Тесты
 
 **Агентам: только батчами**, и **отдельно на каждый пакет** —
-`cd backend/{contracts,worker,api} && ./scripts/pytest_batches.sh`, не
-`uv run pytest` на весь `tests/` одним процессом. `backend/shared`
-(транзитный монолит) удалён — три пакета полностью независимы.
+`cd backend/{worker,api} && ./scripts/pytest_batches.sh`, не
+`uv run pytest` на весь `tests/` одним процессом. `backend/contracts`
+(промежуточный shared-слой) и `backend/shared` (транзитный монолит до него)
+оба удалены — два пакета полностью независимы, каждый со своей физической
+копией `cys_core.domain`.
 
 - **Точечно** после правок: только затронутые батчи, в том пакете, где лежит
   правка (см. `.cursor/rules/project-egregore-pytest-batches.mdc`).
-- **Полный прогон** — перед PR / после cross-cutting рефакторинга: все три
-  пакета, не только тот, что менялся (контракт между ними — импорт-граф, а
-  не файл; изменение в contracts может сломать worker/api).
+- **Полный прогон** — перед PR / после cross-cutting рефакторинга: оба
+  пакета, не только тот, что менялся — они физически независимы, но одна и
+  та же логическая правка (например, доменной модели) обычно нужна в обоих.
 
 Правило: `.cursor/rules/project-egregore-pytest-batches.mdc`.
 
 ```bash
-for pkg in contracts worker api; do
+for pkg in worker api; do
   (cd backend/$pkg && ./scripts/pytest_batches.sh)
   make -C backend/$pkg verify-architecture   # import boundaries + lint-imports + tests/architecture
+  make -C backend/$pkg domain-gate            # 100% on domain/runs, domain/catalog, domain/observability — own copy
 done
-# cys_core/domain physically lives only in backend/contracts/src — worker and
-# api install it as an editable path dependency, so the domain-gate coverage
-# check can never find data under their own src/ tree. contracts-only:
-make -C backend/contracts domain-gate        # 100% on domain/runs, domain/catalog, domain/observability
 checkov -d deploy --framework helm,dockerfile --config-file .checkov.yaml --soft-fail \
   --output sarif --output-file-path reports/checkov.sarif  # IaC gate smoke (from repo root)
-cd backend/contracts && ./scripts/pytest_batches.sh tests/domain tests/application   # выборочно
-cd backend/contracts && USE_MEMORY_FALLBACK=true STAGE=test uv run pytest tests/domain/ -q --cov=src/cys_core/domain --cov-fail-under=100
 ```
 
 Architecture debt inventory: [`docs/ARCHITECTURE_DEBT.md`](docs/ARCHITECTURE_DEBT.md). Regenerate table: `python3 scripts/arch_inventory.py`.
@@ -234,11 +236,11 @@ Architecture debt inventory: [`docs/ARCHITECTURE_DEBT.md`](docs/ARCHITECTURE_DEB
 
 Структура (батчи `pytest_batches.sh`, каждый пакет — свой `tests/`):
 
-- `tests/domain/` — domain entities, policies, observability types (в основном contracts)
-- `tests/application/` — use cases (contracts + worker + api, по границе)
+- `tests/domain/` — domain entities, policies, observability types (своя копия в worker и api)
+- `tests/application/` — use cases (worker + api, по границе)
 - `tests/api/` — FastAPI routes (api)
-- `tests/architecture/` — import boundaries, hexagon gates (все три, копия `verify_import_boundaries.py` на пакет)
-- `tests/bootstrap/` — container, product loader (все три; `bootstrap.container` — namespace-split, свой у worker/api)
+- `tests/architecture/` — import boundaries, hexagon gates (оба пакета, копия `verify_import_boundaries.py` на пакет)
+- `tests/bootstrap/` — container, product loader (оба; `bootstrap.container` — своя копия у worker/api)
 - `tests/connectors/` — Langfuse, external connectors
 - `tests/infrastructure/` — sandbox, queue, stores
 - `tests/ingress/` — event ingress (api)
@@ -246,7 +248,7 @@ Architecture debt inventory: [`docs/ARCHITECTURE_DEBT.md`](docs/ARCHITECTURE_DEB
 - `tests/registry/` — agents, tools (registry.tools/mcp_tools — worker-only)
 - `tests/adversarial/` — security abuse cases
 
-Coverage gate: **100%** на `cys_core/domain` (в основном contracts).
+Coverage gate: **100%** на `cys_core/domain` — отдельно в worker и в api, каждый на своей физической копии.
 
 ## Cursor Cloud specific instructions
 
@@ -256,7 +258,7 @@ Coverage gate: **100%** на `cys_core/domain` (в основном contracts).
 
 | Действие | Команда |
 |----------|---------|
-| Тесты | `cd backend/{contracts,worker,api} && ./scripts/pytest_batches.sh` (все три) |
+| Тесты | `cd backend/{worker,api} && ./scripts/pytest_batches.sh` (оба) |
 | Smoke | `cd backend/api && USE_MEMORY_FALLBACK=true STAGE=test uv run egregore info` |
 | Event flow | `cd backend/api && uv run egregore ingest -t siem.alert -p '{"alert":"test"}'` then `cd backend/worker && uv run egregore worker --once` |
 

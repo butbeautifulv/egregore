@@ -1,10 +1,11 @@
 # egregore-api
 
-FastAPI CRUD + event ingress. Depends on `egregore-contracts` for domain
-models, port interfaces, and generic infra clients — never on
-`egregore-worker`. See `docs/MICROSERVICES_SPLIT_PLAN.md` and the task #38
-plan for why: the queue message and Postgres rows are the only things
-allowed to cross the api/worker boundary.
+FastAPI CRUD + event ingress. Fully self-contained — its own physical copy
+of domain models, port interfaces, and generic infra clients (no shared
+package with `egregore-worker`, see `docs/MICROSERVICES_SPLIT_PLAN.md`
+§18). See the task #38 plan for why the packages are independent: the
+queue message and Postgres rows are the only things allowed to cross the
+api/worker boundary.
 
 No exceptions: meta-LLM engagement planning needs the real agent runtime
 (`catalog_planner_strategy.py`'s `self.runtime.arun(...)`), so this package

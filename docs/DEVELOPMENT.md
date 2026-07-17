@@ -216,13 +216,13 @@ docker compose ps postgres redis
 ## CI
 
 `.github/workflows/ci.yml` is superseded (see its own header comment) —
-`release-gate.yml` is the live gate, matrixed over `backend/{contracts,worker,api}`.
+`release-gate.yml` is the live gate, matrixed over `backend/{worker,api}`.
 Local equivalents, run per package or from repo root:
 
 ```bash
 cd backend/<pkg> && ./scripts/pytest_batches.sh   # unit-tests job
-make verify-architecture                          # arch-lint job (all 3 packages)
-make domain-gate                                   # domain-coverage job (backend/contracts only)
+make verify-architecture                          # arch-lint job (both packages)
+make domain-gate                                   # domain-coverage job (both packages, own copy each)
 cd backend/<pkg> && uv run ruff check src tests && uv run ty check src   # lint job
 ```
 

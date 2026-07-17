@@ -1927,3 +1927,73 @@ shared package between them at all** — not even the pure-data-model/port-inter
   should re-run this plan's own §7 "reusable package-split checklist" in reverse (merge instead
   of extract) and re-verify the full local/CI test and Docker-build/Trivy-scan matrix (§17) after
   the merge, the same way each phase in §5/§14/§15 was verified before moving on.
+
+## 19. §18 implemented (2026-07-17): `contracts` retired, two independent packages
+
+Executed in the next session, explicitly re-authorized ("so now you should be doing one entry
+point. and contracts folder removal by splitting logic into two services or duplicating if
+needed... api doesn't have any langchain or etc"). Mechanics, in order:
+
+1. **Physical merge, not selective port**: `cp -rn backend/contracts/src/{cys_core,bootstrap,
+   interfaces}` into both `backend/worker/src` and `backend/api/src` — zero filename collisions
+   (428 files each, verified via `comm` before copying). Each package's `pyproject.toml` absorbed
+   `contracts`'s dependency list (psycopg, redis, aiokafka, opentelemetry-*, openfga-sdk,
+   prometheus-client, pyjwt, pydantic-settings, plus the accepted `langchain-core`/`langfuse`
+   exceptions from §1.1/§0.2) and dropped the `[tool.uv.sources] egregore-contracts` path
+   dependency entirely. `uv lock`/`uv sync` clean for both on the first try.
+2. **Real regression, caught before push**: the first `git rm -r backend/contracts` deleted
+   `tests/` too, without duplicating it first — this would have silently dropped the domain-layer
+   test suite (~99.88% coverage per §16.10) from both packages with no error, since nothing
+   references those tests by path. Caught by actually running the full suite immediately after
+   (not by review), fixed by `git checkout HEAD -- backend/contracts` to recover, then the same
+   `cp -rn` merge pattern applied to `tests/` (mostly clean; the handful of real collisions —
+   `conftest.py`, `__init__.py`, `architecture/test_*.py` — were correctly left as each package's
+   own pre-existing version, not overwritten). Two real fixture gaps found this way:
+   `tests/adversarial/conftest.py`'s `sanitizer`/`guardrails`/`agent_bus` fixtures existed in
+   contracts' copy but not worker's/api's own pre-existing adversarial conftest — merged by hand
+   rather than picking one file over the other. Also added `../..` to both packages'
+   `pythonpath` (contracts had it, worker/api didn't) so `tests/observability`/`tests/scripts`
+   can still reach repo-root `scripts/*.py`.
+3. **Process mistake, also caught and fixed**: after the `git checkout` recovery in step 2, the
+   subsequent commit was made without re-running `git rm -r backend/contracts` — it stayed fully
+   tracked (656 files) despite neither package depending on it anymore. `ls backend/` plus a
+   clean `git status` looked fine at a glance; only `git ls-files backend/contracts/ | wc -l`
+   (656, not 0) caught it. Fixed in a dedicated follow-up commit. Lesson applied going forward
+   in this session: verify a deletion with `git ls-files`, not `ls` + `git status` alone.
+4. **Domain minimization, per explicit user instruction** ("we need to minimize copied inside
+   domain so there won't be any unwanted code"): wrote a small import-graph reachability script
+   (roots: `interfaces/cli/main.py` + every test file, BFS over `ast`-parsed imports including
+   relative-import resolution) and ran it per package. Every flagged-unused file was
+   double-checked with an exact `from X import Y` grep before deletion — not trusted from the
+   graph alone, since the graph can't see string-based/dynamic imports. Confirmed-dead and
+   removed: `domain/catalog/eval_quality.py` and `domain/datasources/verifier.py` (zero
+   references, both packages); worker-only: `domain/quality/models.py`,
+   `domain/work_order/models.py` + their two exclusive dead wrappers
+   (`application/ports/work_order.py`, `infrastructure/work_order/adapter.py` — work orders are
+   an api/ingress concept, never a worker one); api-only: `domain/datasources/{authz,
+   eval_outcome,governance,schema_models,tool_metadata}.py`, `domain/tools/exceptions.py` +
+   their dead wrapper pair (`application/datasources/{schema_exporter,model_family}.py` — an
+   unwired schema-export feature). Deliberately **not** deleted: a broader unused list in
+   `application`/`infrastructure` (Keycloak `idp_sync.py`, budget tracking, `reflexion`/
+   `execution_backend` ports, a duplicate/superseded pair of Tool Gateway adapter files) that
+   looks like legitimate not-yet-wired feature surface rather than leftover cruft — removing
+   those without individual verification risks deleting real capability, not just duplication.
+   Flagged here for a dedicated follow-up pass, not actioned.
+5. **Task #61 done alongside** (already vetted in §16.9, not a new decision): `POST
+   /v1/engagements` now delegates to `StartWorkOrder` instead of the thinner `StartEngagement` —
+   exactly one real implementation underneath both routes, URL and response shape unchanged for
+   any existing caller.
+6. **Verification, matching §5/§14/§15's bar**: full test suites green for both packages after
+   every structural change (not just at the end) — worker 26/26 batches, api 22/22 batches, 0
+   failed, repeated after the domain pruning and again after the entry-point unification.
+   `make verify-architecture` and `make domain-gate` green from repo root for both packages.
+   Both Docker images (`deploy/Dockerfile.api`, `deploy/Dockerfile.worker`) built clean with the
+   `backend/contracts` `COPY` layers removed; both containers' CLI entrypoint resolved every
+   import successfully (failed only on a production Redis-password validation with no real env
+   config — the correct failure mode, not an import error). `api/src` confirmed to contain no
+   `runtime`/`llm`/`middleware` directories and no `langchain`(non-core)/`langgraph`/
+   `deepagents`/`litellm` imports anywhere — the hard constraint from §0/§18 holds after the
+   merge. CI workflows (`release-gate.yml`, `job-linter-security.yml`, `codeql-config.yml`,
+   `.gitleaks.toml`) all reduced from the `[contracts, worker, api]` matrix to `[worker, api]`;
+   `domain-coverage` now runs per package against its own physical `cys_core/domain` copy instead
+   of the single `backend/contracts` job it used to be.

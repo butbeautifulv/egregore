@@ -36,12 +36,12 @@ Markdown SSOT: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/OBSERVABILI
 
 ## Быстрый старт
 
-Backend is split into three packages — `contracts` (shared domain/infra),
-`worker` (agent-execution runtime), `api` (FastAPI ingress). See
-[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md).
+Backend is split into two fully independent packages — `worker`
+(agent-execution runtime) and `api` (FastAPI ingress), each with its own
+physical copy of domain models/generic infra, no shared package between
+them. See [docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md).
 
 ```bash
-cd backend/contracts && uv sync
 cd backend/worker && uv sync
 cd backend/api && uv sync
 
@@ -102,9 +102,8 @@ cd backend/api && uv run egregore session -g "Assess CI/CD pipeline risks"
 cd backend/api && uv run egregore serve --port 8080
 
 # Tests (low memory — one pytest process per tests/<dir>/, run per package)
-cd backend/contracts && ./scripts/pytest_batches.sh --cov --domain-gate  # only package with domain-gate; see below
-cd backend/worker && ./scripts/pytest_batches.sh --cov
-cd backend/api && ./scripts/pytest_batches.sh --cov
+cd backend/worker && ./scripts/pytest_batches.sh --cov --domain-gate  # own copy of cys_core/domain
+cd backend/api && ./scripts/pytest_batches.sh --cov --domain-gate     # own copy of cys_core/domain
 ```
 
 ## CLI
@@ -154,26 +153,29 @@ cd backend/api && ./scripts/pytest_batches.sh --cov
 ```
 egregore/
 ├── backend/
-│   ├── contracts/          # egregore-contracts: domain, ports, generic infra —
-│   │                       #   no fastapi routes, no langchain/langgraph/deepagents/litellm
-│   │   ├── src/            # cys_core (domain/application/infrastructure), bootstrap
-│   │   └── scripts/        # pytest_batches, verify_import_boundaries, …
 │   ├── worker/              # egregore-worker: agent-execution runtime (LangChain/LangGraph),
-│   │   │                    #   Tool Gateway, critic/coordinator daemons
-│   │   ├── src/             # cys_core.{runtime,llm,registry.tools,...}, interfaces.worker/control_plane/gateways
+│   │   │                    #   Tool Gateway, critic/coordinator daemons, own copy of
+│   │   │                    #   cys_core (domain/application/infrastructure), bootstrap
+│   │   ├── src/             # cys_core.{domain,runtime,llm,registry.tools,...}, interfaces.worker/control_plane/gateways
+│   │   └── scripts/         # pytest_batches, verify_import_boundaries, …
+│   ├── api/                 # egregore-api: FastAPI ingress/CRUD, event routing, HITL resume,
+│   │   │                    #   own copy of cys_core (domain/application/infrastructure), bootstrap —
+│   │   │                    #   no fastapi-only exception: no langchain/langgraph/deepagents/litellm
+│   │   ├── src/              # interfaces.api, cys_core.{domain,application} use_cases (CRUD side)
 │   │   └── scripts/
-│   ├── api/                 # egregore-api: FastAPI ingress/CRUD, event routing, HITL resume
-│   │   ├── src/              # interfaces.api, cys_core.application use_cases (CRUD side)
-│   │   └── scripts/
-│   ├── agents/              # Product personas, rules, plans, skills — sibling of the 3 packages
-│   └── shared/               # transitional pre-split monolith, retired after task #52
+│   └── agents/              # Product personas, rules, plans, skills — sibling of both packages
 ├── deploy/                 # Dockerfile.api, Dockerfile.worker, compose, k8s, helm, grafana
 ├── web_ui/                 # Operator console (Next.js)
 ├── tui/                    # Operator TUI (Go Bubble Tea)
 ├── docs/
-├── Makefile                # thin dispatcher (Python → backend/{contracts,worker,api}/, UI → web_ui/)
+├── Makefile                # thin dispatcher (Python → backend/{worker,api}/, UI → web_ui/)
 └── scripts/                # full-stack dev wrappers, security gates
 ```
+
+`backend/contracts/` (an earlier shared domain/ports/infra package) and
+`backend/shared/` (the pre-split monolith before that) have both been
+retired — worker and api are fully independent, see
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18.
 
 ## Роли агентов
 
@@ -209,9 +211,8 @@ egregore/
 ## Тестирование
 
 ```bash
-cd backend/contracts && ./scripts/pytest_batches.sh --cov --domain-gate  # cys_core/domain живёт только тут
-cd backend/worker && ./scripts/pytest_batches.sh --cov
-cd backend/api && ./scripts/pytest_batches.sh --cov
+cd backend/worker && ./scripts/pytest_batches.sh --cov --domain-gate  # своя копия cys_core/domain
+cd backend/api && ./scripts/pytest_batches.sh --cov --domain-gate     # своя копия cys_core/domain
 ```
 
 ## Документация
