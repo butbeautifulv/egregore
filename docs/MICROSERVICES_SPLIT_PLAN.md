@@ -4202,3 +4202,95 @@ justify the seam, doesn't meet this session's own bar for "real, needed problem"
 Eisenhower: **Not urgent, not important right now** — reclassified down from §22.6's original
 "open question" framing now that the premise (agent_entrypoint.py as a live gap) is corrected. Revisit
 if/when a second `AgentRunner` implementation is actually being built.
+
+## 35. Real design progress on §22.13's hardest unresolved piece: HITL pause/resume protocol
+
+Ask, continued: **"go on with separation... long run."** With §22.6's package-extraction question
+resolved (§34: not yet justified), the one genuinely unresolved piece of the dispatcher/agent_runtime
+separation left in §22.11's placement table is "HITL pause/resume (actually blocking for a human)" —
+still `worker`, still `langgraph interrupt()`-coupled, marked **Unresolved** at the time §22.11 was
+written. Went deep enough this round to find out *why* it's hard, precisely, rather than leaving it
+at "needs real design" — that phrase from §22.13 turned out to be exactly right, and here's the
+actual shape of the problem.
+
+### 35.1. Why this isn't a mechanical "move the check" like scope/rate-limit were (§23)
+
+Traced the current call chain in `security_middleware.py`'s `wrap_tool_call`:
+
+```python
+hitl_block = self._await_hitl_if_needed(request)   # classify_tool_risk_pure() runs HERE
+if hitl_block is not None:
+    return hitl_block
+result = handler(request)                           # tool-gateway call happens HERE, after
+```
+
+`_await_hitl_if_needed` calls langgraph's `interrupt()` — which **suspends the entire graph
+execution mid-stack-frame**, checkpoints state, and returns control to the caller; the tool is
+never invoked in this call at all. Resumption happens later, via a completely different code path
+(`ResumeHitlJob`/`_execute_resume` in `run_worker_job.py`) triggered by a human's HTTP decision.
+
+§22.11's proposed direction — "tool-gateway returns a `pending_approval` status instead of a
+result, and the runtime/dispatcher must poll or subscribe for the eventual decision" — sounds like
+a drop-in replacement, but the risk *decision* currently has to happen **before** the network call
+to tool-gateway even exists, because `interrupt()` must run synchronously in the tool node's own
+stack frame, not in a follow-up step after some async response arrives. Moving the decision to
+tool-gateway (§22.11's own recommendation, and the right one per §22.9's zero-trust chokepoint
+thesis) means the ordering has to change too — and that has two structurally different answers,
+not one:
+
+### 35.2. Two real designs, worked through
+
+**A. Two-phase: preview, then execute.** Worker calls a new tool-gateway endpoint (or a flag on
+the existing one) that classifies risk *without* invoking the tool. If it says "needs approval,"
+worker calls `interrupt()` locally exactly as today, then on approval calls the *same* endpoint for
+real. Low-risk calls: one round trip (a cheap local risk check first, so most calls don't even hit
+the network for this). Clean protocol, but needs a new "classify-only" mode on tool-gateway's
+`/invoke` (or a separate endpoint) that all three packages' copies of `invoke_tool.py` must support
+identically.
+
+**B. Refuse-then-retry with an approval token.** Worker just calls tool-gateway's `/invoke`
+normally. If tool-gateway's own risk classification (now living in `InvokeTool`, next to the
+already-active `ToolChainPolicy` check per §23's precedent) says "too risky, not executed," it
+returns `ToolInvokeResult(success=False, hitl_required=True, risk_level=..., approval_id=...)`
+**without calling the tool adapter at all** — same shape as `_datasource_deny_response`/scope's
+`ScopeViolation`, a refusal, not an error. `wrap_tool_call`'s existing `result = handler(request)`
+call (already positioned *after* nothing, i.e. it's the natural place) checks the result for
+`hitl_required`, and *only then* calls `interrupt()` — after the network call, not before. On
+resume/approval, the retry call carries `approval_id` in `ToolInvokeCommand`, and `InvokeTool`
+skips its own risk check when a valid, matching `approval_id` is present (mirroring
+`ResumeHitlJob.execute`'s existing `params_hash` bypass-guard pattern, §resume_hitl_job.py — reuse
+that exact anti-tampering check, don't invent a new one). One round trip for low-risk calls
+(the common case), two only for the ones that actually need a human — no new endpoint, fits
+`InvokeTool`'s existing single-call shape.
+
+**Recommendation: B.** No new protocol surface, reuses `ResumeHitlJob`'s existing
+approval-token-validation pattern instead of inventing a second one, and the "classify risk, maybe
+refuse" behavior is exactly the same shape §23 already proved out for scope/rate-limit
+(`check_scope`/`check_rate_limit` callables on `InvokeTool`, default no-op, shadow-mode-capable via
+the same `off|shadow|enforce` pattern already established for `TOOL_SCOPE_MODE`/`AUTHZ_MODE`).
+
+### 35.3. Why this isn't implemented this round
+
+This is the human-approval gate for high-risk tool calls — the specific security boundary meant to
+stop an adversarially-influenced agent from executing dangerous actions unsupervised. Implementing
+option B touches: `ToolInvokeCommand`/`ToolInvokeResult` (all three packages), `InvokeTool`'s
+`_execute_inner`, a new `check_hitl` callable + its `tools_container.py` wiring, `SecurityMiddleware`
+'s `wrap_tool_call`/`awrap_tool_call` (both sync and async paths), and the approval-token retry
+logic on the worker side that doesn't exist yet in any form. None of it can be verified end-to-end
+in this environment — there's no live LLM, no real agent run, no way to actually trigger a tool
+call, get refused, resume via the HTTP approval endpoint, and confirm the retry executes correctly,
+short of a live integration environment this session doesn't have access to. Shipping an untested
+change to *this specific* boundary on the strength of unit tests alone is a materially different
+risk than the sanitization/scope/rate-limit work done earlier — those degrade to "logged but not
+blocking" (shadow mode) on a mistake; getting HITL wrong either blocks legitimate operator work or,
+worse, lets a high-risk action through unapproved.
+
+Recorded as a fully-specified, ready-to-implement design instead of either rushing it or leaving
+§22.13's "needs real design" note unaddressed. Whoever picks this up next has the actual shape of
+the problem, the two real options, and a recommendation with reasoning — not just "unresolved."
+
+Eisenhower: **Important, not urgent** — same as §22.13's original placement, now backed by an
+actual design rather than an open question. The existing in-process HITL flow works correctly
+today for the one live runtime; nothing is broken. This matters once a second runtime needs the
+same guarantee, or once tool-gateway's zero-trust chokepoint model (§22.9) needs to be complete
+rather than partial.
