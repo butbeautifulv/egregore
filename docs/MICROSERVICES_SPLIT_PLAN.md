@@ -5230,3 +5230,13 @@ question (same shape as model-gateway's own not-yet-wired status), not a doc-acc
 confirmed `Makefile`'s dispatcher line ("Python → backend/{worker,api,tool-gateway}/") is *not* stale
 — `model-gateway` has no `Makefile` of its own yet, so it genuinely isn't part of that pattern, and
 the README/AGENTS.md text describing it was left unchanged accordingly.
+
+One more found while sweeping doc-by-doc rather than stopping at two: `docs/DEVELOPMENT.md`'s CI
+section flatly said "`release-gate.yml` is the live gate, matrixed over `backend/{worker,api,
+tool-gateway}`" — true before §49, misleading after (three jobs now cover four packages, the rest
+still cover three). Rewrote to state the actual per-job split and point at
+`docs/CI_CD_KNOWN_GAPS.md` for specifics instead of re-deriving them here, and fixed two smaller
+"(both packages)" comments in the same section that were already stale before this session's
+`model-gateway` work (they undercounted `tool-gateway`, added in §21.6) — not this session's mistake,
+but caught in the same pass and worth fixing while already here rather than leaving a second,
+adjacent staleness for the next person to trip over.

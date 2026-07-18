@@ -216,14 +216,19 @@ docker compose ps postgres redis
 ## CI
 
 `.github/workflows/ci.yml` is superseded (see its own header comment) —
-`release-gate.yml` is the live gate, matrixed over
-`backend/{worker,api,tool-gateway}`.
+`release-gate.yml` is the live gate. Matrix coverage isn't uniform across
+jobs: `lint`/`unit-tests`/`linter-security` run over all four packages
+(`worker`/`api`/`tool-gateway`/`model-gateway`, §49); `arch-lint`/
+`domain-coverage`/`adversarial` only run over the first three —
+`model-gateway` is missing the prerequisite files for those (no
+import-linter config, no `tests/domain/`, no `tests/adversarial/`). See
+`docs/CI_CD_KNOWN_GAPS.md` for the exact per-job breakdown.
 Local equivalents, run per package or from repo root:
 
 ```bash
 cd backend/<pkg> && ./scripts/pytest_batches.sh   # unit-tests job
-make verify-architecture                          # arch-lint job (both packages)
-make domain-gate                                   # domain-coverage job (both packages, own copy each)
+make verify-architecture                          # arch-lint job (worker/api/tool-gateway)
+make domain-gate                                   # domain-coverage job (worker/api/tool-gateway, own copy each)
 cd backend/<pkg> && uv run ruff check src tests && uv run ty check src   # lint job
 ```
 
