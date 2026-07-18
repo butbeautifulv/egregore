@@ -4796,3 +4796,35 @@ now-invalid suppression in `worker`'s copy — removed there only, kept in `tool
 A reminder for future sessions in this "duplicate everything" codebase (§18): a fix landed in one
 package's copy of a file doesn't mean every package's copy got it — worth an explicit grep for other
 copies before calling a fix done, not just after.
+
+## 44. Two remaining §10/§11 items verified genuinely absent, correctly deferred (not code bugs)
+
+Checked the last two open items in §10/§11 that hadn't been independently verified yet this pass.
+Both are confirmed real gaps, and both are new-mechanism/infra work rather than a narrowly-scoped
+fix to something already half-built — the shape that's been safe to implement directly all session
+(§37/§39/§40/§41/§43 were all "a check exists but is silently defeated"). These two are "nothing
+exists yet," which needs a design decision, not a same-session patch.
+
+- **§10.1/§10.2 — schema/message-type pinning by hash with rug-pull alerting.** `grep`ed the whole
+  tree for anything resembling this (`schema_hash`, `schema_sha256`, `rug_pull`, tool-schema pinning)
+  — nothing exists for either inter-agent bus message types (`agent_bus.py`'s static
+  `_allowed_types()`) or MCP tool schemas (`tool/policy.py`/`tool/mappers.py`). Confirmed absent, not
+  just unverified. Building this needs real decisions first: what exactly counts as "the schema" to
+  pin (a tool's full JSON schema? just its name+version? the whole `ToolDefinition`?), where pinned
+  hashes live (a new Postgres table vs. a checked-in baseline file), what "alert" means in practice
+  (block the call, or just a metric/log line — same off/shadow/enforce question as every other
+  control added this session), and critically, how a *legitimate* persona/tool update re-pins its
+  hash without that update itself looking like a rug-pull. Not attempted.
+- **§11.6 — separate least-privilege read-only Postgres role.** Confirmed: every package's
+  `bootstrap/settings.py` has exactly one `postgres_user`, used for both reads and writes everywhere
+  (episodic memory reads, RAG-adjacent status queries, job-store reads, and all writes) — no
+  read-only role, connection string, or second pool exists anywhere. Deliberately not implemented:
+  adding a `postgres_readonly_user` settings field alone would be a no-op (or worse, false
+  reassurance) without an actual privilege-separated role created on the live Postgres instance —
+  `CREATE ROLE ... WITH LOGIN; GRANT SELECT ON ...` is a real database/infra action against a live
+  system, not something to run unprompted, consistent with how this session has treated every other
+  live-infra-provisioning item (§10.9's secrets manager, §41's cosign signing).
+
+Eisenhower: both **important, not urgent** — real defense-in-depth gaps, neither is a live
+production incident today, and both need a decision from whoever owns the infra/schema-governance
+tradeoffs before an engineering agent should build them.
