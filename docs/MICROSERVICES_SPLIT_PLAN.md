@@ -5177,3 +5177,15 @@ one that happened to be found first.
 Run `29657035098` (dispatched for commit `ff74ecc`) completed: `{"conclusion":"success"}`, and specifically
 `sast / codeql` → `success` — model-gateway's security code is now actually in CodeQL's scan scope, not
 just configured to be. Zero jobs failed across the full run (checked, not assumed).
+
+### 49.5. §49.3's linter-security fix confirmed green in real CI — this round's audit sweep is closed out
+
+Run `29657184457` (dispatched for commit `f9f9828`) completed: `{"conclusion":"success"}`, zero failed
+jobs. Checked the three `model-gateway` legs specifically: `lint (model-gateway)` → `success`,
+`unit-tests (model-gateway)` → `success`, `linter-security / linter-security (model-gateway)` →
+`success`. All four commits from this audit round (§47-§49.3) are pushed to
+`origin/feature/microservice-refactoring` and independently verified green in real CI, not just
+locally — every `[worker, api, tool-gateway]`-shaped gap found this round (`lint`, `unit-tests`,
+CodeQL paths, `linter-security`) is now closed and confirmed working, and the ones deliberately left
+open (`arch-lint`, `domain-coverage`, `adversarial`, container build/scan/sign) are each documented with
+the specific missing prerequisite, not left as a vague "todo."
