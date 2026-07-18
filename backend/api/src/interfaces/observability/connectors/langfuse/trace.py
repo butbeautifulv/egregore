@@ -49,25 +49,6 @@ def reset_langfuse_client_cache() -> None:
 class LangfuseTraceBackend:
     """Trace backend — single owner of Langfuse SDK lifecycle."""
 
-    def get_callback_handler(self) -> Any | None:
-        # NOTE: this is on the hot path — called once per LLM invocation via
-        # model_connector.callbacks(). Must stay non-blocking: _ensure_langfuse_client()
-        # is cached and returns immediately. A previous version called a retry wrapper
-        # that reset the cache and did a blocking time.sleep() (up to 1.5s) on every
-        # single call for as long as Langfuse stayed unreachable — that stalled the
-        # asyncio event loop on every LLM turn during any Langfuse hiccup. Use
-        # reset_langfuse_client_cache() from a periodic health check if a retry is
-        # ever needed, not from this call path.
-        if not _ensure_langfuse_client():
-            return None
-        try:
-            from langfuse.langchain import CallbackHandler
-
-            return CallbackHandler()
-        except Exception:
-            logger.warning("Failed to create Langfuse CallbackHandler", exc_info=True)
-            return None
-
     def start_span(self, ctx) -> str:
         if not _ensure_langfuse_client():
             return ctx.trace_id or ctx.span_name
@@ -149,14 +130,6 @@ class CompositeTraceBackend:
 
     def __init__(self, *backends) -> None:
         self._backends = backends
-
-    def get_callback_handler(self) -> Any | None:
-        # Only ever returns a single handler: OtelTraceBackend.get_callback_handler()
-        # always returns None, so LangfuseTraceBackend is the only sink that can
-        # produce one here. No langchain_core CallbackManager merge needed.
-        handlers = [backend.get_callback_handler() for backend in self._backends]
-        handlers = [h for h in handlers if h is not None]
-        return handlers[0] if handlers else None
 
     def start_span(self, ctx) -> str:
         ids = [backend.start_span(ctx) for backend in self._backends]

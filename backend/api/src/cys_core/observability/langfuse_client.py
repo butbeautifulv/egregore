@@ -20,11 +20,6 @@ def _trace_backend():
     return _trace_backend_factory()
 
 
-def get_langfuse_callback_handler() -> Any | None:
-    """Thin shim — delegates to TraceBackendPort."""
-    return _trace_backend().get_callback_handler()
-
-
 def flush_langfuse() -> None:
     _trace_backend().flush()
 

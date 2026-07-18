@@ -20,7 +20,6 @@ from cys_core.infrastructure.observability.backends import (
 @pytest.mark.unit
 def test_noop_trace_backend():
     backend = NoopTraceBackend()
-    assert backend.get_callback_handler() is None
     assert backend.start_span(TraceContext(span_name="test")) == ""
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from cys_core.domain.observability.models import TraceContext
 from interfaces.observability.connectors.langfuse.trace import (
     LangfuseTraceBackend,
     reset_langfuse_client_cache,
@@ -20,4 +21,5 @@ def test_langfuse_trace_noop_when_disabled(monkeypatch):
     monkeypatch.setattr(settings, "langfuse_api_key", "")
     reset_langfuse_client_cache()
     backend = LangfuseTraceBackend()
-    assert backend.get_callback_handler() is None
+    ctx = TraceContext(span_name="test-span")
+    assert backend.start_span(ctx) == ctx.span_name

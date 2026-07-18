@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from bootstrap.settings import settings
 from cys_core.domain.observability.models import TraceContext
@@ -27,9 +26,6 @@ class OtelTraceBackend:
                 self._tracer = trace.get_tracer("egregore")
             except Exception:
                 logger.warning("OTel trace backend unavailable", exc_info=True)
-
-    def get_callback_handler(self) -> Any | None:
-        return None
 
     def start_span(self, ctx: TraceContext) -> str:
         # OTEL spans are created via observability_span in WorkerTracingAdapter.

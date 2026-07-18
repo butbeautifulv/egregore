@@ -2710,3 +2710,63 @@ already correct; docker-compose specifically was the missed surface.
 - **Not urgent, not important (explicitly not done)**: chasing hypothetical gaps with no concrete
   evidence — this section only acted on things verified empirically (compose config resolution,
   helm lint/template output), not speculative "might also be missing" items.
+
+## 21.8. Standing audit, second finding: `api` still had a dead LangChain-callback-handler
+## bridge — the orphaned other half of §21.1's `ModelConnector` deletion
+
+§21.1 deleted `ModelConnector`/`ToolProviderPort` from `api` as dead LangChain-shaped ports. What
+that pass missed: the *producer* side of the same callback-handler concept — code whose entire
+purpose was to hand a `langchain.callbacks.BaseCallbackHandler`-compatible object to whatever
+consumed `ModelConnector.callbacks()`. With the consumer gone, the producer chain became dead too,
+but nothing forced re-checking it at the time.
+
+### 21.8.1. What was found (traced exhaustively before touching anything, per this session's own
+### standard — see §21's opening: the user directly asked "are u sure these classes are dead??"
+### the first time similar code was proposed for deletion)
+
+`grep`-traced every caller of the chain, confirmed zero real (non-test) consumers anywhere in
+`backend/api/src`:
+
+- `cys_core/application/ports/trace_callbacks.py` — `TraceCallbackProvider`/
+  `configure_trace_callbacks`/`get_trace_callbacks()`. The write side (`configure_trace_callbacks`)
+  was called once, from `bootstrap/container.py`'s `wire_agent_definitions_loader()`. The read side
+  (`get_trace_callbacks()` — the only way anything could ever *use* a registered callback) had
+  **zero callers** anywhere in `api`.
+- `cys_core/observability/langfuse_client.py::get_langfuse_callback_handler()` — zero production
+  callers; only its own unit test (`test_langfuse_client.py`) exercised the delegation mechanics.
+- `TraceBackendPort.get_callback_handler()` and its four implementations (`NoopTraceBackend`,
+  `OtelTraceBackend` — always returned `None`, per §21.1's own finding — `LangfuseTraceBackend`,
+  `CompositeTraceBackend`) — each only reachable through the dead chain above.
+- The actual LangChain touchpoint: `LangfuseTraceBackend.get_callback_handler()` did
+  `from langfuse.langchain import CallbackHandler` — `langfuse`'s own bundled LangChain
+  integration submodule. Confirmed empirically this **always raises `ModuleNotFoundError`** in
+  `api`'s real venv now that `langchain-core` isn't installed there (`uv run python -c "import
+  langfuse.langchain"` → `Please install langchain to use the Langfuse langchain integration`) —
+  caught by a bare `except Exception`, logged as a warning, degrading to `None`. Not a crash, but
+  a live LangChain dependency edge still wired into `api`'s observability layer, contradicting the
+  original ask ("fully remove langchain from api, even the core") at the letter even though the
+  `langchain-core` package itself was already gone from `pyproject.toml`.
+
+### 21.8.2. Fix
+
+Deleted the whole dead vertical: `trace_callbacks.py` (file), the `_trace_callbacks`
+closure + `configure_trace_callbacks` call + import in `bootstrap/container.py`, and
+`get_callback_handler()` from the `TraceBackendPort` Protocol and all four implementations
+(this also deletes the `from langfuse.langchain import CallbackHandler` import — the actual
+LangChain touchpoint — entirely). Deleted `get_langfuse_callback_handler()` from
+`langfuse_client.py`. Updated the four test files that referenced the removed surface
+(`test_langfuse_client.py`, `test_observability_backends.py`, `test_langfuse_trace.py` —
+repurposed to assert `LangfuseTraceBackend.start_span()`'s existing noop-when-disabled behavior
+instead of losing coverage outright, `recording_trace_backend.py` test double). `start_span`/
+`end_span`/`flush`/`shutdown` — the parts of `TraceBackendPort` with real consumers (OTel spans,
+Langfuse spans) — were untouched.
+
+### 21.8.3. Verified
+
+`ruff check src tests` clean; `ty check src` — all checks passed; `./scripts/pytest_batches.sh`
+(with `ALL_PROXY`/`all_proxy` unset — ambient sandbox env vars, same pre-existing environmental
+issue noted in §21.5/§21.6.6, confirmed unrelated by reproducing it identically before this
+change) — **22/22 batches, 0 failed**; `make verify-architecture` — 456 files, 1619 dependencies,
+3/3 contracts kept; `uv tree | grep -i langchain` — zero hits (was already zero before this
+change; this section closes a *reachable-code* gap, not a *dependency-tree* gap — the package was
+already absent, only the dead import path calling into it remained).

@@ -12,9 +12,6 @@ class RecordingTraceBackend:
     def __init__(self) -> None:
         self.spans: list[tuple[str, dict[str, Any]]] = []
 
-    def get_callback_handler(self) -> Any | None:
-        return None
-
     def start_span(self, ctx: TraceContext) -> str:
         span_id = f"span-{len(self.spans)}"
         self.spans.append((ctx.span_name, dict(ctx.attributes)))
