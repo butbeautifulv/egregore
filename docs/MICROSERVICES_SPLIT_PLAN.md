@@ -5120,3 +5120,12 @@ highest-value gap (previously: literally zero automated checks of any kind). `ar
 `adversarial`/container-build coverage remain real, confirmed gaps — flagged here rather than actioned,
 since each needs new infrastructure/files, not a mechanical matrix edit, consistent with how this session
 treats the difference between "narrow, verified, same-session-safe" and "needs its own scoped pass."
+
+### 49.1. Confirmed green in real CI, including the new legs specifically
+
+Dispatched Release Gate against the §49 commit (`5a456c6`) — run `29654184510`. Checked the two new
+matrix legs specifically rather than just the aggregate: `unit-tests (model-gateway)` → `success`,
+`lint (model-gateway)` → `success`. Full run: every job (40 total, `dast`/`sign`/`sec-func-tests`/
+`deploy-preprod`/`iast-preprod`/`osa / dependency-review` correctly `skipped` as main-only/PR-only gates)
+completed successfully, `release-gate` aggregate → `success`,
+`{"conclusion":"success","status":"completed"}`. The wiring works end-to-end, not just in theory.
