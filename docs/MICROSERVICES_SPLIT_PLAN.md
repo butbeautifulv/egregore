@@ -5171,3 +5171,9 @@ prerequisite files, per §49), and the main-only `build`/`sbom`/`container-scan`
 `Dockerfile.model-gateway`). This closes out the "same class of gap" sweep for this round — every
 `[worker, api, tool-gateway]` occurrence in `.github/` has now been individually checked, not just the
 one that happened to be found first.
+
+### 49.4. §49.2's CodeQL fix confirmed green in real CI
+
+Run `29657035098` (dispatched for commit `ff74ecc`) completed: `{"conclusion":"success"}`, and specifically
+`sast / codeql` → `success` — model-gateway's security code is now actually in CodeQL's scan scope, not
+just configured to be. Zero jobs failed across the full run (checked, not assumed).
