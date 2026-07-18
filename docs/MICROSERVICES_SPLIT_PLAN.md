@@ -2785,3 +2785,52 @@ either, only at the dependency-tree level. Applied the identical deletion + the 
 updates. Verified: `ruff`/`ty check` clean, `./scripts/pytest_batches.sh` — **14/14 batches, 0
 failed** (`ALL_PROXY`/`all_proxy` unset), `make verify-architecture` — 527 files, 1927
 dependencies, 3/3 contracts kept, `uv tree` — zero langchain hits.
+
+## 21.9. Standing audit, third finding: a real latent gap found, deliberately **not** auto-fixed
+## — `PersistenceUnavailableError` maps to a generic 500 in `api`, not the intended 503
+
+While tracing §21.8's callback-handler chain for other lookalikes, found
+`backend/api/src/interfaces/api/run_errors.py::raise_run_api_error()` — added in the very first
+`api` package-carve-out commit (`fa3c826`, "carve out egregore-api as its own package") — and its
+helper `interfaces/api/llm_errors.py::is_llm_error()`/`raise_llm_unavailable()`. Traced
+exhaustively: **zero production callers of `raise_run_api_error` anywhere**, only its own unit
+tests (`tests/ingress/test_run_errors.py`) exercise it directly — it has never been wired to any
+route, dependency, or FastAPI exception handler since the day it was written.
+
+### 21.9.1. Why this is not the same kind of finding as §21.1/§21.8
+
+Those two were *provably pointless* dead code: nothing they produced could ever be consumed
+(§21.1's `ModelConnector` — the port itself is gone; §21.8's callback handler — the only consumer
+already didn't exist), so deleting them removed zero real capability. This case is different:
+`raise_run_api_error` maps `PersistenceUnavailableError` → HTTP 503, `KeyError`/`pydantic
+ValidationError` → 422, and specific `RuntimeError` messages → 503 — and `PersistenceUnavailableError`
+**is realistically raised in production**: traced to
+`cys_core/infrastructure/persistence_store_factory.py::resolve_persistence_store()`, which raises
+it precisely when `settings.stage == "prod" and not settings.use_memory_fallback` and the
+Postgres-backed store construction fails — exactly the documented prod configuration
+(`docs/SECURE_DEPLOYMENT.md`: "prod must fail-closed if Postgres unavailable"). Today, if that
+exception reaches the top of a request (nothing in between catches it —
+`interfaces/api/catalog.py:284` is the only other place in `api` that catches an adjacent
+exception type, `KeyError`, and only locally for its own route), it falls into `app.py`'s generic
+`@app.exception_handler(Exception)` and returns a bare `500 {"code": "internal_error", "message":
+"Internal server error"}` — losing the more specific, more correct `503`. `is_llm_error`/
+`raise_llm_unavailable`, by contrast, genuinely are dead for a different, clean reason: `api` makes
+zero LLM calls (Meta-LLM planning runs entirely in `worker` per `api/pyproject.toml`'s own
+description), so there is no litellm-shaped exception for that branch to ever classify.
+
+### 21.9.2. Deliberately not fixed this round — this is a product/API-contract decision, not cleanup
+
+Wiring `PersistenceUnavailableError` → 503 is a **narrow, low-risk, additive fix** (register
+`@app.exception_handler(PersistenceUnavailableError)` in `app.py`, same pattern as the existing
+generic handler, mapping to the same response shape `raise_run_api_error` already computes) — the
+mechanics are not the concern. The concern is that changing what HTTP status code a live
+production error path returns is an API-contract change, not a refactor: it affects client retry
+logic, uptime/error-rate dashboards, and anyone alerting on 5xx rate. That is a call for whoever
+owns the API contract, not something to change silently as a side effect of an audit loop whose
+mandate is the langchain/fastapi refactor. Recorded here, evidence attached, so the decision is a
+five-minute read rather than a re-discovery: **either** wire the single `PersistenceUnavailableError`
+handler (leave `KeyError`/`ValidationError`/message-sniffing alone — those are broader exception
+types that would need per-route scoping, not a blanket top-level handler, to avoid catching
+unrelated `KeyError`s elsewhere in the app the way `catalog.py`'s local handler already does)
+**or** delete `run_errors.py`/`llm_errors.py` and their tests as intentionally-unadopted code. Not
+implementing either option in this pass — this section is the finding, not the fix.
