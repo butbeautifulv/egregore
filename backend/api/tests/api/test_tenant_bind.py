@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi import HTTPException
 
 from cys_core.domain.security.auth_models import AuthClaims
-from interfaces.api.tenant_deps import require_tenant_match_http
+from interfaces.api.tenant_deps import TenantBound, require_tenant_match_http
 
 
 @pytest.mark.unit
@@ -53,3 +56,35 @@ def test_tenant_bind_rejects_mismatched_auth_claim() -> None:
 @pytest.mark.unit
 def test_tenant_bind_allows_any_tenant_when_auth_disabled() -> None:
     assert require_tenant_match_http(None, "other") == "other"
+
+
+def _mock_request(*, method: str = "POST", json_side_effect: Exception) -> MagicMock:
+    request = MagicMock()
+    request.query_params.get.return_value = None
+    request.method = method
+    request.json = AsyncMock(side_effect=json_side_effect)
+    return request
+
+
+@pytest.mark.unit
+async def test_tenant_bound_falls_back_to_default_on_malformed_json_body() -> None:
+    """§27.6: only the intended JSON-decode-error case should fall back to 'default'."""
+    request = _mock_request(json_side_effect=json.JSONDecodeError("bad json", "doc", 0))
+    auth = AuthClaims(sub="alice", organization_id="default")
+
+    result = await TenantBound()(request, auth)
+
+    assert result == "default"
+
+
+@pytest.mark.unit
+async def test_tenant_bound_propagates_unexpected_errors_instead_of_silently_defaulting() -> None:
+    """§27.6 root-cause fix: TenantBound() used to catch *any* exception while parsing the
+    request body and silently fall back to 'default', not just the intended JSON-decode-error
+    case. A body-read failure unrelated to malformed JSON (e.g. a broken stream) must now
+    propagate instead of masquerading as a legitimate default-tenant request."""
+    request = _mock_request(json_side_effect=RuntimeError("body stream broken"))
+    auth = AuthClaims(sub="alice", organization_id="acme")
+
+    with pytest.raises(RuntimeError):
+        await TenantBound()(request, auth)

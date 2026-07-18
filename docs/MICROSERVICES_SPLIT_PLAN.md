@@ -4535,3 +4535,30 @@ Eisenhower: **Important, and live** — unlike §38's reflexion fix, this one pr
 *is* wired into production today (`rag_query_tool` is a real, callable tool). Before this fix, a
 Qdrant outage would have made RAG silently return empty/wrong results dressed as success instead of
 the fail-closed signal the system was designed to give.
+
+## 40. Closed §27.6's third finding: `TenantBound()` swallowed any exception, not just malformed JSON
+
+`api/src/interfaces/api/tenant_deps.py`'s `TenantBound()` dependency reads `tenant_id` from the
+request body for POST/PUT/PATCH requests, wrapped in `try: ... except Exception: raw = None`. The
+comment and intent were clearly "tolerate a body that isn't valid JSON," but `except Exception`
+also silently swallows anything else that can go wrong while awaiting `request.json()` — a broken
+body stream, a client disconnect mid-upload, a bug in a request-body middleware — and routes all of
+it to the same fallback: bind the request to tenant `"default"` and proceed. A genuine read failure
+was being treated identically to "caller sent no body," masking failures that should surface as
+errors rather than silently rebinding the request to a different tenant context.
+
+Fixed by narrowing the except clause to `json.JSONDecodeError` — the actual exception
+`Request.json()` raises for malformed JSON (via `json.loads` inside Starlette) — so any other
+failure now propagates instead of being absorbed into a default-tenant fallback. Only exists in
+`api` (grepped the other two packages; no duplicate `tenant_deps.py` to sync).
+
+Verification: added two tests to `tests/api/test_tenant_bind.py` —
+`test_tenant_bound_falls_back_to_default_on_malformed_json_body` (confirms the intended behavior is
+preserved) and `test_tenant_bound_propagates_unexpected_errors_instead_of_silently_defaulting`
+(confirms a non-JSON-decode exception now raises instead of being swallowed). 7/7 passing in
+`tests/api/test_tenant_bind.py`. `ruff`/`ty` clean.
+
+Eisenhower: **Low urgency, low severity, but a genuine root-cause bug fix** — `require_tenant_match_http`
+still enforces the auth claim against whatever tenant ends up bound, so this was never an authz
+bypass; the bug was in *masking* unexpected failures behind a plausible-looking default rather than
+surfacing them.

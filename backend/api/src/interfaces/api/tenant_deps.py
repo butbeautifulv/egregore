@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -48,7 +49,7 @@ def TenantBound(param: str = "tenant_id"):
                 body = await request.json()
                 if isinstance(body, dict):
                     raw = body.get(param)
-            except Exception:
+            except json.JSONDecodeError:
                 raw = None
         return require_tenant_match_http(auth, raw or "default")
 
