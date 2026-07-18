@@ -3882,3 +3882,103 @@ Nothing in the current architecture provides this. The closest existing primitiv
 workflows (e.g. "re-check this IOC every hour," "poll this scan until it completes"), but no current
 user-facing feature depends on it yet. Recorded per explicit instruction so it isn't lost, not
 scoped or implemented this session.
+
+## 29. Built: `model-gateway` — the second network chokepoint proposed in §22.9
+
+### 29.1. The ask
+
+> what about model_gateway? ... lets do it
+
+§22.9 proposed `model-gateway` as the symmetrical counterpart to `tool-gateway`: a network
+chokepoint every model call must cross, owning input sanitization, system-prompt-digest validation,
+and output-leakage guardrails independent of whichever agent runtime is calling it. At the time
+(§22.13) this was explicitly scoped doc-only, with one open question flagged as worth resolving
+before writing code: build from scratch, mirroring tool-gateway's own hand-rolled async server, or
+adopt litellm's proxy-server mode as the substrate. Asked and answered this round: **hand-roll,
+mirror tool-gateway** — consistent with the rest of this repo, no new external product's deployment
+shape to operate, full control over exactly where the security hooks land.
+
+### 29.2. What was built
+
+A new package, `backend/model-gateway/`, following tool-gateway's own skeleton but deliberately
+minimal rather than duplicating tool-gateway's entire `cys_core` tree (§18's "duplicate everything"
+philosophy was applied selectively here — this service's actual job is narrow, so it only carries
+what that job needs, not catalog/engagement/workspace domain code it would never touch):
+
+- **`interfaces/gateways/model/server.py`** — byte-for-byte the same async-stdlib-socket-server
+  pattern as tool-gateway's `server.py` (raw `asyncio.start_server`, hand-rolled HTTP/1.1
+  parsing/response, no framework). One real route: `POST /v1/model/invoke`. Unlike tool-gateway's
+  boundary, this one needs **no `asyncio.to_thread` wrap** — the whole chain underneath it
+  (sanitize → `litellm.acompletion` → guardrail-check) is genuinely async end to end from day one,
+  not a sync call chain being offloaded to a thread. A small, free win from building this after
+  §25/§26's async audit rather than before it.
+- **`cys_core/application/use_cases/invoke_model.py`** (`InvokeModel`) — the actual chokepoint
+  logic, reimplemented against a plain framework-neutral `ModelInvokeCommand`/`ModelMessage` shape
+  instead of langchain's `ModelRequest`/`AIMessage` (which worker's `PromptContextMiddleware` is
+  built on). Same checks, same order, same refusal semantics as `PromptContextMiddleware`:
+  1. Reject a system prompt missing `GLOBAL_RULES:`/`SECURITY_RULES:` markers, or whose digest
+     (if the caller supplies one) doesn't match `compute_system_digest()`.
+  2. Reject a fake `system`-role message anywhere in the conversation history.
+  3. Classify and sanitize every `user`/`tool`-role message (`InputSanitizer`); hard injection →
+     refuse.
+  4. Call the model via raw `litellm.acompletion()` — deliberately *not* through
+     `cys_core.llm.LiteLLMProvider` (worker's own litellm wrapper), because that wrapper's return
+     type is pinned to `langchain_core`'s `BaseChatModel` (§22.2's own finding) — pulling it in
+     would reintroduce exactly the framework coupling this service exists to not have.
+  5. Scan the response for prompt leakage (`OutputGuardrails.detect_prompt_leakage`); leak →
+     refuse.
+  A refusal is a normal `200` response with `refused: true` and a `refusal_reason` string
+  (`missing_immutable_rule_markers` / `system_prompt_digest_mismatch` / `fake_system_message_in_history`
+  / `hard_injection_in_message` / `output_leakage_blocked`) — this service enforces, it doesn't
+  decide what the caller does about a refusal.
+- **`cys_core/domain/security/{sanitizer,guardrails,prompt_context,redaction,exceptions,patterns/}`** —
+  copied verbatim from worker (confirmed framework-neutral by direct code reading before copying:
+  no `langchain` import anywhere in this subtree) rather than reimplemented, so detection behavior
+  is identical to what's already running in-process in worker today.
+- **`bootstrap/settings.py`** — minimal: bind host/port, an off-by-default shared-secret bearer
+  check (same shape as tool-gateway's `auth_enabled`, same caveat that the real guarantee is
+  NetworkPolicy egress restriction per §10.8/§22.9, not this), default model name, litellm
+  timeout/retry count. Provider credentials (`OPENAI_API_KEY` etc.) are resolved by litellm itself
+  from its own env vars — not duplicated into this service's settings.
+- Tests: `tests/model_gateway/test_invoke_model.py` (9 cases — success, all 5 refusal paths,
+  upstream-completion-error handling, model-override plumbing) and `test_server.py` (health check +
+  end-to-end HTTP round trip through the real socket server, mirroring tool-gateway's
+  `GatewayTestClient` pattern exactly).
+
+### 29.3. Verification
+
+`ruff check`, `uv run ty check`, and `./scripts/pytest_batches.sh` all clean — 12/12 tests passing,
+zero lint or type errors. `uv sync` resolves and installs cleanly as its own independent package
+(own `pyproject.toml`, own `uv.lock`, own `.venv`), consistent with `api`/`worker`/`tool-gateway`.
+
+### 29.4. What this round deliberately did *not* do
+
+- **No runtime integration.** Worker's `AgentRuntime`/`PromptContextMiddleware` still perform these
+  checks in-process, exactly as before — nothing was rewired to actually call `model-gateway` over
+  the network yet. This service exists and works standalone, but is not yet load-bearing. Wiring
+  the runtime to send calls here (§22.12's `AgentRuntimePort` pointed at gateway endpoints instead
+  of calling litellm directly) is real, separate work: it touches the live agent execution hot path,
+  needs its own careful testing against the existing worker test suite, and needs a decision on
+  whether the in-process checks become redundant once this is live or stay as defense-in-depth
+  (§23.2 already answered that question for tool-gateway's equivalent case: **keep both** — no
+  reason not to apply the same answer here, but it should be stated explicitly when that wiring
+  happens, not assumed).
+- **No NetworkPolicy egress restriction.** §22.9's own point: without the Agent Runtime pod's
+  egress being restricted to *only* tool-gateway and model-gateway, this is a chokepoint a
+  well-behaved runtime can choose to use, not a guarantee. That's a deployment/K8s-manifest change,
+  out of scope for this pass (no cluster in this environment to apply or test it against).
+- **No streaming.** `POST /v1/model/invoke` is request/response only; worker's real usage streams
+  tokens (`agent.astream(...)`, per §25.2). A streaming variant of this endpoint (chunked
+  transfer-encoding or SSE, with guardrail-checking applied to the accumulated stream rather than
+  per-chunk) is unaddressed — flagged here rather than silently gapped.
+- **No per-call rate limiting or budget tracking**, unlike tool-gateway's `invoke_tool.py` (§23).
+  §22.11's table already placed "job budget tracking" as split between dispatcher and the gateways
+  — not built here this round.
+
+### 29.5. Eisenhower placement
+
+**Important, not urgent** — same placement §22.14 gave the design. The chokepoint itself is now
+real and tested, which de-risks the eventual integration work, but nothing today depends on it: the
+in-process checks it duplicates are already protecting the one live runtime. Prioritize the runtime
+wiring (§29.4's first bullet) whenever this plan's implementation work resumes — an unused, if
+correct, gateway provides no actual security benefit over the status quo until something calls it.

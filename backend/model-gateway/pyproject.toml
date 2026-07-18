@@ -1,0 +1,60 @@
+[project]
+name = "egregore-model-gateway"
+version = "0.1.0"
+description = "Egregore Model Gateway — the network chokepoint for LLM calls (§22.9, docs/MICROSERVICES_SPLIT_PLAN.md). Symmetrical to the Tool Gateway: any agent runtime, regardless of framework, must route model calls through this service to get input sanitization, system-prompt-digest validation, and output-leakage guardrails enforced independent of the runtime's cooperation."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "structlog>=26.0.0",
+    "rapidfuzz>=3.13.0",
+    "litellm>=1.60.0",
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.4.0",
+]
+
+[project.scripts]
+egregore-model-gateway = "interfaces.cli.main:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src", "../.."]
+markers = [
+    "unit: fast isolated tests",
+    "integration: multi-module wiring",
+]
+addopts = "--strict-markers"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cys_core", "src/interfaces", "src/bootstrap"]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bootstrap", "cys_core", "interfaces"]
+
+[tool.coverage.run]
+source = ["src/cys_core/domain"]
+omit = ["*/__init__.py"]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+    "ty>=0.0.1a25",
+    "ruff>=0.15.21",
+    "httpx>=0.28.0",
+]
