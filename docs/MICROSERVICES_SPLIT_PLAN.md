@@ -4653,3 +4653,73 @@ a real production HTTP path (`/runs/{job_id}/resume`), same tier as §37/§39. *
 is low-urgency hardening** with no live gap it's closing today (no drifted lockfile currently exists)
 but cheap insurance against a future one going unnoticed. §10.9/§10.11/cosign-signing are correctly
 parked pending decisions outside engineering-agent authority.
+
+## 42. §27.6's soft-timeout race, upgraded from "plausible" to confirmed — root-caused, deferred
+
+§27.6 flagged `WorkerOrchestrator`'s soft-timeout cancellation path as a *plausible, not confirmed*
+double-publish/double-finalize race and explicitly deferred it for "a dedicated look." Traced the
+exact mechanism this round rather than leaving it at "plausible."
+
+### 42.1. The mechanism, traced precisely
+
+`orchestrator.py`'s `run_job` wraps the whole job execution — including `_publish_and_finalize` at
+the very end of `RunWorkerJob.execute` — in `asyncio.wait_for(..., timeout=soft_timeout)`. If the
+timeout fires while `_publish_and_finalize` is mid-flight, `asyncio.wait_for` cancels the task at
+whatever `await` point it's currently at and raises `TimeoutError` to the caller. `orchestrator.py`'s
+`except TimeoutError` handler then unconditionally calls `try_salvage_partial(...)`, which has no
+way to know how far the cancelled `_publish_and_finalize` actually got.
+
+`_publish_and_finalize` (`run_worker_job.py:805`) runs several sequential, independently-committing
+side effects — `append_engagement_finding`, `persist_memory`, the bus/final-report `publish`,
+`mark_persona_completed`, then `mark_success` — and `mark_success` (`job_finalizer.py:199`) itself
+unconditionally calls `_engagement_egress.publish_status(..., "job_finished", ...)` and, critically,
+`_enqueue_next_planned_persona.execute(job)` / `_enqueue_synthesis_job.execute(job)`. If cancellation
+lands *after* `mark_success` has already run to completion but *before* `_publish_and_finalize`
+returns its `RunResult` (the last line in the function), the caller sees `TimeoutError` even though
+the job actually finished successfully — and `try_salvage_partial` then runs its own, independent
+`append_engagement_finding`/`persist_memory`/`publish`/`mark_success` sequence on top of it.
+
+Checked whether anything downstream absorbs this safely — it doesn't:
+- `WorkerJob.transition_to()` (`domain/workers/models.py:63`) is a no-op if the target status equals
+  the current one, so the second `mark_success`'s own status transition is harmless.
+- But `mark_success`'s *other* side effects aren't guarded by that same check at all. A second
+  `_engagement_egress.publish_status("job_finished")` call publishes a duplicate completion event.
+- `_enqueue_next_planned_persona.execute()` (`enqueue_next_planned_persona.py:26`) recomputes
+  "next persona not in `completed_personas`/`failed_personas`" from `engagement_store` fresh each
+  call — it has no "did I already enqueue this specific job_id" guard.
+- `RedisJobQueue.enqueue()`/`aenqueue()` (`queue.py:128,183`) is a bare `RPUSH` — no job_id
+  deduplication anywhere in the queue itself.
+
+So a second `_enqueue_next_planned_persona.execute()` call, if it runs after the first one already
+enqueued the same downstream persona job, will `RPUSH` that same `job_id` onto the queue a second
+time, and nothing between here and a worker picking it up via `BRPOP` would catch or collapse the
+duplicate — the same persona job would run twice, independently, each consuming its own budget/tool
+calls against the same investigation.
+
+### 42.2. Why this isn't fixed this round
+
+This is a genuine concurrency correctness bug, upgraded from "plausible" to "confirmed mechanism,
+no existing safety net" — but the actual fix requires a real design choice, not a mechanical
+one-line correction like §37/§39/§41.1's shape (those were "a check exists but doesn't fire"; this
+is "no check exists, and cancellation can land at an arbitrary point mid-side-effect"). Two
+directions, not evaluated further this round:
+
+1. **`asyncio.shield()` the finalize/enqueue phase** once `_publish_and_finalize` starts its
+   irreversible side effects, so a timeout can no longer interrupt it mid-way — trades away the
+   soft-timeout's ability to bound that phase's latency (if Kafka/Postgres hangs during finalize,
+   this phase would no longer be bounded by `soft_timeout` at all).
+2. **Make finalize/enqueue idempotent** — e.g. a per-job-id guard (Redis `SETNX` or an
+   engagement-store check) before `_enqueue_next_planned_persona`/`_enqueue_synthesis_job` actually
+   enqueue, so a second call for the same job_id becomes a safe no-op regardless of *why* it ran
+   twice. More invasive (touches the shared finalize path every job goes through), but doesn't
+   change timeout semantics.
+
+Both are real, non-trivial changes to a path every job in the system goes through — exactly the kind
+of thing that needs dedicated review rather than a same-session mechanical fix, consistent with why
+§27.6 flagged it as needing "a dedicated look" in the first place. Recording the confirmed mechanism
+here so the next person picking this up doesn't have to re-derive it.
+
+Eisenhower: **Important, not urgent** — this is a live path (every worker job goes through
+`_publish_and_finalize`), but the race only manifests when a job runs *right up against* its soft
+timeout, which is the tail of the job-duration distribution, not the common case. Worth fixing
+deliberately, not worth rushing.
