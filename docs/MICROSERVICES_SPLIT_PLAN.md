@@ -5189,3 +5189,44 @@ locally — every `[worker, api, tool-gateway]`-shaped gap found this round (`li
 CodeQL paths, `linter-security`) is now closed and confirmed working, and the ones deliberately left
 open (`arch-lint`, `domain-coverage`, `adversarial`, container build/scan/sign) are each documented with
 the specific missing prerequisite, not left as a vague "todo."
+
+## 50. Standing audit found `README.md`/`AGENTS.md` had accumulated real staleness — model-gateway
+## absent entirely, tool-gateway only half-documented, one line still claiming "two packages"
+
+Checked whether the same "onboarding docs never updated when a new package landed" pattern that hit
+CI configs (§49) also hit the human-facing docs, rather than assuming READMEs stay in sync on their
+own. They hadn't:
+
+- **`README.md`'s "Быстрый старт" (quick start)** still opened with "Backend is split into two fully
+  independent packages — `worker` and `api`" — stale since before even `tool-gateway`'s extraction
+  (§21.6), not something this session's `model-gateway` work introduced. The setup command block only
+  did `uv sync`/`.env` setup for `worker`/`api`, never `tool-gateway` — a real functional gap, not just
+  a wording one: `tool-gateway` is a required dependency in `deploy/docker-compose.dev.yml` (`worker`
+  `depends_on: tool-gateway: condition: service_healthy`) and needs its own `.env` the same way, but
+  anyone following the README's local (non-compose) quick-start would never start it or know it exists.
+- **The "Структура репозитория" (repo structure) tree** had `tool-gateway` (added in §21.6's own doc
+  commit) but never gained a `model-gateway` entry, and the closing sentence still said "worker, api,
+  and tool-gateway are fully independent packages."
+- **`AGENTS.md`'s "Repo layout" section** — the doc agents themselves read to understand this
+  codebase — never mentioned `model-gateway` **at all**: not in the "three fully independent packages"
+  count, not in the per-package bullet list, not in the Docker/compose file list (which was also
+  missing `Dockerfile.tool-gateway`, a separate pre-existing gap). This is the more consequential half
+  of the finding: a future session reasoning about "which packages need X" from `AGENTS.md` alone
+  would have no way to discover `model-gateway` exists, which is exactly the blind spot that let §49's
+  CI-wiring gap go unnoticed as long as it did.
+
+**Fixed**: both docs now list all four packages accurately, with `model-gateway` explicitly marked
+as *built and tested but not yet wired into the runtime, deploy topology, or the `arch-lint`/
+`domain-coverage`/`adversarial`/container-build CI jobs* — stating the real status rather than
+implying parity with the other three. Added `tool-gateway`'s missing `uv sync`/`.env.example`/run
+step to the README quick-start (verified the `.env.example` file and the `egregore tool-gateway
+--host/--port` CLI flags both exist by reading the source, not assumed). Left `scripts/dev.sh` and
+its README description ("infra + api + worker + ui") untouched — checked `USE_TOOL_GATEWAY`'s default
+(`False` in `worker`'s settings) before deciding: `dev.sh` not starting `tool-gateway` doesn't break
+anything today, it just means the default local dev loop silently bypasses the Tool Gateway PEP
+boundary rather than exercising it — a real but lower-severity, separate observation, not corrected
+here since deciding whether local dev *should* default to routing through the gateway is a design
+question (same shape as model-gateway's own not-yet-wired status), not a doc-accuracy bug. Also
+confirmed `Makefile`'s dispatcher line ("Python → backend/{worker,api,tool-gateway}/") is *not* stale
+— `model-gateway` has no `Makefile` of its own yet, so it genuinely isn't part of that pattern, and
+the README/AGENTS.md text describing it was left unchanged accordingly.

@@ -61,15 +61,15 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 
 ## Платформенный код
 
-### Repo layout (`backend/{worker,api,tool-gateway}/src/`)
+### Repo layout (`backend/{worker,api,tool-gateway,model-gateway}/src/`)
 
-Python backend is split into three fully independent packages, each with its
+Python backend is split into four fully independent packages, each with its
 own physical copy of `cys_core.domain`/`bootstrap`/generic infra — no shared
 package between any of them (see
 [docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18,
-§21.6): nothing except the queue message, Postgres rows, and the Tool
-Gateway's own HTTP contract may cross a package boundary, and duplication is
-accepted deliberately, not an oversight.
+§21.6, §29): nothing except the queue message, Postgres rows, and the Tool/
+Model Gateway's own HTTP contract may cross a package boundary, and
+duplication is accepted deliberately, not an oversight.
 
 - **`backend/worker/`** (`egregore-worker`) — agent-execution runtime
   (LangChain/LangGraph today, swappable later), control-plane daemons
@@ -91,16 +91,28 @@ accepted deliberately, not an oversight.
   a plain-function adapter (`cys_core/infrastructure/tools/adapters/`).
   Async stdlib-only HTTP (`asyncio.start_server`, no FastAPI/Starlette). Run:
   `egregore tool-gateway`, or `make dev-tool-gateway`. See plan doc §21.2–§21.6.
+- **`backend/model-gateway/`** (`egregore-model-gateway`) — the network
+  chokepoint for LLM calls (symmetrical to the Tool Gateway): input
+  sanitization, system-prompt-digest validation, output-leakage guardrails,
+  independent of whichever agent-execution framework calls it. Same
+  async-stdlib-only HTTP shape as tool-gateway, no FastAPI/langchain. **Built
+  and tested but not yet wired into anything** — `worker`'s `AgentRuntime`
+  still calls `litellm` in-process directly, no deploy manifest/Dockerfile
+  exists for it yet, and it isn't in `release-gate.yml`'s `arch-lint`/
+  `domain-coverage`/`adversarial` jobs (only `lint`/`unit-tests`/
+  `linter-security`, plus CodeQL). See plan doc §29, §47–§49.
 
 Import names are unchanged (`from cys_core...`) — each package has its own
 physical `src/cys_core/...` tree, no editable path dependency between them.
 ASGI entrypoint: `interfaces/api/app.py` (in `backend/api/`). Operator UI is
 **`web_ui/`** (not `ui/`). Product seed **`backend/agents/`** (sibling of all
-three packages, not nested in any). Docker/compose: **`deploy/`**
-(`Dockerfile.api`, `Dockerfile.worker`). `backend/contracts/` (the earlier
+four packages, not nested in any). Docker/compose: **`deploy/`**
+(`Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.tool-gateway` — no
+`Dockerfile.model-gateway` yet). `backend/contracts/` (the earlier
 three-package shared layer) and the transitional `backend/shared/` pre-split
-monolith have both been deleted — worker and api build, import, and test
-fully independently with zero shared package.
+monolith have both been deleted — worker, api, and tool-gateway build,
+import, and test fully independently with zero shared package
+(`model-gateway` was always built standalone, never shared any of this).
 
 **Deployment invariant — worker pool must include a catch-all instance.**
 Job routing by persona is enforced client-side, not by the queue: Kafka's

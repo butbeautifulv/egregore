@@ -36,19 +36,26 @@ Markdown SSOT: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/OBSERVABILI
 
 ## Быстрый старт
 
-Backend is split into two fully independent packages — `worker`
-(agent-execution runtime) and `api` (FastAPI ingress), each with its own
+Backend is split into fully independent packages — `worker`
+(agent-execution runtime), `api` (FastAPI ingress), and `tool-gateway`
+(standalone PEP for sandboxed agent tool calls), each with its own
 physical copy of domain models/generic infra, no shared package between
-them. See [docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md).
+them — plus `model-gateway`, a newer, standalone LLM-call chokepoint
+(sanitization/guardrails) that exists and is tested but isn't wired into
+the runtime or deploy topology yet (see
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §29,
+§47-49). See that doc for the full history.
 
 ```bash
 cd backend/worker && uv sync
 cd backend/api && uv sync
+cd backend/tool-gateway && uv sync
 
 docker compose -f deploy/docker-compose.yml up -d   # Postgres + Redis + Redpanda + Qdrant
 
 cp backend/api/.env.example backend/api/.env       # LLM API key (local only, not committed)
 cp backend/worker/.env.example backend/worker/.env
+cp backend/tool-gateway/.env.example backend/tool-gateway/.env
 
 cd backend/api && uv run egregore info
 cd backend/api && uv run egregore migrate   # apply migrations/*.sql
@@ -58,6 +65,7 @@ cd backend/api && uv run egregore migrate   # apply migrations/*.sql
 
 ```bash
 make dev-infra                    # or: docker compose -f deploy/docker-compose.yml up -d
+cd backend/tool-gateway && uv run egregore tool-gateway --port 8092  # or: make dev-tool-gateway
 cd backend/api && uv run egregore serve --port 8080    # or: make dev-api
 cd backend/worker && uv run egregore worker --daemon   # optional: make dev-worker
 
@@ -168,7 +176,13 @@ egregore/
 │   │   │                    #   (stdlib asyncio server, no FastAPI/langchain), own copy of cys_core
 │   │   ├── src/             # cys_core.{domain,application,infrastructure.tools}, interfaces.gateways.tool
 │   │   └── scripts/
-│   └── agents/              # Product personas, rules, plans, skills — sibling of all three packages
+│   ├── model-gateway/       # egregore-model-gateway: standalone LLM-call chokepoint (sanitize/
+│   │   │                    #   guardrail input+output, stdlib asyncio server, no FastAPI/langchain) —
+│   │   │                    #   built, tested, but NOT wired into the runtime or deploy topology yet
+│   │   │                    #   (§29, §47-49); worker still calls litellm in-process directly today
+│   │   ├── src/             # cys_core.domain.security.*, interfaces.gateways.model
+│   │   └── scripts/
+│   └── agents/              # Product personas, rules, plans, skills — sibling of all four packages
 ├── deploy/                 # Dockerfile.{api,worker,tool-gateway}, compose, k8s, helm, grafana
 ├── web_ui/                 # Operator console (Next.js)
 ├── tui/                    # Operator TUI (Go Bubble Tea)
@@ -179,8 +193,9 @@ egregore/
 
 `backend/contracts/` (an earlier shared domain/ports/infra package) and
 `backend/shared/` (the pre-split monolith before that) have both been
-retired — worker, api, and tool-gateway are fully independent packages, see
-[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18, §21.6.
+retired — worker, api, tool-gateway, and model-gateway are fully independent
+packages, see [docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md)
+§18, §21.6, §29.
 
 ## Роли агентов
 
