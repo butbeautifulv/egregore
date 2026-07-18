@@ -2846,3 +2846,27 @@ is called from `cys_core/llm/reasoning.py`, `cys_core/llm/__init__.py`, and
 get_trace_callbacks()})` call, and `import langfuse.langchain` resolves cleanly in `worker`'s venv
 (it legitimately keeps `langchain-core`) — confirming §21.8's fix was correctly scoped to `api`/
 `tool-gateway` only, with nothing left half-wired in `worker`.
+
+## 21.10. Standing audit: closing the loop
+
+Third firing of the 30-minute audit cron (§21.7) checked the one other reachable-but-optional
+import in this codebase shaped like §21.8's finding — `rag/store.py::_embedding_vector()`'s
+`litellm` import in `tool-gateway` — and confirmed it's *not* a new gap: already documented in
+the code itself and in §21.6.2 as a deliberate, accepted degradation (falls through to a
+deterministic pseudo-embedding, not a crash or log-spam path), not a stale leftover like §21.8's
+callback handler was. No further undocumented gaps found this pass.
+
+**Original ask, verified complete**: `langchain` fully removed from `api` (dependency tree *and*,
+as of §21.8, reachable code — the one place a real touchpoint had survived the first pass is now
+gone), `fastapi` fully removed from `worker` (zero references in source or `pyproject.toml`,
+replaced by a stdlib `asyncio` server with real test coverage). The scope this audit loop was
+chartered to finish is done, doubly-verified in GitHub Actions (§21.7.4, §21.9.3).
+
+**Stopping the recurring audit here** rather than continuing to fire every 30 minutes for up to 7
+days: this pass found nothing new, and repeating an unchanged search is pure overhead, not
+diligence. §21.9's `PersistenceUnavailableError` finding remains open by design — it's a
+product/API-contract decision outside this refactor's mandate, not a task this loop should keep
+re-surfacing. Also cleaned up a redundant one-shot wakeup (`c91f31f7`) that a `ScheduleWakeup` call
+earlier in this session had stacked on top of the actual recurring cron (`39c165e8`) by mistake —
+fixed-interval `/loop` jobs are driven entirely by their `CronCreate` job; `ScheduleWakeup` is for
+the dynamic (no-interval) mode only and was never needed here.
