@@ -4,6 +4,7 @@ import pytest
 
 from cys_core.domain.rag.models import ChunkACL, DocumentProvenance, RagChunk
 from cys_core.domain.security.classification import DataClassification
+from cys_core.infrastructure.rag.store import QdrantUnavailableError
 from interfaces.rag.retrieve import rag_query, wrap_retrieved_chunks
 from interfaces.rag.store import MemoryVectorStore, QdrantVectorStore, get_vector_store, reset_vector_store
 
@@ -63,15 +64,40 @@ def test_rag_query_empty_query_fail_closed():
 
 
 @pytest.mark.unit
-def test_qdrant_store_falls_back_without_broker(monkeypatch):
+def test_qdrant_store_raises_without_broker_instead_of_silently_degrading(monkeypatch):
+    """§10.5/§39: RAG retrieval must fail closed when Qdrant is unreachable, not silently
+    answer from an empty in-memory store the caller never populated. QdrantVectorStore used
+    to swallow this and return real-looking (but wrong/empty) results; it must now raise so
+    rag_query()'s existing fail-closed handling actually triggers."""
+
     def _init_without_client(self, *a, **k):
         self._client = None
-        self._fallback = MemoryVectorStore()
 
     monkeypatch.setattr("interfaces.rag.store.QdrantVectorStore.__init__", _init_without_client)
     store = QdrantVectorStore(url="http://invalid:6333")
-    store.upsert([_chunk("fallback chunk")])
-    assert store.search("fallback")
+    with pytest.raises(QdrantUnavailableError):
+        store.upsert([_chunk("should not silently vanish")])
+    with pytest.raises(QdrantUnavailableError):
+        store.search("anything")
+    with pytest.raises(QdrantUnavailableError):
+        store.delete_tenant("tenant-a")
+
+
+@pytest.mark.unit
+def test_rag_query_fails_closed_when_qdrant_unavailable(monkeypatch):
+    """End-to-end proof, not just a unit-level raise: rag_query()'s existing try/except
+    around vector_store.search() actually catches QdrantUnavailableError and reports
+    fail_closed=True — the fix closes the gap at the use case boundary the agent sees,
+    not just inside the store class."""
+
+    def _init_without_client(self, *a, **k):
+        self._client = None
+
+    monkeypatch.setattr("interfaces.rag.store.QdrantVectorStore.__init__", _init_without_client)
+    store = QdrantVectorStore(url="http://invalid:6333")
+    result = rag_query("anything", persona="soc", tenant="default", store=store)
+    assert result.fail_closed is True
+    assert result.error and "unavailable" in result.error.lower()
 
 
 @pytest.mark.unit

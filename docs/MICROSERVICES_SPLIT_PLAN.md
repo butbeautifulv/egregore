@@ -4469,3 +4469,69 @@ Eisenhower: **Important, not urgent** — this closes a real durability gap in i
 exists and is tested, but since nothing in the live job pipeline calls `.append()` yet, it's not
 fixing a bug anyone is hitting in production today. §11.4 is correctly placed as **blocked on a
 decision**, not attempted.
+
+## 39. §10 audit: SSRF concern verified not applicable; RAG fail-closed found broken and fixed
+
+Continued reading §10 (the section the earlier audit flagged as "not independently re-checked")
+rather than assuming §8/§9/§11 were the only load-bearing claims left.
+
+### 39.1. §10.1 verified correct — `bus_dedup_store.py` really is nonce+TTL, not just named that
+
+§10.1 explicitly asked to verify, not assume, that `bus_dedup_store.py` "implements nonce+timestamp
+replay protection, not just something named that way." Read it directly: `is_duplicate()` uses
+Redis `SET key val NX EX ttl` — the fingerprint *is* the nonce, and `NX` makes the check-and-set
+atomic. Confirmed correct as designed. No change needed.
+
+### 39.2. §10.2 (SSRF) checked and found not applicable to this codebase's tools
+
+Checked every tool adapter that makes an outbound HTTP request (`search_stack.py`, `web_search.py`,
+`multimodal.py`'s `search_archived_webpage`) for the specific concern §10.2 raised: an
+agent-controlled `url` parameter used as *this service's own* request destination (the classic
+SSRF-via-DNS-rebinding shape allowlist-by-resolved-IP defends against). None of them have that
+shape — `search_stack.py`/`web_search.py` only ever hit fixed, admin-configured API hosts with
+user input passed as a query parameter; `search_archived_webpage(url)` passes the caller-supplied
+`url` as a query parameter to a fixed `archive.org` endpoint, never as this service's own request
+target. `vision_analyze` only reads local files (`Path.is_file()`), no network fetch. Recorded as
+**verified not applicable**, not silently dropped as "checked, nothing to report" — the original
+checklist item said "need to check," and now it's actually checked.
+
+### 39.3. §10.5 (RAG fail-closed) — found genuinely broken, same bug class as §27/§37, fixed
+
+`rag_query()` (`cys_core/infrastructure/rag/retrieve.py`) already has a `try/except` around
+`vector_store.search(...)` specifically designed to set `RetrievalResult.fail_closed = True` on
+retrieval failure — its own docstring says "Fail-closed on store errors." But
+`QdrantVectorStore.search()` **never raised** when its client was unavailable; it silently returned
+`self._fallback.search(...)` from an in-memory store that was never populated with the same data —
+a completely successful-looking return value that bypassed the `except` block entirely. Same shape
+as §27 (HITL Kafka publish) and §37 (sandbox token): a security control that was clearly designed
+and partially built, silently defeated by one implementation detail two layers down. `upsert()` and
+`delete_tenant()` had the identical pattern — a failed `upsert()` looked exactly as successful as a
+real one (`len(chunks)` returned either way) while silently writing to memory that vanishes on
+restart; `delete_tenant()` would silently no-op instead of failing to remove data it claimed to
+remove.
+
+Fixed: all three methods now raise a new `QdrantUnavailableError` instead of falling back to
+`self._fallback`; the fallback field/construction is removed from `QdrantVectorStore` entirely
+(confirmed dead — `get_vector_store()`'s factory returns a *separate* `MemoryVectorStore()`
+directly for the legitimate dev/test-fallback case, never routing through `QdrantVectorStore` at
+all, so nothing relied on the removed fallback path). Also fixed a related, completely separate
+visibility gap found while reading the constructor: a failed Qdrant connection was caught and
+silently swallowed with no log line at all — added `logger.warning("qdrant_connect_failed", ...)`.
+
+### 39.4. Verification
+
+Rewrote the one existing test that encoded the *old*, now-wrong behavior
+(`test_qdrant_store_falls_back_without_broker` asserted silent fallback succeeded) into
+`test_qdrant_store_raises_without_broker_instead_of_silently_degrading` (all three methods raise).
+Added `test_rag_query_fails_closed_when_qdrant_unavailable` as an end-to-end proof — not just that
+the store raises, but that `rag_query()`'s existing exception handling actually catches it and
+reports `fail_closed=True`, the thing the agent-facing `rag_query_tool` actually checks. 12/12
+`tests/rag` passing, 47/48 across `tests/rag`+`tests/integration`+`tests/tool_gateway` (the 1
+failure is the same pre-existing `enrich_ioc`-not-declared-by-any-persona issue documented in §31,
+unrelated — confirmed by the log output itself, which shows §37's sandbox-token shadow check firing
+correctly alongside it, not a regression from this change). `ruff`/`ty` clean.
+
+Eisenhower: **Important, and live** — unlike §38's reflexion fix, this one protects a path that
+*is* wired into production today (`rag_query_tool` is a real, callable tool). Before this fix, a
+Qdrant outage would have made RAG silently return empty/wrong results dressed as success instead of
+the fail-closed signal the system was designed to give.

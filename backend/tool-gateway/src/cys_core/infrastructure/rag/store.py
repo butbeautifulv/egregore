@@ -2,10 +2,21 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+import structlog
 from rapidfuzz import fuzz
 
 from bootstrap.settings import settings
 from cys_core.domain.rag.models import RagChunk
+
+logger = structlog.get_logger(__name__)
+
+
+class QdrantUnavailableError(Exception):
+    """Raised instead of silently degrading — rag_query() (cys_core.infrastructure.rag.retrieve)
+    already has fail-closed handling designed for exactly this (RetrievalResult.fail_closed),
+    docs/MICROSERVICES_SPLIT_PLAN.md §10.5's requirement — but QdrantVectorStore previously
+    swallowed the failure and returned empty/stale results from an in-memory store instead of
+    raising, silently bypassing that handling. See §39."""
 
 
 class VectorStore(Protocol):
@@ -41,12 +52,13 @@ class MemoryVectorStore:
 
 
 class QdrantVectorStore:
-    """Qdrant-backed store with memory fallback when client unavailable."""
+    """Qdrant-backed store. Raises QdrantUnavailableError rather than silently degrading —
+    RAG retrieval security requires failing closed (§10.5/§39), not quietly answering from an
+    empty in-memory store that was never populated with the same data."""
 
     def __init__(self, url: str | None = None, collection: str = "cys_rag") -> None:
         self.url = url or settings.qdrant_url
         self.collection = collection
-        self._fallback = MemoryVectorStore()
         self._client: Any = None
         try:
             from qdrant_client import QdrantClient
@@ -59,8 +71,9 @@ class QdrantVectorStore:
                     collection_name=self.collection,
                     vectors_config=VectorParams(size=8, distance=Distance.COSINE),
                 )
-        except Exception:
+        except Exception as exc:
             self._client = None
+            logger.warning("qdrant_connect_failed", url=self.url, error=str(exc))
 
     def _vector(self, text: str) -> list[float]:
         if settings.use_real_embeddings:
@@ -86,7 +99,7 @@ class QdrantVectorStore:
 
     def upsert(self, chunks: list[RagChunk]) -> int:
         if self._client is None:
-            return self._fallback.upsert(chunks)
+            raise QdrantUnavailableError("Qdrant client unavailable — refusing to silently drop an upsert")
         points = [
             self._PointStruct(
                 id=chunk.chunk_id,
@@ -100,7 +113,7 @@ class QdrantVectorStore:
 
     def search(self, query: str, *, limit: int = 5) -> list[RagChunk]:
         if self._client is None:
-            return self._fallback.search(query, limit=limit)
+            raise QdrantUnavailableError("Qdrant client unavailable — refusing to silently degrade retrieval")
 
         hits = getattr(self._client, "search")(
             collection_name=self.collection,
@@ -111,7 +124,7 @@ class QdrantVectorStore:
 
     def delete_tenant(self, tenant: str) -> int:
         if self._client is None:
-            return self._fallback.delete_tenant(tenant)
+            raise QdrantUnavailableError("Qdrant client unavailable — refusing to silently no-op a delete")
         from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
         self._client.delete(
