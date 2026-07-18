@@ -2834,3 +2834,15 @@ types that would need per-route scoping, not a blanket top-level handler, to avo
 unrelated `KeyError`s elsewhere in the app the way `catalog.py`'s local handler already does)
 **or** delete `run_errors.py`/`llm_errors.py` and their tests as intentionally-unadopted code. Not
 implementing either option in this pass — this section is the finding, not the fix.
+
+### 21.9.3. §21.8's fix confirmed green in GitHub Actions
+
+Dispatched `Release Gate` again after §21.8's `api`+`tool-gateway` commits landed — run
+[`29622968688`](https://github.com/butbeautifulv/egregore/actions/runs/29622968688), **all 40
+jobs green**, zero non-success/non-skipped conclusions. Also independently re-verified `worker`'s
+copy of the same callback-handler chain is genuinely alive (not itself dead): `get_trace_callbacks()`
+is called from `cys_core/llm/reasoning.py`, `cys_core/llm/__init__.py`, and
+`application/use_cases/evaluate_trace_critic.py`'s real `model.invoke(prompt, config={"callbacks":
+get_trace_callbacks()})` call, and `import langfuse.langchain` resolves cleanly in `worker`'s venv
+(it legitimately keeps `langchain-core`) — confirming §21.8's fix was correctly scoped to `api`/
+`tool-gateway` only, with nothing left half-wired in `worker`.
