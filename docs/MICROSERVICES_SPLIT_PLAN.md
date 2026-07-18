@@ -4839,3 +4839,101 @@ exists yet," which needs a design decision, not a same-session patch.
 Eisenhower: both **important, not urgent** — real defense-in-depth gaps, neither is a live
 production incident today, and both need a decision from whoever owns the infra/schema-governance
 tradeoffs before an engineering agent should build them.
+
+## 45. Session handoff (2026-07-18) before agent switch
+
+Closing out this session's continuous audit pass. Everything below is committed and pushed to
+`origin/feature/microservice-refactoring` (HEAD `9787f17`); working tree is clean. Reading this
+should let the next session pick up without re-deriving what was just done.
+
+### 45.1. What this session did, in order (§39–§44)
+
+- **§39** — `QdrantVectorStore.upsert`/`search`/`delete_tenant` silently fell back to an empty
+  in-memory store on connection failure instead of raising, bypassing `rag_query()`'s existing
+  fail-closed handling. Fixed: raises `QdrantUnavailableError` now.
+- **§40** — `TenantBound()` (`api`) caught *any* exception while parsing a request body for
+  `tenant_id`, not just malformed JSON, silently defaulting to tenant `"default"`. Narrowed to
+  `json.JSONDecodeError`.
+- **§41** — Two fixes: (1) `ResumeHitlJob`'s approve/edit path discarded the Kafka audit-publish
+  outcome, so an audit-trail failure never blocked the high-risk action — added
+  `HITL_AUDIT_FAILCLOSED_MODE` (off/shadow/enforce, default shadow) and
+  `record_hitl_approval_blocking()`. (2) CI's bare `uv sync` calls let a drifted lockfile silently
+  re-resolve — added `--frozen` everywhere. Also corrected two stale doc claims: the abuse-case CI
+  gate and SBOM generation both already existed.
+- **§42** — Root-caused (not just "plausible" anymore) a double-publish/double-finalize race in
+  `WorkerOrchestrator`'s soft-timeout cancellation path. **Not fixed** — needs a design decision
+  between shielding the finalize phase vs. making enqueue idempotent; documented the exact mechanism
+  so the next pass doesn't have to re-derive it.
+- **§43** — RAG retrieval filtered by tenant *after* fetching top-K from Qdrant, not at query time
+  (the weaker pattern `RAG_Security_Cheat_Sheet.md` warns against). Added a Qdrant `Filter`/
+  `FieldCondition` query-time tenant filter (same shape `delete_tenant()` already used). **Along the
+  way, found `worker`'s own copy of `rag/store.py` had never received §39's fix at all** — synced
+  both fixes to `worker`, with one deliberate divergence (a `ty: ignore` comment valid in
+  `tool-gateway`, invalid/unused in `worker`, since `worker` actually has `litellm` resolvable).
+- **§44** — Verified the two remaining §10/§11 items (message/tool-schema pinning with rug-pull
+  detection; a separate read-only Postgres role) are genuinely absent, not just unverified — both
+  correctly deferred, both need infra/design decisions an engineering agent shouldn't make
+  unilaterally.
+- Two small doc-only corrections: §13's Phase 11 note (sandbox-token verification) updated to point
+  at §37, which completed it in a later session than the one that wrote Phase 11's "not done" note.
+
+Net effect: the doc's original §10/§11 hardening checklist (SSRF, nonce+TTL replay, RAG fail-closed,
+RAG tenant isolation, HITL fail-closed, abuse-case CI gate, secrets manager, SBOM/supply-chain,
+RFC7807 errors, schema pinning, read-only DB role) is now fully accounted for — each item is either
+fixed, confirmed-and-corrected where the doc was stale, or explicitly deferred with a stated reason.
+
+### 45.2. Verification performed
+
+Full batched test suites (`scripts/pytest_batches.sh`) run for all three packages after this round's
+commits — every batch green except two **pre-existing, already-documented, confirmed-unrelated**
+failures that recur across packages: a SOCKS-proxy scheme error in the test environment itself
+(`tests/infrastructure/test_http_client.py`), and §31's `enrich_ioc`-not-declared-in-any-persona
+issue (`tests/integration/test_tool_gateway_chain.py` and its `worker` copy). Neither is caused by
+anything in this session. `ruff`/`ty` clean on every file touched.
+
+### 45.3. Unresolved at handoff time — check this first
+
+A `Release Gate` workflow run was manually dispatched against `feature/microservice-refactoring`
+(`gh workflow run "Release Gate" --ref feature/microservice-refactoring`) to validate this session's
+full commit batch in real CI, not just local pytest. **It was still `in_progress` (~3.5 min in) when
+this session ended** — run ID `29649076509`,
+<https://github.com/butbeautifulv/egregore/actions/runs/29649076509>. Check this first: if it's
+red, something in this session's changes broke CI in a way local `pytest_batches.sh` didn't catch
+(e.g. a matrix/env difference); if green, this round is fully validated end-to-end.
+
+### 45.4. What's still open (all correctly deferred, not forgotten)
+
+Every one of these needs a decision from whoever owns the relevant tradeoff — not a code fix an
+agent should make unilaterally. Listed here so the next session doesn't have to re-discover them:
+
+- **§42** — the soft-timeout double-publish/finalize race (mechanism confirmed, fix direction not
+  chosen).
+- **§27.6** — `POST /runs/{run_id}/approve-plan` unconditionally returns 501 (dead/never-finished
+  endpoint — wire it up or remove the route).
+- **§10.9** — secrets manager migration (`bus_signing_key` still a plain env var).
+- **§10.1/§10.2/§44** — schema/message-type pinning with rug-pull detection (doesn't exist yet).
+- **§11.6/§44** — separate read-only Postgres role (doesn't exist yet).
+- **§10.11/§41.3** — RFC7807 error format (current shape is ad-hoc; `web_ui` has a load-bearing
+  dependency on it, so this is backend+frontend together, not backend alone).
+- **§21.9** — `PersistenceUnavailableError` maps to a generic 500 instead of the more correct 503;
+  the fix is mechanically trivial but changing a live prod error code is an API-contract call.
+- **§11.4** — ReBAC doesn't scope by persona; needs an OpenFGA schema migration.
+- **§22.13** — HITL pause/resume protocol; designed in §35, not implemented, needs a live
+  agent-run environment to verify safely.
+- **CI/branch-protection gap** (§20.3, recurring) — `main` still has no `required_status_checks`
+  naming `release-gate`; a live GitHub-settings change needing explicit owner sign-off.
+- **§41.4/cosign** — `job-sign.yml` is a non-functional stub (`echo` commands, not real `cosign
+  sign`); needs a keyless-OIDC-vs-`COSIGN_PRIVATE_KEY` decision.
+
+### 45.5. Working conventions this session used, for continuity
+
+- Commits go directly to `feature/microservice-refactoring` — no PRs, no new branches (established
+  earlier in this session's lineage).
+- New fail-closed security controls ship via an `off|shadow|enforce` mode setting defaulting to
+  `shadow`, mirroring `AUTHZ_MODE`/`TOOL_SCOPE_MODE`/`TOOL_SANDBOX_TOKEN_MODE` — never `enforce` by
+  default on a first pass.
+- Before calling any fix "done" in this "duplicate everything" (§18) codebase, grep for other
+  packages' copies of the same file — §43.3 found a fix from an earlier session (§39) that was never
+  synced to `worker` at all.
+- Targeted `pytest <dir> -q` while iterating; full `scripts/pytest_batches.sh` per package before
+  each commit, not after every edit.
