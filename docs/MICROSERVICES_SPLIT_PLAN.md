@@ -2583,3 +2583,126 @@ with real health check, `/invoke` verified against multiple tool types (stub, ca
 web-search, and the deliberately-excluded-tool rejection path) both via `docker run -p` and via
 `uv run egregore tool-gateway` directly on the host. Root `make verify-architecture` (all three
 packages via the updated root `Makefile`) green.
+
+## 21.7. Standing audit (recurring, this session): real gap found — Tool Gateway wasn't reachable
+## in either local docker-compose topology, only in the K8s Helm path
+
+A standing `/loop` cron (`30m`, session-only, auto-expires after 7 days) started firing the
+prompt "any problems? 5 why - 5 solutions... did we forget something? ... work until refactoring
+is done." First firing found a real, concrete gap — not a hypothetical one — and fixed it, then
+wrote the checklist below so the *class* of gap doesn't recur on the next service extraction.
+
+### 21.7.1. What was found
+
+§21.6's own verification (`ty check`, `pytest_batches.sh`, `docker run`, `helm template`/`helm
+lint`) was thorough for the package and the K8s deploy path, but never touched
+`deploy/docker-compose.dev.yml` or `deploy/docker-compose.secure.yml` — both still only defined
+`api`/`worker`/`ui` (or `api`/`worker`/`reverse-proxy`/`postgres`/`redis` for the secure variant).
+Confirmed empirically: `docker compose --profile app config` for the dev file resolved cleanly
+with 7 services once a `tool-gateway` entry was added (verified both with and without the entry —
+the addition doesn't break anything already working); `docker compose -f docker-compose.secure.yml
+config` likewise resolved cleanly with the new service on `agent_internal` (the network with no
+external access — same segmentation principle as §10.8's target NetworkPolicy model, just at the
+compose layer). `helm lint`/`helm template` (via a fresh local `helm` binary — none was available
+during the §21.6 session, installed via the official `get-helm-3` script into a job-scratch dir,
+not persisted) confirm the K8s manifests from §21.6 were *not* the source of this gap — they were
+already correct; docker-compose specifically was the missed surface.
+
+### 21.7.2. Five whys, down to the actual root cause
+
+1. **Why wasn't Tool Gateway reachable in `docker-compose.dev.yml`?** No `tool-gateway` service
+   entry existed — the package and its Dockerfile were built and verified in isolation (`docker
+   run`, `ty check`, `pytest`), but the local multi-service dev stack was never updated to include
+   it.
+2. **Why was it verified "standalone" but not integrated into the compose stack?** §21.6's
+   verification effort focused on what the user's three pre-work answers explicitly named:
+   deployment entrypoint (CLI command), test strategy (real sockets), and CI/CD scope (chosen:
+   full, including Helm/K8s deploy). Docker-compose — a local-dev convenience layer, orthogonal to
+   the K8s deploy target — was never one of the three things asked about.
+3. **Why wasn't docker-compose in that checklist to begin with?** Because there wasn't a
+   checklist — each deploy surface (`Dockerfile.tool-gateway`, Helm `Deployment`+`Service`+
+   `values.yaml`+`configmap.yaml`, `networkpolicy.yaml`, the CI matrix, `.gitleaks.toml`,
+   `codeql-config.yml`) was added one at a time as it came to mind while doing the work, not
+   read off a fixed enumeration.
+4. **Why did this gap go unnoticed until an audit loop caught it, rather than during the original
+   session?** Because none of that session's verification steps (`ty check`, `pytest`, `docker
+   run`, `helm template`/`lint`) would *ever* exercise a docker-compose file — they're
+   orthogonal surfaces, so a clean run of all of them provides zero signal about compose-file
+   completeness. The absence of a failure was mistaken for absence of a gap.
+5. **(root cause) Why is there no single verification step that catches "a new service isn't
+   registered everywhere a service must be registered"?** Because "everywhere" was never written
+   down as an enumerable list — it lived only as tribal knowledge accumulated turn-by-turn during
+   the §21.6 session itself. Nothing forces a future session (extracting the *next* service, or
+   auditing this one) to check the same list mechanically rather than rediscover it by memory.
+
+### 21.7.3. Five solutions — implemented, not just proposed (bottom → top: concrete fixes first,
+### then the structural one that prevents recurrence)
+
+1. *(the immediate gap)* — added a `tool-gateway` service to `deploy/docker-compose.dev.yml`,
+   same shape as `api`/`worker` (build/entrypoint/command/env_file/healthcheck), wired
+   `USE_TOOL_GATEWAY=true`/`TOOL_GATEWAY_URL=http://tool-gateway:8092` into `worker`'s environment
+   and added `tool-gateway` to its `depends_on` — matches exactly what `configmap.yaml` already
+   does for the Helm path (§21.6.3). Verified: `docker compose --profile app config --services`
+   lists all 7 services cleanly with a real (test) `.env` file present, matching the exact
+   same missing-`.env`-file behavior `api`/`worker` already have (not a new requirement this
+   introduces).
+2. *(the secure-reference gap, arguably higher-value than #1)* — added the same service to
+   `deploy/docker-compose.secure.yml` with the *same* hardening every other service there gets
+   (`read_only`, `cap_drop: [ALL]`, `no-new-privileges`, seccomp profile, tmpfs, non-root user),
+   on the `agent_internal` network (no external access) alongside `worker`/`postgres`/`redis` —
+   this file's entire purpose is to model the hardened topology §10.8 describes, so leaving the
+   PEP boundary undeployed here specifically was the more consequential half of the gap. Noted
+   honestly in-file: worker still reaches Postgres/Redis directly in this compose file (predates
+   the full PEP-only-egress model §10.8 targets) — standing the gateway up for real here is what
+   makes tightening that boundary later possible, not the boundary itself.
+3. *(verify before claiming fixed)* — validated both compose files with `docker compose config`
+   (not just visual review) after each edit, and validated the K8s/Helm side with a freshly
+   installed `helm lint`/`helm template` (0 failures, template renders byte-for-byte sane) — closing
+   the specific verification gap from 21.7.2 point 4 for *this* round, not just patching the
+   symptom.
+4. *(don't leave scratch artifacts behind)* — the `helm` binary and a temporary test `.env`/
+   `secrets/` dir used for verification were created under the job scratch dir / cleaned up
+   immediately after use, not committed or left in the worktree — same discipline as every other
+   verification step this session.
+5. *(the structural fix — root cause, not symptom)* — **this checklist itself.** For the *next*
+   time a service gets extracted into its own package (or if anything about `tool-gateway`'s own
+   deploy surface changes), the following is the canonical enumeration, meant to be worked
+   through mechanically rather than reconstructed from memory:
+   - `deploy/Dockerfile.<service>`
+   - `deploy/helm/egregore/templates/<service>-deployment.yaml` (Service + Deployment) +
+     `values.yaml` (`<service>:` block + `resources.<service>` + `rollout.<service>`) +
+     `_helpers.tpl` (image helper, if the service gets its own image block like `ui`/
+     `toolGateway` rather than sharing `image:`) + `configmap.yaml` (any new env vars other
+     services need to reach it)
+   - `deploy/k8s/*.yaml` (`NetworkPolicy` egress rules, job templates) — check for hardcoded
+     ports/URLs specifically, that's where the 8090-vs-8092 bug in §21.6.3 came from
+   - **`deploy/docker-compose.dev.yml`** and **`deploy/docker-compose.secure.yml`** — the gap
+     this section closes; easy to forget because neither is part of the K8s/CI verification loop
+   - `.github/workflows/release-gate.yml` — every `service:` matrix (as of this writing: 8
+     occurrences across adversarial/lint/unit-tests/arch-lint/domain-coverage/build/
+     container-scan/sign)
+   - `.github/workflows/job-linter-security.yml` (matrix) and `.github/workflows/
+     job-dockerfile-lint.yml` (explicit per-Dockerfile `hadolint-action` step, not a matrix)
+   - `.github/workflows/deploy-preprod.yml` (currently a stub/echo — still worth keeping in sync)
+   - `.gitleaks.toml` (adversarial-fixture allowlist path) and `.github/codeql/codeql-config.yml`
+     (scanned-source path)
+   - Root `Makefile` (`verify-architecture`/`domain-gate` fan-out, any `dev-<service>` convenience
+     target)
+   - `AGENTS.md` / `docs/DEVELOPMENT.md` / `docs/CI_CD_KNOWN_GAPS.md` — "two package(s)" /
+     `backend/{worker,api}` style phrasing tends to hide in prose even after the structural
+     pieces are updated (found and fixed several instances of exactly this in §21.6)
+
+### 21.7.4. Eisenhower framing, for whoever picks this up next
+
+- **Urgent + important (done this round)**: the docker-compose gap itself (21.7.3 points 1–2) —
+  a real, currently-shipped incompleteness in the local-dev and secure-reference deploy surfaces.
+- **Important, not urgent (done this round, but would have been fine deferred one more cycle)**:
+  installing and running `helm lint`/`helm template` for real, rather than continuing to rely on
+  the fact the Go-template syntax merely *looked* right on inspection.
+- **Important, not urgent (deferred, tracked)**: dispatching a real GitHub Actions run against
+  the CI changes from §21.6.4 — still not done as of this section; local verification only.
+  Whoever has the ability to push/open a PR should confirm green before treating §21.6's CI
+  wiring as fully closed, per §20.1's own standard.
+- **Not urgent, not important (explicitly not done)**: chasing hypothetical gaps with no concrete
+  evidence — this section only acted on things verified empirically (compose config resolution,
+  helm lint/template output), not speculative "might also be missing" items.
