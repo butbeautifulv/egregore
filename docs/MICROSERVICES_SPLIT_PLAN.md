@@ -2870,3 +2870,163 @@ re-surfacing. Also cleaned up a redundant one-shot wakeup (`c91f31f7`) that a `S
 earlier in this session had stacked on top of the actual recurring cron (`39c165e8`) by mistake —
 fixed-interval `/loop` jobs are driven entirely by their `CronCreate` job; `ScheduleWakeup` is for
 the dynamic (no-interval) mode only and was never needed here.
+
+## 22. New direction (not started): split `worker` into `dispatcher` + `agent_runtime`
+
+Recorded here as a design direction to plan around, not implemented this session (doc-only, by
+explicit instruction). Supersedes nothing in §18–§21 — the langchain/fastapi removal those
+sections cover is complete; this is the *next* incoming requirement, one level deeper than "which
+frameworks are imported" into "how the packages are seamed."
+
+### 22.1. The ask
+
+> add to plan new incomes. we need to separate agent runtime and dispatcher. dispatcher is a
+> worker who will get a message from queue and make an agent in gVisor, or Kata, or K8s or sbx
+> docker. but dispatcher is kind of a runner. the main idea to have no dependency on realisation
+> lanchain langgraph etc. so i can run grok claude etc from dispatcher if i want to switch runtime.
+
+Clarified in-session (three questions, answered before any code/doc was touched):
+
+1. **Relationship to `worker`**: not a new 4th package and not "dispatcher wraps today's worker" —
+   `worker` itself splits in two: `dispatcher` and `agent_runtime`.
+2. **What "agent runtime" means**: it's not a new concept — it's "our implementation of current
+   agent that worked in worker and monolith," i.e. today's `cys_core/runtime/agent.py`, now named
+   and boundaried explicitly instead of being one module among many inside `worker`.
+3. **Sandbox backends** (gVisor/Kata/K8s/sbx docker): design/document all four this round, pick no
+   winner, build nothing.
+
+### 22.2. Current-state audit — this direction is not starting from zero
+
+Before designing anything new, traced what already exists in `backend/worker/src` that this split
+would build on top of, rather than assuming a green field:
+
+- **`interfaces/worker/daemon.py`** (`WorkerDaemon`) — the actual queue-consuming loop. Already
+  framework-clean: its imports are `bootstrap`, `cys_core.infrastructure.daemon_runner`,
+  `cys_core.observability.*` — zero `langchain`/`langgraph`. This is dispatcher-shaped already.
+- **`interfaces/worker/orchestrator.py`** (`WorkerOrchestrator`, `build_agent_bus`) — resolves
+  trust level, budget, and picks an `ExecutionBackend`, then calls `.execute()`. This is the
+  dispatcher's decision core. Its only framework-tainted edge is that it imports
+  `cys_core.runtime.agent.get_runtime` to construct the in-process backend's default — i.e.
+  today's orchestrator *does* know the runtime's concrete module path, even though it never
+  touches `langchain` symbols directly.
+- **`cys_core/application/ports/execution_backend.py`** (`ExecutionBackend` Protocol) — **this
+  already is a sandbox-backend port**, with a doc-comment explicitly framed around exactly this
+  problem ("in-process, subprocess, K8s, Docker"). Four concrete implementations already exist:
+  `InProcessExecutionBackend`, `SubprocessExecutionBackend`, `DockerExecutionBackend` (`docker run
+  ... run-sandboxed-job`, explicitly documented as "local analog of K8sExecutionBackend... for
+  dev/CI without a real cluster"), `K8sExecutionBackend` (places one K8s Job per job run, result
+  returned via job_store polling since pod stdout isn't as readable as a subprocess's). All four
+  share `SubprocessJobEnvelope` (`cys_core/infrastructure/execution/envelope.py`) as their
+  wire format and `execute_sandboxed_job()` (`sandboxed_entrypoint.py`) as the child-side
+  soft-timeout/salvage/budget-lifecycle logic.
+- **`interfaces/worker/agent_entrypoint.py`** — a literal skeleton: `"""Single-job agent entrypoint
+  for isolated sandbox workloads."""` / `"""Run one worker job inside sandbox (skeleton for
+  sandbox v2)."""` / prints `"not yet wired to queue dequeue"`. Confirms this exact direction
+  ("agent runs isolated, dispatcher-adjacent-but-separate, in a sandbox") was already anticipated
+  under the name "sandbox v2" and left as a stub.
+- **`cys_core/runtime/agent.py`** (`AgentRuntime`, `get_runtime`) — 666 lines, the actual "agent
+  runtime" per the user's clarification. Directly imports `langchain.agents.create_agent`,
+  `langchain.agents.middleware.human_in_the_loop.HumanInTheLoopMiddleware`,
+  `langchain_core.language_models.chat_models.BaseChatModel`, `langgraph.types.Command`, plus ~10
+  custom middleware classes (`ContextSummaryMiddleware`, `FollowUpToolMiddleware`,
+  `MemoryContextMiddleware`, `OneToolPerTurnMiddleware`, `PromptContextMiddleware`,
+  `ScopeMiddleware`, `SecurityMiddleware`, `ToolCoercionMiddleware`, `ToolDedupMiddleware`,
+  `ToolLadderMiddleware`) all built on langchain's middleware framework. This is the entire
+  surface that "no dependency on realisation langchain/langgraph" is actually about.
+- **`cys_core/application/ports/llm.py`** (`ModelConnector`) and **`cys_core/llm/protocol.py`**
+  (`ChatModelProvider`) — already named and shaped like DIP ports ("Port for swappable LLM/model
+  backends", "Provider-agnostic LLM factory (DIP)"), and via `LiteLLMProvider` already route to
+  any model litellm supports — Grok, Claude, GPT, etc. **This solves model-provider swapping, not
+  framework swapping**: both Protocols' methods are typed to return
+  `langchain_core.language_models.chat_models.BaseChatModel`. Swapping which model answers a
+  prompt already works today; swapping *how the agent loop itself is orchestrated* (langchain's
+  `create_agent` + middleware stack vs. e.g. the Claude Agent SDK's own loop vs. a hand-rolled
+  loop) does not — every implementation is forced back through a langchain type at the boundary.
+  This is the precise gap the user is naming.
+
+### 22.3. Target split
+
+Seam the existing `ExecutionBackend.execute()` boundary — it is already exactly the right cut
+point, since it's the one place today's code passes a job across a process/trust boundary and
+gets a `RunResult` back, independent of what runs on the other side:
+
+- **`dispatcher`**: everything that is dispatcher-shaped today and already framework-clean or
+  nearly so — `WorkerDaemon` (queue consumption), `WorkerOrchestrator` minus its direct
+  `get_runtime` import (trust/budget resolution, `SecureAgentBus` wiring, `ExecutionBackend`
+  selection), and the whole `cys_core/infrastructure/execution/` package (envelope, the four
+  existing backends, `sandboxed_entrypoint.py`). Dispatcher's job: pull a message off the queue,
+  decide budget/trust/profile, pick a sandbox backend, hand the job across the boundary, get a
+  `RunResult` back, publish it. It never imports `langchain`/`langgraph` — today it *almost*
+  doesn't (only the in-process default construction reaches into `cys_core.runtime.agent`), and
+  closing that one remaining edge is the concrete deliverable this direction implies.
+- **`agent_runtime`**: `cys_core/runtime/agent.py` (`AgentRuntime`) plus its middleware stack,
+  `cys_core/llm/*`, and `interfaces/worker/agent_entrypoint.py` — finished instead of left as a
+  skeleton, becoming the actual process entrypoint that runs on the far side of
+  `ExecutionBackend.execute()` for subprocess/Docker/K8s/(future gVisor/Kata) backends. In-process
+  mode keeps calling it as a plain Python function; out-of-process modes call it via the same
+  `SubprocessJobEnvelope`-in / `RunResult`-out contract `sandboxed_entrypoint.py` already
+  establishes — no new wire protocol needed, just wiring the existing skeleton up to it.
+
+### 22.4. The `AgentRuntimePort` — what "no langchain/langgraph realisation" means precisely
+
+Per the user's clarification, "agent runtime" already has one, fixed, working implementation —
+this is not a request to design a new agent from scratch, it's a request to put a seam in front of
+the existing one so it can be swapped later:
+
+```
+AgentRuntimePort.run(job, budgeted, session_id, job_state, tools, model_config) -> RunResult
+```
+
+- `dispatcher` depends only on this Protocol, never on `langchain`/`langgraph` symbols, and never
+  on `cys_core.runtime.agent` by concrete import path (today's one remaining edge, per §22.3).
+- Today's `AgentRuntime` becomes the first, default implementation of this port — no behavior
+  change, just a name and an import boundary.
+- A future implementation (Claude Agent SDK, a hand-rolled loop calling litellm directly, etc.)
+  becomes a sibling implementation of the same port, selected the same way `ExecutionBackend`
+  implementations are selected today (config/settings, not a code branch in `dispatcher`).
+- This also means `ModelConnector`/`ChatModelProvider` (§22.2) need a framework-neutral return
+  type at that boundary eventually — not because model-swapping is broken (it isn't, litellm
+  already does that) but because a non-langchain `AgentRuntimePort` implementation shouldn't be
+  forced to construct a `BaseChatModel` just to get a model handle. Not resolving this now; flagged
+  as a dependency of implementing a second runtime, not of drawing the port itself.
+
+### 22.5. Sandbox backends — gVisor / Kata / K8s / sbx docker (documented only, per instruction)
+
+`ExecutionBackend` (§22.2) is already the right shape for this; K8s and Docker already have
+concrete implementations. Documenting all four requested backends against that existing Protocol,
+no code this round:
+
+| Backend | Status | Notes |
+|---|---|---|
+| **K8s** (plain) | Implemented — `K8sExecutionBackend` | One K8s Job per job run; result via job_store polling. |
+| **sbx docker** | Implemented — `DockerExecutionBackend` | `docker run --rm -i <image> ... run-sandboxed-job`; explicitly documented as the dev/CI analog of the K8s backend, reusing `SubprocessExecutionBackend`'s stdin/stdout plumbing via composition. |
+| **gVisor** | Not started | On K8s, gVisor is normally selected via a Pod's `runtimeClassName: gvisor` against a cluster-configured `RuntimeClass` (containerd + `runsc`) — likely an additive change to `K8sExecutionBackend`'s Job spec (a `runtime_class` field) rather than a new backend class. A local/non-K8s gVisor path (`runsc run` directly, analogous to `DockerExecutionBackend`'s `docker run`) would need a new backend class if dev/CI parity with the K8s gVisor path is wanted. |
+| **Kata Containers** | Not started | Same shape as gVisor on K8s (`runtimeClassName: kata`, VM-level isolation via a Kata-configured `RuntimeClass`) — same open question of RuntimeClass-as-a-field-on-`K8sExecutionBackend` vs. a dedicated backend. Kata has no natural non-K8s "local" analog the way gVisor's `runsc run` does, since Kata's isolation model is inherently VM-per-sandbox. |
+
+Both gVisor and Kata most likely reduce to "K8s Job with a non-default `runtimeClassName`" rather
+than wholly new `ExecutionBackend` implementations — worth validating against the cluster's actual
+containerd config before assuming a new backend class is needed at all.
+
+### 22.6. Open questions (deliberately unresolved this round)
+
+- Does `agent_runtime` become its own top-level `backend/agent-runtime/` package (mirroring the
+  `tool-gateway` extraction in §21.6), or stay as an internal module boundary inside a still-single
+  `worker`/`dispatcher` package? The `tool-gateway` precedent argues for the former if
+  out-of-process execution (subprocess/Docker/K8s/gVisor/Kata) is the common case rather than the
+  exception; a purely in-process default argues for the latter until there's a second real runtime
+  implementation to justify the split.
+- Should `runtimeClassName` become a first-class field on the existing `K8sExecutionBackend`
+  (§22.5), or do gVisor/Kata warrant their own backend classes for clearer per-backend
+  configuration/observability?
+- `ModelConnector`/`ChatModelProvider`'s `BaseChatModel`-typed boundary (§22.4) — deferred until a
+  second `AgentRuntimePort` implementation actually needs it to move.
+
+### 22.7. Eisenhower placement
+
+**Important, not urgent.** This is an architecture direction for future runtime flexibility, not a
+bug or a live gap — nothing is broken today; `AgentRuntime` works, and swapping *which model*
+answers a prompt already works via litellm. The unmet need is swapping *which framework*
+orchestrates the agent loop, which nothing currently demands until a second runtime is actually
+being built. Recorded here so the next implementation session starts from this audit (§22.2)
+instead of re-discovering that `ExecutionBackend`, the four backends, and the `agent_entrypoint.py`
+skeleton already exist.
