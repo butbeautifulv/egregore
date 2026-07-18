@@ -5147,3 +5147,27 @@ api/worker-only module, harmless no-op for model-gateway either way). `dependabo
 four `directory: "/"` entries are a separate, pre-existing, repo-wide question (not model-gateway-specific
 — every package's nested `pyproject.toml` has the same ambiguity) — flagged, not touched, since it's a
 different-shaped problem than "one package missing from an otherwise-correct per-package list."
+
+### 49.3. Third and last instance of the same class found: `linter-security`, plus stale doc rows fixed
+
+Checked every remaining `[worker, api, tool-gateway]`-shaped list in the repo rather than stopping after
+two hits: `.github/workflows/job-linter-security.yml`'s `linter-security` job had the identical gap
+(`ruff check . --output-format sarif` + `gate-check.py --control linters`). Verified locally before
+adding — ran both commands against `model-gateway` directly (`uv run ruff check . --output-format sarif`
+produces a valid empty-findings SARIF, `python scripts/gate-check.py --control linters --report ...`
+→ `[linters] ok (findings=0, mode=warn)`) — no config in `gate-check.py`/`config/security-gate-policy.yaml`
+hardcodes the three-package list, so no further changes needed. Added `model-gateway` to this matrix too.
+
+While here, corrected `docs/CI_CD_KNOWN_GAPS.md`'s "Resolved gates" table, which had gone stale in two
+independent ways: its `lint` row said "matrixed over worker/api" (missing `tool-gateway` — a staleness
+that predates this session's model-gateway work entirely, not something this session introduced), and
+none of the rows reflected model-gateway's now-partial inclusion. Rewrote each row to state precisely
+which packages are and aren't covered for each job, rather than reasserting the old blanket claim — this
+is the same lesson as §16.10/§16.11 (a stale one-line summary of a gate is worse than pointing at what
+actually runs it), applied preventively this time instead of after being caught out by it.
+
+**Still correctly not added anywhere**: `arch-lint`, `domain-coverage`, `adversarial` (missing
+prerequisite files, per §49), and the main-only `build`/`sbom`/`container-scan`/`sign` jobs (no
+`Dockerfile.model-gateway`). This closes out the "same class of gap" sweep for this round — every
+`[worker, api, tool-gateway]` occurrence in `.github/` has now been individually checked, not just the
+one that happened to be found first.
