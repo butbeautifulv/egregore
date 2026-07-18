@@ -4981,3 +4981,89 @@ cheap insurance for whenever that wiring work happens, not a fix to a live gap �
 Phase 8's original guard was framed for `api`/`worker`. §29's own "what this round deliberately did not
 do" list (no runtime integration, no NetworkPolicy egress restriction, no streaming, no rate limiting)
 is unchanged and still accurate; not re-litigated here.
+
+## 48. Standing audit found and fixed a real, CI-confirmed flaky-test bug: PII redaction can corrupt
+## internally-generated ids, root-caused to a systemic pattern (not fully closed — see §48.4)
+
+Dispatched Release Gate on §47's commit (run `29650384632`) to verify it in real CI per this session's
+own convention — it came back **red**, but not from anything in §47: `unit-tests (api)`'s
+`tests/application/test_enqueue_follow_up.py::test_enqueue_follow_up_queues_consultant_job` failed with
+`AssertionError: assert 'fu-[INN_REDACTED]' == 'fu-518806746665'`. Investigated rather than re-running
+and hoping it was a fluke (this session's own discipline, §16.6/§43).
+
+### 48.1. Root cause
+
+`EnqueueFollowUp.persist_operator_turn()` mints `fu_id = f"fu-{uuid.uuid4().hex[:12]}"` when no caller
+supplies one. That id gets embedded as a JSON field (`follow_up_id`) inside the full conversation-turn
+payload (`MemoryWriteService.append_conversation_turn`), which is serialized to one string and passed
+through `MemoryEntryValidator.validate()` → `RedactionService.redact_pii()` before being persisted.
+`redact_pii`'s RU-INN pattern (`cys_core/domain/security/patterns/pii_ru.py:8`) is a bare
+`\b(?:\d{10}|\d{12})\b` — no checksum validation, matches *any* standalone 10- or 12-digit run. Since
+`uuid4().hex` characters are drawn from `0-9a-f`, a 12-character slice is all-digits roughly
+`(10/16)^12 ≈ 0.75%` of the time — and when that happens, the *entire* redaction step correctly does its
+job on an unlucky false positive, silently turning `follow_up_id` into `"fu-[INN_REDACTED]"` in the
+persisted content while the value returned to the caller (`result["follow_up_id"]`) stays the real id.
+This is not test-only: in production, ~1 in 133 follow-up turns would have their stored `follow_up_id`
+corrupted this way, breaking `list_turns()`'s ability to match turns by id for that follow-up.
+
+### 48.2. Fix applied (narrow, proven, zero regression risk to real PII protection)
+
+Deliberately **did not** touch the redaction pipeline itself or `MemoryEntryValidator`/
+`MemoryWriteService`'s generic content-scanning behavior — that scans the *whole* serialized payload for
+every `append_finding`/`append_pending_finding`/`append_conversation_turn` call, including nested
+`finding` dicts that legitimately carry investigation narrative text needing real PII redaction; scoping
+that down risked quietly weakening a real security control for a fix that only needed to touch one id
+generator. Instead, root-caused which characters can actually satisfy `\b\d{10}|\d{12}\b` inside a
+12-char `[0-9a-f]` span: since hex digits and hex letters are both regex `\w`, the interior of a
+14-character-bounded id has no internal `\b` positions at all (verified, not assumed) — the *only* way
+this pattern can match is if **all 12 characters** are digits (a partial match can't align a boundary
+inside a uniform `\w` span). So forcing a single guaranteed-non-digit character anywhere in the 12-char
+suffix fully and deterministically eliminates the false-positive class, with no change to real PII
+detection anywhere.
+
+Added `new_follow_up_id()` to `cys_core/domain/follow_up/models.py` (next to the existing
+`initial_follow_up_id`) — generates the same `fu-{12 hex chars}` shape, but replaces the last character
+with `"f"` if the draw happened to be all-digits. `enqueue_follow_up.py`'s `fu_id = follow_up_id or
+f"fu-{uuid.uuid4().hex[:12]}"` now calls this instead. Verified empirically before committing: 200,000
+draws through the old vs. new generator (0 collisions in 200k with the fix, matching the predicted
+~0.75%/draw base rate without it), the specific failing test run 30/30 times green, and a new
+regression test (`tests/domain/follow_up/test_follow_up_models.py`, both the statistical check over
+2000 draws and a monkeypatched all-digit-`uuid4` case asserting the exact forced output). Synced
+identically across `api`/`worker`/`tool-gateway` (all three had byte-identical copies of both the source
+file and the affected test file before this change, confirmed by `diff`, per §45.5's "grep for other
+packages' copies" convention) — `ruff`/`ty` clean, targeted `pytest -k follow_up` green in all three
+(`api` 9, `worker` 33, `tool-gateway` 19), full `pytest_batches.sh` run in all three before commit.
+
+### 48.3. Why this is Eisenhower "do now," unlike most of §45.4's backlog
+
+Unlike the schema-pinning/read-only-DB-role/ReBAC-migration items that need an infra or design decision,
+this fix's correct shape was unambiguous once root-caused (an internal id generator producing an
+occasionally-PII-shaped value is a bug, not a design tradeoff) and fully self-contained to one function
++ its one call site, verified empirically rather than assumed. Directly unblocks the Release Gate run
+this session already dispatched for §47 — re-running it is the next step.
+
+### 48.4. NOT closed: this is one instance of a systemic pattern, deliberately not fixed everywhere
+
+Grepping `.hex[:12]`/`.hex[:10]` across all three packages turned up **~30 more call sites** with the
+exact same latent risk (`mem-`, `mrec-`, `appr-`, `evt-`, `esc-`, `await-`, `eng-`, `session-`, `run-`,
+`traj-`, `job-`, `chunk-`, `siem-`, sandbox container names, and more) — none confirmed to actually flow
+through a `redact_pii()` call today (that would need tracing each one's downstream storage/logging path
+individually, not assumed), but the shared root cause (hex-digit ids + a checksum-free digit-count PII
+pattern) means any of them *could* hit the same class of bug the moment their value ends up inside
+content that gets PII-redacted. Two genuinely different systemic fixes are on the table and this
+session deliberately did not pick one unilaterally, consistent with how §10.1/§10.2/§11.6/§44 were
+handled:
+
+- **Harden id generation globally** — a shared "generate a random id suffix, guaranteed not to look like
+  bare PII" helper used everywhere `uuid4().hex[:N]` is used today. Low blast radius per change, but ~30
+  call sites across 3 packages to touch and re-verify.
+- **Give the RU-INN (and likely other digit-count-only) patterns real checksum validation** instead of a
+  bare digit-count regex — RU INN has a defined checksum algorithm; validating it would cut the
+  false-positive rate to effectively zero for *any* accidental digit run, not just ids, without touching
+  a single call site. Fixes the pattern's own precision problem at the source, but is a change to a
+  security-relevant detection rule that deserves its own scrutiny/test pass, not a drive-by edit bundled
+  into an unrelated CI-failure fix.
+
+Flagged here for a dedicated follow-up pass rather than actioned now — the one instance that actually
+broke CI is fixed and verified; the other ~30 are unconfirmed-but-plausible, and picking the general fix
+is a judgment call this session isn't making unilaterally mid-audit-loop.

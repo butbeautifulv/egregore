@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any, Literal
 
 FollowUpWorkKind = Literal[
@@ -21,6 +22,22 @@ FOLLOW_UP_WORK_KINDS = frozenset(
 
 def initial_follow_up_id(engagement_id: str) -> str:
     return f"wo-{engagement_id}"
+
+
+def new_follow_up_id() -> str:
+    """Random id for a follow-up turn.
+
+    The 12-hex-char suffix must never be all-digits: it gets embedded verbatim in
+    memory content (see MemoryWriteService.append_conversation_turn) that later
+    passes through RedactionService.redact_pii(), whose RU-INN pattern is a bare
+    `\\b(?:\\d{10}|\\d{12})\\b` with no checksum check — an unlucky all-digit uuid4
+    hex draw (~0.75% of the time) gets silently mangled into "fu-[INN_REDACTED]",
+    corrupting the id used to correlate this turn (docs/MICROSERVICES_SPLIT_PLAN.md).
+    """
+    suffix = uuid.uuid4().hex[:12]
+    if suffix.isdigit():
+        suffix = suffix[:-1] + "f"
+    return f"fu-{suffix}"
 
 
 def work_kind_from_payload(payload: dict[str, Any]) -> str:

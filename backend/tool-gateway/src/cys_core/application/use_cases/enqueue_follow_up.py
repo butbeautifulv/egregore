@@ -19,7 +19,7 @@ from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.ports.metrics import MetricsPort
 from cys_core.application.runtime_config import FollowUpSettings, get_follow_up_settings
 from cys_core.domain.engagement.models import EngagementStatus, SynthesisStatus
-from cys_core.domain.follow_up.models import FOLLOW_UP_PHASE, initial_follow_up_id
+from cys_core.domain.follow_up.models import FOLLOW_UP_PHASE, initial_follow_up_id, new_follow_up_id
 from cys_core.domain.memory.services import MemoryReadService, MemoryWriteService
 from cys_core.domain.runs.models import ContextKind, InteractionMode, RunContext
 from cys_core.domain.runs.state_models import RunState, RunStatus
@@ -132,7 +132,7 @@ class EnqueueFollowUp:
         mode: str = "auto",
     ) -> tuple[str, Any]:
         engagement = self._validate_engagement(tenant_id, engagement_id)
-        fu_id = follow_up_id or f"fu-{uuid.uuid4().hex[:12]}"
+        fu_id = follow_up_id or new_follow_up_id()
         try:
             persist_operator_turn_to_memory(
                 self._memory_writer,
