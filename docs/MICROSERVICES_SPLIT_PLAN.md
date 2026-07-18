@@ -3725,3 +3725,160 @@ reasoning as §25.6. §24.4's job-requeue, refusal-handling, infra-reconnect-bac
 `CircuitBreaker`-reuse items are untouched. §21.9 and §22.13 remain as originally recorded. No new
 items were discovered this round beyond §26.3's enqueue-helper findings, which are now fixed rather
 than added to the backlog.
+
+## 27. Found and fixed: HITL approval audit records were silently never reaching Kafka
+
+### 27.1. The ask
+
+> any problems? 5 why - 5 solutions. matrix eisenhower. implement solutions from the root to the
+> first. did we forget something?
+
+Re-audited for problems not already in the standing backlog (§21.9, §22.13, §23.6, §24.4, §25.5)
+rather than re-treading it. An `Explore` sweep across all three packages for silently-swallowed
+exceptions, resource leaks, logged secrets, and race conditions in the worker's job dispatch turned
+up one genuinely new, high-severity finding, confirmed by direct code reading before acting.
+
+### 27.2. The bug
+
+`interfaces/gateways/tool/approval.py` (byte-identical in all three packages) — `record_hitl_approval`
+(called on every HITL tool-call approve/reject/edit decision) calls `publish_hitl_approval_sync`,
+which was:
+
+```python
+def publish_hitl_approval_sync(record: HitlApprovalRecord) -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(publish_hitl_approval(record))
+    return True
+```
+
+When a loop is already running — the case for every real caller, since the only production call
+site (`ResumeHitlJob.execute`, `cys_core/application/use_cases/resume_hitl_job.py`) is itself
+`async def` — this returns `True` without ever calling `publish_hitl_approval`. The Kafka audit
+record for who approved/rejected/edited a high-risk tool call (`AUDIT_HITL_APPROVALS_TOPIC`) was
+silently dropped every single time, while every caller was told it succeeded.
+
+### 27.3. Five whys
+
+1. **Why did the audit record never reach Kafka?** `publish_hitl_approval_sync` short-circuits to
+   `return True` whenever a loop is already running, without publishing anything.
+2. **Why does it short-circuit there?** Because `asyncio.run()` — its only publish mechanism —
+   raises `RuntimeError` if called from inside an already-running loop, so the original code
+   treated "loop is running" as "can't publish, give up quietly" instead of finding another path.
+3. **Why was `asyncio.run()` the only mechanism, with no path for the loop-already-running case?**
+   `record_hitl_approval` is a plain sync function (by design — it's injected as a bare
+   `Callable[..., Any]` into `ResumeHitlJob`, and existing tests call it directly, synchronously,
+   with no event loop). Nobody built the "schedule it as a task instead" branch for when a loop
+   already exists underneath that sync call.
+4. **Why wasn't this caught by tests?** The only test exercising the publish path
+   (`tests/tool_gateway/test_approval.py::test_record_hitl_approval`) runs with no event loop and
+   `settings.use_kafka` unset — it never touches `publish_hitl_approval_sync`'s loop-running branch
+   at all. The real async caller (`ResumeHitlJob.execute`) discards `record_hitl_approval`'s return
+   value, so nothing downstream ever noticed the publish wasn't happening either.
+5. **Root cause:** a sync/async boundary mismatch. The function was designed sync-first to match its
+   test harness and its `Callable[..., Any]` injection point, but its only real production caller is
+   async — and the shim bridging that gap silently no-op'd instead of either genuinely scheduling
+   the work or surfacing the impossibility loudly.
+
+### 27.4. Five solutions, root to first — what was done at each level
+
+1. **(Root)** Fixed the shim itself: when a loop is running, `publish_hitl_approval_sync` now calls
+   `loop.create_task(publish_hitl_approval(record))` instead of no-op'ing, with a
+   `task.add_done_callback` that logs a warning if the publish comes back `False` — the record now
+   actually gets sent, and a failure is at least observable instead of silent. Applied identically
+   to all three copies (`api`, `worker`, `tool-gateway`).
+2. Added real test coverage for the previously-untested branch:
+   `test_publish_hitl_approval_sync_schedules_task_when_loop_running` (all three packages) — runs
+   inside an actual running loop (pytest-asyncio, `asyncio_mode = "auto"` in all three), monkeypatches
+   `publish_hitl_approval` to a stub, calls the sync entry point, and asserts the scheduled task
+   actually ran and delivered the record after a tick.
+3. **(Not done, flagged for later)** Fire-and-forget still means a publish failure is *logged*, not
+   retried or escalated — for a security-relevant audit trail, an outbox-style guarantee (the
+   in-memory `_approval_records` list already gives a local durable-ish record; a background
+   reconciler could retry undelivered Kafka sends against it) would be stronger. Not attempted this
+   pass — it's a design decision about acceptable audit-delivery guarantees, not a mechanical fix.
+4. **(Not done, flagged for later)** A repo-wide grep for the same `asyncio.run()`-only,
+   no-loop-running-fallback shape elsewhere turned up no other instance of *this exact* antipattern
+   (checked: `bus_transport.py`, `async_boundary.py`, `openfga.py` all handle the loop-running case
+   correctly already, either via a thread pool or an already-async caller) — but this was a targeted
+   check of `asyncio.get_running_loop`/`asyncio.run` call sites, not an exhaustive audit of every
+   sync/async boundary in the codebase.
+5. **(Surface)** The specific three-file fix, verified by `ruff check` and `pytest` (`tests/tool_gateway/test_approval.py`,
+   3/3 passing in each of the three packages) plus a full `pytest_batches.sh` run in all three
+   packages to confirm no other regression.
+
+### 27.5. Eisenhower placement
+
+**Important and urgent** — unlike most of this session's backlog, this wasn't a missing capability
+or a performance concern; it was a security/compliance control that looked like it worked (callers
+got `True` back) but silently didn't. Fixed immediately rather than added to a backlog list.
+
+### 27.6. Other findings from this round's audit, not acted on
+
+- `api/src/interfaces/api/runs.py`'s `POST /runs/{run_id}/approve-plan` is routed and auth-gated but
+  unconditionally returns 501 (its own `FIXME` comment: "engagement-queue approval was never wired
+  up"). Not previously tracked in this doc's backlog — looks like a dead/never-finished endpoint
+  rather than a deliberate stub. Needs a product decision (wire it up, or remove the route) rather
+  than a mechanical fix — added here so it isn't lost.
+- `worker/src/interfaces/worker/orchestrator.py`'s soft-timeout path (`asyncio.wait_for` cancelling
+  a running job task, then independently calling `try_salvage_partial`) is a *plausible* — not
+  confirmed — double-publish/double-finalize race if the cancelled task was mid-publish when the
+  timeout fired. Distinct from §24.4's job-requeue gap (that's about cross-attempt retries; this is
+  an in-process cancellation race). Flagged for a dedicated look, not investigated further this pass.
+- `api/src/interfaces/api/tenant_deps.py`'s `TenantBound()` catches *any* exception while parsing a
+  request body for `tenant_id` and falls back to `"default"`, not just the intended
+  JSON-decode-error case — low severity, but broader than intended.
+
+## 28. Product idea, recorded so it isn't lost: agent-session self-looping, mirroring Claude Code's `/loop`
+
+### 28.1. The ask (verbatim, Russian)
+
+> пока я не забыл. в сессии агентов нужно добавить возможность сделать loop так же как это в claude
+> реализовано. зафиксируй это в md
+
+("Before I forget — in agent sessions we need to add the ability to make a loop the same way it's
+implemented in Claude. Record this in the doc.")
+
+### 28.2. What this means
+
+Claude Code's own `/loop` skill (used to drive this very session's recurring 30-minute audit passes)
+gives a session two self-continuation modes: **fixed-interval** (cron-style re-firing of a prompt on
+a schedule) and **dynamic self-pacing** (the agent decides when the next iteration is worth running —
+either gated on an observable event via a Monitor, or a self-chosen delay — and re-arms itself as the
+last action of each turn). The request is to give egregore's own agent sessions (the SOC personas —
+soc/intel/consultant/etc. run via `AgentRuntime`, dispatched by `worker`) an equivalent capability:
+an agent (or a job) can decide "run me again after N minutes" or "run me again when X happens"
+without a human or an external scheduler re-triggering it.
+
+### 28.3. Why this doesn't already exist
+
+Nothing in the current architecture provides this. The closest existing primitives are:
+- `enqueue_worker_jobs.py`/`enqueue_synthesis_job.py`/`enqueue_next_planned_persona.py` — enqueue the
+  *next* job in a pipeline, but only ever in response to the *current* job's own completion, not on
+  a timer or an external event the agent is waiting on.
+- The HITL pause/resume path (§22.13, still `langgraph.interrupt()`-coupled) — pauses an agent run
+  pending a *human* decision, not a self-scheduled re-run.
+- Nothing resembling a cron/scheduler primitive exists anywhere in `worker`'s job model today —
+  `JobQueueConnector`/`WorkerJob` model a single enqueue-and-run, not a recurring or delayed one.
+
+### 28.4. Open questions for whoever picks this up
+
+- Fixed-interval vs. dynamic, or both (mirroring Claude Code's own two modes)? Dynamic (event-gated)
+  is the harder half — it implies something like Claude Code's Monitor primitive, i.e. a way for a
+  persona to register "wake me when Y happens" against Redis/Kafka/Postgres state, not just a timer.
+- Where does the "next iteration" job get created — does the persona's own agent loop decide and
+  call back into `enqueue_worker_jobs`, or does this live as a new capability in the Dispatcher
+  layer being discussed in §22 (a natural fit, since Dispatcher is already framed as the thing that
+  builds/re-builds agent instances per job)?
+- Session/cost bounds: Claude Code's own `/loop` recurring jobs auto-expire after 7 days specifically
+  to bound runaway sessions — an equivalent safety valve (max iterations, max wall-clock, budget cap
+  via the existing `JobBudgetTracker`) would be needed here too, probably non-negotiably given this
+  is an agentic SOC platform running real tools.
+
+### 28.5. Eisenhower placement
+
+**Not urgent, plausibly important** — a real capability gap for autonomous/recurring investigation
+workflows (e.g. "re-check this IOC every hour," "poll this scan until it completes"), but no current
+user-facing feature depends on it yet. Recorded per explicit instruction so it isn't lost, not
+scoped or implemented this session.

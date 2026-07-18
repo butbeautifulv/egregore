@@ -7,10 +7,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from pydantic import BaseModel, Field
 
 from bootstrap.settings import settings
 from cys_core.infrastructure.kafka_topics import AUDIT_HITL_APPROVALS_TOPIC
+
+logger = structlog.get_logger(__name__)
 
 
 class HitlApprovalRecord(BaseModel):
@@ -67,11 +70,28 @@ async def publish_hitl_approval(record: HitlApprovalRecord) -> bool:
         return False
 
 
+def _log_hitl_publish_outcome(task: "asyncio.Task[bool]") -> None:
+    if task.cancelled():
+        return
+    if not task.result():
+        logger.warning("hitl_approval_kafka_publish_failed")
+
+
 def publish_hitl_approval_sync(record: HitlApprovalRecord) -> bool:
+    """Fire-and-forget the Kafka publish when already inside a running loop.
+
+    A bare `asyncio.run(...)` can't be called from inside a running loop, and the
+    original code short-circuited to `return True` in that case without ever
+    publishing — silently dropping the HITL approval audit record on every call
+    made from async code (the only real production caller, ResumeHitlJob.execute,
+    always runs inside a loop). Scheduling a task actually delivers it; the
+    done-callback surfaces publish failures instead of hiding them."""
     try:
-        asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(publish_hitl_approval(record))
+    task = loop.create_task(publish_hitl_approval(record))
+    task.add_done_callback(_log_hitl_publish_outcome)
     return True
 
 
