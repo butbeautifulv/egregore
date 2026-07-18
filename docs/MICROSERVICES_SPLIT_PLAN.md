@@ -3030,3 +3030,163 @@ orchestrates the agent loop, which nothing currently demands until a second runt
 being built. Recorded here so the next implementation session starts from this audit (§22.2)
 instead of re-discovering that `ExecutionBackend`, the four backends, and the `agent_entrypoint.py`
 skeleton already exist.
+
+### 22.8. Refinement: "secure by design regardless of which agent runtime is plugged in"
+
+Follow-up ask, same session:
+
+> the main point that you should get is infra is secure by design. so even if we replace the agent
+> it should be inside grid that will provide it with all measures like data exfiltration
+> sanitization so basically all of the middlewares that now directly on langchain lib. can we like
+> make it some kind of mixin that will be assigned to agent so it secure??
+>
+> now as i think maybe dispatcher is some kind of a factory yeah? i want it like to be like a
+> convey? api will put a ticket inside the queue and the dispatcher will make an agent with all of
+> the securities and things.
+
+This sharpens §22.4: the goal isn't just "no langchain import in dispatcher," it's "a swapped-in
+runtime cannot silently drop security enforcement, even if its author never wires the mixin in."
+That rules out a design that merely *trusts* each runtime implementation to call shared code.
+
+**Why a simple wrap-the-outside decorator can't deliver that on its own**: audited
+`cys_core/middleware/{security,scope,prompt_context}_middleware.py` — all three are langchain
+`AgentMiddleware` subclasses hooking `wrap_tool_call`/`awrap_tool_call` (every tool call) and
+`wrap_model_call`/`awrap_model_call` (every model turn), not just job start/end. `SecurityMiddleware`
+does budget/rate-limit checks, HITL gating (`interrupt()`), and tool-result classification per
+call. `PromptContextMiddleware` does input sanitization, system-prompt-digest validation, and
+output-leakage guardrails per model turn. A `SecuredAgent` object that only wraps a runtime's
+`run(job) -> RunResult` entry/exit cannot reach inside an arbitrary runtime's internal loop to
+replicate this — a non-cooperating runtime (one that doesn't choose to call back into shared guard
+objects) would simply not have these checks applied per-turn, even though it "went through the
+factory."
+
+The good news: the actual security *logic* behind all three middlewares already lives
+framework-independently in `cys_core/domain/security/*` — `InputSanitizer`, `OutputGuardrails`,
+`ScopePolicy`, `AgentMonitor`, `classify_tool_risk_pure`, the injection/PII pattern packs
+(`patterns/injection_{en,de,es,fr,ru,zh}.py`, `patterns/pii_*.py`), `immutable_rules.py`,
+`prompt_context.py`'s system-digest helpers. The middleware classes are thin langchain-shaped
+adapters around this — zero of the actual security decision logic is langchain-specific. So the
+question isn't "can this become framework-neutral" (it mostly already is, one layer down) — it's
+"where does the *enforcement point* live so a runtime can't opt out of it."
+
+### 22.9. Two network chokepoints, not an honor system — extending §10.8's existing principle
+
+§10.8 (Container/K8s hardening, written earlier in this plan) already states the target model: *"a
+compromised Agent Runtime pod must not be able to reach Postgres/Qdrant directly, only through the
+MCP Tool Gateway"* — i.e. **Dispatcher↔Runtime is already meant to be a zero-trust boundary, not
+just an in-process contract.** §22's decorator/mixin question is really asking how far that same
+principle should extend. Decided this session: as far as it can go — every place the agent runtime
+reaches *out* of its own process should be a chokepoint that enforces policy independent of the
+runtime's cooperation, mirroring §10.8's NetworkPolicy segmentation:
+
+1. **Tool calls → `tool-gateway`** (exists today, §21.6). Any runtime, to execute a tool, must
+   reach this service over the network — it cannot be skipped by swapping runtime frameworks.
+2. **Model calls → a new `model-gateway`** (proposed, not built). Symmetrical to tool-gateway: the
+   agent runtime is configured to send LLM calls to this service instead of calling litellm/the
+   provider API directly. It owns input sanitization (`InputSanitizer`), system-prompt-digest /
+   immutable-rules validation (today's `PromptContextMiddleware._validate_system_context`), and
+   output-leakage guardrails (`OutputGuardrails.detect_prompt_leakage`) at the network boundary —
+   so these apply regardless of what's on the other side of the call. `LiteLLMProvider`
+   (`cys_core/llm/litellm_provider.py`) already centralizes model calls behind one provider
+   abstraction — litellm itself also ships a proxy-server mode, worth evaluating as a possible
+   implementation substrate for this gateway rather than building one from scratch.
+
+The NetworkPolicy half of this is what actually makes it non-optional: per §10.8, the Agent
+Runtime pod's egress should be restricted so it *cannot* reach Postgres/Qdrant/the raw model API
+directly — only tool-gateway and model-gateway. That network-level restriction, not the runtime's
+good behavior, is what makes this "secure by design regardless of which agent is plugged in."
+Without it, a gateway is a convention a well-behaved runtime follows, not a guarantee.
+
+### 22.10. Tool-gateway's current enforcement — audited, not assumed
+
+Before deciding what else to move into tool-gateway, checked what's already active there versus
+merely present as duplicated domain code (§18's per-package duplication philosophy means a class
+existing in `backend/tool-gateway/src/cys_core/domain/security/` does not by itself mean it's
+wired into any request path):
+
+- **Tool-chain depth / high-risk-tool classification — already active.**
+  `ToolChainPolicy.check()` is wired into the real `invoke_tool.py` use case
+  (`cys_core/application/use_cases/invoke_tool.py:164`, injected via
+  `bootstrap/containers/tools_container.py`) and runs on every real tool invocation today, not just
+  in the old in-process `SecurityMiddleware`.
+- **HITL audit trail — present and referenced across the gateway's tool adapters**
+  (`interfaces/gateways/tool/approval.py`'s `HitlApprovalRecord`, published to the
+  `AUDIT_HITL_APPROVALS_TOPIC` Kafka topic). This is an audit log of decisions, though — **not**
+  the pause-and-block-until-a-human-decides mechanism. That mechanism (`register_hitl_pause`,
+  `resume_decision_approved` in `cys_core/middleware/hitl_pause.py`) still runs entirely on
+  langgraph's `interrupt()` + checkpointer machinery, on the worker side, mid-loop. This is the one
+  piece of §22.8's ask that doesn't reduce to "move code that's already framework-neutral" — see
+  §22.13.
+- **Scope allowlist (`ScopePolicy`) — present, not wired.** The class exists in tool-gateway's
+  domain layer (duplicated from worker per §18) but nothing in `invoke_tool.py` or elsewhere in
+  tool-gateway calls it. Least-privilege tool allowlisting is still enforced only in-process, via
+  worker's `ScopeMiddleware` — a genuine gap between "duplicated for future use" and "actually
+  enforced," discovered by this audit rather than assumed from the class's existence.
+- **Rate limiting (`RedisRateLimiter`) — present, wired to the wrong thing.** Used for job-queue
+  and follow-up enqueue paths (`enqueue_worker_jobs.py`, `enqueue_follow_up.py`), not for
+  per-tool-call rate limiting the way `SecurityMiddleware.rate_limiter.check()` does today.
+
+### 22.11. Revised placement — what moves to a gateway vs what stays runtime-local
+
+| Concern | Today | Target | Why |
+|---|---|---|---|
+| Tool-chain depth / high-risk classification | `tool-gateway` (active) | No change | Already the right place, already enforced network-side. |
+| Scope allowlist (least-privilege tools) | worker `ScopeMiddleware` (in-process only) | `tool-gateway` `invoke_tool.py` | Class already exists there (§22.10) — needs wiring, not authoring. |
+| Per-tool-call rate limiting | worker `SecurityMiddleware` (in-process only) | `tool-gateway` `invoke_tool.py` | `RedisRateLimiter` already exists there for a different path — extend its use. |
+| HITL risk gating (decide *if* approval is needed) | worker `SecurityMiddleware` | `tool-gateway` | Risk classification is already there (`is_high_risk_tool`); deciding "does this need a human" belongs next to it. |
+| HITL pause/resume (actually blocking for a human) | worker, langgraph `interrupt()`-coupled | **Unresolved** — needs a gateway-native pause protocol | See §22.13; this is the one piece that isn't a mechanical move. |
+| Input sanitization (prompt injection) | worker `PromptContextMiddleware`, in-process | new `model-gateway` | `InputSanitizer` is already framework-neutral; needs a network chokepoint in front of it. |
+| System-prompt digest / immutable-rules check | worker `PromptContextMiddleware`, in-process | new `model-gateway` | Same reasoning — must not depend on the runtime choosing to call it. |
+| Output-leakage guardrails | worker `PromptContextMiddleware`, in-process | new `model-gateway` | Same. |
+| Job budget tracking (tokens/cost/tool-call counts) | worker `SecurityMiddleware`/`JobBudgetTracker`, in-process | Split: per-call counting at the gateways, aggregate ownership stays with dispatcher | Dispatcher already owns budget *enrichment* (§22.3); gateways are better positioned to count actual usage as it happens. |
+| Context summarization, follow-up-tool suggestion, one-tool-per-turn, tool dedup, tool-call-shape coercion, memory-context injection | worker middleware, langchain-coupled | **Stays runtime-local** | These are agent *behavior*, not trust-boundary enforcement — nothing is unsafe about a runtime that implements them differently or not at all. No security reason to make them portable. |
+
+### 22.12. Dispatcher-as-factory: the `SecuredAgent` decorator's actual (narrower) job
+
+Given §22.9–22.11, the factory's decorator doesn't need to (and structurally can't) replicate
+mid-loop enforcement itself — the gateways do that, independent of it. What the factory-built
+`SecuredAgent` wrapper legitimately owns, per ticket:
+
+1. **Construction-time configuration**: builds the concrete `AgentRuntimePort` implementation
+   (§22.4) pointed at tool-gateway and model-gateway endpoints rather than raw infra — i.e. it's
+   the composition root that makes bypassing the gateways require the runtime to actively ignore
+   its config, not just fail to opt in.
+2. **Job-level, not turn-level, checks it's actually positioned to make**: initial ticket
+   validation/sanitization before the runtime ever starts, overall job budget/timeout ownership
+   (dispatcher already does this — §22.3), and a final guardrail pass on the completed `RunResult`
+   before publishing, as defense-in-depth in case something reached the result without going
+   through a gateway.
+3. **What it does NOT claim to guarantee on its own**: per-turn enforcement. That guarantee comes
+   from §22.9's network chokepoints plus §10.8's NetworkPolicy egress restriction, not from the
+   decorator. Recorded explicitly so a future implementer doesn't mistake "wrapped by the factory"
+   for "cannot bypass security" — the wrapper is convenience and defense-in-depth; the gateways
+   plus network policy are the actual guarantee.
+
+### 22.13. Open questions (deliberately unresolved this round)
+
+- **HITL pause/resume protocol** (§22.10/§22.11) — the hardest unresolved piece. Today's mechanism
+  is fundamentally langgraph-shaped: `interrupt()` suspends graph execution and a checkpointer
+  persists enough state to resume exactly where it left off. A gateway-native equivalent needs its
+  own answer to "how does an arbitrary runtime's in-flight call get suspended and later resumed"
+  without assuming langgraph's checkpointer exists — e.g. tool-gateway returns a
+  `pending_approval` status instead of a result, and the runtime/dispatcher must poll or subscribe
+  for the eventual decision rather than being transparently resumed mid-call. This changes the
+  runtime-facing contract, not just where the code lives, and needs real design, not a move.
+- Does `model-gateway` get built from scratch, or on top of litellm's own proxy-server mode
+  (§22.9)? Worth a spike before committing to either.
+- Exact `AgentRuntimePort` signature for pointing a runtime at gateway endpoints instead of direct
+  infra — config injection (env/settings) vs. explicit constructor parameters.
+- Interaction with §22.6's open question on `agent_runtime` package boundary — if model-gateway and
+  tool-gateway both exist as separate services, does that make the case for `agent_runtime` as its
+  own package (talking to both purely over the network) stronger than it was in §22.6?
+- Still doc-only, per this round's explicit scope decision — no `ModelGatewayPort`/`SecuredAgent`
+  code written this session.
+
+### 22.14. Eisenhower placement
+
+**Important, not urgent** — same as §22.7, unchanged by this refinement. Nothing here is a live
+gap (tool-gateway's active chain-depth check already works; the in-process middlewares still
+correctly protect today's single langchain-based runtime). The refinement narrows *how* the
+eventual work should be shaped — gateways-as-guarantee rather than mixin-as-honor-system — so the
+next implementation session designs the right thing the first time instead of building a decorator
+that looks secure but isn't, then discovering the gap under a second runtime.
