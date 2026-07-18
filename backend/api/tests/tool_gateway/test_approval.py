@@ -11,6 +11,7 @@ from interfaces.gateways.tool.approval import (
     params_hash,
     publish_hitl_approval_sync,
     record_hitl_approval,
+    record_hitl_approval_blocking,
 )
 
 
@@ -62,3 +63,49 @@ async def test_publish_hitl_approval_sync_schedules_task_when_loop_running(monke
     # Give the scheduled task a tick to run rather than assuming it fired.
     await asyncio.sleep(0)
     assert published == ["appr-test"]
+
+
+@pytest.mark.unit
+async def test_record_hitl_approval_blocking_reports_publish_outcome(monkeypatch):
+    clear_approval_records()
+
+    async def fake_publish(record: HitlApprovalRecord) -> bool:
+        return True
+
+    monkeypatch.setattr("interfaces.gateways.tool.approval.publish_hitl_approval", fake_publish)
+
+    record, published = await record_hitl_approval_blocking(
+        actor="alice",
+        tool="run_active_scan",
+        persona="redteam",
+        job_id="job-2",
+        decision="approve",
+        tool_args={"target": "lab.local"},
+    )
+
+    assert published is True
+    assert record.approval_id.startswith("appr-")
+    assert len(get_approval_records()) == 1
+    clear_approval_records()
+
+
+@pytest.mark.unit
+async def test_record_hitl_approval_blocking_surfaces_publish_failure(monkeypatch):
+    clear_approval_records()
+
+    async def fake_publish(record: HitlApprovalRecord) -> bool:
+        return False
+
+    monkeypatch.setattr("interfaces.gateways.tool.approval.publish_hitl_approval", fake_publish)
+
+    _record, published = await record_hitl_approval_blocking(
+        actor="alice",
+        tool="run_active_scan",
+        persona="redteam",
+        job_id="job-3",
+        decision="approve",
+        tool_args={"target": "lab.local"},
+    )
+
+    assert published is False
+    clear_approval_records()

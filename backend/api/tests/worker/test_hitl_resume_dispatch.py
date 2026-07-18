@@ -11,6 +11,11 @@ from cys_core.domain.workers.models import JobResumeRequest, PendingHitlAction, 
 from interfaces.control_plane.job_store import JobStore
 
 
+class _FakeRecord:
+    def __init__(self, approval_id: str) -> None:
+        self.approval_id = approval_id
+
+
 def _use_case(store: Any, fake_queue: Any) -> ResumeHitlJob:
     # JobStore (test-only) proxies to InMemoryJobStore via __getattr__, which
     # ty can't see structurally — same for the SimpleNamespace fake queue.
@@ -90,3 +95,78 @@ async def test_resume_bad_approval_id_raises_before_enqueueing():
             "job-3", JobResumeRequest(decision="approve", approval_id="wrong", actor="attacker")
         )
     fake_queue.aenqueue.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resume_enforce_mode_blocks_approval_when_audit_publish_fails():
+    """§10.3/§41: in 'enforce' mode, a failed HITL audit-trail publish must block the
+    high-risk action instead of proceeding on a background warning log alone."""
+    store = JobStore()
+    store.pause_for_hitl(_pending("job-4"), {"params_hash": "irrelevant"})
+    fake_queue = SimpleNamespace(aenqueue=AsyncMock())
+    bypass_calls: list[str] = []
+    use_case = ResumeHitlJob(
+        job_store=cast(HitlJobStore, store),
+        job_queue_factory=lambda persona: cast(HitlJobQueue, fake_queue),
+        record_hitl_approval=lambda **kwargs: None,
+        params_hash=lambda args: "irrelevant",
+        record_approval_bypass=bypass_calls.append,
+        record_hitl_approval_blocking=AsyncMock(return_value=(_FakeRecord("appr-1"), False)),
+        audit_failclosed_mode="enforce",
+    )
+
+    with pytest.raises(ResumeHitlJobError):
+        await use_case.execute("job-4", JobResumeRequest(decision="approve", approval_id="appr-1", actor="alice"))
+
+    fake_queue.aenqueue.assert_not_called()
+    assert store.get("job-4").status == WorkerJobStatus.AWAITING_APPROVAL
+    assert "hitl_audit_publish_failed" in bypass_calls
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resume_shadow_mode_proceeds_but_records_bypass_when_audit_publish_fails():
+    """Shadow mode observes the same failure without blocking the action — the
+    off/shadow/enforce rollout pattern used elsewhere in this codebase (AUTHZ_MODE,
+    TOOL_SCOPE_MODE, TOOL_SANDBOX_TOKEN_MODE)."""
+    store = JobStore()
+    store.pause_for_hitl(_pending("job-5"), {"params_hash": "irrelevant"})
+    fake_queue = SimpleNamespace(aenqueue=AsyncMock(return_value="resume-job-5"))
+    bypass_calls: list[str] = []
+    use_case = ResumeHitlJob(
+        job_store=cast(HitlJobStore, store),
+        job_queue_factory=lambda persona: cast(HitlJobQueue, fake_queue),
+        record_hitl_approval=lambda **kwargs: None,
+        params_hash=lambda args: "irrelevant",
+        record_approval_bypass=bypass_calls.append,
+        record_hitl_approval_blocking=AsyncMock(return_value=(_FakeRecord("appr-1"), False)),
+        audit_failclosed_mode="shadow",
+    )
+
+    out = await use_case.execute("job-5", JobResumeRequest(decision="approve", approval_id="appr-1", actor="alice"))
+
+    assert out["status"] == "resume_submitted"
+    fake_queue.aenqueue.assert_awaited_once()
+    assert "hitl_audit_publish_failed_shadow" in bypass_calls
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resume_enforce_mode_proceeds_when_audit_publish_succeeds():
+    store = JobStore()
+    store.pause_for_hitl(_pending("job-6"), {"params_hash": "irrelevant"})
+    fake_queue = SimpleNamespace(aenqueue=AsyncMock(return_value="resume-job-6"))
+    use_case = ResumeHitlJob(
+        job_store=cast(HitlJobStore, store),
+        job_queue_factory=lambda persona: cast(HitlJobQueue, fake_queue),
+        record_hitl_approval=lambda **kwargs: None,
+        params_hash=lambda args: "irrelevant",
+        record_hitl_approval_blocking=AsyncMock(return_value=(_FakeRecord("appr-1"), True)),
+        audit_failclosed_mode="enforce",
+    )
+
+    out = await use_case.execute("job-6", JobResumeRequest(decision="approve", approval_id="appr-1", actor="alice"))
+
+    assert out["status"] == "resume_submitted"
+    fake_queue.aenqueue.assert_awaited_once()

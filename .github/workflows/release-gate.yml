@@ -65,7 +65,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Abuse-case matrix
         run: uv run pytest tests/adversarial/ -m adversarial --strict-markers -q
 
@@ -109,7 +109,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Ruff
         run: uv run ruff check src tests
       - name: Type check
@@ -128,7 +128,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Pytest batches
@@ -147,7 +147,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Import linter
         run: uv run lint-imports
       - name: Import boundary audit
@@ -176,7 +176,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Domain coverage (target 100%)
         run: |
           uv run pytest tests/domain/ -q \

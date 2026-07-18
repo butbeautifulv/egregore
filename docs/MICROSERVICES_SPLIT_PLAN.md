@@ -4562,3 +4562,94 @@ Eisenhower: **Low urgency, low severity, but a genuine root-cause bug fix** — 
 still enforces the auth claim against whatever tenant ends up bound, so this was never an authz
 bypass; the bug was in *masking* unexpected failures behind a plausible-looking default rather than
 surfacing them.
+
+## 41. §10 audit continued: HITL audit-publish fail-closed gap fixed, doc corrections, CI lockfile hardening
+
+Delegated verification of the remaining §10 sub-items (§10.3, §10.6, §10.9, §10.10, §10.11) against
+current code rather than trusting the doc's own "[нет]"/"[проверить]" markers. Findings below.
+
+### 41.1. §10.3 — found and fixed: HITL approval audit-log publish failure didn't block the action
+
+Same bug shape as §27/§37/§39: a fail-closed control was designed but silently defeated one layer
+down. `ResumeHitlJob.execute`'s approve/edit path (`resume_hitl_job.py`) called
+`record_hitl_approval(...)` — a *sync* function — and discarded its return value. That function
+(`interfaces/gateways/tool/approval.py`) writes the audit record to an in-memory list unconditionally,
+then fires the Kafka publish via `publish_hitl_approval_sync`, which schedules a background task and
+returns `True` immediately regardless of whether the publish actually succeeds; a failed publish only
+produces a `logger.warning` from a done-callback the caller never sees. Net effect: a Kafka outage (or
+any publish failure) during a HITL approval let the high-risk action proceed exactly as if the audit
+trail had been written, with no rejection and no bypass counter — an unaudited high-risk action
+executing silently.
+
+Fixed by adding `record_hitl_approval_blocking()` (awaits `publish_hitl_approval()` directly instead
+of fire-and-forgetting) and wiring `ResumeHitlJob` to use it for the approve/edit decision, gated by a
+new `HITL_AUDIT_FAILCLOSED_MODE` setting (`off|shadow|enforce`, default **shadow**) — the same
+off/shadow/enforce rollout pattern already used for `AUTHZ_MODE`/`TOOL_SCOPE_MODE`/
+`TOOL_SANDBOX_TOKEN_MODE`. In `enforce` mode, a failed publish calls
+`record_approval_bypass("hitl_audit_publish_failed")` and raises `ResumeHitlJobError`, blocking the
+enqueue. Default `shadow` mode awaits the same publish and records
+`hitl_audit_publish_failed_shadow` on failure without blocking, so a Kafka outage doesn't
+unilaterally deny every pending human approval in prod the moment this ships — an operator has to
+opt into `enforce` deliberately. The reject path is untouched (rejecting is already the safe
+outcome regardless of audit-publish success). Only `api` wires `ResumeHitlJob`; `worker`'s and
+`tool-gateway`'s copies of `approval.py` are unused duplication (grepped — no import site), so
+nothing to sync there.
+
+Verification: 3 new tests in `tests/worker/test_hitl_resume_dispatch.py` (enforce-mode blocks on
+publish failure, shadow-mode proceeds but records the bypass, enforce-mode proceeds when publish
+succeeds) and 2 in `tests/tool_gateway/test_approval.py` (`record_hitl_approval_blocking` reports
+both outcomes). 13/13 passing across the HITL test files; 913 passed / 5 skipped across the full
+`api` suite (excluding the pre-existing, unrelated SOCKS-proxy environment failure documented
+earlier in this doc). `ruff`/`ty` clean.
+
+### 41.2. §10.6 — doc was stale: the abuse-case CI gate already exists
+
+The doc's own text still read "[нет]" for a mandatory abuse-case CI gate. It's already built:
+`tests/adversarial/` (all three packages) covers the full matrix the doc asked for — prompt
+override, tool misuse, privilege escalation, memory poisoning, data exfiltration, recursive tool
+abuse, approval bypass, multi-agent chaining — and `.github/workflows/release-gate.yml`'s
+`adversarial` job runs it matrixed over `[worker, api, tool-gateway]` as a required dependency of
+the aggregate `release-gate` job. The only real remaining gap — GitHub branch protection on `main`
+not yet requiring the `release-gate` check to pass before merge — is already tracked as its own
+explicit, owner-decision item in `docs/CI_CD_KNOWN_GAPS.md`, not something to redo here.
+
+### 41.3. §10.9 (secrets manager) and §10.11 (RFC7807) — confirmed accurate, correctly deferred
+
+- **§10.9**: `bus_signing_key` (used for `mint_sandbox_token` and bus HMAC signing) is still a plain
+  `SecretStr` env var (`bootstrap/settings.py`), with only a prod-startup placeholder-value check as
+  defense-in-depth — no Vault/AWS Secrets Manager/External-Secrets-Operator integration exists
+  anywhere in the tree. Confirmed, not stale. Migrating requires picking a secrets backend and
+  provisioning it — a product/infra decision, not something to implement unilaterally.
+- **§10.11**: API error responses (`interfaces/api/{errors,llm_errors,run_errors}.py`) are still an
+  ad-hoc `{"code": ..., "message": ...}` shape, not RFC7807's `{type, title, status, detail,
+  instance}` under `application/problem+json`. No stack-trace/internal-path leakage on 5xx (the
+  catch-all handler already keeps the traceback server-side, only in the log). Confirmed real, but
+  `web_ui/lib/format-api-error.ts` has a load-bearing dependency on the *current* shape
+  (`code`/`message` fields, and RFC7807's `detail` is a string where this codebase's `detail` is an
+  object) — a true migration means rewriting every error site *and* the frontend parser together.
+  Correctly scoped as its own workstream, not attempted this round.
+
+### 41.4. §10.10 (SBOM/supply chain) — mostly stale, one real gap fixed, one flagged
+
+The doc's "[нет]" for SBOM was stale: `.github/workflows/job-sbom.yml` (CycloneDX via
+`anchore/sbom-action`) already runs as part of `release-gate.yml`, alongside `job-sca-image.yml`
+(Trivy container scanning). Two real things surfaced, though:
+
+- `job-sign.yml` (cosign) is a non-functional stub — its steps are literal `echo` commands, never an
+  actual `cosign sign` call. Flagged, not fixed: wiring real cosign signing requires choosing
+  keyless-OIDC vs. a `COSIGN_PRIVATE_KEY` repo secret, a live CI/infra decision.
+- **Fixed**: every CI job that ran bare `uv sync` (`release-gate.yml`, `job-linter-security.yml`,
+  plus the already-superseded `ci.yml`/`arch-gate.yml`/`adversarial-gate.yml`, kept for manual
+  debug use) let a `uv.lock` that had drifted from `pyproject.toml` — by accident or tampering —
+  silently re-resolve instead of failing the build, unlike `web_ui`'s `bun install
+  --frozen-lockfile` right next to it in the same workflow. Added `--frozen` to all of them
+  (`integration-postgres.yml` already had it — used as the reference for which flag name this repo
+  standardizes on). Verified `uv sync --frozen` succeeds as-is against the current lockfile in all
+  four backend packages (`api`, `worker`, `tool-gateway`, `model-gateway`) before making this a hard
+  gate, so this doesn't newly break CI on an already-drifted lockfile.
+
+Eisenhower for §41 as a whole: **§41.1 (HITL audit fail-closed) is important and live** — it protects
+a real production HTTP path (`/runs/{job_id}/resume`), same tier as §37/§39. **§41.4's `--frozen` fix
+is low-urgency hardening** with no live gap it's closing today (no drifted lockfile currently exists)
+but cheap insurance against a future one going unnoticed. §10.9/§10.11/cosign-signing are correctly
+parked pending decisions outside engineering-agent authority.

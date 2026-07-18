@@ -472,6 +472,15 @@ class Settings(BaseSettings):
         "nobody out of the box). Never set this for a real deployment; it exists only so a "
         "prod-STAGE box mid-migration to enforce mode isn't hard-blocked from starting at all.",
     )
+    hitl_audit_failclosed_mode: str = Field(
+        default="shadow",
+        validation_alias="HITL_AUDIT_FAILCLOSED_MODE",
+        description="off|shadow|enforce (docs/MICROSERVICES_SPLIT_PLAN.md §10.3/§41). When "
+        "'enforce', ResumeHitlJob blocks an approve/edit HITL decision if the Kafka audit-trail "
+        "publish for it fails, instead of proceeding with only a background warning log. "
+        "Defaults to 'shadow' (log-only) rather than 'enforce' so a Kafka outage doesn't "
+        "immediately deny every pending human approval in prod without an operator opting in.",
+    )
     openfga_api_url: str = Field(default="", validation_alias="OPENFGA_API_URL")
     openfga_store_id: str = Field(default="", validation_alias="OPENFGA_STORE_ID")
     openfga_api_token: str = Field(default="", validation_alias="OPENFGA_API_TOKEN")
@@ -771,6 +780,11 @@ class Settings(BaseSettings):
         if self.authz_mode.lower() not in _ALLOWED_AUTHZ_MODES:
             raise ValueError(f"AUTHZ_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}")
         self.authz_mode = self.authz_mode.lower()
+        if self.hitl_audit_failclosed_mode.lower() not in _ALLOWED_AUTHZ_MODES:
+            raise ValueError(
+                f"HITL_AUDIT_FAILCLOSED_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}"
+            )
+        self.hitl_audit_failclosed_mode = self.hitl_audit_failclosed_mode.lower()
         return self
 
     def resolve_worker_job_timeout(self, *, persona: str, phase: str | None = None) -> float:

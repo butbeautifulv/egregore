@@ -28,7 +28,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Ruff
         run: uv run ruff check src tests
 
@@ -40,7 +40,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Pytest batches
         run: make test-batches
 
@@ -52,7 +52,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Domain 100% gate
         run: make domain-gate
 
@@ -64,7 +64,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Architecture gates
         run: make verify-architecture
 
@@ -76,7 +76,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --frozen
       - name: Architecture test batch
         run: make arch-gate
 

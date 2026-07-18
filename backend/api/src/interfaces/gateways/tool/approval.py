@@ -101,6 +101,45 @@ def publish_hitl_approval_sync(record: HitlApprovalRecord) -> bool:
     return True
 
 
+async def record_hitl_approval_blocking(
+    *,
+    actor: str,
+    tool: str,
+    persona: str,
+    job_id: str,
+    decision: str,
+    tool_args: dict[str, Any],
+    sandbox_id: str = "",
+    approval_id: str | None = None,
+) -> tuple[HitlApprovalRecord, bool]:
+    """Like record_hitl_approval, but awaits the real Kafka publish outcome instead of
+    firing-and-forgetting it (docs/MICROSERVICES_SPLIT_PLAN.md §10.3/§41). Used for the
+    approve/edit HITL decision path: a high-risk action is about to execute off the back
+    of this audit record, so a publish failure needs to be observable to the caller rather
+    than degrading to a background warning log the caller never sees."""
+    record = HitlApprovalRecord(
+        approval_id=approval_id or create_approval_id(),
+        actor=actor,
+        tool=tool,
+        persona=persona,
+        job_id=job_id,
+        sandbox_id=sandbox_id,
+        target_resource=tool_args.get("target", tool_args.get("command", "")),
+        params_hash=params_hash(tool_args),
+        decision=decision,
+    )
+    _approval_records.append(record.model_dump())
+    published = await publish_hitl_approval(record)
+    if not published:
+        logger.warning(
+            "hitl_approval_kafka_publish_failed",
+            job_id=job_id,
+            approval_id=record.approval_id,
+            blocking=True,
+        )
+    return record, published
+
+
 def record_hitl_approval(
     *,
     actor: str,

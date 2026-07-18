@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
+import structlog
+
 from cys_core.domain.workers.models import JobResumeRequest, WorkerJob, WorkerJobStatus
+
+logger = structlog.get_logger(__name__)
 
 
 class HitlJobStore(Protocol):
@@ -42,16 +46,29 @@ class ResumeHitlJob:
         record_hitl_approval: Callable[..., Any],
         params_hash: Callable[[dict[str, Any]], str],
         record_approval_bypass: Callable[[str], None] | None = None,
+        record_hitl_approval_blocking: Callable[..., Awaitable[tuple[Any, bool]]] | None = None,
+        audit_failclosed_mode: str = "off",
     ) -> None:
         """``job_queue_factory(persona) -> queue`` rather than a fixed queue
         instance — the resume job's persona isn't known until the interrupted
         job's record is read inside execute(), and queues are persona-scoped
-        (WorkerOrchestrator/get_job_queue follow the same pattern)."""
+        (WorkerOrchestrator/get_job_queue follow the same pattern).
+
+        ``record_hitl_approval_blocking``/``audit_failclosed_mode``: §10.3/§41 — when the
+        mode is 'shadow' or 'enforce', the approve/edit decision awaits the real Kafka
+        audit-trail publish outcome instead of firing-and-forgetting it. In 'enforce' mode a
+        failed publish blocks the action (ResumeHitlJobError) rather than letting a high-risk
+        action proceed on nothing but a background warning log. Defaults to 'off' (unchanged,
+        fire-and-forget) so existing callers that don't pass these two params keep today's
+        behavior exactly.
+        """
         self.job_store = job_store
         self.job_queue_factory = job_queue_factory
         self.record_hitl_approval = record_hitl_approval
         self.params_hash = params_hash
         self.record_approval_bypass = record_approval_bypass or (lambda _reason: None)
+        self.record_hitl_approval_blocking = record_hitl_approval_blocking
+        self.audit_failclosed_mode = audit_failclosed_mode
 
     async def execute(self, job_id: str, request: JobResumeRequest) -> dict[str, Any]:
         store = self.job_store
@@ -86,15 +103,38 @@ class ResumeHitlJob:
                 self.record_approval_bypass("params_hash_mismatch")
                 raise ResumeHitlJobError("Tool args hash mismatch — approval bypass blocked")
 
-        self.record_hitl_approval(
-            actor=request.actor,
-            tool=pending.tool_name,
-            persona=pending.persona,
-            job_id=job_id,
-            decision=request.decision,
-            tool_args=tool_args,
-            approval_id=pending.approval_id,
-        )
+        if self.audit_failclosed_mode in {"shadow", "enforce"} and self.record_hitl_approval_blocking is not None:
+            _record, published = await self.record_hitl_approval_blocking(
+                actor=request.actor,
+                tool=pending.tool_name,
+                persona=pending.persona,
+                job_id=job_id,
+                decision=request.decision,
+                tool_args=tool_args,
+                approval_id=pending.approval_id,
+            )
+            if not published:
+                if self.audit_failclosed_mode == "enforce":
+                    self.record_approval_bypass("hitl_audit_publish_failed")
+                    raise ResumeHitlJobError(
+                        "HITL approval audit trail publish failed — action blocked"
+                    )
+                logger.warning(
+                    "hitl_audit_publish_failed_shadow",
+                    job_id=job_id,
+                    approval_id=pending.approval_id,
+                )
+                self.record_approval_bypass("hitl_audit_publish_failed_shadow")
+        else:
+            self.record_hitl_approval(
+                actor=request.actor,
+                tool=pending.tool_name,
+                persona=pending.persona,
+                job_id=job_id,
+                decision=request.decision,
+                tool_args=tool_args,
+                approval_id=pending.approval_id,
+            )
         # Takes the original job_id out of AWAITING_APPROVAL (so it stops
         # showing up in /approvals/pending) — the resume job below tracks its
         # own, separate lifecycle in job_store under resume_job_id.
