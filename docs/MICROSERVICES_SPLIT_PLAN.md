@@ -2699,10 +2699,14 @@ already correct; docker-compose specifically was the missed surface.
 - **Important, not urgent (done this round, but would have been fine deferred one more cycle)**:
   installing and running `helm lint`/`helm template` for real, rather than continuing to rely on
   the fact the Go-template syntax merely *looked* right on inspection.
-- **Important, not urgent (deferred, tracked)**: dispatching a real GitHub Actions run against
-  the CI changes from §21.6.4 — still not done as of this section; local verification only.
-  Whoever has the ability to push/open a PR should confirm green before treating §21.6's CI
-  wiring as fully closed, per §20.1's own standard.
+- **Important, not urgent — now closed**: dispatched a real GitHub Actions `Release Gate` run
+  against `feature/microservice-refactoring` after this section's docs commit landed
+  (`workflow_dispatch`, since the workflow only auto-triggers on `pull_request` or `push` to
+  `main`, neither of which this branch's direct-push workflow hits) — run
+  [`29622209718`](https://github.com/butbeautifulv/egregore/actions/runs/29622209718), **27/27
+  jobs green**, including every `tool-gateway` job (`lint`, `arch-lint`, `adversarial`,
+  `domain-coverage`, `unit-tests`, `linter-security`, `build`). §21.6's CI wiring is now verified
+  end-to-end in GitHub Actions itself, not just locally, per §20.1's standard.
 - **Not urgent, not important (explicitly not done)**: chasing hypothetical gaps with no concrete
   evidence — this section only acted on things verified empirically (compose config resolution,
   helm lint/template output), not speculative "might also be missing" items.
