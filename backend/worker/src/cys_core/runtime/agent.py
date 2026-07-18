@@ -353,16 +353,19 @@ class AgentRuntime:
         sandbox_tools: list | None = None,
         recursion_limit: int | None = None,
         job_id: str | None = None,
-        event_id: str = "",
-        correlation_id: str = "",
+        event_id: str | None = None,
+        correlation_id: str | None = None,
         tenant_id: str | None = None,
         investigation_id: str | None = None,
-        sandbox_id: str = "",
+        sandbox_id: str | None = None,
         profile_id: str | None = None,
         stream_context: StreamContext | None = None,
     ) -> dict[str, Any]:
         tenant_id = tenant_id or "default"
         job_id = job_id or ""
+        event_id = event_id or ""
+        correlation_id = correlation_id or ""
+        sandbox_id = sandbox_id or ""
         defn = self.registry.get(name)
         sid = session_id or f"agent-{name}"
         inv_id = investigation_id or correlation_id or event_id or ""

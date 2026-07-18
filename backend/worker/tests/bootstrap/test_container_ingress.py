@@ -14,7 +14,7 @@ def test_container_worker_orchestrator_cached_by_persona(monkeypatch):
     construct_count = 0
 
     class FakeOrchestrator:
-        def __init__(self, persona: str | None = None) -> None:
+        def __init__(self, persona: str | None = None, runtime=None, **_kwargs) -> None:
             nonlocal construct_count
             construct_count += 1
             self.persona = persona
@@ -23,6 +23,7 @@ def test_container_worker_orchestrator_cached_by_persona(monkeypatch):
         "interfaces.worker.orchestrator.WorkerOrchestrator",
         FakeOrchestrator,
     )
+    monkeypatch.setattr("cys_core.runtime.agent.get_runtime", lambda: None)
 
     default_a = container.get_worker_orchestrator()
     default_b = container.get_worker_orchestrator()

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
+from cys_core.application.ports.agent_runner import AgentRunner
 from cys_core.application.use_cases.run_worker_job import RunWorkerJob
 from cys_core.application.workers.agent_executor import WorkerAgentExecutor
 from cys_core.application.workers.context_builder import WorkerContextBuilder
@@ -13,7 +14,6 @@ from cys_core.domain.agents.models import AgentDefinition
 from cys_core.domain.security.guardrails import OutputGuardrails
 from cys_core.domain.security.sanitizer import InputSanitizer
 from cys_core.registry.agents import AgentRegistry
-from cys_core.runtime.agent import AgentRuntime
 from interfaces.worker.orchestrator import WorkerOrchestrator, build_agent_bus
 from tests.application.port_fakes import FakeSchemaRegistry, fake_agent_catalog, fake_worker_tracing_port
 
@@ -67,7 +67,7 @@ def build_test_orchestrator(
     rt = runtime or FakeAgentRuntime(return_value={"summary": "ok"})
     return WorkerOrchestrator(
         persona=persona,
-        runtime=cast(AgentRuntime, rt),
+        runtime=cast(AgentRunner, rt),
         registry=reg,
         bus=bus or build_agent_bus(reg),
         sanitizer=sanitizer,

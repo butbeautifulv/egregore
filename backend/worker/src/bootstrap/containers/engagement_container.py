@@ -105,18 +105,25 @@ class EngagementContainer:
 
     def get_worker_orchestrator(self, persona: str | None = None):
         if persona not in self._worker_orchestrators:
+            # The one concrete AgentRuntime import in this whole seam lives here, in the
+            # composition root, not in interfaces/worker/orchestrator.py (docs/
+            # MICROSERVICES_SPLIT_PLAN.md §22.3/§29's dispatcher/agent_runtime split) — swapping
+            # which AgentRunner implementation backs the dispatcher is a change to this one line,
+            # not to WorkerOrchestrator itself.
+            from cys_core.runtime.agent import get_runtime
             from interfaces.worker.orchestrator import WorkerOrchestrator
 
+            runtime = get_runtime()
             backend_kind = self.settings.execution_backend
             if backend_kind == "in_process":
-                self._worker_orchestrators[persona] = WorkerOrchestrator(persona=persona)
+                self._worker_orchestrators[persona] = WorkerOrchestrator(persona=persona, runtime=runtime)
             elif backend_kind == "subprocess":
                 from cys_core.infrastructure.execution.subprocess_backend import (
                     SubprocessExecutionBackend,
                 )
 
                 self._worker_orchestrators[persona] = WorkerOrchestrator(
-                    persona=persona, execution_backend=SubprocessExecutionBackend()
+                    persona=persona, runtime=runtime, execution_backend=SubprocessExecutionBackend()
                 )
             elif backend_kind == "k8s":
                 from cys_core.infrastructure.execution.k8s_backend import K8sExecutionBackend
@@ -124,6 +131,7 @@ class EngagementContainer:
                 settings = self.settings
                 self._worker_orchestrators[persona] = WorkerOrchestrator(
                     persona=persona,
+                    runtime=runtime,
                     execution_backend=K8sExecutionBackend(
                         job_store=self._container.get_job_store(),
                         namespace=settings.k8s_namespace,
@@ -145,6 +153,7 @@ class EngagementContainer:
                     extra_run_args += ["--env-file", self.settings.docker_env_file]
                 self._worker_orchestrators[persona] = WorkerOrchestrator(
                     persona=persona,
+                    runtime=runtime,
                     execution_backend=DockerExecutionBackend(
                         image=self.settings.docker_worker_image,
                         extra_run_args=extra_run_args,

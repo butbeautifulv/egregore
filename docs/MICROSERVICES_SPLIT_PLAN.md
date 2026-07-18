@@ -3982,3 +3982,44 @@ real and tested, which de-risks the eventual integration work, but nothing today
 in-process checks it duplicates are already protecting the one live runtime. Prioritize the runtime
 wiring (§29.4's first bullet) whenever this plan's implementation work resumes — an unused, if
 correct, gateway provides no actual security benefit over the status quo until something calls it.
+
+## 30. Built: the dispatcher/agent_runtime seam (§22.3's "concrete deliverable")
+
+Ask: **"make the dispatcher."** §22.3 had already named the exact remaining edge: `WorkerOrchestrator`
+imported `cys_core.runtime.agent`'s concrete `AgentRuntime`/`get_runtime` directly instead of
+depending only on a framework-neutral port. Turned out half the seam already existed —
+`cys_core/application/ports/agent_runner.py`'s `AgentRunner` Protocol is exactly §22.4's
+`AgentRuntimePort`, and `WorkerAgentExecutor` already depended on it, not on `AgentRuntime`
+concretely. `WorkerOrchestrator` was the one holdout.
+
+Fix: `WorkerOrchestrator.__init__`'s `runtime` param is now typed `AgentRunner` (required, no more
+`or get_runtime()` fallback) and the file no longer imports `cys_core.runtime.agent` at all. The
+concrete `get_runtime()` call moved to the composition root
+(`bootstrap/containers/engagement_container.py`'s `get_worker_orchestrator()`), which constructs it
+once and passes it explicitly into every backend branch (in-process/subprocess/k8s/docker) — swapping
+which `AgentRunner` implementation backs the dispatcher is now a one-line change there, not a change
+to `WorkerOrchestrator` itself. Safe because every one of the 6 existing test call sites already
+passed `runtime=` explicitly (`grep` confirmed before touching anything) — only the composition root
+relied on the implicit default.
+
+Also fixed a real, if minor, pre-existing gap the change surfaced: `ty check` caught
+`AgentRuntime.arun`'s `event_id`/`correlation_id`/`sandbox_id` params typed as plain `str` while
+`AgentRunner`'s Protocol declares them `str | None` — `AgentRuntime` didn't actually structurally
+satisfy the port it's meant to implement. Widened the three params to match (the function body
+already treated `""` and `None` identically via `or` fallback, so this is a type-only fix, not a
+behavior change) — `AgentRuntime` now genuinely satisfies `AgentRunner`, confirmed by `ty check`
+passing clean rather than assumed.
+
+One test broke and was fixed: `tests/bootstrap/test_container_ingress.py`'s `FakeOrchestrator`
+stub didn't accept the new `runtime` kwarg the container now always passes — updated the stub and
+monkeypatched `get_runtime` so the test (which is about persona-keyed caching, not real runtime
+construction) doesn't need to build a real `AgentRuntime`. 156 targeted tests green
+(`tests/bootstrap`, `tests/worker`, `tests/application/workers`, `tests/integration/test_worker_bus_finding.py`),
+`ruff`/`ty` clean.
+
+**Not done**: `agent_runtime` staying an in-process module vs. becoming its own `backend/` package
+(§22.6, still open — nothing here forces that decision either way, the port doesn't care whether
+its implementation lives in-process or across a process boundary). Sandbox backends beyond
+K8s/Docker (gVisor/Kata, §22.5) untouched. `ModelConnector`/`ChatModelProvider`'s
+`BaseChatModel`-pinned return type (§22.4's last point) untouched — still fine since there's one
+port implementation.

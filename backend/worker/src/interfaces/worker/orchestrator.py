@@ -8,6 +8,7 @@ import structlog
 from bootstrap.container import get_container
 from bootstrap.settings import settings
 from cys_core.application.bus_engagement import normalize_correlation_id
+from cys_core.application.ports.agent_runner import AgentRunner
 from cys_core.application.ports.execution_backend import ExecutionBackend
 from cys_core.application.workers.tool_execution_tracker import (
     clear_tool_execution_count,
@@ -24,7 +25,6 @@ from cys_core.infrastructure.policy.budget_adapter import enrich_job_budget
 from cys_core.infrastructure.sandbox import get_sandbox_connector
 from cys_core.observability.tracing import bind_correlation_id, reset_correlation_id
 from cys_core.registry.agents import AgentRegistry, get_agent_registry
-from cys_core.runtime.agent import AgentRuntime, get_runtime
 
 logger = structlog.get_logger(__name__)
 
@@ -63,13 +63,20 @@ def _max_dependency_deferrals() -> int:
 
 
 class WorkerOrchestrator:
-    """Dequeue → budget → worker pipeline execution."""
+    """Dequeue → budget → worker pipeline execution.
+
+    Depends only on the `AgentRunner` port (docs/MICROSERVICES_SPLIT_PLAN.md §22.3/§22.4's
+    `AgentRuntimePort`), never on `cys_core.runtime.agent`'s concrete `AgentRuntime`/`get_runtime`
+    by import path — this is the dispatcher/agent_runtime seam. Which concrete implementation to
+    use by default is a composition-root decision (`bootstrap/containers/engagement_container.py`),
+    not this class's.
+    """
 
     def __init__(
         self,
         *,
+        runtime: AgentRunner,
         persona: str | None = None,
-        runtime: AgentRuntime | None = None,
         bus: SecureAgentBus | None = None,
         registry: AgentRegistry | None = None,
         transport: Any = None,
@@ -77,7 +84,7 @@ class WorkerOrchestrator:
         execution_backend: ExecutionBackend | None = None,
     ) -> None:
         self.persona = persona
-        self.runtime = runtime or get_runtime()
+        self.runtime = runtime
         self.registry = registry or get_agent_registry()
         self.bus = bus or build_agent_bus(self.registry, signing_key=settings.bus_signing_key_bytes)
         container = get_container()
