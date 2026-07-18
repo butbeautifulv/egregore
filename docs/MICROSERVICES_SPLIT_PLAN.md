@@ -4937,3 +4937,47 @@ agent should make unilaterally. Listed here so the next session doesn't have to 
   synced to `worker` at all.
 - Targeted `pytest <dir> -q` while iterating; full `scripts/pytest_batches.sh` per package before
   each commit, not after every edit.
+
+## 46. §45.3 resolved: Release Gate run confirmed green
+
+`gh run view 29649076509 --json status,conclusion` → `{"conclusion":"success","status":"completed"}`.
+The session-45 batch (§39-§44) is fully validated end-to-end, not just locally. Nothing in that
+round broke CI. Continuing the standing audit from here.
+
+## 47. Standing audit: `model-gateway` missed the §11.2/Phase-8 prod startup-guard pattern
+
+Grepped all four packages (`api`/`worker`/`tool-gateway`/`model-gateway`) for `except Exception`/
+silent-fallback patterns first (the shape §37-43's findings all had) — every hit checked this round
+(`AuthzService._observe`'s metrics-swallow, `RouteEvent._record_plan_match`'s bookkeeping-hook
+swallow, `WorkerFindingPublisher`'s control-plane-mode/noop-tracking swallows, the `k8s_sandbox.py`
+Job-delete-failure comment) is either observability-only or already correctly fixed with a documented
+rationale — nothing new there.
+
+Comparing `bootstrap/settings.py` across all four packages instead (per §45.5's own "grep for other
+packages' copies" convention) found a real, narrow gap: `api`/`worker`/`tool-gateway` all gained a
+`stage == "prod"` startup assertion in Phase 8 (§11.2/§13) that refuses to start if their own
+off-by-default auth toggle (`AUTH_ENABLED`/`AUTHZ_MODE`) is left insecure, with an explicit
+`ALLOW_INSECURE_PROD_AUTHZ` escape hatch. `model-gateway` (built later, §29) has the exact same shape
+of off-by-default toggle (`MODEL_GATEWAY_AUTH_ENABLED`, documented in its own settings.py comment as
+"the real guarantee is the NetworkPolicy egress restriction, not this") but never got the equivalent
+guard — `STAGE=prod` with `MODEL_GATEWAY_AUTH_ENABLED=0` (the default) started up without complaint.
+
+Fixed: added `allow_insecure_prod_auth` (`ALLOW_INSECURE_PROD_AUTH`, default `False`) and a
+`stage == "prod"` check in `model_post_init` refusing to start unless either
+`MODEL_GATEWAY_AUTH_ENABLED=1` or the override is set — same names/shape as the sibling packages'
+guard, scoped down to the one toggle this package actually has (no `AUTHZ_MODE`/ReBAC here, so no
+equivalent check needed). New `tests/bootstrap/test_settings_validation.py` (model-gateway had no
+`tests/bootstrap/` at all before this) — 6 cases covering dev defaults, invalid stage, the
+auth-enabled/shared-secret pairing, and all three prod combinations. `./scripts/pytest_batches.sh`
+green (2 batches, 18 tests total), `ruff`/`ty` clean.
+
+**Not a regression risk for any live deployment**: confirmed via `grep -rln "model-gateway\|MODEL_GATEWAY"
+deploy/` (zero hits in any docker-compose file or Helm template) and `grep -rln "model.gateway\|8093"`
+across `worker`/`api`/`tool-gateway` src (zero real hits — the one `8093` match is `worker`'s unrelated
+Veneno MCP integration's port, confirmed by reading it) that `model-gateway` is exactly what §29.4/§29.5
+already documented: built, tested, standalone, but not yet wired into any deploy manifest or called by
+any other service (`worker`'s `AgentRuntime` still calls `litellm` in-process directly). This guard is
+cheap insurance for whenever that wiring work happens, not a fix to a live gap — consistent with how
+Phase 8's original guard was framed for `api`/`worker`. §29's own "what this round deliberately did not
+do" list (no runtime integration, no NetworkPolicy egress restriction, no streaming, no rate limiting)
+is unchanged and still accurate; not re-litigated here.
