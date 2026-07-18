@@ -3492,3 +3492,139 @@ suite stays fast. Full `scripts/pytest_batches.sh` (both packages), `make verify
 
 Added to the standing list alongside §21.9 (`PersistenceUnavailableError` status code) and §22.13
 (HITL pause/resume protocol) as known, deliberately-unimplemented items — not silently dropped.
+
+## 25. Requirement: make everything as async as possible — sync-blocking-the-event-loop audit
+
+### 25.1. The ask
+
+> is there any thinkage on async? i don want to have any blockages because of sync runtime inside
+> services. pls fix it in doc that we should make everything as async as possible
+
+All three services run under an asyncio event loop as their primary runtime: `api` (FastAPI/ASGI),
+`worker` (an async daemon polling loop, `interfaces/worker/daemon.py`'s `async def run`),
+`tool-gateway` (a custom async stdlib server, `interfaces/gateways/tool/server.py`, replacing
+FastAPI per §21). Synchronous, blocking I/O executed directly inside a coroutine on the event loop
+thread — not offloaded via `asyncio.to_thread`/an executor — stalls that entire service for every
+other in-flight request/job, not just the one making the blocking call. Audited all three packages
+for this rather than guessing; doc-only per explicit instruction, no code changed this round.
+
+### 25.2. What's already correct — not everything is broken
+
+- **Worker's actual agent-execution hot path is genuinely, consistently async.** `AgentRuntime`'s
+  sync `.invoke()`/`_generate()` path (which would hit sync `litellm.completion()`) is reachable
+  only from `interfaces/cli/main.py`, a real CLI entry point — never from the daemon/orchestrator.
+  The real job path (`orchestrator.run_job` → `WorkerAgentExecutor` → `agent.py`'s `_ainvoke`/
+  `_call_agent`) uses `await agent.ainvoke(...)`/`agent.astream(...)` throughout, hitting
+  `_agenerate`/`_astream` → `litellm.acompletion()` end to end. No bug on the hot path.
+- **Subprocess/sandbox execution backends (worker) honor the async `ExecutionBackend` protocol
+  correctly** (§22): `SubprocessExecutionBackend` uses genuine `await asyncio.create_subprocess_exec`;
+  `K8sExecutionBackend`/`K8sSandboxConnector`'s blocking `kubernetes` client calls and
+  `time.sleep`-based poll loops are consistently wrapped in `asyncio.to_thread` at their boundary
+  (with an explicit comment documenting the pattern in `k8s_sandbox.py`).
+- **Tool-gateway's `InvokeTool.execute()` boundary is correctly isolated**: `server.py`'s
+  `await asyncio.to_thread(invoke_tool, ...)` means the entire sync call chain underneath it —
+  including this session's own new sync `RedisRateLimiter.check()` call (§23) — never blocks the
+  event loop directly. Not a bug, though see §25.4 on what this costs.
+- **`RedisRateLimiter`'s async pair is real, not a stub** — `.acheck()`/`.aallow()` use
+  `redis.asyncio` (genuine async I/O, not thread-pool-wrapped), and worker's `SecurityMiddleware`
+  correctly calls the sync variant from its sync `wrap_tool_call` and the async variant from its
+  async `awrap_tool_call` — and since the hot path always drives the async variant, this is fine
+  in practice.
+- **This session's own `time.sleep`/`asyncio.sleep` additions (§24) are correctly paired**: sync
+  `call_with_retry` (`time.sleep`) is only ever called from sync functions, async
+  `acall_with_retry` (`asyncio.sleep`) only from async ones, across every current call site —
+  verified, not assumed.
+- **Repo-wide `time.sleep(` sweep across all three packages found exactly 3 call sites, all
+  correctly isolated** (the two K8s poll loops above, plus this session's own `call_with_retry`) —
+  the one category with a clean bill of health.
+
+### 25.3. Confirmed bugs — blocking the event loop today
+
+1. **`api`: essentially every route handler.** Every route file
+   (`engagements.py`, `work_orders.py`, `runs.py`, `workspaces.py`, `catalog.py`, `follow_ups.py`)
+   is `async def` — FastAPI's automatic thread-pool protection only applies to plain `def` routes,
+   which this package has zero of — and every one calls sync, `psycopg`-backed store methods
+   (`PostgresWorkspaceStore`, the postgres-backed catalog registry, engagement/run stores) directly,
+   with no `to_thread`/executor offload. **Every GET/POST that touches Postgres blocks the entire
+   api process's event loop for that DB round trip.** Highest-impact finding in this audit — it's
+   not an edge case, it's the service's entire request surface under concurrent load.
+2. **`worker`: the job-*success* path, as opposed to the job-*failure* path.**
+   `job_finalizer.finalize_failure` already wraps every store/egress call in `asyncio.to_thread`
+   (a careful, deliberate pattern, evidenced by 13+ wrapped call sites in that one function) — but
+   `run_worker_job.py`'s success path does not: `_publish_and_finalize` (runs on every completed
+   job), `_handle_noop_finding`, `try_salvage_partial`, `job_finalizer.mark_running`/
+   `mark_persona_completed`, `orchestrator.run_job`'s dependency-state check, and all of
+   `enqueue_worker_jobs.py`/`enqueue_synthesis_job.py`/`enqueue_follow_up.py` call sync
+   `job_store`/`engagement_store` methods directly from `async def`, unwrapped. Reads as an
+   incomplete migration — the failure path got fixed, the (far more frequently executed) success
+   path didn't. Second-highest impact: stalls a persona's entire job-processing loop, and anything
+   depending on it, on every single job's completion or enqueue, not just failures.
+3. **`worker`: `RedisRateLimiter.__init__`'s blocking `.ping()`.** `SecurityMiddleware.__init__`
+   constructs a fresh `RedisRateLimiter()` per agent build (`runtime/agent.py`'s `_build_agent`, a
+   sync `def`, called unwrapped from async `acreate`) — and `RedisRateLimiter.__init__` does a
+   synchronous `redis.from_url(...).ping()`. Smaller in cost than 1/2 (one Redis round trip vs.
+   repeated Postgres round trips) but fires on every job's agent construction, and is doubly
+   wasteful since a fresh limiter is built each time instead of reused.
+
+### 25.4. Real opportunities — works today via a thread pool, but not genuinely async
+
+1. **No async Postgres driver anywhere in any of the three packages** — confirmed via repo-wide
+   grep: zero occurrences of `psycopg.AsyncConnection`/`psycopg_pool` anywhere. Even after §25.3's
+   bugs are fixed with `asyncio.to_thread` wrapping, DB concurrency stays capped by thread-pool
+   size instead of scaling with true async I/O concurrency. This is the single biggest structural
+   lever across all three services — see §25.5.
+2. **Tool-gateway already has working async MCP client code that nothing calls.**
+   `acall_siem_mcp_tool`/`acall_veil_mcp_tool` (and the `acall_siem_tool`/`acall_veil_tool` adapter
+   wrappers) are fully implemented, using genuine async HTTP — but `invoke_adapter()`, the one
+   function every real tool call is dispatched through, hard-codes the *sync* variants. Every MCP
+   tool call (SIEM/Veil/Nessus/web search) consumes a thread-pool slot for the network round trip
+   instead of running as native async I/O, even though the code to do otherwise already exists in
+   the repo, unused.
+3. **K8s execution/sandbox backends occupy a thread-pool slot for the full poll duration**
+   (potentially the entire job timeout, i.e. minutes) via a blocking `time.sleep` loop run inside
+   `asyncio.to_thread`, rather than an async K8s watch API + `asyncio.sleep`. The most expensive
+   per-call thread-pool occupancy found in this audit — under load this could exhaust a default
+   thread pool (~40 workers) faster than ordinary I/O-bound blocking calls would, since each one
+   holds its thread for minutes, not milliseconds.
+
+### 25.5. Target model — "as async as possible," concretely
+
+In priority order, matching §25.3/§25.4's severity:
+
+1. **Immediate stopgap for §25.3's 3 confirmed bugs**: wrap every currently-unwrapped call site in
+   `asyncio.to_thread`, mirroring the pattern `job_finalizer.finalize_failure` and tool-gateway's
+   `server.py` already use correctly. Small diff, stops the event-loop-blocking bleeding, buys time
+   for the real fix below without redesigning anything.
+2. **Real fix, biggest lever**: migrate the Postgres layer in all three packages from `psycopg`
+   (sync) to `psycopg.AsyncConnection`/`psycopg_pool.AsyncConnectionPool`, and have every store
+   method become genuinely `async def` with `await`ed queries instead of being wrapped in
+   `asyncio.to_thread`. This closes §25.3's bugs and §25.4 point 1's opportunity in one migration —
+   after it, api routes and worker's job path can `await store.get(...)` directly, no thread-pool
+   ceiling, no wrapper needed anywhere.
+3. Wire tool-gateway's already-implemented `acall_siem_tool`/`acall_veil_tool` into
+   `invoke_adapter()`/`InvokeTool` (which itself needs to become `async def` to call them directly
+   instead of being invoked via `asyncio.to_thread`) — removes §25.4 point 2's dead code and its
+   thread-pool cost in the same move.
+4. Evaluate `kubernetes_asyncio` (or an async watch-based poll) for `K8sExecutionBackend`/
+   `K8sSandboxConnector` instead of a `time.sleep` loop in a thread, closing §25.4 point 3.
+5. Fix `RedisRateLimiter` construction in `SecurityMiddleware`/`AgentRuntime._build_agent`: reuse a
+   cached limiter instance instead of constructing (and `.ping()`-ing) a fresh one per job.
+
+### 25.6. Not implemented this round — explicit, by instruction
+
+This is doc-only per the user's own framing ("pls fix it in doc"). Also deliberately not attempted
+blind regardless: §25.3's bugs alone touch a dozen-plus call sites across `api`'s entire route
+surface and `worker`'s job-success path, and §25.5's real fix (async Postgres) is a genuine
+cross-cutting driver migration across all three packages' store implementations — exactly the
+category of change this session has consistently deferred rather than rushing (§21.9, §22.13,
+§24.4's job-requeue/infra-backoff items) because a change this wide needs per-store test coverage
+and its own review pass, not a same-session drive-by.
+
+### 25.7. Eisenhower placement
+
+**Important and, unlike most of this session's other deferred items, plausibly urgent**: §25.3's
+`api`-route-handler finding affects the service's entire request surface under any real concurrent
+load, not an edge case — worth prioritizing above §24.4's list (job requeue, refusal handling,
+infra reconnect-backoff, `CircuitBreaker` reuse) if/when implementation work on this plan resumes,
+precisely because it's the one finding here that's already live in production today rather than a
+missing capability.
