@@ -5129,3 +5129,21 @@ matrix legs specifically rather than just the aggregate: `unit-tests (model-gate
 `deploy-preprod`/`iast-preprod`/`osa / dependency-review` correctly `skipped` as main-only/PR-only gates)
 completed successfully, `release-gate` aggregate → `success`,
 `{"conclusion":"success","status":"completed"}`. The wiring works end-to-end, not just in theory.
+
+### 49.2. Same class of gap found one layer over: CodeQL never scanned `model-gateway` either
+
+Checking whether other CI-adjacent configs had the same "new package, three-item list never updated"
+mistake (rather than assuming `release-gate.yml` was the only place `model-gateway` was missing):
+`.github/codeql/codeql-config.yml`'s `paths:` is an **include-list** (CodeQL only analyzes what's listed,
+unlike gitleaks's `.gitleaks.toml` which is an allowlist against a whole-repo scan by default — checked
+both files, not assumed the same shape) — and it only listed `backend/{worker,api,tool-gateway}/src`.
+`sast / codeql` reporting `success` in every run this session was true but misleading: it had nothing to
+say about `model-gateway` because it never looked at it, the same false-confidence shape as §49's original
+finding. This one is arguably higher-stakes than the lint/test gap — `model-gateway`'s whole job is
+security enforcement (`domain/security/{sanitizer,guardrails,prompt_context,redaction}`), so it's the
+last package that should be flying under SAST's radar. Added `backend/model-gateway/src` to the `paths:`
+list — one line, no other config needed (`python-extensions.yml`'s one barrier-model entry targets an
+api/worker-only module, harmless no-op for model-gateway either way). `dependabot.yml` checked too: all
+four `directory: "/"` entries are a separate, pre-existing, repo-wide question (not model-gateway-specific
+— every package's nested `pyproject.toml` has the same ambiguity) — flagged, not touched, since it's a
+different-shaped problem than "one package missing from an otherwise-correct per-package list."

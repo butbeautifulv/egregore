@@ -4,6 +4,7 @@ paths:
   - backend/worker/src
   - backend/api/src
   - backend/tool-gateway/src
+  - backend/model-gateway/src
 
 dataExtensions:
   - .github/codeql/python-extensions.yml
