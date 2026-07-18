@@ -284,13 +284,16 @@ class RunWorkerJob:
             tool_outputs=len(outputs),
             salvage_reason=reason,
         )
-        self._finding_publisher.append_engagement_finding(
+        await asyncio.to_thread(
+            self._finding_publisher.append_engagement_finding,
             job=job,
             result=result,
             investigation_id=investigation_id,
             defn=defn,
         )
-        self._finding_publisher.persist_memory(job=job, result=result, investigation_id=investigation_id)
+        await asyncio.to_thread(
+            self._finding_publisher.persist_memory, job=job, result=result, investigation_id=investigation_id
+        )
         if should_publish_finding_to_bus(persona=job.persona, role=getattr(defn, "role", None)):
             await self._finding_publisher.publish(
                 job=job,
@@ -304,7 +307,7 @@ class RunWorkerJob:
             job.payload["estimated_cost_usd"] = budget_state.cost_usd
         job.payload["salvaged_finding"] = True
         if job.payload.get("phase") != "synthesis":
-            self._job_finalizer.mark_persona_completed(job)
+            await asyncio.to_thread(self._job_finalizer.mark_persona_completed, job)
         job_state["status"] = "success"
         await self._job_finalizer.mark_success(job, investigation_id)
         if self._metrics is not None:
@@ -335,8 +338,8 @@ class RunWorkerJob:
         self, plan_follow_up_runner: PlanFollowUpRunner, job: WorkerJob, investigation_id: str, session_id: str
     ) -> RunResult:
         try:
-            self._job_finalizer.mark_running(job, session_id)
-            self._job_finalizer.publish_job_started(job, investigation_id)
+            await asyncio.to_thread(self._job_finalizer.mark_running, job, session_id)
+            await asyncio.to_thread(self._job_finalizer.publish_job_started, job, investigation_id)
             result = await plan_follow_up_runner.execute(job, investigation_id)
             await self._job_finalizer.mark_success(job, investigation_id)
             return RunResult(
@@ -348,7 +351,8 @@ class RunWorkerJob:
             )
         except Exception as exc:
             if self._follow_up_publisher is not None:
-                self._follow_up_publisher.publish_failure(
+                await asyncio.to_thread(
+                    self._follow_up_publisher.publish_failure,
                     job=job,
                     investigation_id=investigation_id,
                     error=str(exc),
@@ -360,8 +364,8 @@ class RunWorkerJob:
         self, engagement_planner_runner: EngagementPlannerRunner, job: WorkerJob, investigation_id: str, session_id: str
     ) -> RunResult:
         try:
-            self._job_finalizer.mark_running(job, session_id)
-            self._job_finalizer.publish_job_started(job, investigation_id)
+            await asyncio.to_thread(self._job_finalizer.mark_running, job, session_id)
+            await asyncio.to_thread(self._job_finalizer.publish_job_started, job, investigation_id)
             result = await engagement_planner_runner.execute(job, investigation_id)
             await self._job_finalizer.mark_success(job, investigation_id)
             return RunResult(
@@ -481,8 +485,8 @@ class RunWorkerJob:
         ):
             creds = await self.sandbox.acreate(run_id, job.persona)
         job.sandbox_id = creds.sandbox_id
-        self._job_finalizer.mark_running(job, session_id)
-        self._job_finalizer.publish_job_started(job, investigation_id)
+        await asyncio.to_thread(self._job_finalizer.mark_running, job, session_id)
+        await asyncio.to_thread(self._job_finalizer.publish_job_started, job, investigation_id)
         return creds
 
     def _prepare_agent_inputs(self, job: WorkerJob, investigation_id: str, inv_ctx: dict, creds):
@@ -655,13 +659,13 @@ class RunWorkerJob:
             persona=job.persona,
             engagement_id=investigation_id,
         )
-        self._finding_publisher.record_noop(job=job, investigation_id=investigation_id)
+        await asyncio.to_thread(self._finding_publisher.record_noop, job=job, investigation_id=investigation_id)
         budget_state = JobBudgetTracker.get(session_id)
         if budget_state is not None:
             job.payload["estimated_cost_usd"] = budget_state.cost_usd
         job.payload["noop_finding"] = True
         if job.payload.get("phase") != "synthesis":
-            self._job_finalizer.mark_persona_completed(job)
+            await asyncio.to_thread(self._job_finalizer.mark_persona_completed, job)
         await self._job_finalizer.mark_success(job, investigation_id)
         return RunResult(
             job_id=job.job_id,
@@ -765,7 +769,8 @@ class RunWorkerJob:
                     investigation_id=investigation_id,
                 )
         if self._follow_up_publisher is not None:
-            self._follow_up_publisher.publish_success(
+            await asyncio.to_thread(
+                self._follow_up_publisher.publish_success,
                 job=job,
                 result=result,
                 investigation_id=investigation_id,
@@ -781,7 +786,8 @@ class RunWorkerJob:
             from cys_core.application.findings.outcome_mapper import finding_to_operator_outcome
 
             outcome = finding_to_operator_outcome(result, kind="advisory")
-            self._job_finalizer._engagement_store.set_final_report(
+            await asyncio.to_thread(
+                self._job_finalizer._engagement_store.set_final_report,
                 job.tenant_id,
                 investigation_id,
                 outcome.to_final_report(),
@@ -799,15 +805,19 @@ class RunWorkerJob:
         self, job: WorkerJob, result: dict, investigation_id: str, session_id: str, creds, defn
     ) -> RunResult:
         if job.payload.get("phase") != "synthesis":
-            self._finding_publisher.append_engagement_finding(
+            await asyncio.to_thread(
+                self._finding_publisher.append_engagement_finding,
                 job=job,
                 result=result,
                 investigation_id=investigation_id,
                 defn=defn,
             )
-        self._finding_publisher.persist_memory(job=job, result=result, investigation_id=investigation_id)
+        await asyncio.to_thread(
+            self._finding_publisher.persist_memory, job=job, result=result, investigation_id=investigation_id
+        )
         if job.payload.get("phase") == "synthesis":
-            self._finding_publisher.publish_final_report(
+            await asyncio.to_thread(
+                self._finding_publisher.publish_final_report,
                 job=job,
                 result=result,
                 investigation_id=investigation_id,
@@ -816,8 +826,8 @@ class RunWorkerJob:
             if follow_up_id and self._follow_up_publisher is not None:
                 engagement = None
                 if self._job_finalizer._engagement_store is not None:
-                    engagement = self._job_finalizer._engagement_store.get(
-                        job.tenant_id, investigation_id
+                    engagement = await asyncio.to_thread(
+                        self._job_finalizer._engagement_store.get, job.tenant_id, investigation_id
                     )
                 plan_snapshot: dict[str, Any] = {
                     "summary": str(result.get("summary", result.get("finding", ""))),
@@ -835,7 +845,8 @@ class RunWorkerJob:
                     tenant_id=job.tenant_id,
                     payload={**job.payload, "work_kind": "follow_up_plan"},
                 )
-                self._follow_up_publisher.publish_success(
+                await asyncio.to_thread(
+                    self._follow_up_publisher.publish_success,
                     job=synth_job,
                     result=plan_snapshot,
                     investigation_id=investigation_id,
@@ -843,7 +854,7 @@ class RunWorkerJob:
                 if engagement is not None:
                     engagement.close_after_follow_up()
                     if self._job_finalizer._engagement_store is not None:
-                        self._job_finalizer._engagement_store.upsert(engagement)
+                        await asyncio.to_thread(self._job_finalizer._engagement_store.upsert, engagement)
         else:
             if should_publish_finding_to_bus(persona=job.persona, role=getattr(defn, "role", None)):
                 await self._finding_publisher.publish(
@@ -859,7 +870,7 @@ class RunWorkerJob:
             job.payload["estimated_cost_usd"] = budget_state.cost_usd
 
         if job.payload.get("phase") != "synthesis":
-            self._job_finalizer.mark_persona_completed(job)
+            await asyncio.to_thread(self._job_finalizer.mark_persona_completed, job)
         await self._job_finalizer.mark_success(job, investigation_id)
 
         return RunResult(

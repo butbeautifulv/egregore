@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated, Any
 
 import httpx
@@ -176,6 +177,10 @@ async def list_agents(
     enabled: bool | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_list_agents_impl, profile_id, enabled)
+
+
+def _list_agents_impl(profile_id: str | None, enabled: bool | None) -> dict[str, Any]:
     enabled_only = False
     agents = _container().get_agent_catalog().list_agents(profile_id=profile_id, enabled_only=enabled_only)
     if enabled is not None:
@@ -188,6 +193,10 @@ async def get_agent(
     name: str,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> AgentCatalogDetailOut:
+    return await asyncio.to_thread(_get_agent_impl, name)
+
+
+def _get_agent_impl(name: str) -> AgentCatalogDetailOut:
     entry = _container().get_agent_catalog().get_agent(name)
     if entry is None:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -200,6 +209,10 @@ async def put_agent(
     body: AgentCatalogPut,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> AgentCatalogOut:
+    return await asyncio.to_thread(_put_agent_impl, name, body, _auth)
+
+
+def _put_agent_impl(name: str, body: AgentCatalogPut, _auth: AuthClaims | None) -> AgentCatalogOut:
     if is_control_persona(name):
         raise _control_agent_immutable()
     saved = UpsertCatalogAgent(
@@ -222,6 +235,10 @@ async def delete_agent(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_delete_agent_impl, name, profile_id, _auth)
+
+
+def _delete_agent_impl(name: str, profile_id: str, _auth: AuthClaims | None) -> dict[str, Any]:
     if is_control_persona(name):
         raise _control_agent_immutable()
     ok = _mutation().delete_agent(
@@ -239,6 +256,10 @@ async def list_skills(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_list_skills_impl, profile_id)
+
+
+def _list_skills_impl(profile_id: str | None) -> dict[str, Any]:
     skills = _container().get_skill_catalog().list_skills(profile_id=profile_id, enabled_only=False)
     return {"skills": [skill.model_dump(mode="json") for skill in skills]}
 
@@ -249,6 +270,10 @@ async def get_skill(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_get_skill_impl, skill_id, profile_id)
+
+
+def _get_skill_impl(skill_id: str, profile_id: str) -> dict[str, Any]:
     entry = _container().get_skill_catalog().get_skill(skill_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -261,6 +286,10 @@ async def put_skill(
     body: SkillCatalogPut,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_put_skill_impl, skill_id, body, _auth)
+
+
+def _put_skill_impl(skill_id: str, body: SkillCatalogPut, _auth: AuthClaims | None) -> dict[str, Any]:
     saved = UpsertSkill(_mutation()).execute(
         skill_id,
         body.model_dump(),
@@ -275,6 +304,10 @@ async def approve_skill(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_approve_skill_impl, skill_id, profile_id, _auth)
+
+
+def _approve_skill_impl(skill_id: str, profile_id: str, _auth: AuthClaims | None) -> dict[str, Any]:
     try:
         saved = _mutation().approve_skill(
             skill_id,
@@ -292,6 +325,10 @@ async def delete_skill(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_delete_skill_impl, skill_id, profile_id, _auth)
+
+
+def _delete_skill_impl(skill_id: str, profile_id: str, _auth: AuthClaims | None) -> dict[str, Any]:
     ok = _mutation().delete_skill(
         skill_id,
         profile_id=profile_id,
@@ -307,6 +344,10 @@ async def list_plans(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_list_plans_impl, profile_id)
+
+
+def _list_plans_impl(profile_id: str | None) -> dict[str, Any]:
     plans = _container().get_plan_catalog().list_plans(profile_id=profile_id, enabled_only=False)
     return {"plans": [plan.model_dump(mode="json") for plan in plans]}
 
@@ -317,6 +358,10 @@ async def get_plan(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_get_plan_impl, plan_id, profile_id)
+
+
+def _get_plan_impl(plan_id: str, profile_id: str) -> dict[str, Any]:
     entry = _container().get_plan_catalog().get_plan(plan_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -329,6 +374,10 @@ async def put_plan(
     body: PlanCatalogPut,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_put_plan_impl, plan_id, body, _auth)
+
+
+def _put_plan_impl(plan_id: str, body: PlanCatalogPut, _auth: AuthClaims | None) -> dict[str, Any]:
     saved = UpsertPlan(_mutation()).execute(
         plan_id,
         body.model_dump(),
@@ -343,6 +392,10 @@ async def activate_plan(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_activate_plan_impl, plan_id, profile_id)
+
+
+def _activate_plan_impl(plan_id: str, profile_id: str) -> dict[str, Any]:
     entry = _container().get_plan_catalog().activate_plan(plan_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -355,6 +408,10 @@ async def list_mcp_servers(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_list_mcp_servers_impl, profile_id)
+
+
+def _list_mcp_servers_impl(profile_id: str | None) -> dict[str, Any]:
     servers = _container().get_mcp_catalog().list_servers(profile_id=profile_id, enabled_only=False)
     return {"servers": [server.model_dump(mode="json") for server in servers]}
 
@@ -365,6 +422,10 @@ async def put_mcp_server(
     body: McpServerPut,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_put_mcp_server_impl, server_id, body, _auth)
+
+
+def _put_mcp_server_impl(server_id: str, body: McpServerPut, _auth: AuthClaims | None) -> dict[str, Any]:
     saved = UpsertMcpServer(_mutation()).execute(
         server_id,
         body.model_dump(),
@@ -379,6 +440,10 @@ async def mcp_health_check(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_mcp_health_check_impl, server_id, profile_id)
+
+
+def _mcp_health_check_impl(server_id: str, profile_id: str) -> dict[str, Any]:
     entry = _container().get_mcp_catalog().get_server(server_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="MCP server not found")
@@ -399,6 +464,10 @@ async def put_profile(
     body: ProfilePackPut,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_put_profile_impl, profile_id, body, _auth)
+
+
+def _put_profile_impl(profile_id: str, body: ProfilePackPut, _auth: AuthClaims | None) -> dict[str, Any]:
     saved = UpsertProfilePack(
         _container().get_agent_catalog(),
         policy_merge=get_container().get_policy_merge_port(),
@@ -417,6 +486,10 @@ async def get_profile_policy(
     profile_id: str,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_get_profile_policy_impl, profile_id)
+
+
+def _get_profile_policy_impl(profile_id: str) -> dict[str, Any]:
     profiles = _container().get_agent_catalog().list_profiles()
     profile = next((item for item in profiles if item.id == profile_id), None)
     policy = _container().get_profile_policy_port().get_policy(profile_id)
@@ -433,6 +506,10 @@ async def put_profile_policy(
     body: ProfilePolicyPut,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_put_profile_policy_impl, profile_id, body, _auth)
+
+
+def _put_profile_policy_impl(profile_id: str, body: ProfilePolicyPut, _auth: AuthClaims | None) -> dict[str, Any]:
     policy = UpsertProfilePolicy(
         _container().get_agent_catalog(),
         policy_merge=get_container().get_policy_merge_port(),
@@ -448,6 +525,10 @@ async def list_tools_api(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_list_tools_api_impl, profile_id)
+
+
+def _list_tools_api_impl(profile_id: str | None) -> dict[str, Any]:
     tools = _container().get_tool_catalog().list_tools(profile_id=profile_id, enabled_only=False)
     return {"tools": [tool.model_dump(mode="json") for tool in tools]}
 
@@ -458,6 +539,10 @@ async def get_tool_api(
     profile_id: str = DEFAULT_PROFILE_ID,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_get_tool_api_impl, tool_id, profile_id)
+
+
+def _get_tool_api_impl(tool_id: str, profile_id: str) -> dict[str, Any]:
     entry = _container().get_tool_catalog().get_tool(tool_id, profile_id=profile_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Tool not found")
@@ -470,6 +555,10 @@ async def put_tool_api(
     body: ToolCatalogPut,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_put_tool_api_impl, tool_id, body, _auth)
+
+
+def _put_tool_api_impl(tool_id: str, body: ToolCatalogPut, _auth: AuthClaims | None) -> dict[str, Any]:
     saved = UpsertTool(_mutation()).execute(
         tool_id,
         body.model_dump(),
@@ -483,6 +572,10 @@ async def get_evaluation(
     persona: str,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_get_evaluation_impl, persona)
+
+
+def _get_evaluation_impl(persona: str) -> dict[str, Any]:
     entry = _container().get_agent_catalog().get_agent(persona)
     if entry is None:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -498,6 +591,10 @@ async def list_evaluations(
     profile_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_list_evaluations_impl, profile_id)
+
+
+def _list_evaluations_impl(profile_id: str | None) -> dict[str, Any]:
     agents = _container().get_agent_catalog().list_agents(profile_id=profile_id, enabled_only=False)
     leaderboard = sorted(agents, key=lambda item: item.quality.empirical_trust, reverse=True)
     return {
@@ -517,6 +614,10 @@ async def list_evaluations(
 async def list_profiles(
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_list_profiles_impl)
+
+
+def _list_profiles_impl() -> dict[str, Any]:
     catalog = _container().get_agent_catalog()
     profiles = catalog.list_profiles()
     return {"profiles": [p.model_dump() if hasattr(p, "model_dump") else p for p in profiles]}
@@ -527,6 +628,10 @@ async def catalog_audit(
     limit: int = 50,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_catalog_audit_impl, limit)
+
+
+def _catalog_audit_impl(limit: int) -> dict[str, Any]:
     return {"entries": _container().get_catalog_audit().list_entries(limit=limit)}
 
 
@@ -534,6 +639,10 @@ async def catalog_audit(
 async def reload_catalog(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_reload_catalog_impl)
+
+
+def _reload_catalog_impl() -> dict[str, Any]:
     _container().reload_catalog()
     return {"reloaded": True, "version": _container().get_catalog_version()}
 
@@ -542,4 +651,8 @@ async def reload_catalog(
 async def seed_catalog(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_seed_catalog_impl)
+
+
+def _seed_catalog_impl() -> dict[str, Any]:
     return _container().get_seed_catalog().execute()

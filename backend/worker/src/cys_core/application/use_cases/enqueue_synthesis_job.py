@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
@@ -58,7 +60,7 @@ class EnqueueSynthesisJob:
             return None
 
         investigation_id = job.correlation_id or job.event_id
-        engagement = self._engagement_store.get(job.tenant_id, investigation_id)
+        engagement = await asyncio.to_thread(self._engagement_store.get, job.tenant_id, investigation_id)
         if engagement is None or not engagement.planner_plan:
             return None
         if not engagement.synthesis_persona:
@@ -71,7 +73,9 @@ class EnqueueSynthesisJob:
             return None
 
         if self._job_store is not None:
-            active_bus = self._job_store.count_active_bus_jobs(job.tenant_id, investigation_id)
+            active_bus = await asyncio.to_thread(
+                self._job_store.count_active_bus_jobs, job.tenant_id, investigation_id
+            )
             if active_bus > 0:
                 return None
 
@@ -118,9 +122,12 @@ class EnqueueSynthesisJob:
             tenant_id=job.tenant_id,
         )
         await self._queue.aenqueue(synth_job)
-        self._engagement_store.mark_synthesis_running(job.tenant_id, investigation_id, job_id)
+        await asyncio.to_thread(
+            self._engagement_store.mark_synthesis_running, job.tenant_id, investigation_id, job_id
+        )
         if self._engagement_egress is not None:
-            self._engagement_egress.publish_status(
+            await asyncio.to_thread(
+                self._engagement_egress.publish_status,
                 investigation_id,
                 "job_enqueued",
                 {

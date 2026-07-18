@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -78,6 +79,10 @@ async def run_step(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> RunOut:
+    return await asyncio.to_thread(_run_step_impl, run_id, tenant_id, _auth)
+
+
+def _run_step_impl(run_id: str, tenant_id: str, _auth: AuthClaims | None) -> RunOut:
     _deny_legacy_runs_in_enforce()
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     require_engagement_relation(
@@ -134,6 +139,10 @@ async def get_run(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> dict[str, Any]:
+    return await asyncio.to_thread(_get_run_impl, run_id, tenant_id, _auth)
+
+
+def _get_run_impl(run_id: str, tenant_id: str, _auth: AuthClaims | None) -> dict[str, Any]:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     require_engagement_relation(
         auth=_auth,
@@ -157,17 +166,7 @@ async def upload_attachment(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
 ) -> dict[str, Any]:
-    tenant_id = require_tenant_match_http(_auth, tenant_id)
-    require_engagement_relation(
-        auth=_auth,
-        tenant_id=tenant_id,
-        engagement_id=run_id,
-        relation="can_operate",
-    )
-    engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Run not found")
-    max_bytes = get_container().settings.run_attachment_max_bytes
+    tenant_id, max_bytes = await asyncio.to_thread(_upload_attachment_precheck, run_id, tenant_id, _auth)
     chunks: list[bytes] = []
     total = 0
     chunk_size = 1024 * 1024
@@ -180,5 +179,22 @@ async def upload_attachment(
             raise HTTPException(status_code=413, detail=f"Attachment exceeds max size of {max_bytes} bytes")
         chunks.append(chunk)
     data = b"".join(chunks)
-    saved_path = get_container().get_attachment_store().save(tenant_id, run_id, file.filename or "attachment.bin", data)
+    saved_path = await asyncio.to_thread(
+        get_container().get_attachment_store().save, tenant_id, run_id, file.filename or "attachment.bin", data
+    )
     return {"path": saved_path, "run_id": run_id}
+
+
+def _upload_attachment_precheck(run_id: str, tenant_id: str, _auth: AuthClaims | None) -> tuple[str, int]:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=run_id,
+        relation="can_operate",
+    )
+    engagement = _start_engagement().get(run_id, tenant_id=tenant_id)
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    max_bytes = get_container().settings.run_attachment_max_bytes
+    return tenant_id, max_bytes

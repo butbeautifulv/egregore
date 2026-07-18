@@ -3628,3 +3628,100 @@ load, not an edge case — worth prioritizing above §24.4's list (job requeue, 
 infra reconnect-backoff, `CircuitBreaker` reuse) if/when implementation work on this plan resumes,
 precisely because it's the one finding here that's already live in production today rather than a
 missing capability.
+
+## 26. Implemented: §25.3's confirmed event-loop-blocking bugs (the stopgap, §25.5 step 1)
+
+### 26.1. The ask
+
+> prioritize your tasks with eisenhower matrix. AND GO ON
+
+Consolidated the standing backlog (§21.9, §22.13, §23.6, §24.4, §25.7) and picked the top item by
+the doc's own prior ranking: §25.3's confirmed, already-live event-loop-blocking bugs. Implemented
+the §25.5 step-1 stopgap (`asyncio.to_thread` wrapping at call boundaries) exactly as scoped —
+mirroring the `job_finalizer.finalize_failure`/tool-gateway `server.py` pattern already proven
+correct in this codebase — without attempting the larger async-Postgres migration (§25.5 step 2),
+which remains correctly deferred per §25.6's own reasoning (cross-cutting driver change needing its
+own review pass).
+
+### 26.2. `api`: all 61 route handlers across 6 files
+
+Every handler in `workspaces.py`, `runs.py`, `work_orders.py`, `engagements.py`, `catalog.py`, and
+`follow_ups.py` that called sync `psycopg`-backed store/authz methods now runs its body via
+`await asyncio.to_thread(_impl, ...)`, with the sync body moved into a private `_*_impl` function
+below each route. Three handlers needed a different shape because they weren't purely synchronous:
+
+- `runs.py`'s `upload_attachment` genuinely awaits `file.read()` (FastAPI's real async I/O) —
+  split into a `_upload_attachment_precheck` (threaded auth/existence checks, run *before* the file
+  is read, preserving the original fail-fast-before-consuming-the-upload ordering) and a threaded
+  final `attachment_store.save(...)` call, with the `await file.read()` loop staying on the event
+  loop between them.
+- `engagements.py`'s `stream_engagement` returns a `StreamingResponse` wrapping a genuine async
+  generator (`egress.subscribe(...)`) that must stay on the event loop — only the auth precheck
+  before it is threaded (`_stream_engagement_precheck`).
+- `runs.py`'s `create_run`/`create_session` and `work_orders.py`'s `create_work_order` were already
+  correctly async (`await start.execute(...)` hits an already-`async def` use case) — left
+  unwrapped rather than threaded, since they have no direct sync store calls of their own.
+
+Verified via `ruff check` (would flag any parameter forgotten in an `_impl` signature as
+undefined-name — caught one such miss during editing, in `fork_workspace_agent`'s `authorization`
+param, before it ever reached a test run) and the full `pytest_batches.sh` run: 47/47 route-level
+tests green, one unrelated pre-existing failure elsewhere (see §26.5).
+
+### 26.3. `worker`: the job-success path (§25.3 point 2) and hot-path enqueue helpers
+
+`run_worker_job.py`'s `_publish_and_finalize` (runs on every completed job), `_handle_noop_finding`,
+`try_salvage_partial`, `_complete_follow_up_orchestrator`, `_create_sandbox`,
+`_execute_follow_up_plan_planner`, and `_execute_engagement_planner` all had their unwrapped sync
+`job_finalizer`/`finding_publisher`/`follow_up_publisher`/`_engagement_store` calls wrapped in
+`asyncio.to_thread`, mirroring `job_finalizer.finalize_failure`'s own pattern in the same file.
+While auditing call sites, found (not just the file named in §25.3's original finding, but real
+additional instances) the same bug in `enqueue_worker_jobs.py` (`_apersist_and_enqueue_jobs`'s
+`job_store.upsert_pending`, and `enqueue_from_bus`'s `_should_reject_bus_enqueue`/
+`_should_reject_off_plan_bus`/`job_store.upsert_pending`), `enqueue_synthesis_job.py` (`execute`'s
+`engagement_store.get`/`count_active_bus_jobs`/`mark_synthesis_running`/`engagement_egress.publish_status`),
+and `enqueue_next_planned_persona.py` (`execute`'s `engagement_store.get`/`engagement_egress.publish_status`)
+— all `async def` methods on the hot job-completion path calling sync store methods unwrapped. Fixed
+all of them the same way. `enqueue_follow_up.py` itself needed no changes: it's sync throughout, and
+its only callers (`api` routes, already thread-wrapped at the boundary per §26.2; and
+`follow_up_publisher.publish_success`/`publish_failure`, now thread-wrapped at their `run_worker_job.py`
+call sites) are covered by wrapping at the boundary rather than inside the callee.
+
+### 26.4. `worker`: `RedisRateLimiter` construction (§25.3 point 3, §25.5 step 5)
+
+`security_middleware.py` now caches one `RedisRateLimiter` instance at module level
+(`_get_shared_rate_limiter()`) instead of `SecurityMiddleware.__init__` constructing — and
+synchronously `.ping()`-ing — a fresh one on every single job's agent build. The blocking Redis
+handshake now happens at most once per worker process instead of once per job.
+
+### 26.5. Also implemented alongside: §24.4 point 3 (Nessus/search-adapter retry — mechanical, same session)
+
+Since it was flagged as "mechanically identical" follow-up to the retry work already done in §24 for
+siem/veneno/veil, and touched the same package already under test: `nessus_mcp_client.py`'s
+`call_nessus_mcp_tool` now goes through `call_with_retry` (same as the other three MCP clients).
+`search_stack.py`'s `perplexity_search`/`jina_search` needed a separate small retry helper
+(`_urlopen_with_retry`/`_is_transient_urllib_error`) rather than reusing `mcp_http.py`'s directly,
+since they use stdlib `urllib.request`, not `httpx` — the transient-failure classification logic is
+mirrored (408/409/429/5xx + connection/timeout errors retried, everything else raised immediately)
+but checks `urllib.error.HTTPError.code`/`URLError`/`socket.timeout` instead of httpx exception types.
+
+### 26.6. Verification
+
+Full `pytest_batches.sh` run in all three packages (`api`, `worker`, `tool-gateway`), plus
+`ruff check` on every touched file. Result: **zero failures attributable to this round's changes**.
+Every failure seen (`tests/infrastructure/test_http_client.py::test_sync_http_client_context_manager`
+in both `api` and `worker`; `tests/workers/test_soc_siem_integration.py`,
+`tests/workers/test_veil_integration.py` in `worker`; `tests/integration/test_tool_gateway_chain.py`
+in `tool-gateway`) is the identical `ValueError: Unknown scheme for proxy URL
+URL('socks://127.0.0.1:12334/')` or a downstream symptom of it — traced to a stray `ALL_PROXY`
+environment variable in this sandbox that httpx's proxy detection rejects, confirmed pre-existing
+and unrelated by stashing every change from this round and re-running the same failing tests against
+unmodified `HEAD` (identical failures, byte-for-byte same assertion). Not a regression.
+
+### 26.7. What's still open after this round
+
+§25.5 steps 2-5 beyond RedisRateLimiter (async Postgres migration; wiring tool-gateway's dead async
+MCP client code into `invoke_adapter()`; evaluating `kubernetes_asyncio`) remain future work, same
+reasoning as §25.6. §24.4's job-requeue, refusal-handling, infra-reconnect-backoff, and
+`CircuitBreaker`-reuse items are untouched. §21.9 and §22.13 remain as originally recorded. No new
+items were discovered this round beyond §26.3's enqueue-helper findings, which are now fixed rather
+than added to the backlog.

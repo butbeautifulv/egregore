@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,6 +30,12 @@ async def list_work_orders(
     limit: int = 20,
     cursor: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
+) -> WorkOrderListOut:
+    return await asyncio.to_thread(_list_work_orders_impl, tenant_id, limit, cursor, _auth)
+
+
+def _list_work_orders_impl(
+    tenant_id: str, limit: int, cursor: str | None, _auth: AuthClaims | None
 ) -> WorkOrderListOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     capped_limit = min(max(limit, 1), _MAX_LIST_LIMIT)
@@ -90,6 +97,10 @@ async def get_work_order(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> WorkOrderOut:
+    return await asyncio.to_thread(_get_work_order_impl, work_order_id, tenant_id, _auth)
+
+
+def _get_work_order_impl(work_order_id: str, tenant_id: str, _auth: AuthClaims | None) -> WorkOrderOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     require_engagement_relation(
         auth=_auth,
@@ -113,6 +124,12 @@ async def list_work_order_follow_ups(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> FollowUpListOut:
+    return await asyncio.to_thread(_list_work_order_follow_ups_impl, work_order_id, tenant_id, _auth)
+
+
+def _list_work_order_follow_ups_impl(
+    work_order_id: str, tenant_id: str, _auth: AuthClaims | None
+) -> FollowUpListOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     use_case = get_container().get_enqueue_follow_up()
     turns = use_case.list_turns(tenant_id, work_order_id)
@@ -124,6 +141,12 @@ async def create_work_order_follow_up(
     work_order_id: str,
     body: FollowUpIn,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
+) -> FollowUpOut:
+    return await asyncio.to_thread(_create_work_order_follow_up_impl, work_order_id, body, _auth)
+
+
+def _create_work_order_follow_up_impl(
+    work_order_id: str, body: FollowUpIn, _auth: AuthClaims | None
 ) -> FollowUpOut:
     tenant_id = require_tenant_match_http(_auth, body.tenant_id or "default")
     require_engagement_relation(

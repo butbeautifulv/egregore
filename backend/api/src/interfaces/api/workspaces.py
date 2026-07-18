@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Annotated, Literal
 
@@ -148,6 +149,10 @@ async def list_workspaces(
     tenant_id: str | None = None,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> WorkspaceListOut:
+    return await asyncio.to_thread(_list_workspaces_impl, tenant_id, _auth)
+
+
+def _list_workspaces_impl(tenant_id: str | None, _auth: AuthClaims | None) -> WorkspaceListOut:
     organization_id = (
         require_tenant_match_http(_auth, tenant_id)
         if tenant_id is not None
@@ -178,6 +183,10 @@ async def create_workspace(
     body: WorkspaceCreateIn,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
 ) -> WorkspaceOut:
+    return await asyncio.to_thread(_create_workspace_impl, body, _auth)
+
+
+def _create_workspace_impl(body: WorkspaceCreateIn, _auth: AuthClaims | None) -> WorkspaceOut:
     organization_id = require_tenant_match_http(_auth, body.tenant_id)
     workspace_id = body.id.strip() or _default_workspace_id(body.name, organization_id)
     workspace = Workspace(
@@ -211,6 +220,10 @@ async def get_workspace(
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
     _authz: Annotated[None, Depends(require_relation("workspace", "can_view", "workspace_id"))] = None,
 ) -> WorkspaceOut:
+    return await asyncio.to_thread(_get_workspace_impl, workspace_id, _auth)
+
+
+def _get_workspace_impl(workspace_id: str, _auth: AuthClaims | None) -> WorkspaceOut:
     workspace = _workspace_or_404(workspace_id)
     require_tenant_match_http(_auth, workspace.organization_id)
     return WorkspaceOut.from_domain(workspace)
@@ -223,6 +236,10 @@ async def patch_workspace(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
     _authz: Annotated[None, Depends(require_relation("workspace", "can_edit", "workspace_id"))] = None,
 ) -> WorkspaceOut:
+    return await asyncio.to_thread(_patch_workspace_impl, workspace_id, body, _auth)
+
+
+def _patch_workspace_impl(workspace_id: str, body: WorkspacePatchIn, _auth: AuthClaims | None) -> WorkspaceOut:
     workspace = _workspace_or_404(workspace_id)
     require_tenant_match_http(_auth, workspace.organization_id)
     updates = body.model_dump(exclude_unset=True)
@@ -239,6 +256,10 @@ async def delete_workspace(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
     _authz: Annotated[None, Depends(require_relation("workspace", "can_edit", "workspace_id"))] = None,
 ) -> dict[str, str | bool]:
+    return await asyncio.to_thread(_delete_workspace_impl, workspace_id, _auth)
+
+
+def _delete_workspace_impl(workspace_id: str, _auth: AuthClaims | None) -> dict[str, str | bool]:
     workspace = _workspace_or_404(workspace_id)
     require_tenant_match_http(_auth, workspace.organization_id)
     active_jobs = count_active_jobs_for_workspace(workspace.organization_id, workspace_id)
@@ -273,6 +294,10 @@ async def list_workspace_agents(
     workspace_id: str,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> WorkspaceAgentListOut:
+    return await asyncio.to_thread(_list_workspace_agents_impl, workspace_id, _auth)
+
+
+def _list_workspace_agents_impl(workspace_id: str, _auth: AuthClaims | None) -> WorkspaceAgentListOut:
     workspace = _workspace_or_404(workspace_id)
     require_tenant_match_http(_auth, workspace.organization_id)
     return WorkspaceAgentListOut(
@@ -289,6 +314,12 @@ async def fork_workspace_agent(
     name: str,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
     authorization: Annotated[str | None, Header()] = None,
+) -> WorkspaceAgentOut:
+    return await asyncio.to_thread(_fork_workspace_agent_impl, workspace_id, name, _auth, authorization)
+
+
+def _fork_workspace_agent_impl(
+    workspace_id: str, name: str, _auth: AuthClaims | None, authorization: str | None
 ) -> WorkspaceAgentOut:
     if is_control_persona(name):
         raise _control_agent_immutable()
@@ -329,6 +360,12 @@ async def put_workspace_agent(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
     _authz: Annotated[None, Depends(require_relation("workspace", "can_edit", "workspace_id"))] = None,
 ) -> WorkspaceAgentOut:
+    return await asyncio.to_thread(_put_workspace_agent_impl, workspace_id, name, body, _auth)
+
+
+def _put_workspace_agent_impl(
+    workspace_id: str, name: str, body: WorkspaceAgentUpdateIn, _auth: AuthClaims | None
+) -> WorkspaceAgentOut:
     if is_control_persona(name):
         raise _control_agent_immutable()
     workspace = _workspace_or_404(workspace_id)
@@ -362,6 +399,12 @@ async def add_workspace_member(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> GrantOut:
+    return await asyncio.to_thread(_add_workspace_member_impl, workspace_id, body, _auth, authorization)
+
+
+def _add_workspace_member_impl(
+    workspace_id: str, body: WorkspaceMemberIn, _auth: AuthClaims | None, authorization: str | None
+) -> GrantOut:
     workspace = _workspace_or_404(workspace_id)
     require_tenant_match_http(_auth, workspace.organization_id)
     require_workspace_relation(_auth, authorization, workspace_id, "can_admin")
@@ -392,6 +435,12 @@ async def grant_workspace_datasource(
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> GrantOut:
+    return await asyncio.to_thread(_grant_workspace_datasource_impl, workspace_id, ds_id, _auth, authorization)
+
+
+def _grant_workspace_datasource_impl(
+    workspace_id: str, ds_id: str, _auth: AuthClaims | None, authorization: str | None
+) -> GrantOut:
     workspace = _workspace_or_404(workspace_id)
     require_tenant_match_http(_auth, workspace.organization_id)
     require_workspace_relation(_auth, authorization, workspace_id, "can_admin")
@@ -421,6 +470,12 @@ async def revoke_workspace_datasource(
     ds_id: str,
     _auth: Annotated[AuthClaims | None, Depends(require_operator_role)] = None,
     authorization: Annotated[str | None, Header()] = None,
+) -> GrantOut:
+    return await asyncio.to_thread(_revoke_workspace_datasource_impl, workspace_id, ds_id, _auth, authorization)
+
+
+def _revoke_workspace_datasource_impl(
+    workspace_id: str, ds_id: str, _auth: AuthClaims | None, authorization: str | None
 ) -> GrantOut:
     workspace = _workspace_or_404(workspace_id)
     require_tenant_match_http(_auth, workspace.organization_id)

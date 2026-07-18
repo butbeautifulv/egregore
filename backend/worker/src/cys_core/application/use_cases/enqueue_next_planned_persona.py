@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from cys_core.application.ports.engagement_egress import EngagementEgressPort
 from cys_core.application.ports.engagement_store import EngagementStateStore
 from cys_core.application.ports.job_queue import JobQueueConnector
@@ -23,7 +25,7 @@ class EnqueueNextPlannedPersona:
 
     async def execute(self, job: WorkerJob) -> str | None:
         investigation_id = job.correlation_id or job.event_id
-        engagement = self._engagement_store.get(job.tenant_id, investigation_id)
+        engagement = await asyncio.to_thread(self._engagement_store.get, job.tenant_id, investigation_id)
         if engagement is None or not engagement.planner_plan or len(engagement.planner_plan) <= 1:
             return None
 
@@ -60,7 +62,8 @@ class EnqueueNextPlannedPersona:
         )
         await self._queue.aenqueue(next_job)
         if self._engagement_egress is not None:
-            self._engagement_egress.publish_status(
+            await asyncio.to_thread(
+                self._engagement_egress.publish_status,
                 investigation_id,
                 "job_enqueued",
                 {

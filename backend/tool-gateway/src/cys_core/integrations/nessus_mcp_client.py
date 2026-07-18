@@ -7,6 +7,7 @@ import httpx
 import structlog
 
 from cys_core.application.runtime_config import (
+    get_mcp_call_max_retries,
     get_nessus_mcp_timeout,
     get_nessus_mcp_url,
 )
@@ -14,6 +15,7 @@ from cys_core.application.runtime_config import (
     nessus_mcp_enabled as _nessus_mcp_enabled,
 )
 from cys_core.infrastructure.http_client import sync_http_client
+from cys_core.integrations.mcp_http import call_with_retry
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
 
@@ -103,11 +105,14 @@ def call_nessus_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None
     )
     url = get_nessus_mcp_url().rstrip("/")
 
-    try:
+    def _call() -> dict[str, Any]:
         with sync_http_client(timeout=get_nessus_mcp_timeout(), headers=headers) as client:
             response = client.post(url, json=payload)
             response.raise_for_status()
-            body = response.json()
+            return response.json()
+
+    try:
+        body = call_with_retry(_call, max_retries=get_mcp_call_max_retries(), source="nessus-mcp")
     except httpx.HTTPError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
         logger.warning("nessus_mcp_http_error", tool=tool_name, source="nessus-mcp", error=str(exc))

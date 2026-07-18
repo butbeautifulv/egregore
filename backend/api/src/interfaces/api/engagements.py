@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -83,6 +84,10 @@ async def list_engagements(
     limit: int = 20,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> EngagementListOut:
+    return await asyncio.to_thread(_list_engagements_impl, tenant_id, limit, _auth)
+
+
+def _list_engagements_impl(tenant_id: str, limit: int, _auth: AuthClaims | None) -> EngagementListOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     store = get_container().get_engagement_state_store()
     list_with_updated_at = getattr(store, "list_recent_with_updated_at", None)
@@ -157,6 +162,10 @@ async def get_engagement(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> EngagementOut:
+    return await asyncio.to_thread(_get_engagement_impl, engagement_id, tenant_id, _auth)
+
+
+def _get_engagement_impl(engagement_id: str, tenant_id: str, _auth: AuthClaims | None) -> EngagementOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     require_engagement_relation(
         auth=_auth,
@@ -185,6 +194,19 @@ async def get_engagement_memory(
     memory_type: str | None = None,
     limit: int = 50,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
+) -> EngagementMemoryOut:
+    return await asyncio.to_thread(
+        _get_engagement_memory_impl, engagement_id, tenant_id, agent, memory_type, limit, _auth
+    )
+
+
+def _get_engagement_memory_impl(
+    engagement_id: str,
+    tenant_id: str,
+    agent: str | None,
+    memory_type: str | None,
+    limit: int,
+    _auth: AuthClaims | None,
 ) -> EngagementMemoryOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     require_engagement_relation(
@@ -247,6 +269,12 @@ async def list_tenant_memory(
     limit: int = 100,
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> TenantMemoryOut:
+    return await asyncio.to_thread(_list_tenant_memory_impl, tenant_id, agent, limit, _auth)
+
+
+def _list_tenant_memory_impl(
+    tenant_id: str, agent: str | None, limit: int, _auth: AuthClaims | None
+) -> TenantMemoryOut:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     cap = min(max(limit, 1), 200)
     reader = get_container().get_memory_read_service()
@@ -273,6 +301,12 @@ async def promote_engagement_plan(
     body: PromotePlanIn,
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_ingress_role)] = None,
+) -> dict:
+    return await asyncio.to_thread(_promote_engagement_plan_impl, engagement_id, body, tenant_id, _auth)
+
+
+def _promote_engagement_plan_impl(
+    engagement_id: str, body: PromotePlanIn, tenant_id: str, _auth: AuthClaims | None
 ) -> dict:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     from cys_core.application.use_cases.promote_engagement_plan import (
@@ -308,6 +342,10 @@ async def list_engagement_events(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> list[dict]:
+    return await asyncio.to_thread(_list_engagement_events_impl, engagement_id, tenant_id, _auth)
+
+
+def _list_engagement_events_impl(engagement_id: str, tenant_id: str, _auth: AuthClaims | None) -> list[dict]:
     tenant_id = require_tenant_match_http(_auth, tenant_id)
     require_engagement_relation(
         auth=_auth,
@@ -329,13 +367,7 @@ async def stream_engagement(
     tenant_id: str = "default",
     _auth: Annotated[AuthClaims | None, Depends(require_reader_role)] = None,
 ) -> StreamingResponse:
-    tenant_id = require_tenant_match_http(_auth, tenant_id)
-    require_engagement_relation(
-        auth=_auth,
-        tenant_id=tenant_id,
-        engagement_id=engagement_id,
-        relation="can_view",
-    )
+    tenant_id = await asyncio.to_thread(_stream_engagement_precheck, engagement_id, tenant_id, _auth)
     egress = get_container().get_engagement_egress()
 
     async def _gen():
@@ -345,3 +377,14 @@ async def stream_engagement(
             yield f"data: {json.dumps(event, default=str)}\n\n"
 
     return StreamingResponse(_gen(), media_type="text/event-stream")
+
+
+def _stream_engagement_precheck(engagement_id: str, tenant_id: str, _auth: AuthClaims | None) -> str:
+    tenant_id = require_tenant_match_http(_auth, tenant_id)
+    require_engagement_relation(
+        auth=_auth,
+        tenant_id=tenant_id,
+        engagement_id=engagement_id,
+        relation="can_view",
+    )
+    return tenant_id

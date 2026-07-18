@@ -42,6 +42,22 @@ def _middleware_blocked_tool_result(result: Any) -> bool:
     return any(content.startswith(prefix) for prefix in _MIDDLEWARE_BLOCK_PREFIXES)
 
 
+_shared_rate_limiter: RedisRateLimiter | None = None
+
+
+def _get_shared_rate_limiter() -> RedisRateLimiter:
+    """One Redis connection (and one blocking `.ping()`) per process, not per agent build.
+
+    SecurityMiddleware is re-instantiated for every job's agent (a sync constructor called
+    unwrapped from the async build path); constructing a fresh RedisRateLimiter each time
+    re-pings Redis synchronously on every job. Caching amortizes that cost to once per process.
+    """
+    global _shared_rate_limiter
+    if _shared_rate_limiter is None:
+        _shared_rate_limiter = RedisRateLimiter()
+    return _shared_rate_limiter
+
+
 class SecurityMiddleware(AgentMiddleware):
     """Rate limiting, monitoring, and risk-based tool gating."""
 
@@ -63,7 +79,7 @@ class SecurityMiddleware(AgentMiddleware):
         self._policy_port = policy_port or _default_policy_port()
         anomaly = self._policy_port.get_policy(profile_id).anomaly
         self.monitor = AgentMonitor(agent_id, profile_id=profile_id, anomaly_policy=anomaly)
-        self.rate_limiter = RedisRateLimiter()
+        self.rate_limiter = _get_shared_rate_limiter()
         self.auto_approve_threshold = parse_threshold(self._policy_port.get_hitl_threshold(profile_id))
 
     def _await_hitl_if_needed(self, request: ToolCallRequest) -> ToolMessage | None:

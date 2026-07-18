@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -113,7 +114,8 @@ class EnqueueWorkerJobs:
     ) -> list[str]:
         job_ids: list[str] = []
         for index, job in enumerate(jobs):
-            self._job_store.upsert_pending(
+            await asyncio.to_thread(
+                self._job_store.upsert_pending,
                 job.job_id,
                 job.persona,
                 correlation_id=job.correlation_id,
@@ -302,14 +304,16 @@ class EnqueueWorkerJobs:
         )
         tenant_id = str(payload.get("tenant_id", "default"))
         msg_type = str(envelope.get("type", "delegate"))
-        if self._should_reject_bus_enqueue(
+        if await asyncio.to_thread(
+            self._should_reject_bus_enqueue,
             envelope,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
             msg_type=msg_type,
         ):
             return ""
-        if self._should_reject_off_plan_bus(
+        if await asyncio.to_thread(
+            self._should_reject_off_plan_bus,
             envelope,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
@@ -344,7 +348,8 @@ class EnqueueWorkerJobs:
             payload=payload,
             feedback=str(payload.get("feedback", "")),
         )
-        self._job_store.upsert_pending(
+        await asyncio.to_thread(
+            self._job_store.upsert_pending,
             job.job_id,
             job.persona,
             correlation_id=job.correlation_id,

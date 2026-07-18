@@ -1,9 +1,54 @@
 from __future__ import annotations
 
 import json
+import random
 import re
+import socket
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
+from typing import TypeVar
+
+T = TypeVar("T")
+
+_RETRYABLE_HTTP_CODES = frozenset({408, 409, 429, 500, 502, 503, 504})
+
+
+def _is_transient_urllib_error(exc: Exception) -> bool:
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in _RETRYABLE_HTTP_CODES
+    if isinstance(exc, urllib.error.URLError | socket.timeout | TimeoutError):
+        return True
+    return False
+
+
+def _urlopen_with_retry(fn: Callable[[], T], *, max_retries: int, source: str) -> T:
+    """Retry a urlopen-based call on transient network/HTTP failures, mirroring
+    cys_core.integrations.mcp_http.call_with_retry's backoff — perplexity/jina use
+    urllib rather than httpx so can't share that helper directly."""
+    import structlog
+
+    logger = structlog.get_logger(__name__)
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except Exception as exc:
+            if attempt >= max_retries or not _is_transient_urllib_error(exc):
+                raise
+            delay = min(8.0, 0.25 * (2**attempt)) * (1.0 + random.random())
+            logger.warning(
+                "search_call_retrying",
+                source=source,
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                delay_s=round(delay, 2),
+                error=str(exc),
+            )
+            time.sleep(delay)
+            attempt += 1
 
 
 def enhance_query(query: str) -> dict[str, str]:
@@ -90,9 +135,15 @@ def perplexity_search(query: str, *, limit: int | None = None) -> dict:
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         method="POST",
     )
-    try:
+
+    def _call() -> dict:
         with urllib.request.urlopen(req, timeout=settings.perplexity_api_timeout_s) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        from cys_core.application.runtime_config import get_mcp_call_max_retries
+
+        data = _urlopen_with_retry(_call, max_retries=get_mcp_call_max_retries(), source="perplexity-search")
     except Exception as exc:
         return {"success": False, "error": str(exc), "results": []}
     content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")
@@ -111,9 +162,15 @@ def jina_search(query: str, *, limit: int | None = None) -> dict:
     base = settings.jina_search_api_url.rstrip("/?")
     url = base + "/?" + urllib.parse.urlencode({"q": query})
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
-    try:
+
+    def _call() -> str:
         with urllib.request.urlopen(req, timeout=settings.jina_search_api_timeout_s) as resp:
-            text = resp.read().decode("utf-8")
+            return resp.read().decode("utf-8")
+
+    try:
+        from cys_core.application.runtime_config import get_mcp_call_max_retries
+
+        text = _urlopen_with_retry(_call, max_retries=get_mcp_call_max_retries(), source="jina-search")
     except Exception as exc:
         return {"success": False, "error": str(exc), "results": []}
     return {
