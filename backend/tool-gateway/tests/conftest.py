@@ -65,7 +65,27 @@ def catalog_with_soc_profile(
         default_personas=personas,
     )
     seed_agents = agents or [
-        AgentCatalogEntry(name="soc", role="worker", enabled=True, profile_id=DEFAULT_PROFILE_ID),
+        # tools= mirrors backend/agents/personas/soc/agent.yaml's real declared list —
+        # AgentRegistry.load() builds from this dynamic catalog in tests (not from the
+        # real agent.yaml files, see docs/MICROSERVICES_SPLIT_PLAN.md §31), so an empty
+        # default here silently defeats ScopePolicy for every "soc" tool-gateway test,
+        # masking real scope-enforcement gaps instead of exercising them.
+        AgentCatalogEntry(
+            name="soc",
+            role="worker",
+            enabled=True,
+            profile_id=DEFAULT_PROFILE_ID,
+            tools=[
+                "investigate_incident",
+                "list_incidents",
+                "search_events",
+                "get_event_by_uuid",
+                "rag_query",
+                "playbook_search",
+                "playbook_get",
+                "ti_search_in_category",
+            ],
+        ),
         AgentCatalogEntry(name="consultant", role="worker", enabled=True, profile_id=DEFAULT_PROFILE_ID),
         AgentCatalogEntry(
             name="conductor",

@@ -4023,3 +4023,44 @@ its implementation lives in-process or across a process boundary). Sandbox backe
 K8s/Docker (gVisor/Kata, §22.5) untouched. `ModelConnector`/`ChatModelProvider`'s
 `BaseChatModel`-pinned return type (§22.4's last point) untouched — still fine since there's one
 port implementation.
+
+## 31. Sharpened: §23.5's `TOOL_SCOPE_MODE=enforce` blocker, root-caused for real
+
+§23.4 originally attributed 6 test failures under enforce mode to `tests/conftest.py`'s
+`AgentCatalogEntry(name="soc", ...)` seed having no `tools=` — correct in spirit but not fully
+traced at the time. Re-verified empirically this round (flipped `TOOL_SCOPE_MODE=enforce` and ran
+the suite, then dumped `get_agent_registry().get("soc").tools` directly inside the test fixture
+context rather than assuming): `AgentRegistry.load()` builds from the **dynamic catalog**
+(`get_use_dynamic_catalog()` is true under the test fixture's patched container) — i.e. exactly that
+`AgentCatalogEntry` seed, not the real `backend/agents/personas/soc/agent.yaml` — so soc's tools
+really were `[]` in every tool-gateway test, silently defeating `ScopePolicy` for the whole suite
+regardless of what any individual test's tool_name/persona pair was.
+
+**Fixed the mechanical part**: gave the fixture's `soc` entry a `tools=` list matching its real
+`agent.yaml` exactly (`investigate_incident, list_incidents, search_events, get_event_by_uuid,
+rag_query, playbook_search, playbook_get, ti_search_in_category`). Verified by re-running
+enforce-mode: failures dropped 6 → 4. Default (shadow-mode) suite unaffected (36/36 still green).
+
+**What's left is a real product-scope question, not a test artifact** — the remaining 4 failures
+are two distinct tools genuinely absent from every persona's declared `tools:` list, not just
+soc's:
+- `query_siem_readonly` — declared by `hunter`/`identity`/`cloud`, not `soc`. Plausibly correct as-is
+  (soc's own `AGENT.md` ties its evidence-grounding rules specifically to `investigate_incident`,
+  a richer tool that produces an `evidence_manifest`) — but that's an inference, not a confirmed
+  product decision.
+- `dedup_alerts` — declared by **no persona at all**. Either it's meant to be a universal/core
+  utility tool exempt from persona scoping by design, or every persona that should be able to call
+  it is missing it from their `agent.yaml`. `ScopePolicy`/`_resolve_scope_violation` has no concept
+  of "core tools every persona gets" today — enforcing scope as currently designed would deny
+  `dedup_alerts` for 100% of personas in production.
+
+**Before `TOOL_SCOPE_MODE=enforce` is safe**: someone with product authority over the persona
+catalog needs to decide (a) whether `query_siem_readonly` should be added to `soc`'s tools, and (b)
+whether `dedup_alerts` (and any other similarly-undeclared tool — not exhaustively audited this
+round) needs a "core tool" exemption concept in `ScopePolicy` or needs adding to every persona that
+uses it. Deliberately not decided here, same reasoning as §21.9/§22.13 — this changes what personas
+can and can't do in production. `TOOL_SCOPE_MODE` stays at `shadow`.
+
+Eisenhower: **Important, not urgent** — shadow mode is already catching and logging real violations
+in the meantime; this is strictly better diagnostic clarity than §23 left it in, not a live gap by
+itself.
