@@ -440,17 +440,11 @@ class Container:
     def wire_agent_definitions_loader(self) -> None:
         from bootstrap.agent_definitions_loader import get_default_agent_definitions_loader
         from bootstrap.otel_wiring import wire_otel
-        from cys_core.application.ports.trace_callbacks import configure_trace_callbacks
         from cys_core.observability.langfuse_client import configure_trace_backend_factory
         from cys_core.registry.agents import configure_agent_definitions_loader
 
         wire_otel()
 
-        def _trace_callbacks():
-            handler = self.get_trace_backend().get_callback_handler()
-            return [handler] if handler is not None else []
-
-        configure_trace_callbacks(_trace_callbacks)
         configure_trace_backend_factory(self.get_trace_backend)
         loader = get_default_agent_definitions_loader()
         configure_agent_definitions_loader(loader)

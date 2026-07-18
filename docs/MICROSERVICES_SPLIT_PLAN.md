@@ -2770,3 +2770,18 @@ change) — **22/22 batches, 0 failed**; `make verify-architecture` — 456 file
 3/3 contracts kept; `uv tree | grep -i langchain` — zero hits (was already zero before this
 change; this section closes a *reachable-code* gap, not a *dependency-tree* gap — the package was
 already absent, only the dead import path calling into it remained).
+
+### 21.8.4. Same fix applied to `tool-gateway`'s copy — identical finding, identical evidence
+
+`backend/tool-gateway/` was rsync'd from `worker` (§21.6.1), not from `api`, so it never inherited
+§21.1's `api`-specific fix — it had the exact same dead vertical: `trace_callbacks.py`, the
+`_trace_callbacks` closure in `bootstrap/container.py`, `get_callback_handler()` on the port and
+all four implementations, `get_langfuse_callback_handler()`. Re-traced independently (not assumed
+from the `api` finding): `get_trace_callbacks()` had zero callers anywhere in
+`backend/tool-gateway/src`; `uv run python -c "import langfuse.langchain"` raised the identical
+`ModuleNotFoundError` in tool-gateway's own venv, confirming tool-gateway's own "No agent-execution
+frameworks" claim (its `pyproject.toml` description) wasn't fully true at the reachable-code level
+either, only at the dependency-tree level. Applied the identical deletion + the same four test
+updates. Verified: `ruff`/`ty check` clean, `./scripts/pytest_batches.sh` — **14/14 batches, 0
+failed** (`ALL_PROXY`/`all_proxy` unset), `make verify-architecture` — 527 files, 1927
+dependencies, 3/3 contracts kept, `uv tree` — zero langchain hits.

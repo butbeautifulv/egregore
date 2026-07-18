@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from cys_core.domain.observability.models import (
     EvalScore,
     JudgeRequest,
@@ -13,9 +11,6 @@ from cys_core.domain.observability.models import (
 
 
 class NoopTraceBackend:
-    def get_callback_handler(self) -> Any | None:
-        return None
-
     def start_span(self, ctx: TraceContext) -> str:
         _ = ctx
         return ""
