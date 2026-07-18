@@ -223,9 +223,13 @@ class Container:
     def get_reflexion_store(self):
         if self._reflexion_store is not None:
             return self._reflexion_store
-        from cys_core.infrastructure.reflexion.memory import get_reflexion_store
+        # Adapts onto the same episodic-memory backend (Postgres, with connect-with-retry
+        # and memory fallback already wired) instead of the module's own bare in-memory
+        # default — reflexion lessons used to be lost on every process restart with no
+        # durable path at all. docs/MICROSERVICES_SPLIT_PLAN.md §9/§38.
+        from cys_core.infrastructure.reflexion.memory import EpisodicReflexionStore
 
-        self._reflexion_store = get_reflexion_store()
+        self._reflexion_store = EpisodicReflexionStore(self.get_episodic_memory_store())
         return self._reflexion_store
 
     # ------------------------------------------------------------------

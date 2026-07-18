@@ -4404,3 +4404,68 @@ Eisenhower: **Important, and more urgent than most of this session's other defer
 class of finding as §27 (a security control that existed in name but didn't actually run), closed
 the same way: wire it in shadow mode, prove it with tests, document what's left instead of silently
 calling it done.
+
+## 38. §11.4 investigated and correctly deferred; §9's reflexion-lesson gap fixed (worker)
+
+Continued the audit thread from §37 into the other two open items it surfaced.
+
+### 38.1. §11.4 (ReBAC doesn't scope by persona) — confirmed it needs a schema migration, not code
+
+`_datasource_subject()` in `invoke_tool.py` builds the ReBAC check subject from
+`workspace_id`/`user_id`/`organization_id` only, never `command.persona` — exactly as §11.4 said.
+Checked *why* before writing any fix: read the actual OpenFGA model (`backend/api/src/authz/model.fga`,
+the only package that owns it). `datasource.consumer` is typed `[user, workspace,
+organization#member]` — there is no `agent`/`workspace_agent` type in that union, so **the schema
+itself cannot express "persona X may query datasource Y" today**, regardless of what
+`_datasource_subject()` returns. Fixing this for real needs: a schema migration (adding
+`workspace_agent` — which already exists as a type, for a different purpose, viewing/editing agent
+configs — to `datasource.consumer`'s allowed types), a live re-upload of the model to OpenFGA, and
+actual grant tuples deciding which personas get which datasources — data that doesn't exist
+anywhere yet and is a policy decision, not something inferable from code. Same class of "needs a
+product/architecture decision" item this session has consistently deferred rather than guessed at
+(§21.9, §22.13, §24.4, §31) — recorded here with the concrete schema line that blocks it, not left
+as a vague "still open."
+
+### 38.2. §9's most concrete finding, fixed: reflexion lessons no longer lost on every restart
+
+`InMemoryReflexionStore` (`cys_core/infrastructure/reflexion/memory.py`) was a bare process-local
+Python list — confirmed by reading it, not assuming from the doc's age. Rather than building a new
+Postgres table (a new schema, a new "restart loses everything until this specific store is also
+made durable" surface right next to the one being closed), adapted `ReflexionStorePort` onto the
+**already-existing, already-tested** `EpisodicMemoryStore` (`memory_type="lesson"`, a type the
+domain model already declared but nothing had ever written) — reusing its Postgres backend,
+`connect_with_retry` (§32), and memory-fallback wiring for free. New `EpisodicReflexionStore`
+class; `bootstrap/container.py`'s `get_reflexion_store()` now builds it over
+`self.get_episodic_memory_store()` instead of returning the bare in-memory singleton.
+`search_by_investigation` has no `memory_type` filter, so reads over-fetch (bounded, capped at 200)
+and filter client-side rather than risk silently returning fewer real lessons than exist — documented
+as a deliberate correctness-over-efficiency tradeoff, not an oversight.
+
+**Second-order finding surfaced while tracing real callers**: reflexion lessons have **no live
+production write path at all today** — the only real callers of `get_reflexion_store()` are
+`gaia_pipeline.py` (a benchmark script) and `run_step.py`/`manage_run.py`, and `run_step.py` was
+already flagged in §25.2's audit as "exists and is unit-tested but was never connected to a
+container factory or this route." This fix makes the *storage* durable for whenever reflexion is
+actually wired into a real job path — it does not, by itself, make lessons start flowing in
+production, since nothing calls `.append()` from the real job pipeline yet. Recorded honestly
+rather than implied as fully resolved.
+
+Not replicated to `tool-gateway` (the only other package with a copy of this file): its own
+`bootstrap/container.py` comments already say "reflexion store are worker-only... don't exist
+outside worker" — genuinely dead/vestigial duplication there, not a live gap needing the same fix.
+
+### 38.3. Verification
+
+6 new tests (`tests/infrastructure/test_reflexion_memory.py`): roundtrip, cross-instance
+persistence (the actual point — a fresh adapter over the same backend sees prior writes, unlike the
+old bare list), non-lesson-entry filtering, tenant/investigation scoping, limit respecting, and the
+in-memory-fallback default. Plus an end-to-end sanity check through the real
+`get_container().get_reflexion_store()` wiring (not just the adapter in isolation). `ruff`/`ty`
+clean. 155/156 `tests/infrastructure` passing (the one failure is the same pre-existing
+SOCKS-proxy environment issue confirmed unrelated in §26/§33/§37, not this change) plus 43/43 across
+`test_roadmap_v2.py`/`tests/bootstrap`/memory-adjacent tests.
+
+Eisenhower: **Important, not urgent** — this closes a real durability gap in infrastructure that
+exists and is tested, but since nothing in the live job pipeline calls `.append()` yet, it's not
+fixing a bug anyone is hitting in production today. §11.4 is correctly placed as **blocked on a
+decision**, not attempted.
