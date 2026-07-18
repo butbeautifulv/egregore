@@ -4157,3 +4157,48 @@ three packages (27 total) — not a full-suite run, matching the pacing this ses
 **Still not done**: Kafka (`AIOKafkaProducer`/`AIOKafkaConsumer` construction across
 `kafka_bus.py`/`kafka_events.py`/`kafka_publisher.py`/`kafka_queue.py`) is the one client library
 from §24.4 point 4 with no connect-with-backoff yet.
+
+## 34. Correction to §22.2/§22.3: `agent_entrypoint.py` was dead code, not an unfinished gap — deleted
+
+Ask: **"go on with separation... long run."** Before committing to a large piece of work (§22.6's
+open question — does `agent_runtime` become its own top-level package?), re-verified the premise
+rather than assuming §22's original audit still holds.
+
+§22.2 stated `interfaces/worker/agent_entrypoint.py` was "a literal skeleton... confirms this exact
+direction... was already anticipated under the name 'sandbox v2' and left as a stub," and §22.3
+listed "finishing" it as part of the target split. Checked whether anything actually calls it:
+**nothing does** — zero references anywhere in `src/` or `tests/`. The real out-of-process
+entrypoint for `SubprocessExecutionBackend`/`DockerExecutionBackend`/`K8sExecutionBackend` is a
+different, already-complete mechanism: `interfaces/cli/main.py`'s `run-sandboxed-job` subcommand →
+`cys_core/infrastructure/execution/sandboxed_entrypoint.py`'s `execute_sandboxed_job()` (119 lines,
+real logic — child-process soft-timeout/salvage/budget lifecycle, explicitly documented as
+mirroring `WorkerOrchestrator.run_job`'s equivalent parent-side logic). Confirmed genuinely working,
+not just present: `tests/workers/test_sandboxed_entrypoint.py` (3 tests, all passing) plus a real
+Docker test fixture image (`tests/infrastructure/fixtures/docker_backend_test_image`).
+
+**Bonus finding**: this path already benefits from §30's dispatcher/agent_runtime seam.
+`cmd_run_sandboxed_job` builds its `run_worker_job` via `container.get_run_worker_job(persona=...)`
+— the same composition-root method the in-process `WorkerOrchestrator` path uses — which means the
+out-of-process child process was *already* constructing its agent via the `AgentRunner` port
+(`WorkerAgentExecutor`'s typing), not a concrete `AgentRuntime` import, without any extra work.
+§30's fix wasn't scoped to "just the in-process path" but happened to cover both because they share
+the same composition-root method.
+
+**Action taken**: deleted `interfaces/worker/agent_entrypoint.py` (only existed in `worker`, not
+duplicated elsewhere). `ruff check` on the containing directory confirms nothing referenced it.
+
+**Consequence for §22.6's open question**: the "purely in-process default argues for [agent_runtime
+staying an internal module] until there's a second real runtime implementation to justify the
+split" branch is *more* true than §22 assumed, not less — out-of-process execution isn't a gap
+waiting to be finished, it's a working, tested path that already exists inside `worker`. A full
+`backend/agent-runtime/` package extraction (duplicating `cys_core/runtime/agent.py`, ~10
+middleware classes, `cys_core/llm/*`, and their transitive deps, à la the `tool-gateway`/
+`model-gateway` precedent) would be substantial, multi-session work for **zero new functional
+capability** — nothing is unblocked by it that isn't already working today, since there's still
+only one `AgentRunner` implementation. Explicitly not undertaken this round on that basis, not for
+lack of time: extracting a package to reorganize working code, with no second implementation to
+justify the seam, doesn't meet this session's own bar for "real, needed problem" (§23.1's framing).
+
+Eisenhower: **Not urgent, not important right now** — reclassified down from §22.6's original
+"open question" framing now that the premise (agent_entrypoint.py as a live gap) is corrected. Revisit
+if/when a second `AgentRunner` implementation is actually being built.
