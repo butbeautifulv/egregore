@@ -8,6 +8,7 @@ import psycopg
 from cys_core.domain.engagement.models import Engagement
 from cys_core.infrastructure.engagement import _store_ops
 from cys_core.infrastructure.engagement.list_cursor import decode_cursor, page_next_cursor
+from cys_core.infrastructure.postgres_retry import connect_with_retry
 
 _ENGAGEMENT_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS engagements (
@@ -27,7 +28,7 @@ class PostgresEngagementStateStore:
         self._ensure_schema()
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._postgres_url)
+        return connect_with_retry(self._postgres_url)
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:

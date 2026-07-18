@@ -5,6 +5,7 @@ import json
 import psycopg
 
 from cys_core.domain.runs.state_models import RunState
+from cys_core.infrastructure.postgres_retry import connect_with_retry
 
 _RUN_STATE_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS run_states (
@@ -27,7 +28,7 @@ class PostgresRunStateStore:
             conn.commit()
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._postgres_url)
+        return connect_with_retry(self._postgres_url)
 
     def get(self, tenant_id: str, context_id: str, kind: str) -> RunState | None:
         with self._connect() as conn:

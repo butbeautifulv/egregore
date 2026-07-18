@@ -4064,3 +4064,37 @@ can and can't do in production. `TOOL_SCOPE_MODE` stays at `shadow`.
 Eisenhower: **Important, not urgent** — shadow mode is already catching and logging real violations
 in the meantime; this is strictly better diagnostic clarity than §23 left it in, not a live gap by
 itself.
+
+## 32. Implemented: §24.4 point 4 — Postgres connect-with-backoff (worker)
+
+The one §24.4 item that was mechanical rather than a product/architecture decision: 8 files, 9
+`_connect()` methods across worker's `cys_core/infrastructure/` (`runs/postgres.py`,
+`engagement/postgres_store.py`, `catalog/postgres.py`, `catalog/postgres_json_catalog.py`,
+`catalog/audit_postgres.py`, `workspace/postgres_store.py`, `memory/stores.py` ×2,
+`job_store/postgres.py`) each called `psycopg.connect(self._postgres_url)` once, no retry — a
+Postgres restart or brief network blip failed the very next query outright, unlike the
+graceful-degradation-to-memory-fallback paths that already exist elsewhere in this codebase.
+
+New `cys_core/infrastructure/postgres_retry.py`: `connect_with_retry(url, *, max_retries=2,
+**connect_kwargs)`, jittered exponential backoff on `psycopg.OperationalError` only (anything else
+propagates immediately — a bad connection string or auth failure won't be fixed by retrying),
+mirroring `tool-gateway`'s `mcp_http.call_with_retry` shape exactly. Every `_connect()` method now
+calls this instead of `psycopg.connect()` directly — purely additive on the happy path (identical
+call, same args, immediate return on success).
+
+Verified: `ruff`/`ty` clean on all 9 files, a plain-Python import of all 8 touched modules
+(confirms no circular imports introduced), and the 2 existing dedicated Postgres store test files
+green. Full behavioral test coverage is inherently limited here since this sandbox has no real
+Postgres to actually interrupt mid-connection — the change is a thin, well-isolated wrapper around
+an unchanged call, not new business logic.
+
+**Not done this round**: `api` and `tool-gateway` have the identical duplicated store files (§18)
+with the identical gap — same mechanical fix, not yet replicated there. Redis (`queue.py`'s
+`_connect_redis`) and Kafka (`AIOKafkaProducer`/`AIOKafkaConsumer` construction in
+`kafka_bus.py`/`kafka_events.py`/`kafka_publisher.py`/`kafka_queue.py`) still have no
+connect-with-backoff either — §24.4 named all three client libraries; only Postgres, and only in
+`worker`, got done this pass.
+
+Eisenhower: **Important, not urgent** — same placement as §24.4's original entry. Genuinely
+mechanical follow-up work remains (replicate to `api`/`tool-gateway`, do the same for Redis/Kafka)
+but nothing here is blocking anything else.

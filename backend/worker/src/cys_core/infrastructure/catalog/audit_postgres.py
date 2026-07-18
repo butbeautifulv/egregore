@@ -7,6 +7,7 @@ import psycopg
 
 from cys_core.application.ports.catalog_audit import CatalogAuditPort
 from cys_core.infrastructure.catalog.audit import list_catalog_audit, record_catalog_change
+from cys_core.infrastructure.postgres_retry import connect_with_retry
 
 
 class PostgresCatalogAudit(CatalogAuditPort):
@@ -14,7 +15,7 @@ class PostgresCatalogAudit(CatalogAuditPort):
         self._postgres_url = postgres_url
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._postgres_url)
+        return connect_with_retry(self._postgres_url)
 
     def record_change(
         self,

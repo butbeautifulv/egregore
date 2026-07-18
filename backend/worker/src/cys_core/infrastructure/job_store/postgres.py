@@ -9,6 +9,7 @@ import psycopg
 from cys_core.application.ports.job_store import JobRecord, JobRecordSummary
 from cys_core.domain.engagement.ids import normalize_correlation_id
 from cys_core.domain.workers.models import PendingHitlAction, WorkerJobStatus
+from cys_core.infrastructure.postgres_retry import connect_with_retry
 
 
 def _follow_up_id_from_payload(payload: Any) -> str | None:
@@ -52,7 +53,7 @@ class PostgresJobStore:
         self._ensure_schema()
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._postgres_url)
+        return connect_with_retry(self._postgres_url)
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
