@@ -5067,3 +5067,9 @@ handled:
 Flagged here for a dedicated follow-up pass rather than actioned now — the one instance that actually
 broke CI is fixed and verified; the other ~30 are unconfirmed-but-plausible, and picking the general fix
 is a judgment call this session isn't making unilaterally mid-audit-loop.
+
+### 48.5. Confirmed green in real CI
+
+Dispatched Release Gate again against the §48 commit (`8a04959`) — run `29653677712`:
+`{"conclusion":"success","status":"completed"}`. The fix is fully verified end-to-end, not just
+locally. Continuing the standing audit from here.
