@@ -77,12 +77,17 @@ def test_redis_brpop_safe_for_multiple_workers(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.unit
 def test_redis_reconnects_after_init_ping_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("cys_core.infrastructure.redis_client.time.sleep", lambda _s: None)
     fake = _FakeRedis()
     calls = {"n": 0}
 
     def _from_url(*_args, **_kwargs):
         calls["n"] += 1
-        if calls["n"] == 1:
+        # ensure_connected() now retries once with backoff (docs/MICROSERVICES_SPLIT_PLAN.md
+        # §33) -- both attempts made during construction must fail for this test to still
+        # exercise "falls back to memory, reconnects on a later call" rather than
+        # self-healing within the construction call itself.
+        if calls["n"] <= 2:
             raise ConnectionError("redis down at init")
         return fake
 

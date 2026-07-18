@@ -95,7 +95,9 @@ class RedisEngagementEgress:
             return self._fallback.snapshot(engagement_id, tenant_id=tenant_id)
 
     async def subscribe(self, engagement_id: str, *, tenant_id: str = "default") -> AsyncIterator[dict[str, Any]]:
-        if not self._ensure_redis():
+        # ensure_connected() now retries with backoff (docs/MICROSERVICES_SPLIT_PLAN.md §33) —
+        # offload, matching pubsub.get_message's own asyncio.to_thread usage below.
+        if not await asyncio.to_thread(self._ensure_redis):
             async for event in self._fallback.subscribe(engagement_id, tenant_id=tenant_id):
                 yield event
             return

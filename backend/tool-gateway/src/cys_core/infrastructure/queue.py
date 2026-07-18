@@ -181,16 +181,23 @@ class RedisJobQueue:
             return self._use_memory_fallback(reason="dequeue_error").dequeue(timeout)
 
     async def aenqueue(self, job: WorkerJob) -> str:
-        return self.enqueue(job)
+        import asyncio
+
+        return await asyncio.to_thread(self.enqueue, job)
 
     async def aenqueue_front(self, job: WorkerJob) -> str:
-        return self.enqueue_front(job)
+        import asyncio
+
+        return await asyncio.to_thread(self.enqueue_front, job)
 
     async def adequeue(self, timeout: float = 0.0) -> WorkerJob | None:
         import asyncio
 
-        if not self._ensure_redis():
-            return self.dequeue(timeout)
+        # dequeue() already calls _ensure_redis() internally and falls back to the in-memory
+        # queue on failure — no need for a separate pre-check here, just offload the whole call
+        # (previously there was a redundant, *unwrapped* _ensure_redis() check before this: with
+        # ensure_connected() now retrying with backoff (docs/MICROSERVICES_SPLIT_PLAN.md §33), that
+        # would have blocked the event loop for the whole retry duration whenever Redis is down).
         return await asyncio.to_thread(self.dequeue, timeout)
 
     async def aclose(self) -> None:

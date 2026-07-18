@@ -4104,3 +4104,56 @@ services now, Redis/Kafka remain.
 Eisenhower: **Important, not urgent** — same placement as §24.4's original entry. Genuinely
 mechanical follow-up work remains (Redis/Kafka backoff)
 but nothing here is blocking anything else.
+
+## 33. Implemented: §24.4 point 4, Redis half — connect-with-backoff, all three services
+
+`ResilientRedisClient.ensure_connected()` (`cys_core/infrastructure/redis_client.py`, identical
+across all three packages) already had graceful degradation — on failure it returns `False` (or
+raises if `strict=True`) rather than crashing — but genuinely no retry, same gap Postgres had
+before §32: one failed connect attempt, immediate give-up. Added retry-with-backoff inside
+`ensure_connected()`'s reconnect path, same jittered-exponential shape as `postgres_retry.py`.
+
+**Deliberately smaller than Postgres's default** (`max_retries=1`, not 2): unlike Postgres, every
+Redis consumer in this codebase already has a working in-memory fallback — the point of
+graceful degradation was fast recovery, and stacking multiple retries with backoff onto every
+failed connect would make the "give up and use memory" path measurably slower for no benefit
+beyond catching one extra transient blip. One retry balances "recovers from a genuinely transient
+failure" against "doesn't meaningfully slow down the fallback path."
+
+**Found and fixed 4 real event-loop-blocking bugs surfaced by adding the retry itself** — before
+this change, a failed `ensure_connected()` call returned near-instantly, so calling it unwrapped
+from async code was a latent bug but a cheap one; with retry-with-backoff, the same unwrapped call
+now blocks the event loop for the full retry+backoff duration whenever Redis is down. Audited
+every caller (not assumed) and fixed the ones that were async:
+- `redis_leader.py`'s `redis_leader()` — `ensure_connected()` and the `.client` property access
+  were both called unwrapped; now both go through `asyncio.to_thread`, matching the function's own
+  existing `redis.set`/`redis.eval` pattern.
+- `queue.py`'s `RedisJobQueue.adequeue()` — had a redundant, unwrapped `_ensure_redis()` pre-check
+  before its already-correct `asyncio.to_thread(self.dequeue, ...)` call; removed the redundant
+  check entirely (`dequeue()` already handles the unavailable-Redis case internally).
+- `queue.py`'s `aenqueue()`/`aenqueue_front()` — a **separate, pre-existing bug**, not caused by
+  this change: these called their sync counterparts (`self.enqueue`/`self.enqueue_front`)
+  completely unwrapped, no `asyncio.to_thread` at all, ever. Fixed regardless, since this round's
+  retry addition made the existing bug's worst case meaningfully worse.
+- `engagement/redis_egress.py`'s `subscribe()` — `_ensure_redis()` called unwrapped as the first
+  line of an otherwise-correctly-`asyncio.to_thread`-wrapped async generator; fixed to match.
+
+One test broke and was fixed for the right reason, not papered over:
+`test_redis_reconnects_after_init_ping_failure` asserted `active_backend == "memory"` immediately
+after a single simulated init failure — with retry, that same `ensure_connected()` call now
+self-heals within the first construction call instead of needing a second, unrelated call to
+reconnect. Updated the test's fake `_from_url` to fail through the full retry budget during
+construction (preserving its actual intent — verify fallback-then-reconnect works) rather than
+loosening the assertion. Also added a `time.sleep` monkeypatch so the test doesn't pay the real
+backoff delay.
+
+Replicated identically to `api` and `tool-gateway` (all 4 source files plus the test file
+confirmed byte-identical across all three packages before copying) — Redis connect-with-backoff
+is done in all three services, same as Postgres now.
+
+Verified: `ruff`/`ty` clean, import sanity checks, and 9 targeted tests passing in each of the
+three packages (27 total) — not a full-suite run, matching the pacing this session settled into.
+
+**Still not done**: Kafka (`AIOKafkaProducer`/`AIOKafkaConsumer` construction across
+`kafka_bus.py`/`kafka_events.py`/`kafka_publisher.py`/`kafka_queue.py`) is the one client library
+from §24.4 point 4 with no connect-with-backoff yet.
