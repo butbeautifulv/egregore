@@ -2,16 +2,27 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+import structlog
 from rapidfuzz import fuzz
 
 from bootstrap.settings import settings
 from cys_core.domain.rag.models import RagChunk
 
+logger = structlog.get_logger(__name__)
+
+
+class QdrantUnavailableError(Exception):
+    """Raised instead of silently degrading — rag_query() (cys_core.infrastructure.rag.retrieve)
+    already has fail-closed handling designed for exactly this (RetrievalResult.fail_closed),
+    docs/MICROSERVICES_SPLIT_PLAN.md §10.5's requirement — but QdrantVectorStore previously
+    swallowed the failure and returned empty/stale results from an in-memory store instead of
+    raising, silently bypassing that handling. See §39."""
+
 
 class VectorStore(Protocol):
     def upsert(self, chunks: list[RagChunk]) -> int: ...
 
-    def search(self, query: str, *, limit: int = 5) -> list[RagChunk]: ...
+    def search(self, query: str, *, limit: int = 5, tenant: str | None = None) -> list[RagChunk]: ...
 
     def delete_tenant(self, tenant: str) -> int: ...
 
@@ -26,8 +37,14 @@ class MemoryVectorStore:
         self._chunks.extend(chunks)
         return len(chunks)
 
-    def search(self, query: str, *, limit: int = 5) -> list[RagChunk]:
-        scored = [(fuzz.partial_ratio(query.lower(), chunk.text.lower()), chunk) for chunk in self._chunks]
+    def search(self, query: str, *, limit: int = 5, tenant: str | None = None) -> list[RagChunk]:
+        candidates = self._chunks
+        # §10.5/§43: pre-filter by tenant before scoring, not just after — "default" keeps
+        # today's deliberate cross-tenant-visible semantic (SecureContextBuilder/_acl_allows
+        # in retrieve.py), everything else is scoped as early as possible.
+        if tenant is not None and tenant != "default":
+            candidates = [c for c in candidates if c.acl.tenant == tenant]
+        scored = [(fuzz.partial_ratio(query.lower(), chunk.text.lower()), chunk) for chunk in candidates]
         scored.sort(key=lambda item: item[0], reverse=True)
         return [chunk for score, chunk in scored[:limit] if score > 0]
 
@@ -41,12 +58,13 @@ class MemoryVectorStore:
 
 
 class QdrantVectorStore:
-    """Qdrant-backed store with memory fallback when client unavailable."""
+    """Qdrant-backed store. Raises QdrantUnavailableError rather than silently degrading —
+    RAG retrieval security requires failing closed (§10.5/§39), not quietly answering from an
+    empty in-memory store that was never populated with the same data."""
 
     def __init__(self, url: str | None = None, collection: str = "cys_rag") -> None:
         self.url = url or settings.qdrant_url
         self.collection = collection
-        self._fallback = MemoryVectorStore()
         self._client: Any = None
         try:
             from qdrant_client import QdrantClient
@@ -59,8 +77,9 @@ class QdrantVectorStore:
                     collection_name=self.collection,
                     vectors_config=VectorParams(size=8, distance=Distance.COSINE),
                 )
-        except Exception:
+        except Exception as exc:
             self._client = None
+            logger.warning("qdrant_connect_failed", url=self.url, error=str(exc))
 
     def _vector(self, text: str) -> list[float]:
         if settings.use_real_embeddings:
@@ -81,7 +100,7 @@ class QdrantVectorStore:
 
     def upsert(self, chunks: list[RagChunk]) -> int:
         if self._client is None:
-            return self._fallback.upsert(chunks)
+            raise QdrantUnavailableError("Qdrant client unavailable — refusing to silently drop an upsert")
         points = [
             self._PointStruct(
                 id=chunk.chunk_id,
@@ -93,20 +112,34 @@ class QdrantVectorStore:
         self._client.upsert(collection_name=self.collection, points=points)
         return len(points)
 
-    def search(self, query: str, *, limit: int = 5) -> list[RagChunk]:
+    def search(self, query: str, *, limit: int = 5, tenant: str | None = None) -> list[RagChunk]:
         if self._client is None:
-            return self._fallback.search(query, limit=limit)
+            raise QdrantUnavailableError("Qdrant client unavailable — refusing to silently degrade retrieval")
+
+        query_filter = None
+        if tenant is not None and tenant != "default":
+            # §10.5/§43: filter by tenant at query time (same Filter/FieldCondition shape
+            # delete_tenant() already uses below) instead of fetching top-K across every
+            # tenant and relying only on the Python-side ACL check in retrieve.py's
+            # rag_query() afterward — RAG_Security_Cheat_Sheet.md §4/§6 warns that
+            # post-retrieval filtering is weaker than pre-retrieval. "default" keeps its
+            # existing deliberate cross-tenant-visible semantic (see MemoryVectorStore.search
+            # and _acl_allows in retrieve.py) — unfiltered here too, for the same reason.
+            from qdrant_client.http.models import FieldCondition, Filter, MatchValue
+
+            query_filter = Filter(must=[FieldCondition(key="acl.tenant", match=MatchValue(value=tenant))])
 
         hits = getattr(self._client, "search")(
             collection_name=self.collection,
             query_vector=self._vector(query),
             limit=limit,
+            query_filter=query_filter,
         )
         return [RagChunk.model_validate(hit.payload) for hit in hits]
 
     def delete_tenant(self, tenant: str) -> int:
         if self._client is None:
-            return self._fallback.delete_tenant(tenant)
+            raise QdrantUnavailableError("Qdrant client unavailable — refusing to silently no-op a delete")
         from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
         self._client.delete(

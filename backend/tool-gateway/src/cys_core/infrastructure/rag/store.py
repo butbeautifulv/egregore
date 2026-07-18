@@ -22,7 +22,7 @@ class QdrantUnavailableError(Exception):
 class VectorStore(Protocol):
     def upsert(self, chunks: list[RagChunk]) -> int: ...
 
-    def search(self, query: str, *, limit: int = 5) -> list[RagChunk]: ...
+    def search(self, query: str, *, limit: int = 5, tenant: str | None = None) -> list[RagChunk]: ...
 
     def delete_tenant(self, tenant: str) -> int: ...
 
@@ -37,8 +37,14 @@ class MemoryVectorStore:
         self._chunks.extend(chunks)
         return len(chunks)
 
-    def search(self, query: str, *, limit: int = 5) -> list[RagChunk]:
-        scored = [(fuzz.partial_ratio(query.lower(), chunk.text.lower()), chunk) for chunk in self._chunks]
+    def search(self, query: str, *, limit: int = 5, tenant: str | None = None) -> list[RagChunk]:
+        candidates = self._chunks
+        # §10.5/§43: pre-filter by tenant before scoring, not just after — "default" keeps
+        # today's deliberate cross-tenant-visible semantic (SecureContextBuilder/_acl_allows
+        # in retrieve.py), everything else is scoped as early as possible.
+        if tenant is not None and tenant != "default":
+            candidates = [c for c in candidates if c.acl.tenant == tenant]
+        scored = [(fuzz.partial_ratio(query.lower(), chunk.text.lower()), chunk) for chunk in candidates]
         scored.sort(key=lambda item: item[0], reverse=True)
         return [chunk for score, chunk in scored[:limit] if score > 0]
 
@@ -111,14 +117,28 @@ class QdrantVectorStore:
         self._client.upsert(collection_name=self.collection, points=points)
         return len(points)
 
-    def search(self, query: str, *, limit: int = 5) -> list[RagChunk]:
+    def search(self, query: str, *, limit: int = 5, tenant: str | None = None) -> list[RagChunk]:
         if self._client is None:
             raise QdrantUnavailableError("Qdrant client unavailable — refusing to silently degrade retrieval")
+
+        query_filter = None
+        if tenant is not None and tenant != "default":
+            # §10.5/§43: filter by tenant at query time (same Filter/FieldCondition shape
+            # delete_tenant() already uses below) instead of fetching top-K across every
+            # tenant and relying only on the Python-side ACL check in retrieve.py's
+            # rag_query() afterward — RAG_Security_Cheat_Sheet.md §4/§6 warns that
+            # post-retrieval filtering is weaker than pre-retrieval. "default" keeps its
+            # existing deliberate cross-tenant-visible semantic (see MemoryVectorStore.search
+            # and _acl_allows in retrieve.py) — unfiltered here too, for the same reason.
+            from qdrant_client.http.models import FieldCondition, Filter, MatchValue
+
+            query_filter = Filter(must=[FieldCondition(key="acl.tenant", match=MatchValue(value=tenant))])
 
         hits = getattr(self._client, "search")(
             collection_name=self.collection,
             query_vector=self._vector(query),
             limit=limit,
+            query_filter=query_filter,
         )
         return [RagChunk.model_validate(hit.payload) for hit in hits]
 

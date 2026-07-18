@@ -41,7 +41,7 @@ def rag_query(
     persona_roles = roles or ["analyst"]
     try:
         vector_store = store or get_vector_store()
-        candidates = vector_store.search(query, limit=limit * 3)
+        candidates = vector_store.search(query, limit=limit * 3, tenant=tenant)
     except Exception as exc:
         metrics.record_rag_retrieval(tenant, denied=True)
         return RetrievalResult(query=query, fail_closed=True, error=f"retrieval failed: {exc}")

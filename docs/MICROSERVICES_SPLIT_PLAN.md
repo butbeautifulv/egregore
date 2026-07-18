@@ -4723,3 +4723,76 @@ Eisenhower: **Important, not urgent** — this is a live path (every worker job 
 `_publish_and_finalize`), but the race only manifests when a job runs *right up against* its soft
 timeout, which is the tail of the job-duration distribution, not the common case. Worth fixing
 deliberately, not worth rushing.
+
+## 43. §11.7 doc correction, and §10.5's second finding fixed: RAG retrieval was post-retrieval-filtered
+
+### 43.1. §11.7 (API-ingress sanitization gap) — doc was stale, already fixed in Phase 12
+
+The doc still marked "**[нет]** Пробел именно на входной границе API" for
+`engagement_ingress.py`/`work_orders.py`/`engagements.py` never sanitizing `goal` before it's
+persisted/queued. Checked directly: all three routes converge on `StartEngagement.execute()`
+(`engagement_ingress.py` calls it directly; `work_orders.py`'s `create_work_order` and
+`engagements.py`'s `create_engagement` both delegate through `StartWorkOrder` into the same
+`StartEngagement.execute()`), and that method already sanitizes `goal` via
+`get_input_sanitizer().filter_patterns(...)` before persisting the engagement or publishing any
+event — with an in-code comment explicitly citing this as the §11.7/§13 Phase 12 root-cause fix, and
+a regression test (`tests/application/test_start_engagement_sanitizes_goal.py`) already covering it.
+Ran the test: passes. This was a doc-staleness issue, not a live gap — a previous phase closed it but
+never updated §11.7's own checklist marker. Corrected here rather than redone.
+
+One residual, smaller gap noted but not acted on: `EngagementRequest.input` (the free-form
+`dict[str, Any]` sidecar payload) isn't run through the sanitizer the way `goal` is — only `goal`
+was in Phase 12's scope. Low severity (the worker's own downstream sanitization still applies before
+any LLM sees it), flagged for whoever next touches ingress validation rather than expanded here.
+
+### 43.2. §10.5's second finding: RAG tenant filtering was post-retrieval, not pre-retrieval
+
+§10.5 asked to check whether Qdrant filtering happens pre- or post-retrieval, since
+`RAG_Security_Cheat_Sheet.md` §4/§6 specifically warns that fetch-all-then-filter is weaker than
+filtering at query time. Checked `QdrantVectorStore.search()` (`rag/store.py`) directly: it called
+Qdrant's `search()` with only a `query_vector` and `limit` — no `query_filter` — so every tenant's
+chunks competed for the same top-`limit*3` slots by vector similarity alone, and tenant/classification
+ACL enforcement happened entirely afterward, in Python, inside `rag_query()` (`rag/retrieve.py`).
+Confirmed real, not stale.
+
+Fixed by threading `tenant: str | None = None` through `VectorStore.search()` (Protocol,
+`QdrantVectorStore`, `MemoryVectorStore`) and `rag_query()`'s call site. `QdrantVectorStore.search()`
+now passes a `Filter(must=[FieldCondition(key="acl.tenant", match=MatchValue(value=tenant))])`
+query-time filter — the exact same `Filter`/`FieldCondition` shape `delete_tenant()` already used, so
+no new pattern introduced. `"default"` is deliberately left unfiltered in both implementations,
+preserving the existing, intentional cross-tenant-visible semantic `_acl_allows()` in `retrieve.py`
+already relies on for that value. The Python-side ACL check in `rag_query()` is unchanged and stays
+as defense-in-depth for classification/role filtering, which isn't expressible as a simple Qdrant
+field filter the same way tenant equality is — tenant isolation is now enforced at both layers, not
+only the weaker one.
+
+Verification: 4 new tests (`MemoryVectorStore` pre-filters/keeps-default-visible, `QdrantVectorStore`
+applies/omits the query filter correctly, verified via a mocked Qdrant client's captured
+`query_filter` kwarg) plus all 12 pre-existing RAG tests still pass unmodified — the tenant-filter
+change doesn't change any previously-asserted behavior, only tightens it. 51/52 across
+`tests/rag`+`tests/integration`+`tests/tool_gateway`+`tests/application/test_rag_eval_adapters.py`
+(the 1 failure is the same pre-existing §31 `enrich_ioc` persona-declaration issue, confirmed
+unrelated again). `ruff`/`ty` clean.
+
+Eisenhower: **Important, live, and directly closes what §39 started** — §39 made RAG fail closed on
+a Qdrant *outage*; §43.2 makes it fail closed (in the stronger, query-time sense) on cross-tenant
+*data leakage* during normal operation, the other half of §10.5's requirement.
+
+### 43.3. Found while fixing 43.2: §39's own fix was never synced to `worker`
+
+`worker` has its own live RAG usage (`cys_core/infrastructure/tools/adapters/rag.py`'s
+`rag_query_tool`, wired through `interfaces/gateways/tool/adapters/rag.py` — not dead duplication
+the way `worker`'s copy of `interfaces/gateways/tool/approval.py` turned out to be in §41.1). Its
+`rag/store.py`/`rag/retrieve.py` were still the **pre-§39** version — silent `self._fallback`
+degradation, no `QdrantUnavailableError`, no tenant pre-filter — because §39 only touched
+`tool-gateway`'s copy. Synced both files (and the test file) from `tool-gateway` to `worker`, with
+one deliberate divergence: `worker`'s `pyproject.toml` actually has `litellm` as a resolvable import
+(unlike `tool-gateway`, see the existing comment this file already had about §21.5), so the
+`# ty: ignore[unresolved-import]` on the `litellm` import is itself flagged by `ty` as an unused,
+now-invalid suppression in `worker`'s copy — removed there only, kept in `tool-gateway`'s. 16/16
+`tests/rag` passing in `worker`; 49/49 across `tests/rag`+`tests/tool_gateway`+
+`tests/adversarial/test_rag_security.py`. `ruff`/`ty` clean in both packages.
+
+A reminder for future sessions in this "duplicate everything" codebase (§18): a fix landed in one
+package's copy of a file doesn't mean every package's copy got it — worth an explicit grep for other
+copies before calling a fix done, not just after.
