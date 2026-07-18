@@ -5,8 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from cys_core.application.use_cases.invoke_tool import InvokeTool
-from cys_core.domain.tools.exceptions import ToolChainDepthExceeded
+from cys_core.domain.tools.exceptions import ScopeViolation, ToolChainDepthExceeded
 from cys_core.domain.tools.models import ToolInvokeCommand
+from cys_core.security.rate_limit import RateLimitExceeded
 
 
 def _command(**overrides) -> ToolInvokeCommand:
@@ -60,6 +61,57 @@ def test_invoke_tool_chain_depth_error():
     result = invoke.execute(_command(tool_name="run_active_scan"))
     assert result.success is False
     assert "too deep" in result.error
+
+
+@pytest.mark.unit
+def test_invoke_tool_rejects_out_of_scope_tool():
+    """Scope enforcement happens at the gateway itself, independent of whatever
+    checked (or didn't check) scope before the call reached here — the whole
+    point of moving this here. See docs/MICROSERVICES_SPLIT_PLAN.md §22-23."""
+    invoke = InvokeTool(
+        require_sandbox=lambda _sid: None,
+        check_tool_chain=lambda _cmd: None,
+        invoke_adapter=lambda _name, _args: {"ok": True},
+        tool_registry=MagicMock(),
+        sanitize_tool_output_or_raise=lambda raw: str(raw),
+        record_tool_invocation=lambda *_a: None,
+        check_scope=lambda _cmd: (_ for _ in ()).throw(ScopeViolation("tool not allowed")),
+    )
+    result = invoke.execute(_command(tool_name="run_active_scan"))
+    assert result.success is False
+    assert "tool not allowed" in result.error
+
+
+@pytest.mark.unit
+def test_invoke_tool_rejects_over_rate_limit():
+    invoke = InvokeTool(
+        require_sandbox=lambda _sid: None,
+        check_tool_chain=lambda _cmd: None,
+        invoke_adapter=lambda _name, _args: {"ok": True},
+        tool_registry=MagicMock(),
+        sanitize_tool_output_or_raise=lambda raw: str(raw),
+        record_tool_invocation=lambda *_a: None,
+        check_rate_limit=lambda _cmd: (_ for _ in ()).throw(RateLimitExceeded("too many calls")),
+    )
+    result = invoke.execute(_command(tool_name="run_active_scan"))
+    assert result.success is False
+    assert "too many calls" in result.error
+
+
+@pytest.mark.unit
+def test_invoke_tool_defaults_check_scope_and_rate_limit_to_noop():
+    """Callers that predate check_scope/check_rate_limit (existing production
+    wiring elsewhere, other tests) must keep working unchanged."""
+    invoke = InvokeTool(
+        require_sandbox=lambda _sid: None,
+        check_tool_chain=lambda _cmd: None,
+        invoke_adapter=lambda name, _args: {"adapter": name},
+        tool_registry=MagicMock(),
+        sanitize_tool_output_or_raise=lambda raw: str(raw),
+        record_tool_invocation=lambda *_a: None,
+    )
+    result = invoke.execute(_command(tool_name="run_active_scan"))
+    assert result.success is True
 
 
 @pytest.mark.unit

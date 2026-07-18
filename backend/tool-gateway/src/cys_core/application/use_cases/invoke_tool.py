@@ -15,8 +15,9 @@ from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, A
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.datasources.authz import AuthorizationDecision
 from cys_core.domain.datasources.schema_models import ModelFamily
-from cys_core.domain.tools.exceptions import ToolChainDepthExceeded
+from cys_core.domain.tools.exceptions import ScopeViolation, ToolChainDepthExceeded
 from cys_core.domain.tools.models import ToolInvokeCommand, ToolInvokeResult
+from cys_core.security.rate_limit import RateLimitExceeded
 
 
 class InvokeTool:
@@ -34,6 +35,8 @@ class InvokeTool:
         record_tool_metric: Callable[[str, bool], None] | None = None,
         application_tracing: ApplicationTracingPort | None = None,
         authz_service: Any | None = None,
+        check_scope: Callable[[ToolInvokeCommand], None] | None = None,
+        check_rate_limit: Callable[[ToolInvokeCommand], None] | None = None,
     ) -> None:
         self.require_sandbox = require_sandbox
         self.check_tool_chain = check_tool_chain
@@ -44,6 +47,14 @@ class InvokeTool:
         self.record_tool_metric = record_tool_metric or (lambda _name, _ok: None)
         self._tracing = application_tracing or NOOP_APPLICATION_TRACING
         self._authz_service = authz_service
+        # Defaults are no-ops rather than required args so every existing caller/test
+        # that predates this check keeps working unchanged — the Tool Gateway container
+        # (bootstrap/containers/tools_container.py) wires the real enforcement in.
+        # docs/MICROSERVICES_SPLIT_PLAN.md §22.10/§23: these two close the gap where
+        # ScopePolicy/RedisRateLimiter existed in this package's domain layer but were
+        # never actually invoked on the tool-invocation path.
+        self.check_scope = check_scope or (lambda _cmd: None)
+        self.check_rate_limit = check_rate_limit or (lambda _cmd: None)
 
     def _datasource_deny_response(
         self,
@@ -162,6 +173,8 @@ class InvokeTool:
         try:
             self.require_sandbox(command.sandbox_id)
             self.check_tool_chain(command)
+            self.check_scope(command)
+            self.check_rate_limit(command)
             deny = authorize_tool_datasource(
                 tool_name=command.tool_name,
                 persona=command.persona,
@@ -204,6 +217,18 @@ class InvokeTool:
                 sanitized_payload=sanitized,
             )
         except ToolChainDepthExceeded as exc:
+            response = ToolInvokeResult(
+                success=False,
+                tool_name=command.tool_name,
+                error=str(exc),
+            )
+        except ScopeViolation as exc:
+            response = ToolInvokeResult(
+                success=False,
+                tool_name=command.tool_name,
+                error=str(exc),
+            )
+        except RateLimitExceeded as exc:
             response = ToolInvokeResult(
                 success=False,
                 tool_name=command.tool_name,

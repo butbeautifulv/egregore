@@ -456,6 +456,18 @@ class Settings(BaseSettings):
     auth_enabled: bool = Field(default=False, validation_alias="AUTH_ENABLED")
     rbac_enabled: bool = Field(default=False, validation_alias="RBAC_ENABLED")
     authz_mode: str = Field(default="off", validation_alias="AUTHZ_MODE")
+    tool_scope_mode: str = Field(
+        default="shadow",
+        validation_alias="TOOL_SCOPE_MODE",
+        description="off|shadow|enforce for InvokeTool's least-privilege ScopePolicy check "
+        "(docs/MICROSERVICES_SPLIT_PLAN.md §23). Default 'shadow' (log violations, never block) "
+        "rather than 'enforce' because the check surfaced a real gap during rollout: at least "
+        "one persona's declared tool list is missing tools its own adapters are exercised "
+        "against in this package's tests — enforcing blind would risk blocking legitimate calls "
+        "until that's verified against the real product catalog. Same off|shadow|enforce shape "
+        "as authz_mode, same reason: a check this consequential earns a shadow period before it "
+        "can deny anything.",
+    )
     allow_legacy_tenant_tokens: bool = Field(
         default=False,
         validation_alias="ALLOW_LEGACY_TENANT_TOKENS",
@@ -773,6 +785,9 @@ class Settings(BaseSettings):
         if self.authz_mode.lower() not in _ALLOWED_AUTHZ_MODES:
             raise ValueError(f"AUTHZ_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}")
         self.authz_mode = self.authz_mode.lower()
+        if self.tool_scope_mode.lower() not in _ALLOWED_AUTHZ_MODES:
+            raise ValueError(f"TOOL_SCOPE_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}")
+        self.tool_scope_mode = self.tool_scope_mode.lower()
         return self
 
     def resolve_worker_job_timeout(self, *, persona: str, phase: str | None = None) -> float:

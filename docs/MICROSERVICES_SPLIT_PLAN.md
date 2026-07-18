@@ -3190,3 +3190,142 @@ correctly protect today's single langchain-based runtime). The refinement narrow
 eventual work should be shaped — gateways-as-guarantee rather than mixin-as-honor-system — so the
 next implementation session designs the right thing the first time instead of building a decorator
 that looks secure but isn't, then discovering the gap under a second runtime.
+
+## 23. Closing a real gap this session: tool-gateway trusted its caller for scope/rate-limit
+
+Ask, same session: find a real, unfixed, needed problem in backend, do 5 Whys → 5 Solutions, then
+implement starting from the root cause outward. §22.10 had already found the candidate — this
+section is that finding taken to code.
+
+### 23.1. 5 Whys
+
+**Problem**: `ScopePolicy` (least-privilege tool allowlist) and per-tool-call rate limiting existed
+in tool-gateway's domain layer since the §21.6 extraction but were never invoked on the real
+tool-invocation path (`invoke_tool.py`) — a compromised or differently-implemented agent runtime
+reaching tool-gateway directly would hit no enforcement for either, even though §10.8 already
+states the target model is zero-trust of the Agent Runtime pod.
+
+1. **Why is ScopePolicy/RateLimiter not enforced in `invoke_tool.py`?** — At the §21.6 extraction,
+   `cys_core/domain/security/` was duplicated wholesale per §18's duplication philosophy, but only
+   the pieces the extraction's own scope needed (execution, tool-catalog, tool-chain-policy) were
+   wired into the new `invoke_tool.py` use case. Scope/rate-limit weren't wired because, at the
+   time, enforcement for both still worked — in worker's in-process middleware.
+2. **Why wasn't extending enforcement into tool-gateway judged necessary then?** — Tool-gateway had
+   exactly one caller: today's langchain-based `AgentRuntime`, which already enforces both
+   in-process before ever emitting a tool call. From that caller's perspective the check already
+   happens, one hop earlier — a second check looked like duplication, not defense-in-depth.
+3. **Why does "the one caller already checks this" read as sufficient, when §10.8 already states
+   zero-trust of the Agent Runtime pod as the target?** — §10.8's zero-trust principle was written
+   for the *data-access* boundary (Postgres/Qdrant reachable only via tool-gateway). It was never
+   explicitly re-applied to "does tool-gateway enforce anything on its caller" — the principle
+   existed on paper for one direction (what the runtime can reach) but was never checked against
+   the other (what the runtime is allowed to ask tool-gateway to do).
+4. **Why did that gap survive two dedicated security passes (§10, §11) and the extraction itself
+   (§21.6)?** — Every prior security pass was framed around threats *arriving from outside* the
+   system (OIDC/ReBAC at the API edge, NetworkPolicy for pod-to-infra reachability, prompt-injection
+   sanitization of user input). None were framed around "what if the Agent Runtime pod itself —
+   which necessarily executes LLM-directed, adversarially-influenceable logic — is the untrusted
+   party talking to tool-gateway." That framing only became explicit in this session's §22.8 ask.
+5. **Root cause — why was the Agent Runtime implicitly trusted, given it's the one component
+   explicitly gVisor/Kata/K8s-sandboxed in §22.5's own design?** — The system evolved from a
+   monolith (§18/§19) where dispatcher and runtime were one process, one trust domain, one deploy
+   unit. "Runtime asks tool-gateway to run a tool" was historically an in-process function call
+   within one trust boundary, not a network call across one. §21.6's extraction changed the
+   *deployment* topology (now a network hop) without a corresponding re-derivation of the *trust*
+   topology (still modeled as if it were the same trust domain) — the architecture moved faster
+   than the threat model describing it.
+
+### 23.2. 5 Solutions, root cause outward, and what was actually done
+
+5. **(root cause, principle)** Re-derive tool-gateway's trust model: every caller, including
+   today's one runtime, is untrusted by default — tool-gateway enforces its own policy on every
+   request regardless of who's calling; caller-side checks are defense-in-depth, never the primary
+   control. **Done** — this section and §22.9 are that re-derivation, made explicit rather than left
+   implicit.
+4. Wire `ScopePolicy.check_tool_call()` into `invoke_tool.py`, same pattern as the already-active
+   `check_tool_chain`. **Done** — see §23.3.
+3. Wire `RedisRateLimiter.check()` into `invoke_tool.py` per `(job_id or sandbox_id):tool_name`,
+   mirroring `SecurityMiddleware`'s existing call shape. **Done** — see §23.3.
+2. Decide whether the in-process worker-side checks become redundant once tool-gateway enforces
+   independently, or stay as defense-in-depth. **Decided: keep both** — §22.9's whole point is that
+   the network chokepoint is the guarantee and the in-process check is cheap early rejection; there
+   is no reason to remove either.
+1. Prove the enforcement is real and gateway-side, independent of any client-side check. **Done** —
+   new tests in §23.3 construct `InvokeTool` with `check_scope`/`check_rate_limit` that raise, with
+   no client-side check involved at all, and assert the call is actually rejected.
+
+### 23.3. Implementation
+
+- **`cys_core/domain/tools/exceptions.py`**: added `ScopeViolation`, alongside the existing
+  `ToolChainDepthExceeded`.
+- **`cys_core/application/use_cases/invoke_tool.py`**: `InvokeTool.__init__` gained
+  `check_scope`/`check_rate_limit` callables (default no-op, so every existing caller/test keeps
+  working unchanged); both are called in `_execute_inner` right after `check_tool_chain`;
+  `ScopeViolation`/`RateLimitExceeded` (`cys_core.security.rate_limit`) are caught explicitly,
+  same pattern as `ToolChainDepthExceeded`.
+- **`bootstrap/containers/tools_container.py`**: `_resolve_scope_violation()` resolves
+  `command.persona` → `AgentRegistry.get(persona).allowed_tools` → `ScopePolicy.check_tool_call()`;
+  fails open (logs a warning, doesn't block) on an unknown persona rather than block every call for
+  a persona this package's catalog snapshot doesn't have. `get_tool_rate_limiter()` caches a
+  `RedisRateLimiter` (same class already used for job-queue/follow-up enqueue paths, per §22.10,
+  now also applied per tool call). Both wired into `get_invoke_tool()`'s `InvokeTool` construction.
+- **Tests**: `tests/application/test_invoke_tool.py` (scope/rate-limit rejection, and a
+  backward-compat test proving the no-op defaults don't change existing behavior),
+  `tests/bootstrap/test_tools_container.py` (allow/deny/fail-open resolution logic, plus the mode
+  gating in §23.4). `make verify-architecture` (3/3 contracts kept) and the full
+  `scripts/pytest_batches.sh` suite (15/15 batches) both green after the change.
+
+### 23.4. Second-order finding, surfaced by implementing Solution 4: the catalog data isn't trustworthy yet
+
+Wiring `ScopePolicy` for real (enforce mode, no gate) broke 6 previously-passing tests in
+`tests/tool_gateway/` — `query_siem_readonly`, `playbook_search`, and others got rejected with
+`Access denied` for persona `"soc"`. Traced rather than assumed:
+
+- `tests/conftest.py`'s autouse `_reset_container_and_memory_catalog` fixture — used by essentially
+  every test in this package — seeds `soc` via `AgentCatalogEntry(name="soc", role="worker",
+  enabled=True, profile_id=DEFAULT_PROFILE_ID)`, with **no `tools=` argument at all**, defaulting
+  to an empty list. This fixture was never wrong for what it was built to test (routing/adapter
+  behavior, not scope) — it simply never needed a realistic tool list until this change made one
+  matter.
+- Cross-checked against the *real* static persona file
+  (`backend/agents/personas/soc/AGENT.md`, loaded via `load_agent_definitions()`): its `tools:`
+  list is `investigate_incident, list_incidents, search_events, get_event_by_uuid, rag_query,
+  playbook_search, playbook_get, ti_search_in_category` — non-empty and real, but **does not
+  include `query_siem_readonly`**, one of the tools these adapter tests exercise for `"soc"`.
+
+This means enforcing scope for real, right now, risks two different failure modes at once: a test
+fixture that was never meant to model a security boundary, *and* a real product persona file whose
+declared tool list may not fully match what "soc" is actually meant to reach — indistinguishable
+from this session alone, and not something to resolve unilaterally by guessing which of the two is
+wrong. Blocking `query_siem_readonly` for the real SOC persona in production, if that tool is
+actually meant to be reachable, would break the core thing this persona exists to do.
+
+### 23.5. Decision: ship enforcement in shadow mode, not enforce
+
+Rather than either reverting the check or forcing it on blind, added `TOOL_SCOPE_MODE`
+(`off|shadow|enforce`, default `shadow`) to `bootstrap/settings.py`, mirroring the exact
+`AUTHZ_MODE` pattern already established in this codebase (§11.1) for the same reason: a check this
+consequential earns a shadow period before it can deny anything. In `shadow` mode, a violation is
+logged (`tool_gateway_scope_violation_shadow`, with persona/tool_name/reason) but never blocks the
+call; in `enforce` mode it raises `ScopeViolation` as designed; in `off` mode the check doesn't run
+at all. Rate limiting was **not** gated the same way — none of the 6 test failures were
+rate-limit-related, `max_tool_calls_per_minute` defaults generously (30/min), and this exact
+`RedisRateLimiter` class is already used elsewhere in this package without controversy, so its risk
+profile doesn't warrant the same caution.
+
+**Before `TOOL_SCOPE_MODE=enforce` is safe to set anywhere real**: audit `backend/agents/
+personas/*/AGENT.md`'s `tools:` lists against what each persona's adapters/tests actually invoke it
+with, close whichever gap is real (stale persona file vs. mistestable tool), and update
+`tests/conftest.py`'s shared catalog fixtures to carry realistic tool lists instead of empty ones.
+Recorded here rather than done silently — this is exactly the kind of "changes what a persona can
+and can't do" decision earlier sections (§21.9) declined to make unilaterally.
+
+### 23.6. Eisenhower placement
+
+**Urgent + important**: the enforcement mechanism and its tests (§23.1–23.3) — a real, currently
+zero-trust-violating gap, closed. **Important, not urgent**: flipping `TOOL_SCOPE_MODE` to
+`enforce` — blocked on the persona-catalog audit in §23.5, a data-correctness question, not an
+engineering one, and one this session declined to guess its way through. Left explicitly open,
+alongside §21.9 (`PersistenceUnavailableError` → 500 vs 503, still untouched) and §22.13 (HITL
+pause/resume protocol, still undesigned) as the standing list of real, known, deliberately-unfixed
+items in this codebase.
