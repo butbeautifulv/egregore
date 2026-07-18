@@ -82,6 +82,15 @@ class Settings(BaseSettings):
         validation_alias="LLM_REQUEST_TIMEOUT",
         description="LiteLLM request timeout in seconds (fail-fast when vLLM is down).",
     )
+    llm_num_retries: int = Field(
+        default=2,
+        validation_alias="LLM_NUM_RETRIES",
+        description="Passed straight through as litellm.completion(num_retries=...) — litellm's "
+        "own retry loop only fires on transient failures (408/409/429/5xx; see "
+        "docs/MICROSERVICES_SPLIT_PLAN.md §24), never on 4xx client errors. Previously unset, so "
+        "a single rate limit or provider blip failed the whole worker job outright with no retry "
+        "at all.",
+    )
     worker_job_timeout: float = Field(
         default=180.0,
         validation_alias="WORKER_JOB_TIMEOUT",

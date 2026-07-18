@@ -3329,3 +3329,166 @@ engineering one, and one this session declined to guess its way through. Left ex
 alongside §21.9 (`PersistenceUnavailableError` → 500 vs 503, still untouched) and §22.13 (HITL
 pause/resume protocol, still undesigned) as the standing list of real, known, deliberately-unfixed
 items in this codebase.
+
+## 24. Two more questions this session: is the core actually SOC-agnostic, and is the system retry-ready?
+
+### 24.1. SOC-agnostic — re-verified against current (post-split) code, not re-derived from scratch
+
+§8 (written before the 3-way package split, single `cys_core/` path) already did this analysis
+honestly and thoroughly. Re-verified its 6 hardcoding points against today's
+`backend/{api,worker,tool-gateway}/src/cys_core/` — **all still true**, confirmed with current
+file:line evidence in every package (all three packages carry byte-identical copies for every file
+checked, confirming §18's duplication philosophy held through the split):
+
+1. `EventType` — still a closed `Literal[...]` of 20 SOC-specific strings
+   (`cys_core/domain/events/models.py:7-28`, identical in all 3 packages). `RoutingRule.event_types`
+   still structurally can't accept a new event type without a core-file edit.
+2. `WorkerAgentName` + concrete SOC `Finding` subclasses — still closed/baked into core
+   (`cys_core/domain/findings/models.py`, identical in all 3). Correction to §8's own count: **11**
+   concrete `Finding` subclasses exist today, not 9 as originally stated — undercounted originally
+   or two were added since; not otherwise a change in kind.
+3. `ESCALATION_ONLY_PATHS`/`READ_ONLY_TOOLS` — still hardcoded core constants
+   (`cys_core/domain/policy/defaults.py`, identical in all 3).
+4. `ToolRegistry`'s unconditional domain-specific tool registration — **worse than §8 described**,
+   and now confirmed **worker-only** (this module doesn't exist in `api`/`tool-gateway` at all).
+   `backend/worker/src/cys_core/registry/tools.py` unconditionally extends `_ALL_TOOLS` with not
+   just `build_siem_tools()` (§8's original finding) but also `build_veil_tools()` and
+   `build_nessus_tools()` — three domain-specific builders, not one, both accepting an unused
+   `profile_id` kwarg that would enable gating but is never passed.
+5. `DEFAULT_PROFILE_ID = "cybersec-soc"` — same value/behavior, but now carries a doc-comment
+   labeling it "Legacy... Scheduled for deprecation" — acknowledged in a comment, not yet acted on.
+6. `src/connectors/` (only `siem_poll`) — now confirmed **api-only** (worker/tool-gateway have no
+   `connectors/` directory at all, which makes sense post-split since ingress is api's job) — not a
+   regression, just a scope clarification of the original finding.
+
+**One thing genuinely changed since §8 was written**: `cys_core/domain/catalog/product_packs.py`
+(§8.3's "already generic, never wired in" mechanism) now has real infrastructure around it in all 3
+packages — `bootstrap/product_packs.py` (real seed data for **3** packs: `cybersec-soc`,
+`general-assistant`, `gaia-benchmark`), a `ProductPackPort` protocol, an adapter, and a DI accessor
+(`get_product_pack_port()`). But it's still **functionally unused** — `get_product_pack_port()` has
+zero callers anywhere outside its own definition chain, and the one function that would actually
+*use* it end-to-end (`route_security_via_domain_adapter`, `backend/api/src/cys_core/application/
+routing/domain_event_adapter.py`) has zero callers in `backend/api/src`. Half-wired, not wired.
+`docs/NON_SOC_DOMAIN.md`/`docs/NON_SOC_DOMAIN_PACK_GUIDE.md` are both still present and still
+self-describe as a target, matching what §8.1 already said.
+
+**Shift path from concrete → common** — §8.4 already wrote this target model; it does not need
+rederiving, only restating now that it's re-verified current: replace the two closed `Literal`s
+(`EventType`, `WorkerAgentName`) with `str` + catalog-driven validation; move the 11 SOC `Finding`
+subclasses and `KillChainFields` out of `cys_core/domain/findings` into a `packs/cybersec_soc/`
+module, leaving only a generic `FindingEnvelope` in core; move `ESCALATION_ONLY_PATHS`/
+`READ_ONLY_TOOLS` into the `cybersec-soc` pack's `ProfilePolicyPayload` (the mechanism to do this,
+`get_profile_policy_port()`, already exists — it's a data move, not new plumbing); make
+`registry/tools.py`'s three builder calls conditional on the active profile-pack instead of
+unconditional at import time; actually wire `product_pack_adapter.py`/`get_product_pack_port()`
+into the live ingress/routing path instead of leaving it a parallel, uncalled mechanism; and treat
+§8.4's acceptance criterion as the real test — write one toy non-SOC pack (`general-assistant`
+already has seed data waiting, per the discovery above) and confirm building it touches zero files
+under `cys_core/domain`. If it doesn't, the core still isn't domain-agnostic regardless of what any
+doc claims. Not implemented this session (large, cross-cutting refactor spanning all 3 packages'
+domain layers) — recorded here as re-verified-current and ready to execute, not re-planned.
+
+### 24.2. Retry/resilience — audited, then partially implemented
+
+Second question: "is the system refusal-ready — I can't see any retry mechanism." Audited all
+three packages for what actually exists versus what only sounds like resilience. Full findings
+(condensed; see the actual code for exhaustive file:line detail):
+
+- **litellm calls (worker) had zero retry/backoff** — `litellm.completion()`/`acompletion()`
+  (`backend/worker/src/cys_core/llm/litellm_provider.py`) never set litellm's own `num_retries`
+  kwarg. One rate limit, timeout, or 5xx from the provider propagated straight through
+  `AgentRuntime` → `WorkerAgentExecutor` → `_run_agent_with_retries` (which cannot retry an
+  *exception*, only a structurally-successful-but-low-quality result) → the job's single top-level
+  `except Exception` → `mark_runtime_failure` → job `FAILED`, terminal, no requeue. **Fixed this
+  session** (§24.3).
+- **"Model refusal" is real but folded into the generic quality-retry loop, not handled
+  distinctly.** `_handle_invalid_finding` (`run_worker_job.py`) phrase-matches refusal-shaped text
+  ("i cannot", "operational guidelines", ...) only after all `WORKER_MAX_ATTEMPTS` quality-retries
+  are exhausted, and the result is the same terminal failure as any other unrecoverable error — no
+  escalation to a different model, no distinct re-prompt strategy. **Separately**, `REFUSAL_MESSAGE`
+  (`cys_core/domain/security/prompt_context.py`) is a genuinely different thing — the agent's own
+  security guardrail blocking output on injection/leakage grounds, not detection of the underlying
+  model declining a legitimate request. Not implemented this session — this is a product-behavior
+  decision (what should happen on a refusal: retry with a different prompt? escalate to a stronger
+  model? just fail?), not a mechanical fix, so it's recorded as an open item rather than guessed at.
+- **Tool Gateway MCP adapters (SIEM/Veil/Veneno) were single-shot** — one dropped connection or
+  MCP-server timeout aborted the tool call outright. **Fixed this session** (§24.3) for these three;
+  Nessus (`nessus_mcp_client.py`, a distinct code path not routed through the shared
+  `invoke_mcp_sync`/`invoke_mcp_async` helper) and the search adapters
+  (`search_stack.py`/`web_search.py`, which already have real multi-*provider* failover — Serper →
+  Perplexity → Jina → DuckDuckGo — just not retry-on-the-*same*-provider) were **not** touched this
+  round, to keep the change's blast radius reviewable; same-shaped follow-up work, not a design gap.
+- **Infra clients (Postgres/Redis/Kafka) have graceful-degradation fallbacks, not retry** — Redis's
+  `ResilientRedisClient` reconnects once per call with no backoff despite its name; Kafka falls back
+  to an in-memory queue on broker-connect failure; Postgres has no reconnect/retry logic at all in
+  `job_store/postgres.py` and equivalents. Not touched this session — reconnect-with-backoff for
+  three different client libraries is a larger, more invasive change than the two fixes above and
+  deserves its own pass rather than being folded in here.
+- **No job-level requeue on failure, anywhere.** A job that fails from an uncaught exception (infra
+  blip, unretried litellm error before this session's fix, anything else) is marked `FAILED` once
+  and sent to a **write-only DLQ nobody consumes** (`KafkaJobQueue.send_to_dlq`) — there is no
+  "retry count" field on `WorkerJob`, no code path that requeues a failed job, and no DLQ consumer.
+  `WorkerOrchestrator.run_job`'s soft-timeout salvage is real resilience but only for the
+  *in-process, this-attempt* case, not for a genuinely failed attempt. Not implemented — this is the
+  single largest remaining gap, and it's architectural (job retry-count semantics, requeue-vs-DLQ
+  policy, idempotency of re-running a partially-executed job) rather than mechanical; recorded as
+  the top follow-up item, not guessed at.
+- **A working `CircuitBreaker` exists** (`cys_core/domain/security/agent_bus.py`) but is scoped
+  only to the A2A agent-bus message-authorization path (`SecureAgentBus`, worker-only) — a real,
+  reusable primitive that was never extended to litellm calls, tool-gateway HTTP calls, or infra
+  clients despite being generic enough to apply there. Not implemented — reusing it elsewhere is a
+  design choice (per-call-type failure thresholds, what "open" should mean for an LLM call versus a
+  tool call) worth its own decision, not a blind copy-paste.
+- Confirmed via `pyproject.toml`/repo-wide grep: no `tenacity`, `backoff`, or `stamina` dependency
+  anywhere in any of the three packages — every retry mechanism in this codebase, before and after
+  this session's changes, is hand-rolled.
+
+### 24.3. What was implemented this session
+
+**litellm retry/backoff** — `LiteLLMChatModel` gained a `num_retries` field, sent to litellm as
+`num_retries=N` when `> 0` (litellm's own retry loop only fires on transient failures —
+408/409/429/5xx — verified against litellm's actual source via Context7, `/berriai/litellm`, not
+guessed). New `LLM_NUM_RETRIES` setting (`backend/worker/src/bootstrap/settings.py`, default `2`),
+threaded through `get_llm_settings()`/`get_reasoning_llm_settings()` in `runtime_config.py` and both
+`ChatModelProvider` call sites (`cys_core/llm/__init__.py`'s `LLMConnector`,
+`cys_core/llm/reasoning.py`'s `ReasoningModelConnector`). Tests added in
+`tests/infrastructure/test_litellm_provider.py` proving the kwarg is sent when set and omitted (not
+forced to 0, so litellm's own default applies) when unset.
+
+**MCP tool-call retry/backoff** — new `call_with_retry`/`acall_with_retry` helpers in
+`backend/tool-gateway/src/cys_core/integrations/mcp_http.py`: jittered exponential backoff
+(0.25–8s, capped), retrying only on transient failures (`httpx.TimeoutException`,
+`httpx.TransportError`, or `HTTPStatusError` with status in `{408, 409, 429, 500, 502, 503, 504}`)
+— everything else (other 4xx, malformed JSON, arbitrary application exceptions) propagates on the
+first attempt, since retrying those can't help. New `MCP_CALL_MAX_RETRIES` setting (default `2`),
+threaded through `runtime_config.py`'s `get_mcp_call_max_retries()`. Applied to:
+- `invoke_mcp_sync`/`invoke_mcp_async` themselves (covers `siem_mcp_client.py`, the only current
+  caller of the shared helper, plus any future adapter routed through it).
+- `veneno_mcp_client.py` and `veil_mcp_client.py` (both sync and async paths) — these had their own
+  independent inline `client.post(...)` implementations rather than using the shared helper, so each
+  got its single network call wrapped with `call_with_retry`/`acall_with_retry` directly, minimal
+  diff, no restructuring of the surrounding request/response/error-mapping logic.
+
+New tests in `tests/integrations/test_mcp_http_retry.py`: succeeds after N transient failures,
+raises after exhausting `max_retries`, does **not** retry a non-transient status (400), retries a
+connection timeout, and the async path, all with `time.sleep`/`asyncio.sleep` mocked out so the
+suite stays fast. Full `scripts/pytest_batches.sh` (both packages), `make verify-architecture`
+(tool-gateway, 3/3 contracts kept), and `ty check` all green after these changes.
+
+### 24.4. What's still open, in priority order
+
+1. **Job-level requeue on failure** (§24.2) — the single biggest remaining gap; architectural, not
+   mechanical, needs an explicit decision on retry-count semantics and DLQ consumption policy.
+2. **Distinct model-refusal handling** — currently folded into the generic quality-retry loop with
+   no differentiated response; needs a product decision on what should actually happen (retry
+   differently? escalate model? just fail faster?), not a mechanical fix.
+3. **Nessus MCP client and search-stack adapters** — same single-shot shape as the three fixed this
+   session, not yet touched; mechanically identical follow-up.
+4. **Infra client reconnect-with-backoff** (Postgres/Redis/Kafka) — graceful-degradation exists,
+   retry-with-backoff doesn't; three different client libraries, worth its own pass.
+5. **`CircuitBreaker` reuse beyond the A2A bus** — a real, working primitive sitting unused for
+   litellm/tool-gateway/infra failure domains; a design choice about per-domain thresholds, not a
+   blind copy.
+
+Added to the standing list alongside §21.9 (`PersistenceUnavailableError` status code) and §22.13
+(HITL pause/resume protocol) as known, deliberately-unimplemented items — not silently dropped.

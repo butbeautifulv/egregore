@@ -13,6 +13,7 @@ from cys_core.application.runs.tool_coercion import (
     veil_ti_category_hint,
 )
 from cys_core.application.runtime_config import (
+    get_mcp_call_max_retries,
     get_veil_mcp_timeout,
     get_veil_mcp_url,
 )
@@ -21,6 +22,7 @@ from cys_core.application.runtime_config import (
 )
 from cys_core.domain.tools.catalog.veil import VEIL_TOOL_NAMES as FALLBACK_VEIL_TOOL_NAMES
 from cys_core.infrastructure.http_client import async_http_client, sync_http_client
+from cys_core.integrations.mcp_http import acall_with_retry, call_with_retry
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
 
@@ -176,11 +178,14 @@ def call_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
     )
     url = get_veil_mcp_url().rstrip("/")
 
-    try:
+    def _call() -> dict[str, Any]:
         with sync_http_client(timeout=get_veil_mcp_timeout(), headers=headers) as client:
             response = client.post(url, json=payload)
             response.raise_for_status()
-            body = response.json()
+            return response.json()
+
+    try:
+        body = call_with_retry(_call, max_retries=get_mcp_call_max_retries(), source="veil-mcp")
     except httpx.HTTPError as exc:
         reason = _classify_http_error(exc)
         metrics.record_tool_invocation(tool_name, success=False)
@@ -218,11 +223,14 @@ async def acall_veil_mcp_tool(tool_name: str, arguments: dict[str, Any] | None =
     )
     url = get_veil_mcp_url().rstrip("/")
 
-    try:
+    async def _call() -> dict[str, Any]:
         async with async_http_client(timeout=get_veil_mcp_timeout(), headers=headers) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
-            body = response.json()
+            return response.json()
+
+    try:
+        body = await acall_with_retry(_call, max_retries=get_mcp_call_max_retries(), source="veil-mcp")
     except httpx.HTTPError as exc:
         reason = _classify_http_error(exc)
         metrics.record_tool_invocation(tool_name, success=False)

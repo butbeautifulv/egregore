@@ -30,6 +30,7 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
             "temperature": 0.2,
             "request_timeout": 120.0,
             "thinking_token_budget": 0,
+            "num_retries": 0,
         },
     )
 
@@ -162,6 +163,38 @@ def test_litellm_thinking_token_budget_sent_via_extra_body(monkeypatch):
         model="m", api_key="", base_url=None, temperature=0.1, thinking_token_budget=25
     )
     assert created.thinking_token_budget == 25
+
+
+@pytest.mark.unit
+def test_litellm_num_retries_passed_through_when_set(monkeypatch):
+    """docs/MICROSERVICES_SPLIT_PLAN.md §24: a single rate limit or provider
+    blip used to fail the whole worker job outright with no retry at all —
+    num_retries wires litellm's own built-in retry/backoff for transient
+    (408/409/429/5xx) failures."""
+    from cys_core.llm import litellm_provider as provider
+
+    calls = []
+
+    def fake_completion(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="answer"))])
+
+    monkeypatch.setattr(provider.litellm, "completion", fake_completion)
+
+    # Default (0) — litellm's own default retry behavior applies, this
+    # provider doesn't override it by sending an explicit num_retries kwarg.
+    unset_model = provider.LiteLLMChatModel(model="test-model", temperature=0.1)
+    unset_model._generate([HumanMessage(content="hi")])
+    assert "num_retries" not in calls[-1]
+
+    retrying_model = provider.LiteLLMChatModel(model="test-model", temperature=0.1, num_retries=3)
+    retrying_model._generate([HumanMessage(content="hi")])
+    assert calls[-1]["num_retries"] == 3
+
+    created = provider.LiteLLMProvider().create(
+        model="m", api_key="", base_url=None, temperature=0.1, num_retries=2
+    )
+    assert created.num_retries == 2
 
 
 @pytest.mark.unit

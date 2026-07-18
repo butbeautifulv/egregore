@@ -55,6 +55,7 @@ _llm_base_url: str | None = None
 _llm_temperature: float = 0.1
 _llm_request_timeout: float = 120.0
 _llm_thinking_token_budget: int = 0
+_mcp_call_max_retries: int = 2
 _veil_mcp_url: str = "http://localhost:8091/mcp"
 _veil_mcp_enabled: bool = True
 _veil_mcp_timeout: float = 30.0
@@ -141,6 +142,7 @@ def configure_from_settings(settings: Any) -> None:
     global _postgres_url, _default_job_recursion_limit, _triage_recursion_limit
     global _llm_model, _llm_api_key, _llm_base_url, _llm_temperature, _llm_request_timeout
     global _llm_thinking_token_budget
+    global _mcp_call_max_retries
     global _veil_mcp_url, _veil_mcp_enabled, _veil_mcp_timeout
     global _siem_mcp_url, _siem_mcp_enabled, _siem_mcp_timeout
     global _nessus_mcp_url, _nessus_mcp_enabled, _nessus_mcp_timeout
@@ -186,6 +188,7 @@ def configure_from_settings(settings: Any) -> None:
     _veil_mcp_url = settings.veil_mcp_url
     _veil_mcp_enabled = settings.veil_mcp_enabled
     _veil_mcp_timeout = settings.veil_mcp_timeout
+    _mcp_call_max_retries = settings.mcp_call_max_retries
     _siem_mcp_url = settings.siem_mcp_url
     _siem_mcp_enabled = settings.siem_mcp_enabled
     _siem_mcp_timeout = settings.siem_mcp_timeout
@@ -341,6 +344,10 @@ def get_veil_mcp_url() -> str:
 
 def get_veil_mcp_timeout() -> float:
     return _veil_mcp_timeout
+
+
+def get_mcp_call_max_retries() -> int:
+    return _mcp_call_max_retries
 
 
 def siem_mcp_enabled() -> bool:

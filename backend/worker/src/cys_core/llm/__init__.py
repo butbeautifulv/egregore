@@ -55,6 +55,7 @@ class LLMConnector:
             temperature=llm["temperature"],
             request_timeout=llm["request_timeout"],
             thinking_token_budget=llm["thinking_token_budget"],
+            num_retries=llm["num_retries"],
         )
 
     def callbacks(self) -> list[Any]:

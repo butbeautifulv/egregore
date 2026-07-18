@@ -158,6 +158,7 @@ def call_siem_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None) 
             payload=payload,
             headers=_siem_mcp_headers(),
             timeout=get_siem_mcp_timeout(),
+            source="siem-mcp",
         )
     except httpx.HTTPError as exc:
         metrics.record_tool_invocation(tool_name, success=False)
@@ -192,6 +193,7 @@ async def acall_siem_mcp_tool(tool_name: str, arguments: dict[str, Any] | None =
             payload=payload,
             headers=_siem_mcp_headers(),
             timeout=get_siem_mcp_timeout(),
+            source="siem-mcp",
         )
     except httpx.HTTPError as exc:
         metrics.record_tool_invocation(tool_name, success=False)

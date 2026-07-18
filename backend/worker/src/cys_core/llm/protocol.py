@@ -17,4 +17,5 @@ class ChatModelProvider(Protocol):
         temperature: float,
         request_timeout: float,
         thinking_token_budget: int = 0,
+        num_retries: int = 0,
     ) -> BaseChatModel: ...

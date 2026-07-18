@@ -330,6 +330,16 @@ class Settings(BaseSettings):
     tool_gateway_bind_host: str = Field(default="0.0.0.0", validation_alias="TOOL_GATEWAY_BIND_HOST")
     tool_gateway_bind_port: int = Field(default=8092, validation_alias="TOOL_GATEWAY_BIND_PORT")
 
+    mcp_call_max_retries: int = Field(
+        default=2,
+        validation_alias="MCP_CALL_MAX_RETRIES",
+        description="Retries with jittered exponential backoff for transient MCP call "
+        "failures (timeout, connection error, or 408/409/429/5xx status) shared by the "
+        "SIEM/Veil/Veneno MCP clients. Non-transient failures (other 4xx, malformed JSON) "
+        "propagate on the first attempt. docs/MICROSERVICES_SPLIT_PLAN.md §24 — previously "
+        "every MCP call was single-shot: one dropped connection aborted the tool call outright.",
+    )
+
     veil_mcp_url: str = Field(
         default="http://localhost:8091/mcp",
         validation_alias="VEIL_MCP_URL",

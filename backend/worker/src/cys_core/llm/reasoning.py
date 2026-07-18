@@ -25,6 +25,7 @@ class ReasoningModelConnector:
             temperature=settings["temperature"],
             request_timeout=settings["request_timeout"],
             thinking_token_budget=settings["thinking_token_budget"],
+            num_retries=settings["num_retries"],
         )
 
     def callbacks(self) -> list[Any]:

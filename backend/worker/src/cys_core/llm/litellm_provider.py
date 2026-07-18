@@ -150,6 +150,7 @@ class LiteLLMChatModel(BaseChatModel):
     temperature: float = Field(default=0.1)
     request_timeout: float | None = None
     thinking_token_budget: int = Field(default=0)
+    num_retries: int = Field(default=0)
     bound_tools: list[dict[str, Any]] | None = None
     bound_tool_choice: str | dict[str, Any] | None = None
 
@@ -192,6 +193,13 @@ class LiteLLMChatModel(BaseChatModel):
             call_kwargs["stop"] = stop
         if self.request_timeout is not None:
             call_kwargs["timeout"] = self.request_timeout
+        if self.num_retries > 0:
+            # litellm's own retry loop only fires on transient failures
+            # (408/409/429/5xx) — never on 4xx client errors — and applies
+            # its own backoff between attempts. docs/MICROSERVICES_SPLIT_PLAN.md
+            # §24: previously unset, so a single rate limit or provider blip
+            # failed the whole worker job with no retry at all.
+            call_kwargs["num_retries"] = self.num_retries
         if self.bound_tools:
             call_kwargs["tools"] = self.bound_tools
             choice = _normalize_tool_choice(self.bound_tool_choice)
@@ -285,6 +293,7 @@ class LiteLLMProvider:
         temperature: float,
         request_timeout: float | None = None,
         thinking_token_budget: int = 0,
+        num_retries: int = 0,
     ) -> BaseChatModel:
         import os
 
@@ -302,4 +311,5 @@ class LiteLLMProvider:
             temperature=temperature,
             request_timeout=request_timeout,
             thinking_token_budget=thinking_token_budget,
+            num_retries=num_retries,
         )

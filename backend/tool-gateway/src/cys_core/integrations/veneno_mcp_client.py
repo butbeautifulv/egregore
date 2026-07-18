@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from cys_core.application.runtime_config import (
+    get_mcp_call_max_retries,
     get_veneno_mcp_timeout,
     get_veneno_mcp_url,
 )
@@ -13,6 +14,7 @@ from cys_core.application.runtime_config import (
     veneno_mcp_enabled as _veneno_mcp_enabled,
 )
 from cys_core.infrastructure.http_client import sync_http_client
+from cys_core.integrations.mcp_http import call_with_retry
 from cys_core.observability.tracing import inject_correlation_headers
 
 # HITL-gated execution tools (veneno-mcp when enabled).
@@ -51,11 +53,14 @@ def call_veneno_mcp_tool(tool_name: str, arguments: dict[str, Any] | None = None
     )
     url = get_veneno_mcp_url().rstrip("/")
 
-    try:
+    def _call() -> dict[str, Any]:
         with sync_http_client(timeout=get_veneno_mcp_timeout(), headers=headers) as client:
             response = client.post(url, json=payload)
             response.raise_for_status()
-            body = response.json()
+            return response.json()
+
+    try:
+        body = call_with_retry(_call, max_retries=get_mcp_call_max_retries(), source="veneno-mcp")
     except httpx.HTTPError as exc:
         return {"success": False, "error": f"Veneno MCP HTTP error: {exc}", "source": "veneno-mcp", "tool": tool_name}
     except json.JSONDecodeError as exc:
