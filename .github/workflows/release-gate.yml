@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api, tool-gateway]
+        service: [worker, api, tool-gateway, model-gateway]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api, tool-gateway]
+        service: [worker, api, tool-gateway, model-gateway]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}

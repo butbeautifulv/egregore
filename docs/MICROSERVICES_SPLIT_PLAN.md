@@ -5073,3 +5073,50 @@ is a judgment call this session isn't making unilaterally mid-audit-loop.
 Dispatched Release Gate again against the §48 commit (`8a04959`) — run `29653677712`:
 `{"conclusion":"success","status":"completed"}`. The fix is fully verified end-to-end, not just
 locally. Continuing the standing audit from here.
+
+## 49. Standing audit found `model-gateway` (§29) has zero CI coverage — the "confirmed green" claim in
+## §47 didn't actually exercise it
+
+Re-checking §47's own claim after the fact rather than trusting it: `grep -n "model-gateway"
+.github/workflows/release-gate.yml` returned **nothing**. Every matrix job in the file
+(`adversarial`, `lint`, `unit-tests`, `arch-lint`, `domain-coverage`, and the main-only `build`/`sbom`/
+`container-scan`/`sign` jobs further down) is hardcoded to `[worker, api, tool-gateway]` —
+`model-gateway` was never added when it was built in §29. This means the two Release Gate runs §47/§48
+dispatched and reported "green" never actually ran `model-gateway`'s tests, lint, or type-check at all —
+they passed because nothing in the matrix touches that package, not because it was verified. Correcting
+that overclaim here rather than leaving it standing (same discipline as §16.10/§16.11's
+correction-to-a-correction).
+
+Checked what it would take to close this, rather than blindly adding `model-gateway` to every matrix:
+
+- **`lint`** (ruff + `ty check`) and **`unit-tests`** (`pytest_batches.sh`) — both already fully work
+  standalone (confirmed by running them locally: `ruff check src tests` clean, `ty check src` clean,
+  2 batches / 18 tests green, `uv sync --frozen` resolves cleanly against the committed `uv.lock`). Added
+  `model-gateway` to both matrices — a mechanical, zero-new-infrastructure change.
+- **`arch-lint`** — checked prerequisites before adding: no `[tool.importlinter]` config, no
+  `scripts/verify_import_boundaries.py`, no `scripts/verify_no_langfuse_in_core.sh`, no
+  `tests/architecture/` directory. Adding `model-gateway` here today would just fail the job on missing
+  files, not verify anything. **Not added** — needs someone to actually write those (or decide they don't
+  apply the same way to model-gateway's much smaller `cys_core` subset), not a one-line matrix edit.
+- **`domain-coverage`** — model-gateway does have its own `cys_core/domain/security/*` tree, but no
+  `tests/domain/` directory to run the gate against (confirmed: `pytest tests/domain/` →
+  `ERROR: file or directory not found`). **Not added** for the same reason as `arch-lint`.
+- **`adversarial`** — no `tests/adversarial/` directory either. **Not added**.
+- **`build`/`sbom`/`container-scan`/`sign`** (main-only, post-merge) — no `deploy/Dockerfile.model-gateway`
+  exists at all (confirmed: only `.corp.api`/`.worker`/`.api`/`.tool-gateway` Dockerfiles exist). Adding
+  model-gateway here needs a Dockerfile first, which is real, separate work (§47 already noted
+  model-gateway isn't wired into any deploy manifest yet either) — **not added**.
+
+No change needed to the `release-gate` aggregate job's `needs`/results-check step: `needs.lint.result`/
+`needs['unit-tests'].result` already reflect the whole matrixed job (fails if any leg fails), so adding a
+matrix entry is sufficient by itself, confirmed by reading that step rather than assuming.
+
+Verified the specific two-line diff is syntactically valid (`yaml.safe_load()` against the edited file)
+and correctly scoped (`grep -n "service: \[worker, api, tool-gateway"` shows exactly `lint`/`unit-tests`
+gained `model-gateway`, `adversarial`/`arch-lint`/`domain-coverage` correctly untouched) before committing.
+
+**Net effect**: `model-gateway` now gets real lint + unit-test coverage in CI, closing the most basic and
+highest-value gap (previously: literally zero automated checks of any kind). `arch-lint`/`domain-coverage`/
+`adversarial`/container-build coverage remain real, confirmed gaps — flagged here rather than actioned,
+since each needs new infrastructure/files, not a mechanical matrix edit, consistent with how this session
+treats the difference between "narrow, verified, same-session-safe" and "needs its own scoped pass."
