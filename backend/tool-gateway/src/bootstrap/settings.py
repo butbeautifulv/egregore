@@ -478,6 +478,17 @@ class Settings(BaseSettings):
         "as authz_mode, same reason: a check this consequential earns a shadow period before it "
         "can deny anything.",
     )
+    tool_sandbox_token_mode: str = Field(
+        default="shadow",
+        validation_alias="TOOL_SANDBOX_TOKEN_MODE",
+        description="off|shadow|enforce for verifying ToolInvokeCommand.sandbox_token "
+        "(docs/MICROSERVICES_SPLIT_PLAN.md §11.5/§37). mint_sandbox_token() has minted this "
+        "signed, time-bound token since before this package's own extraction, but nothing ever "
+        "verified it — callers that predate this check don't attach one at all yet, so default "
+        "'shadow' (log a missing/invalid token, never block) until every caller (worker's "
+        "mcp_tools.py) is confirmed to actually be sending one. Same off|shadow|enforce shape "
+        "as tool_scope_mode/authz_mode.",
+    )
     allow_legacy_tenant_tokens: bool = Field(
         default=False,
         validation_alias="ALLOW_LEGACY_TENANT_TOKENS",
@@ -798,6 +809,9 @@ class Settings(BaseSettings):
         if self.tool_scope_mode.lower() not in _ALLOWED_AUTHZ_MODES:
             raise ValueError(f"TOOL_SCOPE_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}")
         self.tool_scope_mode = self.tool_scope_mode.lower()
+        if self.tool_sandbox_token_mode.lower() not in _ALLOWED_AUTHZ_MODES:
+            raise ValueError(f"TOOL_SANDBOX_TOKEN_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}")
+        self.tool_sandbox_token_mode = self.tool_sandbox_token_mode.lower()
         return self
 
     def resolve_worker_job_timeout(self, *, persona: str, phase: str | None = None) -> float:

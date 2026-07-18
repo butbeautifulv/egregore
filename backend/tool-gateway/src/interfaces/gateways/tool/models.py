@@ -18,6 +18,7 @@ class ToolInvokeRequest(BaseModel):
     workspace_id: str = ""
     organization_id: str = ""
     user_id: str = ""
+    sandbox_token: str = ""
 
 
 class ToolInvokeResponse(BaseModel):

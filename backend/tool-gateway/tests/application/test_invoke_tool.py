@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from cys_core.application.use_cases.invoke_tool import InvokeTool
-from cys_core.domain.tools.exceptions import ScopeViolation, ToolChainDepthExceeded
+from cys_core.domain.tools.exceptions import SandboxTokenInvalid, ScopeViolation, ToolChainDepthExceeded
 from cys_core.domain.tools.models import ToolInvokeCommand
 from cys_core.security.rate_limit import RateLimitExceeded
 
@@ -99,9 +99,28 @@ def test_invoke_tool_rejects_over_rate_limit():
 
 
 @pytest.mark.unit
+def test_invoke_tool_rejects_invalid_sandbox_token():
+    """docs/MICROSERVICES_SPLIT_PLAN.md §11.5/§37: mint_sandbox_token() minted a token
+    nothing verified for a long time — this proves the gateway rejects on its own
+    check_sandbox_token result, independent of whatever the caller did or didn't verify."""
+    invoke = InvokeTool(
+        require_sandbox=lambda _sid: None,
+        check_tool_chain=lambda _cmd: None,
+        invoke_adapter=lambda _name, _args: {"ok": True},
+        tool_registry=MagicMock(),
+        sanitize_tool_output_or_raise=lambda raw: str(raw),
+        record_tool_invocation=lambda *_a: None,
+        check_sandbox_token=lambda _cmd: (_ for _ in ()).throw(SandboxTokenInvalid("missing_sandbox_token")),
+    )
+    result = invoke.execute(_command(tool_name="run_active_scan"))
+    assert result.success is False
+    assert "missing_sandbox_token" in result.error
+
+
+@pytest.mark.unit
 def test_invoke_tool_defaults_check_scope_and_rate_limit_to_noop():
-    """Callers that predate check_scope/check_rate_limit (existing production
-    wiring elsewhere, other tests) must keep working unchanged."""
+    """Callers that predate check_scope/check_rate_limit/check_sandbox_token (existing
+    production wiring elsewhere, other tests) must keep working unchanged."""
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,

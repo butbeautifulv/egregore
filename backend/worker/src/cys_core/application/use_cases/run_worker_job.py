@@ -512,6 +512,7 @@ class RunWorkerJob:
                     correlation_id=job.correlation_id,
                     profile_id=profile_id,
                     workspace_id=workspace_id,
+                    token=creds.token,
                 )
             )
         else:

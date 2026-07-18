@@ -4324,3 +4324,83 @@ total).
 all three services. The remaining §24.4 items (job-level requeue, distinct refusal handling,
 `CircuitBreaker` reuse) are the ones that need a product/architecture decision, not mechanical
 follow-up — nothing left in this item that's safe to just implement.
+
+## 37. Closed §11.5: sandbox token minted since before §21.6, never verified anywhere — fixed
+
+### 37.1. How this was found
+
+Ask: **"omg read the md fully. did you forget something."** With the doc at 36 sections, did a
+dedicated audit pass (delegated to a subagent to read §8-§13 in full and check each concrete claim
+against current code, not just trust the doc's own age) rather than assuming this session's §18+
+work covered everything. Found §11's five original findings were 3/5 done, 2/5 still genuinely
+open. Investigated the more severe of the two: **§11.5 — a per-run sandbox token is minted
+(`mint_sandbox_token`, `cys_core/domain/security/sandbox_tokens.py`) but nothing anywhere ever
+calls `verify_sandbox_token`.** Confirmed by direct code reading, not by trusting the doc: zero
+call sites for `verify_sandbox_token` outside its own definition; `SandboxCredentials.token` (where
+the minted token lives after `K8sSandboxConnector.create()`) has zero readers anywhere downstream
+(`grep -rn "creds\.token\|credentials\.token"` — nothing). Different in kind from §27's HITL Kafka
+bug: `mint_sandbox_token`'s own docstring already says "verifying it at the MCP Tool Gateway...is
+the next hardening step, not yet wired" — an honest, self-documented incomplete feature, not code
+that silently lied about doing something it didn't.
+
+### 37.2. What it does now
+
+Wired verification into tool-gateway's `invoke_tool.py`/`tools_container.py`, the exact same shape
+§23 already proved out for `ScopePolicy`/`RedisRateLimiter` — `check_sandbox_token` callable
+(default no-op), `TOOL_SANDBOX_TOKEN_MODE` (`off|shadow|enforce`, default `shadow`, same
+`_ALLOWED_AUTHZ_MODES` validation as `tool_scope_mode`/`authz_mode`), a new `SandboxTokenInvalid`
+exception caught in `_execute_inner` next to `ScopeViolation`/`RateLimitExceeded`.
+
+`ToolInvokeCommand` gained a `sandbox_token: str = ""` field (all three packages — shared domain
+model per §18, even though only tool-gateway's copy of `InvokeTool` actually verifies it; worker's
+own `InvokeTool` never had `check_scope`/`check_rate_limit` either — confirmed by grepping worker's
+`invoke_tool.py` for zero occurrences before assuming — this class's network-boundary checks were
+tool-gateway-only from the start, not something this round changed the scope of).
+
+Verification (`_resolve_sandbox_token_violation`) checks, in order: token present at all →
+signature+expiry valid (`verify_sandbox_token`, same HMAC-SHA256 scheme already implemented) →
+`claims.job_id == command.job_id` → `claims.persona == command.persona`. The `job_id` check is a
+direct equality, not a derived mapping: `mint_sandbox_token(job_id=run_id, ...)` in
+`k8s_sandbox.py` sets `job_id` to the same `run_id` value (`RunWorkerJob.execute`'s
+`run_id = job.job_id`) that `mcp_tools.py` independently threads into `ToolInvokeCommand.job_id` —
+confirmed by tracing both call chains back to the same source, not assumed from naming similarity.
+This means a token minted for one job can't be replayed against a tool call claiming to be a
+different job, even if leaked.
+
+Threaded the token end-to-end on the caller side: `SandboxCredentials.token` (already populated by
+`K8sSandboxConnector.create()`, previously write-only) → `run_worker_job.py`'s
+`_prepare_agent_inputs` passes `token=creds.token` → `mcp_tools.py`'s `resolve`/`_make_tool`/
+`invoke`/`ainvoke`/`_gateway_invoke`/`_local_invoke` (6 methods, all gained a `token: str = ""`
+param) → HTTP body's `sandbox_token` field / `ToolInvokeCommand.sandbox_token` for the local path →
+tool-gateway's `ToolInvokeRequest`/`to_command()` mapper. Non-K8s sandbox connectors (in-process,
+mock) never minted a token to begin with, so `creds.token` is `""` for them — shadow mode logs
+`missing_sandbox_token` for those calls (expected, not a regression) rather than blocking, exactly
+the same rollout posture §23 used when scope-checking surfaced a real persona/test-fixture gap.
+
+### 37.3. Verification
+
+16 new tests in `test_tools_container.py` (violation-resolution: valid/missing/bad-signature/
+expired/job_id-mismatch/persona-mismatch; mode-gating: off/shadow/enforce) + 1 new test in
+`test_invoke_tool.py` (gateway rejects independent of caller behavior, mirroring the existing
+scope/rate-limit tests) — all in tool-gateway, the only package with real wiring. `ruff`/`ty` clean
+across both packages. Broader regression sweep: 119 targeted tests in worker (116 passed, 3 failed
+— the same pre-existing SOCKS-proxy environment issue confirmed unrelated in §26/§33, not this
+change), 169 targeted tests in tool-gateway (169 passed, 0 failed).
+
+### 37.4. What's still open
+
+- §11.4 (ReBAC doesn't scope by persona — `_datasource_subject()` never includes `command.persona`)
+  — not touched this round, a narrower, separate gap from §11.5.
+- `TOOL_SANDBOX_TOKEN_MODE` stays at `shadow` — same reasoning as `TOOL_SCOPE_MODE`: this is a new
+  check with a real "some legitimate callers may not have a token yet" transition period (any
+  non-K8s sandbox connector, and any test fixture that doesn't mint one), enforcing blind risks
+  blocking calls that were never wrong, just untested against this new gate.
+- §8 (domain-agnostic core) and §9 (three-tier persistent memory) remain fully open per the same
+  audit that found §11.5 — real, previously-undocumented-this-session gaps, but product/feature
+  work rather than security bugs, lower priority by this session's own established ordering
+  (security defects > architecture > product features).
+
+Eisenhower: **Important, and more urgent than most of this session's other deferred items** — same
+class of finding as §27 (a security control that existed in name but didn't actually run), closed
+the same way: wire it in shadow mode, prove it with tests, document what's left instead of silently
+calling it done.

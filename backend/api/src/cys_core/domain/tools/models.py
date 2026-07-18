@@ -44,6 +44,11 @@ class ToolInvokeCommand(BaseModel):
     workspace_id: str = ""
     organization_id: str = ""
     user_id: str = ""
+    # Signed, short-lived proof that this call really originates from the
+    # sandboxed run it claims to (mint_sandbox_token/verify_sandbox_token,
+    # cys_core.domain.security.sandbox_tokens) — minted but never verified
+    # anywhere until docs/MICROSERVICES_SPLIT_PLAN.md §37 wired it here.
+    sandbox_token: str = ""
 
 
 class ToolInvokeResult(BaseModel):

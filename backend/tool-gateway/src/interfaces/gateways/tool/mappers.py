@@ -16,6 +16,7 @@ def to_command(request: ToolInvokeRequest) -> ToolInvokeCommand:
         workspace_id=request.workspace_id,
         organization_id=request.organization_id,
         user_id=request.user_id,
+        sandbox_token=request.sandbox_token,
     )
 
 

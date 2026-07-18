@@ -44,6 +44,30 @@ def _resolve_scope_violation(command: "ToolInvokeCommand") -> str | None:
     return ScopePolicy.from_tools(definition.allowed_tools).check_tool_call(command.tool_name, command.args)
 
 
+def _resolve_sandbox_token_violation(command: "ToolInvokeCommand", *, secret: bytes) -> str | None:
+    # mint_sandbox_token() (cys_core.domain.security.sandbox_tokens) has minted a signed,
+    # time-bound token identifying which sandboxed run is calling since before this
+    # package's own §21.6 extraction, but nothing ever verified it here — the one chokepoint
+    # every runtime's tool calls must cross regardless of implementation. See
+    # docs/MICROSERVICES_SPLIT_PLAN.md §11.5/§37.
+    from cys_core.domain.security.sandbox_tokens import verify_sandbox_token
+
+    if not command.sandbox_token:
+        return "missing_sandbox_token"
+    claims = verify_sandbox_token(command.sandbox_token, secret=secret)
+    if claims is None:
+        return "invalid_or_expired_sandbox_token"
+    # mint_sandbox_token(job_id=run_id, ...) — run_id is the WorkerJob's own job_id
+    # (RunWorkerJob.execute's run_id = job.job_id), the same value threaded into
+    # ToolInvokeCommand.job_id by mcp_tools.py — a direct equality check, not a derived
+    # mapping, so a token minted for one job can't be replayed against another.
+    if command.job_id and claims.job_id != command.job_id:
+        return "sandbox_token_job_id_mismatch"
+    if claims.persona != command.persona:
+        return "sandbox_token_persona_mismatch"
+    return None
+
+
 class ToolsContainer:
     """Owns tool-chain policy, invocation use case, and execution gateway."""
 
@@ -109,6 +133,30 @@ class ToolsContainer:
             return
         raise ScopeViolation(violation)
 
+    def _check_sandbox_token(self, command: "ToolInvokeCommand") -> None:
+        from cys_core.domain.tools.exceptions import SandboxTokenInvalid
+
+        mode = self.settings.tool_sandbox_token_mode
+        if mode == "off":
+            return
+        violation = _resolve_sandbox_token_violation(command, secret=self.settings.bus_signing_key_bytes)
+        if violation is None:
+            return
+        if mode == "shadow":
+            # Default until every real caller (worker's mcp_tools.py) is confirmed to
+            # actually attach a token on every call — rolled out the same way
+            # tool_scope_mode was in §23: log every would-be denial, block nothing, flip
+            # to enforce once the logs show it's clean.
+            logger.warning(
+                "tool_gateway_sandbox_token_violation_shadow",
+                persona=command.persona,
+                tool_name=command.tool_name,
+                sandbox_id=command.sandbox_id,
+                reason=violation,
+            )
+            return
+        raise SandboxTokenInvalid(violation)
+
     def get_invoke_tool(self):
         if self._invoke_tool is not None:
             return self._invoke_tool
@@ -131,6 +179,7 @@ class ToolsContainer:
             authz_service=container.get_authz_service(),
             check_scope=self._check_scope,
             check_rate_limit=self._check_rate_limit,
+            check_sandbox_token=self._check_sandbox_token,
         )
         return self._invoke_tool
 

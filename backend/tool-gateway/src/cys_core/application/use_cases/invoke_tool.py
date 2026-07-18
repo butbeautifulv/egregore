@@ -15,7 +15,7 @@ from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, A
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.datasources.authz import AuthorizationDecision
 from cys_core.domain.datasources.schema_models import ModelFamily
-from cys_core.domain.tools.exceptions import ScopeViolation, ToolChainDepthExceeded
+from cys_core.domain.tools.exceptions import SandboxTokenInvalid, ScopeViolation, ToolChainDepthExceeded
 from cys_core.domain.tools.models import ToolInvokeCommand, ToolInvokeResult
 from cys_core.security.rate_limit import RateLimitExceeded
 
@@ -37,6 +37,7 @@ class InvokeTool:
         authz_service: Any | None = None,
         check_scope: Callable[[ToolInvokeCommand], None] | None = None,
         check_rate_limit: Callable[[ToolInvokeCommand], None] | None = None,
+        check_sandbox_token: Callable[[ToolInvokeCommand], None] | None = None,
     ) -> None:
         self.require_sandbox = require_sandbox
         self.check_tool_chain = check_tool_chain
@@ -55,6 +56,12 @@ class InvokeTool:
         # never actually invoked on the tool-invocation path.
         self.check_scope = check_scope or (lambda _cmd: None)
         self.check_rate_limit = check_rate_limit or (lambda _cmd: None)
+        # docs/MICROSERVICES_SPLIT_PLAN.md §11.5/§37: mint_sandbox_token() has minted a
+        # signed, time-bound token identifying which sandboxed run is calling since it was
+        # first built, but nothing ever verified it here — the one place every tool call
+        # actually crosses the trust boundary. Same no-op-default rollout shape as
+        # check_scope/check_rate_limit above.
+        self.check_sandbox_token = check_sandbox_token or (lambda _cmd: None)
 
     def _datasource_deny_response(
         self,
@@ -173,6 +180,7 @@ class InvokeTool:
         try:
             self.require_sandbox(command.sandbox_id)
             self.check_tool_chain(command)
+            self.check_sandbox_token(command)
             self.check_scope(command)
             self.check_rate_limit(command)
             deny = authorize_tool_datasource(
@@ -223,6 +231,12 @@ class InvokeTool:
                 error=str(exc),
             )
         except ScopeViolation as exc:
+            response = ToolInvokeResult(
+                success=False,
+                tool_name=command.tool_name,
+                error=str(exc),
+            )
+        except SandboxTokenInvalid as exc:
             response = ToolInvokeResult(
                 success=False,
                 tool_name=command.tool_name,
