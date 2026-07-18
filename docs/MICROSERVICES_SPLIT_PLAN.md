@@ -5240,3 +5240,17 @@ still cover three). Rewrote to state the actual per-job split and point at
 `model-gateway` work (they undercounted `tool-gateway`, added in §21.6) — not this session's mistake,
 but caught in the same pass and worth fixing while already here rather than leaving a second,
 adjacent staleness for the next person to trip over.
+
+### 50.1. Checked one candidate from §48.4's ~30-site list — confirmed not actually exposed, not fixed
+
+Traced `MemoryEntry.id` (`mem-{uuid4().hex[:12]}`, `domain/memory/models.py`) as the most obvious
+next candidate for the same PII-redaction-collision class of bug as §48. It is **not** actually at
+risk: `MemoryWriteService.append()` calls `self._validator(scope).validate(content)` (the redaction
+step) first, then constructs `MemoryEntry(content=validated.content, ...)` — the entry's own `id` is a
+separate Pydantic field generated *after* redaction already ran on `content`, and is never itself
+passed through `redact_pii()`. Confirms the caution in §48.4 was warranted: the other ~15 call sites
+each need this same kind of individual trace-the-actual-code-path check before a fix is meaningful —
+applying the `new_follow_up_id()`-style mitigation blindly to all of them would be speculative churn
+on sites that may not be exposed at all, not the same "narrow, proven, zero-regression-risk" shape
+§48's actual fix had. Not pursuing the rest of the sweep this round; noted here so the next pass
+starts from "one confirmed non-issue, ~15 untraced" instead of re-deriving that this needs tracing.
