@@ -154,8 +154,9 @@ cd backend/api && ./scripts/pytest_batches.sh --cov --domain-gate     # own copy
 egregore/
 ├── backend/
 │   ├── worker/              # egregore-worker: agent-execution runtime (LangChain/LangGraph),
-│   │   │                    #   Tool Gateway, critic/coordinator daemons, own copy of
-│   │   │                    #   cys_core (domain/application/infrastructure), bootstrap
+│   │   │                    #   critic/coordinator daemons, own (now-redundant, kept per §21.6.5)
+│   │   │                    #   copy of the Tool Gateway, own copy of cys_core
+│   │   │                    #   (domain/application/infrastructure), bootstrap
 │   │   ├── src/             # cys_core.{domain,runtime,llm,registry.tools,...}, interfaces.worker/control_plane/gateways
 │   │   └── scripts/         # pytest_batches, verify_import_boundaries, …
 │   ├── api/                 # egregore-api: FastAPI ingress/CRUD, event routing, HITL resume,
@@ -163,19 +164,23 @@ egregore/
 │   │   │                    #   no fastapi-only exception: no langchain/langgraph/deepagents/litellm
 │   │   ├── src/              # interfaces.api, cys_core.{domain,application} use_cases (CRUD side)
 │   │   └── scripts/
-│   └── agents/              # Product personas, rules, plans, skills — sibling of both packages
-├── deploy/                 # Dockerfile.api, Dockerfile.worker, compose, k8s, helm, grafana
+│   ├── tool-gateway/        # egregore-tool-gateway: standalone PEP for sandboxed agent tool calls
+│   │   │                    #   (stdlib asyncio server, no FastAPI/langchain), own copy of cys_core
+│   │   ├── src/             # cys_core.{domain,application,infrastructure.tools}, interfaces.gateways.tool
+│   │   └── scripts/
+│   └── agents/              # Product personas, rules, plans, skills — sibling of all three packages
+├── deploy/                 # Dockerfile.{api,worker,tool-gateway}, compose, k8s, helm, grafana
 ├── web_ui/                 # Operator console (Next.js)
 ├── tui/                    # Operator TUI (Go Bubble Tea)
 ├── docs/
-├── Makefile                # thin dispatcher (Python → backend/{worker,api}/, UI → web_ui/)
+├── Makefile                # thin dispatcher (Python → backend/{worker,api,tool-gateway}/, UI → web_ui/)
 └── scripts/                # full-stack dev wrappers, security gates
 ```
 
 `backend/contracts/` (an earlier shared domain/ports/infra package) and
 `backend/shared/` (the pre-split monolith before that) have both been
-retired — worker and api are fully independent, see
-[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18.
+retired — worker, api, and tool-gateway are fully independent packages, see
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18, §21.6.
 
 ## Роли агентов
 
