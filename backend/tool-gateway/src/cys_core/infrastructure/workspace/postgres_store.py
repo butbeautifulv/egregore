@@ -4,10 +4,10 @@ import json
 from datetime import datetime, timezone
 from typing import Any, cast
 
-import psycopg
 from psycopg.rows import dict_row
 
 from cys_core.domain.workspace.models import Workspace, WorkspaceAgent
+from cys_core.infrastructure.postgres_retry import connect_with_retry
 
 WORKSPACE_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -35,7 +35,7 @@ class PostgresWorkspaceStore:
         self._ensure_schema()
 
     def _connect(self):
-        return psycopg.connect(self._postgres_url, row_factory=cast(Any, dict_row))
+        return connect_with_retry(self._postgres_url, row_factory=cast(Any, dict_row))
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:

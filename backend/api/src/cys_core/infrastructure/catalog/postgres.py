@@ -16,6 +16,7 @@ from cys_core.domain.catalog.models import (
 )
 from cys_core.infrastructure.catalog.catalog_seed_writer import fan_out_secondary_catalogs
 from cys_core.infrastructure.catalog.schema import CATALOG_SCHEMA_SQL
+from cys_core.infrastructure.postgres_retry import connect_with_retry
 
 
 class PostgresAgentCatalog:
@@ -26,7 +27,7 @@ class PostgresAgentCatalog:
             conn.commit()
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._postgres_url)
+        return connect_with_retry(self._postgres_url)
 
     def list_agents(self, *, profile_id: str | None = None, enabled_only: bool = True) -> list[AgentCatalogEntry]:
         clauses = ["1=1"]

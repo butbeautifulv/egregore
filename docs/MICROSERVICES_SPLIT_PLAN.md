@@ -4088,13 +4088,19 @@ green. Full behavioral test coverage is inherently limited here since this sandb
 Postgres to actually interrupt mid-connection — the change is a thin, well-isolated wrapper around
 an unchanged call, not new business logic.
 
-**Not done this round**: `api` and `tool-gateway` have the identical duplicated store files (§18)
-with the identical gap — same mechanical fix, not yet replicated there. Redis (`queue.py`'s
-`_connect_redis`) and Kafka (`AIOKafkaProducer`/`AIOKafkaConsumer` construction in
+**Update**: replicated to `api` and `tool-gateway` in a follow-up pass — both had the identical
+duplicated store files (§18) with the identical gap. Same fix, mechanically applied (verified the
+files were byte-identical to worker's pre-fix originals before touching them); ruff/ty clean and
+a plain-Python import check green in both packages. `dict_row`-only `import psycopg` in
+`workspace/postgres_store.py` became unused once its `_connect()` stopped calling bare
+`psycopg.connect(...)` — caught by ruff, fixed with `--fix`, not a real behavior issue.
+
+**Still not done**: Redis (`queue.py`'s `_connect_redis`) and Kafka
+(`AIOKafkaProducer`/`AIOKafkaConsumer` construction in
 `kafka_bus.py`/`kafka_events.py`/`kafka_publisher.py`/`kafka_queue.py`) still have no
-connect-with-backoff either — §24.4 named all three client libraries; only Postgres, and only in
-`worker`, got done this pass.
+connect-with-backoff — §24.4 named all three client libraries; Postgres is done in all three
+services now, Redis/Kafka remain.
 
 Eisenhower: **Important, not urgent** — same placement as §24.4's original entry. Genuinely
-mechanical follow-up work remains (replicate to `api`/`tool-gateway`, do the same for Redis/Kafka)
+mechanical follow-up work remains (Redis/Kafka backoff)
 but nothing here is blocking anything else.

@@ -8,6 +8,7 @@ from typing import Any
 import psycopg
 
 from cys_core.domain.memory.models import InvestigationState, MemoryEntry, MemoryScope
+from cys_core.infrastructure.postgres_retry import connect_with_retry
 
 
 def _maybe_close_investigation(state: InvestigationState) -> None:
@@ -130,7 +131,7 @@ class PostgresEpisodicMemoryStore:
         self._ensure_schema()
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._postgres_url)
+        return connect_with_retry(self._postgres_url)
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
@@ -247,7 +248,7 @@ class PostgresInvestigationStateStore:
         self._ensure_schema()
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._postgres_url)
+        return connect_with_retry(self._postgres_url)
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:

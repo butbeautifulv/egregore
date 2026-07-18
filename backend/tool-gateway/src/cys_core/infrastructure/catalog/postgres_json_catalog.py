@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.infrastructure.catalog.schema import CATALOG_SCHEMA_SQL
+from cys_core.infrastructure.postgres_retry import connect_with_retry
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -33,7 +34,7 @@ class PostgresJsonCatalog(Generic[T]):
             conn.commit()
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._postgres_url)
+        return connect_with_retry(self._postgres_url)
 
     def list_items(
         self, *, profile_id: str | None = None, enabled_only: bool = True
