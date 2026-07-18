@@ -56,8 +56,14 @@ async def publish_hitl_approval(record: HitlApprovalRecord) -> bool:
     try:
         from aiokafka import AIOKafkaProducer
 
-        producer = AIOKafkaProducer(bootstrap_servers=settings.kafka_bootstrap_servers)
-        await producer.start()
+        from cys_core.infrastructure.kafka_retry import start_with_retry
+
+        async def _build() -> AIOKafkaProducer:
+            built = AIOKafkaProducer(bootstrap_servers=settings.kafka_bootstrap_servers)
+            await built.start()
+            return built
+
+        producer = await start_with_retry(_build, source="hitl_approval_publish")
         try:
             await producer.send_and_wait(
                 AUDIT_HITL_APPROVALS_TOPIC,

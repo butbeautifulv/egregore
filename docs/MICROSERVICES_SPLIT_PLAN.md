@@ -4294,3 +4294,33 @@ actual design rather than an open question. The existing in-process HITL flow wo
 today for the one live runtime; nothing is broken. This matters once a second runtime needs the
 same guarantee, or once tool-gateway's zero-trust chokepoint model (§22.9) needs to be complete
 rather than partial.
+
+## 36. Implemented: §24.4 point 4, Kafka — the last of the three client libraries
+
+Completes §24.4 point 4 across all three: Postgres (§32), Redis (§33), now Kafka. Every
+`AIOKafkaProducer`/`AIOKafkaConsumer` construction site tried once, no retry — same gap as the
+other two. New `cys_core/infrastructure/kafka_retry.py`: `start_with_retry(build_and_start, *,
+max_retries=2, source)`, same jittered-exponential shape as `postgres_retry.py`, `async def` using
+`asyncio.sleep` (Kafka's client is natively async, unlike Postgres/Redis's sync ones) — wraps the
+construct-then-`.start()` pair as a single retryable unit, catching broadly (`Exception`, matching
+every call site's own pre-existing broad `except Exception` — aiokafka doesn't expose one narrow
+connection-error type to catch instead).
+
+Wired into 7 call sites across 6 files, not the 4 originally scoped — found 2 more during the
+sweep that weren't on the original list: `interfaces/gateways/tool/approval.py`'s
+`publish_hitl_approval` (the same HITL-audit Kafka publish fixed for a different reason in §27 —
+this round adds retry to its own inline producer construction) and `kafka_bus_events.py`'s
+`consume_bus_finding` (a whole file the original §24.4 audit didn't enumerate). Lesson repeated
+from §33: a `grep` sweep for the actual construction call after the "planned" fix, not just the
+files named in the original ask, is what caught both.
+
+Replicated identically to `api`/`tool-gateway` (all 7 files confirmed byte-identical before
+copying — `approval.py` specifically confirmed identical *post-§27* across all three, i.e. this
+round's diff is purely the new retry wrapping, not a re-application of the older fix). `ruff`/`ty`
+clean, import sanity checks, and 25 targeted tests passing in each of the three packages (75
+total).
+
+**§24.4 point 4 is now fully done** — Postgres, Redis, and Kafka all have connect-with-backoff in
+all three services. The remaining §24.4 items (job-level requeue, distinct refusal handling,
+`CircuitBreaker` reuse) are the ones that need a product/architecture decision, not mechanical
+follow-up — nothing left in this item that's safe to just implement.

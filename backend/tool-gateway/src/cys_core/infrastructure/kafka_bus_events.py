@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from bootstrap.settings import get_settings, settings
+from cys_core.infrastructure.kafka_retry import start_with_retry
 from cys_core.infrastructure.kafka_topics import BUS_FINDINGS_TOPIC
 
 
@@ -15,13 +16,17 @@ async def consume_bus_finding(timeout: float | None = None, *, group_id: str = "
     try:
         from aiokafka import AIOKafkaConsumer
 
-        consumer = AIOKafkaConsumer(
-            BUS_FINDINGS_TOPIC,
-            bootstrap_servers=settings.kafka_bootstrap_servers,
-            group_id=group_id,
-            auto_offset_reset="earliest",
-        )
-        await consumer.start()
+        async def _build() -> AIOKafkaConsumer:
+            built = AIOKafkaConsumer(
+                BUS_FINDINGS_TOPIC,
+                bootstrap_servers=settings.kafka_bootstrap_servers,
+                group_id=group_id,
+                auto_offset_reset="earliest",
+            )
+            await built.start()
+            return built
+
+        consumer = await start_with_retry(_build, source="kafka_bus_events_consumer")
         record = await asyncio.wait_for(consumer.getone(), timeout=resolved_timeout)
         raw = record.value
         if raw is None:

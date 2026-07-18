@@ -12,6 +12,7 @@ from bootstrap.settings import Settings, get_settings
 from cys_core.domain.workers.models import WorkerJob
 from cys_core.infrastructure.async_boundary import run_sync_from_sync_context
 from cys_core.infrastructure.kafka_errors import KafkaBrokerUnavailableError, KafkaMessageDecodeError
+from cys_core.infrastructure.kafka_retry import start_with_retry
 from cys_core.infrastructure.kafka_topics import DLQ_TOPIC, WORKER_JOBS_TOPIC
 from cys_core.infrastructure.queue import InMemoryJobQueue
 from cys_core.observability.metrics import metrics
@@ -55,9 +56,12 @@ class KafkaJobQueue:
         try:
             from aiokafka import AIOKafkaProducer
 
-            producer = AIOKafkaProducer(bootstrap_servers=self._bootstrap)
-            await producer.start()
-            self._producer = producer
+            async def _build() -> AIOKafkaProducer:
+                producer = AIOKafkaProducer(bootstrap_servers=self._bootstrap)
+                await producer.start()
+                return producer
+
+            self._producer = await start_with_retry(_build, source="kafka_queue_producer")
             self._connected = True
             return True
         except Exception as exc:
@@ -91,15 +95,18 @@ class KafkaJobQueue:
         try:
             from aiokafka import AIOKafkaConsumer
 
-            consumer = AIOKafkaConsumer(
-                *self._consumer_topics(),
-                bootstrap_servers=self._bootstrap,
-                group_id=self._consumer_group_id(),
-                auto_offset_reset="earliest",
-                max_poll_interval_ms=self._max_poll_interval_ms(),
-            )
-            await consumer.start()
-            self._consumer = consumer
+            async def _build() -> AIOKafkaConsumer:
+                consumer = AIOKafkaConsumer(
+                    *self._consumer_topics(),
+                    bootstrap_servers=self._bootstrap,
+                    group_id=self._consumer_group_id(),
+                    auto_offset_reset="earliest",
+                    max_poll_interval_ms=self._max_poll_interval_ms(),
+                )
+                await consumer.start()
+                return consumer
+
+            self._consumer = await start_with_retry(_build, source="kafka_queue_consumer")
             return True
         except Exception as exc:
             self._connected = False

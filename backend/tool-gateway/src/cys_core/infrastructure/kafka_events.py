@@ -7,6 +7,7 @@ from typing import Any
 from bootstrap.settings import get_settings, settings
 from cys_core.domain.events.models import SecurityEvent
 from cys_core.infrastructure.kafka_publisher import get_kafka_publisher
+from cys_core.infrastructure.kafka_retry import start_with_retry
 from cys_core.infrastructure.kafka_topics import RAW_EVENTS_TOPIC
 from cys_core.observability.tracing import bind_from_carrier
 
@@ -31,13 +32,17 @@ async def consume_raw_event(timeout: float | None = None) -> SecurityEvent | Non
     try:
         from aiokafka import AIOKafkaConsumer
 
-        consumer = AIOKafkaConsumer(
-            RAW_EVENTS_TOPIC,
-            bootstrap_servers=settings.kafka_bootstrap_servers,
-            group_id="router-consumer",
-            auto_offset_reset="earliest",
-        )
-        await consumer.start()
+        async def _build() -> AIOKafkaConsumer:
+            built = AIOKafkaConsumer(
+                RAW_EVENTS_TOPIC,
+                bootstrap_servers=settings.kafka_bootstrap_servers,
+                group_id="router-consumer",
+                auto_offset_reset="earliest",
+            )
+            await built.start()
+            return built
+
+        consumer = await start_with_retry(_build, source="kafka_events_consumer")
         record = await asyncio.wait_for(consumer.getone(), timeout=resolved_timeout)
         if record.headers:
             header_map = {
