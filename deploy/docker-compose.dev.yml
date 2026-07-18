@@ -35,11 +35,47 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       WORKER_IDLE_TIMEOUT: "0"
+      USE_TOOL_GATEWAY: "true"
+      TOOL_GATEWAY_URL: http://tool-gateway:8092
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      tool-gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - app
+
+  # The PEP for sandboxed agent tool calls — see docs/MICROSERVICES_SPLIT_PLAN.md
+  # §21.6. Previously only reachable via `make dev-tool-gateway` run manually
+  # alongside `docker compose up` — now a real service in the same stack, same
+  # pattern as api/worker above.
+  tool-gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.tool-gateway
+    entrypoint: ["/app/tool-gateway/.venv/bin/egregore"]
+    command: ["tool-gateway", "--host", "0.0.0.0", "--port", "8092"]
+    ports:
+      - "8092:8092"
+    env_file:
+      - ../backend/tool-gateway/.env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
     profiles:
       - app

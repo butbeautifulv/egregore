@@ -56,6 +56,44 @@ services:
       POSTGRES_DB: egregore
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      USE_TOOL_GATEWAY: "true"
+      TOOL_GATEWAY_URL: http://tool-gateway:8092
+    networks:
+      - agent_internal
+    depends_on:
+      - postgres
+      - redis
+      - tool-gateway
+
+  # The PEP for sandboxed agent tool calls — see docs/MICROSERVICES_SPLIT_PLAN.md
+  # §21.6/§10.8. Placed on agent_internal (no external access) alongside
+  # worker/postgres/redis: worker reaches Postgres/Redis directly today (this
+  # compose file predates the full PEP-only egress model §10.8 targets), but
+  # standing this service up here for real is what makes tightening that
+  # network boundary later possible without inventing new plumbing.
+  tool-gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.tool-gateway
+    image: egregore-tool-gateway:secure
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./seccomp/cys-agi-seccomp.json
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    environment:
+      STAGE: prod
+      USE_MEMORY_FALLBACK: "false"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_DB: egregore
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     networks:
       - agent_internal
     depends_on:
