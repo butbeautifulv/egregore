@@ -12,18 +12,15 @@ from langchain_core.messages import ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
+from cys_core.application.workers.tool_dedup_state import clear_tool_dedup, dedup_counts
 from cys_core.middleware._framework_casts import cast_tool_result
 
 logger = structlog.get_logger(__name__)
 
 _TRIAGE_PERSONAS = frozenset({"soc", "intel"})
 _MAX_DUPLICATE_CALLS = 2
-_dedup_counts: dict[str, dict[str, int]] = {}
 
-
-def clear_tool_dedup(job_id: str) -> None:
-    if job_id:
-        _dedup_counts.pop(job_id, None)
+__all__ = ["ToolDedupMiddleware", "clear_tool_dedup"]
 
 
 def _canonical_args(args: dict[str, Any]) -> str:
@@ -58,7 +55,7 @@ class ToolDedupMiddleware(AgentMiddleware):
         raw_args = request.tool_call.get("args", {})
         args = raw_args if isinstance(raw_args, dict) else {}
         call_key = _call_hash(tool_name, args)
-        bucket = _dedup_counts.setdefault(job_id, {})
+        bucket = dedup_counts.setdefault(job_id, {})
         prior = bucket.get(call_key, 0)
         if prior >= _MAX_DUPLICATE_CALLS:
             logger.info(

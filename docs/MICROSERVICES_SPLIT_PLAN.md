@@ -14,15 +14,24 @@ physical copy of `cys_core.domain`/`bootstrap`/generic infra — duplication is 
 | Package | Job | Status |
 |---|---|---|
 | `backend/api/` | FastAPI ingress/CRUD, event routing, HITL resume over HTTP | Deployed, wired, CI-complete |
-| `backend/worker/` | Agent-execution runtime (LangChain/LangGraph) + control-plane daemons (critic/coordinator) | Deployed, wired, CI-complete |
+| `backend/worker/` | Original monolith package (agent runtime + queue consumption + control-plane daemons) — **kept as-is, still deployed**, not yet retired | Deployed, wired, CI-complete |
 | `backend/tool-gateway/` | PEP for sandboxed agent tool calls (async stdlib server, no FastAPI/langchain) | Deployed, wired, CI-complete |
 | `backend/model-gateway/` | LLM-call chokepoint — input sanitize, system-prompt-digest check, output-leakage guard | **Built and tested, not wired into anything yet** (see §1 below) |
-| `backend/agent-runtime/` | Phase-1 extraction target for §1 — currently a full copy of `worker`'s source under its own package identity | **Scaffolded, installs/lints/tests green, not called by anything yet** (see §1 phase 1 below) |
+| `backend/agent-runtime/` | Agent-execution runtime (LangChain/LangGraph) — full copy of `worker`'s source, own package identity | **Scaffolded, installs/lints/tests green, not called by anything yet** (see §1) |
+| `backend/dispatcher/` | Queue consumption + budget/trust/policy + `ExecutionBackend` dispatch — physically stripped of `cys_core/runtime`+`cys_core/middleware`, no `langchain`/`deepagents` dependency | **Physically split from `worker` 2026-07-20, installs/lints/type-checks green — not yet deployed, not yet load-bearing** (see §1) |
 
 No `langchain`/`langgraph`/`deepagents`/`litellm` anywhere in `api`. No FastAPI anywhere in `worker`
-or `tool-gateway`. `release-gate.yml` is green; `lint`/`unit-tests`/`linter-security`/CodeQL cover all
-five packages, `arch-lint`/`domain-coverage`/`adversarial` cover `worker`/`api`/`tool-gateway`/
-`agent-runtime` (`model-gateway` still lacks the prerequisite files — see §1).
+or `tool-gateway`. No `langchain`/`deepagents` in `dispatcher` (kept `langchain-core`/`langgraph`/
+`litellm` — see §1 item 1 for exactly why). `release-gate.yml` is green; `lint`/`unit-tests`/
+`linter-security`/CodeQL cover all six packages, `arch-lint`/`domain-coverage`/`adversarial` cover
+`worker`/`api`/`tool-gateway`/`agent-runtime`/`dispatcher` (`model-gateway` still lacks the
+prerequisite files — see §1).
+
+**`backend/worker/` itself has not been deleted or renamed.** `backend/dispatcher/` was created as
+a fresh copy-then-trim, same way `backend/agent-runtime/` was — `worker` stays deployed, unchanged,
+until dispatcher+agent-runtime are proven out end-to-end (real cross-process job execution, real
+deploy manifests) and a deliberate, separate cutover retires it. Don't treat `dispatcher`/
+`agent-runtime` as replacing `worker` in production yet — they don't, today.
 
 ---
 
@@ -49,22 +58,68 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
 
 ### What's actually missing
 
-1. **Physical package split. Phase 1 done (2026-07-20), reveals the split is much bigger than it
-   looked.** `backend/agent-runtime/` now exists as its own package (own `pyproject.toml`/`uv.lock`,
-   installs, `ruff`/`ty`/`lint-imports` clean, full `pytest_batches.sh` green, wired into
-   `release-gate.yml`'s `lint`/`unit-tests`/`arch-lint`/`domain-coverage`/`adversarial`/
-   `linter-security` matrices + CodeQL). **It is currently a full copy of `backend/worker/`'s source
-   tree**, not a small trimmed extraction — traced via the actual transitive import closure from
-   `cys_core/runtime/agent.py` + `cys_core/middleware/*` + `cys_core/llm/*`: **496 of worker's 633
-   `.py` files (78%)** are genuinely reachable from the agent runtime, because `cys_core/registry/
-   tools.py` (`tool_registry`, imported directly by `agent.py`) wires in `reasoning_check` (trace
-   critic), `_resolve_spawn_worker_job` (follow-up spawning, engagement/workspace state), and other
-   DeepAgent built-in tools that pull in most of the application layer. A hand-picked "small"
-   package isn't realistic without first decoupling those tool functions from the application layer
-   they orchestrate — that's a separate, larger effort, not part of this split. `backend/worker/`
-   itself is **unchanged in shape** — still the same package, not yet stripped down to `dispatcher`
-   (see item 2, which blocks that).
-   - One real coupling bug found and fixed along the way:
+1. **Physical package split. Both halves now exist (2026-07-20).**
+   - `backend/agent-runtime/` (phase 1): own package (own `pyproject.toml`/`uv.lock`, installs,
+     `ruff`/`ty`/`lint-imports` clean, full `pytest_batches.sh` green, wired into `release-gate.yml`'s
+     `lint`/`unit-tests`/`arch-lint`/`domain-coverage`/`adversarial`/`linter-security` matrices +
+     CodeQL). **It is a full copy of `backend/worker/`'s source tree**, not a small trimmed
+     extraction — traced via the actual transitive import closure from `cys_core/runtime/agent.py` +
+     `cys_core/middleware/*` + `cys_core/llm/*`: **496 of worker's 633 `.py` files (78%)** are
+     genuinely reachable from the agent runtime, because `cys_core/registry/tools.py`
+     (`tool_registry`, imported directly by `agent.py`) wires in `reasoning_check` (trace critic),
+     `_resolve_spawn_worker_job` (follow-up spawning), and other DeepAgent built-in tools that pull in
+     most of the application layer.
+   - `backend/dispatcher/` (phase 2, done same day — turned out not to be blocked on item 2 after
+     all, see below): copy-then-trim of `backend/worker/`. **Physically deleted**
+     `cys_core/runtime/` (the LangGraph agent loop) and `cys_core/middleware/` (its LangChain
+     middleware stack) — confirmed via full-repo grep that `langgraph`/full `langchain`/`deepagents`
+     are used *only* inside those two directories (one exception below). Two things that looked
+     dispatcher-agnostic turned out to be misplaced inside `cys_core/middleware/` and needed
+     rescuing before deletion:
+     - `hitl_pause.py` — zero langchain/langgraph imports, genuinely dispatcher-side job-pause
+       bookkeeping (used by `ResumeHitlJob`), just co-located by folder convention. Restored as-is.
+     - `tool_dedup_middleware.py`'s `clear_tool_dedup()`/backing dict — 3 lines of trivial
+       dict-clearing, but the file importing it (`tool_dedup_middleware.py`) pulls in
+       `langchain`/`langgraph` at module level for its *other* content (the actual `AgentMiddleware`
+       class). `tool_execution_tracker.py` calls `clear_tool_dedup()` unconditionally on every job
+       cleanup regardless of execution backend — would have broken dispatcher outright. Extracted into
+       `cys_core/application/workers/tool_dedup_state.py` (no framework imports); both the real
+       middleware class (agent-runtime) and the cleanup call (dispatcher) import from there now. Note:
+       once dispatcher and agent-runtime are genuinely separate *processes*, this cleanup becomes a
+       harmless no-op on dispatcher's own always-empty copy of the dict — the real counting happens in
+       agent-runtime's process. Not a regression; the call was already going to be ineffective once
+       truly separated, this just stops it from being a crash too.
+     - Two more real "called unconditionally, not just deferred" bugs, caught by `ty check` (which
+       resolves deferred/function-local imports too, not just module-level ones — same lesson as
+       item 1's `lazy_agent_runner.py` placement mistake): `EngagementContainer.get_container()`
+       called `container.wire_runtime()` and `container.wire_hitl_pause()` unconditionally on every
+       first access, `wire_runtime()` importing `cys_core.runtime.agent` — removed the
+       `wire_runtime()` call from dispatcher's wiring sequence (method kept, unused, for
+       structural parity with worker/agent-runtime's copies).
+     - **Kept, not removed**: `cys_core/llm/*` and `cys_core/persistence.py` — `langchain_core`
+       (not full `langchain`) message/tool types (`ToolMessage`, `BaseTool`, etc.) are used
+       pervasively as the vocabulary for tool schemas/registry code across
+       `cys_core.application`/`cys_core.registry`/`cys_core.infrastructure`, not just the agent loop
+       — removing them would mean rewriting that vocabulary repo-wide, well beyond this split.
+       `persistence.py` needs `langgraph`'s checkpoint types for the same reason `ty check` requires
+       resolvable imports even on paths that are actually dead (see below) — so `dispatcher`'s
+       `pyproject.toml` keeps `langchain-core`/`langgraph`/`langgraph-checkpoint-postgres`/`litellm`,
+       drops `langchain` (full agents package) and `deepagents` (zero usage anywhere, confirmed).
+     - Remaining function-local `cys_core.runtime.agent` imports that stayed as genuinely-dead code
+       (never called in dispatcher, only reachable in agent-runtime's process or via dev/benchmark
+       CLI subcommands nobody runs against dispatcher) are marked `# ty: ignore[unresolved-import]`
+       with a one-line comment each, not deleted — deleting them would mean surgically editing a
+       900+ line shared tool-registry file (`registry/tools.py`) for a function
+       (`delegate_research`) that's still real, correct, working code in agent-runtime's identical copy.
+     - **`EXECUTION_BACKEND` now defaults to `subprocess` in dispatcher** (not `in_process`, which
+       is structurally unsupported — raises a clear `NotImplementedError` naming the reason and
+       pointing at `subprocess`/`k8s`/`docker` instead of a deep `ModuleNotFoundError`).
+       `AGENT_RUNTIME_PYTHON_EXECUTABLE` (new setting) is wired into
+       `SubprocessExecutionBackend(python_executable=...)` — the actual mechanism for item 2's
+       cross-process wiring, though not yet pointed at a real deployed `agent-runtime` (empty by
+       default, falls back to `sys.executable`, which will fail — see item 2 below for exactly why
+       that's still expected right now).
+   - One real coupling bug found and fixed along the way (before the dispatcher split, still true):
      `cys_core/middleware/security_middleware.py::_default_policy_port()` imported
      `bootstrap.container.get_container()` directly, which pulled the *entire* DI graph (all
      control-plane daemons, every container) into the closure through one lazy import. Fixed by
@@ -72,12 +127,18 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
      `persistence_provider.py` registry pattern) and wiring `bootstrap/container.py` to configure it
      during `wire_agent_definitions_loader()`, same as persistence. Verified: full `worker` test
      suite green (26 batches, 0 failed) after the change, dispatched via real CI.
-2. **Wire `AgentRunner` across the new process boundary — one real coupling point fixed
-   (2026-07-20), the rest still open.** Today's subprocess/Docker/K8s backends already speak
-   `SubprocessJobEnvelope` in/`RunResult` out, and `SubprocessExecutionBackend` already accepts a
-   configurable `python_executable`/`command` (so pointing it at
-   `backend/agent-runtime/.venv/bin/python` instead of `worker`'s own interpreter is mechanically
-   straightforward — not done yet).
+2. **Wire `AgentRunner` across the new process boundary — mechanism now built, not yet proven
+   end-to-end.** Today's subprocess/Docker/K8s backends already speak `SubprocessJobEnvelope`
+   in/`RunResult` out. `dispatcher`'s `SubprocessExecutionBackend` is now constructed with
+   `python_executable=self.settings.agent_runtime_python_executable or None`
+   (`AGENT_RUNTIME_PYTHON_EXECUTABLE` setting, empty by default — falls back to `sys.executable`,
+   which fails since dispatcher's own venv doesn't have `agent-runtime`'s dependencies). **Still
+   missing before this actually works**: (a) a real deployment where `AGENT_RUNTIME_PYTHON_EXECUTABLE`
+   points at an actually-installed `backend/agent-runtime/.venv/bin/python` (or, for containerized
+   deploy, `agent-runtime`'s own image) — no deploy manifest exists yet, that's item 7; (b) an
+   actual integration test spawning `agent-runtime`'s real `run-sandboxed-job` CLI from dispatcher
+   and confirming a `RunResult` round-trips correctly — needs live Postgres-backed infra neither
+   local dev nor CI has today, so this is genuinely unverified, not just undeployed.
    - **Fixed:** `EngagementContainer.get_worker_orchestrator()` and `.get_meta_planner()`
      (`backend/worker/src/bootstrap/containers/engagement_container.py`) both used to call
      `from cys_core.runtime.agent import get_runtime; runtime = get_runtime()`
@@ -97,17 +158,19 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
      calls `get_runtime()` directly, same as before). Verified via CI: new regression tests assert
      `get_runtime()` raises if called for non-`in_process` backends, and that the lazy proxy
      correctly delegates to the real runtime when actually invoked.
-   - **What this does NOT solve, to be precise about it**: this removes the *eager, unconditional*
-     import, not the dependency itself. If `MetaPlanner`'s planning path (or any other lazy-proxy
-     call) is ever actually invoked during a `subprocess`/`k8s`/`docker`-backend run, the process
-     *will* still import `cys_core.runtime.agent` at that point. So this is real, safe progress
-     toward item 1's package split — `worker` can now select a non-`in_process` backend without
-     forcing langchain to load — but it does **not** yet make it safe to physically remove
-     `cys_core/runtime/agent.py` from a future slim `dispatcher` package, since `MetaPlanner` (used
-     for engagement-level planning, wired into every job pipeline regardless of backend) still needs
-     it whenever a planning call actually happens. That requires either giving `MetaPlanner` its own
-     process-boundary call to `agent-runtime`, or moving engagement-level planning there too — open
-     question, not decided.
+   - **Correction to an earlier note here**: this section used to say the lazy-proxy fix "does not
+     yet make it safe to physically remove `cys_core/runtime/agent.py`" because `MetaPlanner`'s
+     planning path might still need it. Traced further and that turned out wrong (in dispatcher's
+     favor): `MetaPlanner`'s actual planning call only happens inside `RunWorkerJob.execute()`
+     (`is_engagement_plan_job`/`is_follow_up_plan_planner_job` branches), and `RunWorkerJob.execute()`
+     is *only* ever invoked by `InProcessExecutionBackend.execute()` — `SubprocessExecutionBackend`/
+     `K8sExecutionBackend`/`DockerExecutionBackend` call `execution_backend.execute(...)` directly and
+     never touch `RunWorkerJob.execute()` at all, delegating the *whole* job (agent execution **and**
+     meta-planning) to the child process. So for any non-`in_process` backend, `LazyInProcessAgentRunner.arun`/
+     `.aresume` are constructed but never actually called — confirmed by physically deleting
+     `cys_core/runtime/agent.py` from `backend/dispatcher/` (item 1, done 2026-07-20) and getting a
+     fully lint/type/arch-check-clean package. The real remaining blocker for a fully working
+     dispatcher is the process-boundary wiring itself (below), not this.
    - `WorkerOrchestrator.__init__` (`interfaces/worker/orchestrator.py`) still always builds
      `self._run_worker_job` via `container.get_run_worker_job(runtime=self.runtime, ...)` — left
      unchanged; it's genuinely needed regardless of backend for backend-agnostic bookkeeping
@@ -172,20 +235,31 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
    source under a new package identity — see item 1 above for why "small trimmed copy" wasn't
    realistic), no behavior change, still not called by anything (validates the extraction in
    isolation before touching process boundaries). `backend/worker/` itself unchanged.
-2. Rename/reshape `backend/worker/` → `backend/dispatcher/`, stripped of `cys_core/runtime/agent.py`
-   and the middleware stack (now only in `agent-runtime`). **Blocked on item 2 above**: can't strip
-   `cys_core/runtime/agent.py` out of `worker` until `get_worker_orchestrator()`/`get_meta_planner()`
-   stop unconditionally importing it — do that decoupling first, or this step breaks every execution
-   backend, not just `in_process`.
-3. Wire `dispatcher` → `agent-runtime` across a real process boundary using the existing
-   subprocess/Docker/K8s `ExecutionBackend`s — validate the `SubprocessJobEnvelope`/`RunResult`
-   contract holds for two genuinely separate deployables, not just separate in-process modules.
+2. ✅ **Done 2026-07-20 — turned out not to be blocked after all.** This step used to say "blocked
+   on item 2, can't strip `cys_core/runtime/agent.py` out of `worker` until `get_worker_orchestrator`/
+   `get_meta_planner` stop unconditionally importing it." That decoupling did land first (item 2's
+   lazy-proxy fix), and while doing it the deeper trace showed the block wasn't real to begin with —
+   `RunWorkerJob.execute()` (where both the agent loop and meta-planning actually run) is only ever
+   invoked by `InProcessExecutionBackend`, so `backend/dispatcher/` could be created straight away:
+   copy-then-trim of `backend/worker/`, `cys_core/runtime/` and `cys_core/middleware/` physically
+   deleted, `langchain`/`deepagents` dropped from `pyproject.toml`, `EXECUTION_BACKEND` defaulted to
+   `subprocess`. Installs, lints, type-checks, arch-checks clean; wired into `release-gate.yml`.
+   `backend/worker/` itself untouched, still deployed — see "Current state" table above for why it
+   isn't retired yet.
+3. **Next up.** Wire `dispatcher` → `agent-runtime` across a real process boundary using the existing
+   subprocess/Docker/K8s `ExecutionBackend`s. Mechanism exists (`AGENT_RUNTIME_PYTHON_EXECUTABLE` →
+   `SubprocessExecutionBackend(python_executable=...)`), **not proven**: needs a live Postgres-backed
+   environment to actually spawn `agent-runtime`'s `run-sandboxed-job` CLI from dispatcher and confirm
+   a `SubprocessJobEnvelope`/`RunResult` round-trip — neither local dev nor CI has that today.
 4. Wire `agent-runtime` → `model-gateway` for LLM calls (closes item 3 above).
-5. Resolve the `ModelConnector` `BaseChatModel` pinning (closes item 4) — needed before a second
-   `AgentRunner` implementation is worth building.
+5. Register a second, genuinely different `AgentRunner` implementation (closes the rest of item 4) —
+   the selector (`AGENT_RUNNER_IMPL`/`get_agent_runner`/`configure_agent_runner`) is built and tested,
+   but only `"langgraph"` exists; this step is building and registering an actual alternative.
 6. Implement the HITL pause/resume redesign (closes item 5) — do this before relying on the split
    in production with HITL-gated personas.
-7. CI/deploy bootstrap for `agent-runtime` (closes item 7).
+7. CI/deploy bootstrap for `agent-runtime` **and now `dispatcher`** (closes item 7) — no Dockerfile,
+   compose/Helm entry, or deploy manifest exists for either yet; this is also the prerequisite for
+   step 3 above (nothing to point `AGENT_RUNTIME_PYTHON_EXECUTABLE` at without a real deploy).
 8. gVisor/Kata (item 6) — only after the above is stable; start with the `runtimeClassName` field
    approach on `K8sExecutionBackend`, validate against a real cluster before assuming a new backend
    class is needed.

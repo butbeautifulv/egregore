@@ -6,6 +6,7 @@ paths:
   - backend/tool-gateway/src
   - backend/model-gateway/src
   - backend/agent-runtime/src
+  - backend/dispatcher/src
 
 dataExtensions:
   - .github/codeql/python-extensions.yml

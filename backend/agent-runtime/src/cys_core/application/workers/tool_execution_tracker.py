@@ -71,7 +71,7 @@ def clear_tool_execution_count(job_id: str) -> None:
         _siem_drilldown_counts.pop(job_id, None)
         _tool_call_counts.pop(job_id, None)
         from cys_core.application.workers.tool_result_cache import clear_tool_result_cache
-        from cys_core.middleware.tool_dedup_middleware import clear_tool_dedup
+        from cys_core.application.workers.tool_dedup_state import clear_tool_dedup
 
         clear_tool_result_cache(job_id)
         clear_tool_dedup(job_id)
