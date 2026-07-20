@@ -5826,3 +5826,46 @@ checking new test files individually alongside their `src` targets is the correc
 `lint-imports`, `verify_import_boundaries.py` — all clean across `worker`/`dispatcher`/
 `agent-runtime`. No `pytest` run locally.
 <!-- commit sha / CI run id filled in after push -->
+
+## 57. model-gateway `arch-lint` CI coverage (§2 model-gateway theme, partial)
+
+model-gateway had no `import-linter`, no `scripts/verify_import_boundaries.py`, no
+`tests/architecture/` — the only one of the six backend packages without any of that. Ported a
+**scoped-down** version, not a copy-paste of worker/tool-gateway's ~395-line script: this package
+only has 4 real layers (`cys_core.domain` — self-contained security guardrails/sanitizer/patterns —
+`<- cys_core.application.use_cases <- bootstrap`/`interfaces`), confirmed by reading every import in
+`src/cys_core/domain` and `src/cys_core/application` directly rather than assuming worker's larger
+contract set applies. No `cys_core.infrastructure`/`registry`/`runtime`/`middleware`/`observability`/
+`llm`/`persistence` exists here, so none of those checks were ported — they'd just be dead code
+checking layers that don't exist.
+
+Added: `import-linter>=2.0` dev dependency + `[tool.importlinter]` config (3 contracts:
+`domain_independent`, `application_only_domain`, `no_config_in_domain_application`, mirroring
+tool-gateway's naming for the equivalent real layers only); `scripts/verify_import_boundaries.py`
+(~70 lines vs. worker's ~395 — two checks: domain must not import application/bootstrap/interfaces,
+application must not import bootstrap/interfaces); `scripts/verify_no_langfuse_in_core.sh` (ported
+verbatim — cheap, real, applies regardless of package size); `tests/architecture/
+test_import_boundaries.py` (4 tests exercising both checks plus both scripts standalone). Wired
+`model-gateway` into the `arch-lint` CI job matrix in `release-gate.yml` (previously
+`[worker, api, tool-gateway, agent-runtime, dispatcher]`, model-gateway was the one gap).
+
+**Deliberately not attempted in this pass**: `domain-coverage` (`--cov-fail-under=100` on
+`tests/domain/`) — model-gateway's `pyproject.toml` already has `[tool.coverage.run] source =
+["src/cys_core/domain"]` configured (someone's earlier partial setup) but **no `tests/domain/`
+directory exists at all**. Reaching 100% coverage of the domain package (guardrails, sanitizer,
+redaction, and per-language injection/PII pattern files for de/en/es/fr/ru/zh) means writing a real
+test suite from scratch, not wiring up an existing one — a materially larger, riskier task than the
+arch-lint port (verified blind through CI only, several round trips likely, no local pytest
+allowed) and out of scope for this pass. `adversarial` CI coverage also still missing, same
+"needs its own suite built" reasoning. Left both as open items rather than silently declaring the
+whole "missing arch-lint/domain-coverage/adversarial CI coverage" backlog line done.
+
+### 57.1. Verification
+
+Local: `uv sync` (installs `import-linter`, regenerates `uv.lock`), `uv run lint-imports` (3/3
+contracts kept), `uv run python scripts/verify_import_boundaries.py` (both checks OK),
+`bash scripts/verify_no_langfuse_in_core.sh` (OK), `ruff check`, `ty check src` — all clean. No
+`pytest` run locally (the new `tests/architecture/test_import_boundaries.py` itself invokes both
+scripts as subprocesses, so its assertions were checked by running the scripts directly, not by
+running pytest).
+<!-- commit sha / CI run id filled in after push -->

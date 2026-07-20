@@ -57,4 +57,32 @@ dev = [
     "ty>=0.0.1a25",
     "ruff>=0.15.21",
     "httpx>=0.28.0",
+    "import-linter>=2.0",
 ]
+
+# model-gateway's own layering (docs/MSP_BACKLOG.md §29.4, §54, §56.7): cys_core.domain
+# (self-contained security guardrails/sanitizer) <- cys_core.application (use cases) <-
+# bootstrap/interfaces. Scoped to what actually exists here, not copy-pasted from
+# worker/tool-gateway's larger contract set (no cys_core.infrastructure/registry/runtime/
+# middleware/observability/llm/persistence in this package).
+[tool.importlinter]
+root_package = "cys_core"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain_independent"
+type = "forbidden"
+source_modules = ["cys_core.domain"]
+forbidden_modules = ["cys_core.application", "bootstrap", "interfaces"]
+
+[[tool.importlinter.contracts]]
+name = "application_only_domain"
+type = "layers"
+layers = ["cys_core.application", "cys_core.domain"]
+
+[[tool.importlinter.contracts]]
+name = "no_config_in_domain_application"
+type = "forbidden"
+source_modules = ["cys_core.domain", "cys_core.application"]
+forbidden_modules = ["bootstrap", "interfaces"]
+allow_indirect_imports = true

@@ -121,9 +121,12 @@ back correctly. Does not support HITL resume (see item 2) — a tool call matchi
 - No streaming support (`POST /v1/model/invoke` is request/response only) — `agent-runtime`'s
   `ModelGatewayChatModel._astream` works around this with a single-chunk fallback (§54), not a fix.
 - No per-call rate limiting or budget tracking, unlike `tool-gateway`.
-- Missing `arch-lint`/`domain-coverage`/`adversarial` CI coverage — needs its own
-  `import-linter`/`scripts/verify_import_boundaries.py`/`tests/architecture/` port first, none
-  exist for this package today.
+- `arch-lint` CI coverage added (`import-linter` + `scripts/verify_import_boundaries.py` +
+  `tests/architecture/`, scoped to this package's actual 4-layer structure — no
+  infrastructure/registry/runtime/middleware layers here to check). `domain-coverage`
+  (`--cov-fail-under=100` on `tests/domain/`) and `adversarial` still missing — `domain-coverage`
+  needs a `tests/domain/` suite written from scratch first (none exists), a separate, larger effort
+  than the arch-lint port. `MSP_BACKLOG.md` §57.
 - `MSP_BACKLOG.md` §29.4, §49, §54.
 
 ### Product ideas (recorded, not scoped)
