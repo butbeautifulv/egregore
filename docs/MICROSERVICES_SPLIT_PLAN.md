@@ -1,7 +1,7 @@
 # Microservices Split — Active Plan
 
 > Full history, investigations, and reasoning behind every decision below live in
-> [`docs/MSP_BACKLOG.md`](MSP_BACKLOG.md) (§0–§53). This file is the current to-do list only —
+> [`docs/MSP_BACKLOG.md`](MSP_BACKLOG.md) (§0–§54). This file is the current to-do list only —
 > straight to the point, no narrative. When an item below is done, move its summary to
 > `MSP_BACKLOG.md` and delete it from here.
 
@@ -15,15 +15,16 @@ physical copy of `cys_core.domain`/`bootstrap`/generic infra — deliberate dupl
 | `backend/api/` | FastAPI ingress/CRUD, event routing, HITL resume over HTTP | Deployed, CI-complete |
 | `backend/worker/` | Original monolith (agent runtime + queue consumption + control-plane daemons) | **Deployed, unchanged** — not yet retired |
 | `backend/tool-gateway/` | PEP for sandboxed agent tool calls (async stdlib server) | Deployed, CI-complete |
-| `backend/model-gateway/` | LLM-call chokepoint (input sanitize, prompt-digest check, output-leakage guard) | Built, tested; `agent-runtime` wiring written, **pending CI confirmation** |
+| `backend/model-gateway/` | LLM-call chokepoint (input sanitize, prompt-digest check, output-leakage guard) | Deployed image (Dockerfile+CI), wired into `agent-runtime` (selectable, not default) |
 | `backend/agent-runtime/` | Swappable agent-execution runtime (LangGraph today) — full copy of `worker` | Package exists, CI-green, **not called by anything yet** |
 | `backend/dispatcher/` | Queue + budget/policy + `ExecutionBackend` dispatch, no agent-execution engine | Package exists, CI-green, **not deployed** |
 
 `backend/worker/` is not deleted or renamed — stays deployed until `dispatcher`+`agent-runtime` are
 proven out end-to-end and a deliberate cutover retires it. See `MSP_BACKLOG.md` §52 for exactly how
 the split (§52.1), the `AgentRunner` registry (§52.3), the deploy bootstrap (§52.5), and the
-tool-gateway async fix (§52.6) were built and verified, and §53 for the same async fix synced to
-`worker`/`agent-runtime`.
+tool-gateway async fix (§52.6) were built and verified, §53 for the same async fix synced to
+`worker`/`agent-runtime`, and §54 for the `model-gateway` wiring (including two real CI failures
+caught and fixed properly, not papered over).
 
 ---
 
@@ -37,33 +38,24 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
    two live, connected processes. Mechanism exists (`AGENT_RUNTIME_PYTHON_EXECUTABLE` →
    `SubprocessExecutionBackend`, or `k8s`/`docker` backends pointing at a real `agent-runtime` image)
    but is unverified — needs a live Postgres-backed environment neither local dev nor CI has today.
-   Blocked on item 3 below (no deploy target to point at yet). `MSP_BACKLOG.md` §52.1–§52.4.
-2. **Wire `agent-runtime` → `model-gateway`.** Code written, pending real-CI confirmation before
-   this is called done (session discipline: dispatch, don't claim). Extended model-gateway's
-   request/response contract with tool-calling support (was text-only, useless for a SOC agent
-   that calls tools constantly); added `ModelGatewayChatModel`/`ModelGatewayProvider` in
-   `agent-runtime`, registered in the existing `ChatModelProvider` registry under
-   `"model-gateway"`, selectable via a new `MODEL_PROVIDER` setting (default stays `"litellm"` —
-   this is a selector, not a cutover). Streaming still goes through a single-chunk fallback
-   (`POST /v1/model/invoke` has no streaming endpoint, `MSP_BACKLOG.md` §29.4's own documented
-   gap, not solved here).
-3. **Deploy bootstrap: compose/Helm entries.** Dockerfiles exist and are CI-verified (§52.5), but
+   Blocked on item 2 below (no deploy target to point at yet). `MSP_BACKLOG.md` §52.1–§52.4.
+2. **Deploy bootstrap: compose/Helm entries.** Dockerfiles exist and are CI-verified (§52.5), but
    there's no `docker-compose.dev.yml` entry and no Helm/K8s manifest for either package. Needs a
    deliberate decision on execution-backend shape for a real multi-container deploy — `subprocess`
    mode is same-filesystem only (doesn't work across containers); `docker` backend needs the
    dispatcher container to hold the `docker` CLI and a bind-mounted host `/var/run/docker.sock`
    (privilege-escalation-shaped, needs its own review). `MSP_BACKLOG.md` §52.4, §52.5.
-4. **Register a second `AgentRunner` implementation.** The selector (`AGENT_RUNNER_IMPL`/
+3. **Register a second `AgentRunner` implementation.** The selector (`AGENT_RUNNER_IMPL`/
    `get_agent_runner`/`configure_agent_runner`) is built and tested, but only `"langgraph"` exists.
    Building a second, real implementation means matching `AgentRuntime._build_middleware`'s security/
    HITL/budget-tracking coverage — substantial, standalone engineering. `MSP_BACKLOG.md` §52.3.
-5. **HITL pause/resume redesign for the cross-process case.** Today's mechanism
+4. **HITL pause/resume redesign for the cross-process case.** Today's mechanism
    (`langgraph.interrupt()` + checkpointer) is in-process-shaped and won't survive `agent-runtime`
    being a separate process. Design exists (refuse-then-retry with an `approval_id` token, reusing
    `ResumeHitlJob`'s anti-tampering pattern) but is **not implemented** — do this before relying on
    the split in production with HITL-gated personas. `MSP_BACKLOG.md` §35.
-6. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
-   only, zero code. Only after items 1–3 are stable. `MSP_BACKLOG.md` §22.5.
+5. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
+   only, zero code. Only after items 1–2 are stable. `MSP_BACKLOG.md` §22.5.
 
 ---
 
@@ -118,12 +110,16 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   `MSP_BACKLOG.md` §48.4, §50.1.
 
 ### model-gateway
-- No Dockerfile, no deploy manifest (compose/Helm).
+- No deploy manifest (compose/Helm) — Dockerfile exists now (§54), no compose/Helm entry yet, same
+  gap as agent-runtime/dispatcher (§1 item 2).
 - No NetworkPolicy egress restriction.
-- No streaming support (`POST /v1/model/invoke` is request/response only).
+- No streaming support (`POST /v1/model/invoke` is request/response only) — `agent-runtime`'s
+  `ModelGatewayChatModel._astream` works around this with a single-chunk fallback (§54), not a fix.
 - No per-call rate limiting or budget tracking, unlike `tool-gateway`.
-- Missing `arch-lint`/`domain-coverage`/`adversarial` CI coverage.
-- `MSP_BACKLOG.md` §29.4, §49.
+- Missing `arch-lint`/`domain-coverage`/`adversarial` CI coverage — needs its own
+  `import-linter`/`scripts/verify_import_boundaries.py`/`tests/architecture/` port first, none
+  exist for this package today.
+- `MSP_BACKLOG.md` §29.4, §49, §54.
 
 ### Product ideas (recorded, not scoped)
 - **Agent-session self-looping** — event-gated self-continuation for egregore's own SOC personas,
