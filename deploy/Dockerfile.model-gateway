@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1
+# cxado/egregore-model-gateway — the network chokepoint for LLM calls,
+# symmetrical to the Tool Gateway: immutable-rules/system-prompt-digest
+# validation, input sanitization, output-leakage guardrails, independent of
+# whichever agent runtime is calling it. No agent-execution frameworks
+# (langgraph/deepagents) — only litellm for the actual provider call. See
+# docs/MSP_BACKLOG.md §29, docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2.
+#
+# Build from egregore repo root: docker build -f deploy/Dockerfile.model-gateway .
+#
+# Builder: deps + uv sync. Runtime: fresh slim, OS upgraded, perl-base removed (SCA surface).
+
+FROM python:3.13-slim@sha256:bffeb7bd6a85767587059c6ba23e1e9122078e3aa3fa836099171b9bb5a9bb00 AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+WORKDIR /app
+COPY --from=ghcr.io/astral-sh/uv:0.11.12@sha256:027318b213a7804ecd085ea7efdcdc4d44fa202c6e676c86ce86c0206d38f65c /uv /usr/local/bin/uv
+
+# Layer 1: lockfile only — egregore-model-gateway is fully self-contained (no
+# backend/agents catalog dependency, unlike tool-gateway/dispatcher/agent-runtime —
+# this service's job is narrow, see docs/MSP_BACKLOG.md §29.2) — cached until this
+# package's own deps change.
+COPY backend/model-gateway/pyproject.toml backend/model-gateway/uv.lock backend/model-gateway/README.md ./model-gateway/
+WORKDIR /app/model-gateway
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+# Layer 2: this package's own source — only reinstalls its local wheel, not
+# all deps.
+COPY backend/model-gateway/src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+FROM python:3.13-slim@sha256:bffeb7bd6a85767587059c6ba23e1e9122078e3aa3fa836099171b9bb5a9bb00 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV STAGE=prod
+ENV UV_CACHE_DIR=/tmp/uv-cache
+WORKDIR /app/model-gateway
+
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && apt-get purge -y --allow-remove-essential \
+      perl-base gzip login util-linux mount \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 10001 app \
+ && useradd --uid 10001 --gid app --home-dir /app --no-create-home app
+
+COPY --from=builder --chown=app:app /app/model-gateway /app/model-gateway
+
+USER 10001
+ENV PATH="/app/model-gateway/.venv/bin:$PATH"
+EXPOSE 8093
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"MODEL_GATEWAY_PORT\", \"8093\")}/health', timeout=3)"]
+
+ENTRYPOINT ["egregore-model-gateway"]

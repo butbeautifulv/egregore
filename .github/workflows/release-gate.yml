@@ -278,7 +278,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        service: [api, worker, tool-gateway, agent-runtime, dispatcher]
+        service: [api, worker, tool-gateway, model-gateway, agent-runtime, dispatcher]
     steps:
       - uses: actions/checkout@v5
       - uses: docker/login-action@v4
@@ -313,7 +313,7 @@ jobs:
       packages: read
     strategy:
       matrix:
-        service: [api, worker, tool-gateway, agent-runtime, dispatcher]
+        service: [api, worker, tool-gateway, model-gateway, agent-runtime, dispatcher]
     uses: ./.github/workflows/job-sca-image.yml
     secrets: inherit
     with:
@@ -324,7 +324,7 @@ jobs:
     needs: [container-scan]
     strategy:
       matrix:
-        service: [api, worker, tool-gateway, agent-runtime, dispatcher]
+        service: [api, worker, tool-gateway, model-gateway, agent-runtime, dispatcher]
     uses: ./.github/workflows/job-sign.yml
     secrets: inherit
     with:
