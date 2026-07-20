@@ -1,0 +1,20 @@
+[
+  {
+    "id": "rag-001",
+    "question": "What is the incident severity for alert INC-42?",
+    "contexts": [
+      {"chunk_id": "chunk-inc42-1", "text": "Alert INC-42 severity: high", "source": "siem-export"}
+    ],
+    "expected_answer": "high",
+    "must_cite": ["chunk-inc42-1"]
+  },
+  {
+    "id": "rag-002",
+    "question": "Was playbook PB-7 executed?",
+    "contexts": [
+      {"chunk_id": "chunk-pb7-1", "text": "Playbook PB-7 status: not executed", "source": "runbook-index"}
+    ],
+    "expected_answer": "not executed",
+    "must_cite": ["chunk-pb7-1"]
+  }
+]

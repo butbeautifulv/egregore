@@ -1,0 +1,131 @@
+[project]
+name = "egregore-agent-runtime"
+version = "0.1.0"
+description = "Egregore agent-runtime service — the LangChain/LangGraph agent-execution runtime, extracted from egregore-worker as its own deployable (docs/MICROSERVICES_SPLIT_PLAN.md §1). Phase 1: physical package split only, still exercised in-process via backend/worker's own copy — not yet wired across a real process boundary (see docs/MICROSERVICES_SPLIT_PLAN.md §1 phase 3)."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    "deepagents>=0.4.0",
+    "langchain>=1.3.6",
+    "langchain-core>=1.4.0",
+    "langgraph>=1.2.4",
+    "langgraph-checkpoint-postgres>=3.1.0",
+    "litellm>=1.86.1",
+    "langfuse>=4.6.1",
+    "qdrant-client>=1.12.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "structlog>=26.0.0",
+    "httpx>=0.28.0",
+    "rapidfuzz>=3.13.0",
+    "pyyaml>=6.0",
+    # Absorbed from egregore-contracts (backend/contracts retired, see
+    # docs/MICROSERVICES_SPLIT_PLAN.md §18): generic Postgres/Kafka/Redis
+    # infra, auth, observability wiring that cys_core.infrastructure/bootstrap
+    # depend on, physically duplicated into this package's own src/.
+    "psycopg[binary]>=3.3.0",
+    "redis>=8.0.0",
+    "aiokafka>=0.12.0",
+    "pyjwt[crypto]>=2.10.0",
+    "openfga-sdk>=0.10.4",
+    "prometheus-client>=0.21.0",
+    "opentelemetry-api>=1.29.0",
+    "opentelemetry-sdk>=1.29.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.29.0",
+    "opentelemetry-instrumentation-httpx>=0.50b0",
+    "opentelemetry-instrumentation-redis>=0.50b0",
+    "opentelemetry-instrumentation-psycopg>=0.50b0",
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.4.0",
+]
+
+[project.scripts]
+egregore-agent-runtime = "interfaces.cli.main:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src", "../.."]
+markers = [
+    "unit: fast isolated tests",
+    "integration: multi-module wiring",
+    "adversarial: security abuse cases",
+]
+addopts = "--strict-markers"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cys_core", "src/interfaces", "src/bootstrap"]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bootstrap", "cys_core", "interfaces"]
+
+[tool.coverage.run]
+source = ["src/cys_core/domain"]
+omit = ["*/__init__.py"]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+    "import-linter>=2.0",
+    "ty>=0.0.1a25",
+    "ruff>=0.15.21",
+]
+
+[tool.importlinter]
+root_package = "cys_core"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain_independent"
+type = "forbidden"
+source_modules = ["cys_core.domain"]
+forbidden_modules = [
+    "cys_core.infrastructure",
+    "cys_core.registry",
+    "cys_core.runtime",
+    "cys_core.middleware",
+    "cys_core.security",
+    "cys_core.observability",
+    "cys_core.llm",
+    "cys_core.persistence",
+    "bootstrap",
+    "interfaces",
+]
+
+[[tool.importlinter.contracts]]
+name = "application_only_domain"
+type = "layers"
+layers = [
+    "cys_core.application",
+    "cys_core.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "no_config_in_domain_application"
+type = "forbidden"
+source_modules = ["cys_core.domain", "cys_core.application"]
+forbidden_modules = ["config", "bootstrap"]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = [
+    "cys_core.application.use_cases.evaluate_trace_critic -> bootstrap",
+    "cys_core.application.use_cases.run_step -> bootstrap",
+    "cys_core.application.use_cases.seed_catalog -> bootstrap",
+    "cys_core.application.use_cases.upsert_profile_policy -> bootstrap",
+    "cys_core.application.tools.providers.sandbox -> bootstrap",
+    "cys_core.application.use_cases.enqueue_follow_up -> bootstrap",
+]

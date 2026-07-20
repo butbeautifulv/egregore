@@ -1,0 +1,16 @@
+{
+  "suite": "ci-small",
+  "cases": [
+    {
+      "id": "smoke-001",
+      "input": {"question": "ping"},
+      "expected": {"status": "ok"}
+    },
+    {
+      "id": "rag-tiny-001",
+      "input": {"question": "What is the incident severity for alert INC-42?"},
+      "expected": {"answer_contains": "high"},
+      "tags": ["rag", "tiny"]
+    }
+  ]
+}
