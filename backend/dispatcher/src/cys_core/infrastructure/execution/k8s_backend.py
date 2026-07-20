@@ -159,7 +159,7 @@ class K8sExecutionBackend:
             },
         }
 
-    def _run_sync(
+    async def _run_async(
         self, job: WorkerJob, budgeted: WorkerJob, session_id: str, job_timeout: float
     ) -> RunResult:
         if self._batch_api is None:
@@ -177,13 +177,16 @@ class K8sExecutionBackend:
             envelope_json=envelope.model_dump_json(),
             job_timeout=job_timeout,
         )
-        self._batch_api.create_namespaced_job(namespace=self.namespace, body=body)
+        await asyncio.to_thread(self._batch_api.create_namespaced_job, namespace=self.namespace, body=body)
         try:
-            return self._poll_for_result(job, job_timeout=job_timeout)
+            return await self._apoll_for_result(job, job_timeout=job_timeout)
         finally:
             try:
-                self._batch_api.delete_namespaced_job(
-                    name=job_name, namespace=self.namespace, propagation_policy="Background"
+                await asyncio.to_thread(
+                    self._batch_api.delete_namespaced_job,
+                    name=job_name,
+                    namespace=self.namespace,
+                    propagation_policy="Background",
                 )
             except Exception:
                 logger.error(
@@ -194,10 +197,17 @@ class K8sExecutionBackend:
                     exc_info=True,
                 )
 
-    def _poll_for_result(self, job: WorkerJob, *, job_timeout: float) -> RunResult:
+    async def _apoll_for_result(self, job: WorkerJob, *, job_timeout: float) -> RunResult:
+        # Polls dispatcher's own job_store (not the K8s API — the pod reports status
+        # there, same as subprocess/docker backends), so this can't become a real
+        # K8s watch; the fix here is only to stop occupying a whole thread-pool
+        # slot for the entire job_timeout (previously time.sleep in a thread via
+        # asyncio.to_thread wrapping the full sync method) — await asyncio.sleep()
+        # between polls costs nothing, and only the actual blocking job_store.get()
+        # call is threaded.
         deadline = time.monotonic() + job_timeout
         while True:
-            record = self._job_store.get(job.job_id)
+            record = await asyncio.to_thread(self._job_store.get, job.job_id)
             if record is not None and record.status in _TERMINAL_STATUSES:
                 return RunResult(
                     job_id=job.job_id,
@@ -207,7 +217,7 @@ class K8sExecutionBackend:
                 )
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"kubernetes job for job_id={job.job_id!r} did not complete in time")
-            time.sleep(self._poll_interval_s)
+            await asyncio.sleep(self._poll_interval_s)
 
     async def execute(
         self,
@@ -217,4 +227,4 @@ class K8sExecutionBackend:
         job_state: dict[str, str],
     ) -> RunResult:
         job_timeout = self._job_timeout_resolver(job)
-        return await asyncio.to_thread(self._run_sync, job, budgeted, session_id, job_timeout)
+        return await self._run_async(job, budgeted, session_id, job_timeout)

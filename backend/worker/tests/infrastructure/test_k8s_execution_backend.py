@@ -50,7 +50,7 @@ def test_owns_timeout_is_true():
 
 
 @pytest.mark.unit
-def test_job_spec_runs_run_sandboxed_job_not_daemon():
+async def test_job_spec_runs_run_sandboxed_job_not_daemon():
     """Phase 3.0/3.1 fix: the pod must run this specific job, not a
     queue-draining worker.daemon that could pick up any job."""
     batch_api = MagicMock()
@@ -58,7 +58,7 @@ def test_job_spec_runs_run_sandboxed_job_not_daemon():
     backend = _backend(job_store=job_store, batch_api=batch_api)
     job = _job()
 
-    backend._run_sync(job, job, "session-1", job_timeout=1.0)
+    await backend._run_async(job, job, "session-1", job_timeout=1.0)
 
     _, kwargs = batch_api.create_namespaced_job.call_args
     body = kwargs["body"]
@@ -79,41 +79,41 @@ def test_job_spec_runs_run_sandboxed_job_not_daemon():
 
 
 @pytest.mark.unit
-def test_deletes_job_after_completion():
+async def test_deletes_job_after_completion():
     batch_api = MagicMock()
     job_store = _FakeJobStore([_FakeJobRecord(WorkerJobStatus.COMPLETED)])
     backend = _backend(job_store=job_store, batch_api=batch_api)
 
-    result = backend._run_sync(_job(), _job(), "session-1", job_timeout=1.0)
+    result = await backend._run_async(_job(), _job(), "session-1", job_timeout=1.0)
 
     assert result.success is True
     batch_api.delete_namespaced_job.assert_called_once()
 
 
 @pytest.mark.unit
-def test_failed_job_record_produces_failed_result():
+async def test_failed_job_record_produces_failed_result():
     job_store = _FakeJobStore(
         [_FakeJobRecord(WorkerJobStatus.FAILED, last_error="boom", failure_reason="worker_job_timeout")]
     )
     backend = _backend(job_store=job_store)
 
-    result = backend._run_sync(_job("j2"), _job("j2"), "session-1", job_timeout=1.0)
+    result = await backend._run_async(_job("j2"), _job("j2"), "session-1", job_timeout=1.0)
 
     assert result.success is False
     assert result.error == "boom"
 
 
 @pytest.mark.unit
-def test_polling_times_out_if_never_terminal():
+async def test_polling_times_out_if_never_terminal():
     job_store = _FakeJobStore([None])
     backend = _backend(job_store=job_store, poll_interval_s=0.01)
 
     with pytest.raises(TimeoutError):
-        backend._run_sync(_job("j3"), _job("j3"), "session-1", job_timeout=0.05)
+        await backend._run_async(_job("j3"), _job("j3"), "session-1", job_timeout=0.05)
 
 
 @pytest.mark.unit
-def test_no_batch_api_raises_instead_of_running_unsandboxed():
+async def test_no_batch_api_raises_instead_of_running_unsandboxed():
     backend = K8sExecutionBackend(
         job_store=_FakeJobStore([]),
         namespace="egregore",
@@ -122,11 +122,11 @@ def test_no_batch_api_raises_instead_of_running_unsandboxed():
         batch_api=None,
     )
     with pytest.raises(RuntimeError, match="unavailable"):
-        backend._run_sync(_job(), _job(), "session-1", job_timeout=1.0)
+        await backend._run_async(_job(), _job(), "session-1", job_timeout=1.0)
 
 
 @pytest.mark.unit
-def test_sets_runtime_class_when_configured():
+async def test_sets_runtime_class_when_configured():
     batch_api = MagicMock()
     job_store = _FakeJobStore([_FakeJobRecord(WorkerJobStatus.COMPLETED)])
     backend = K8sExecutionBackend(
@@ -138,7 +138,7 @@ def test_sets_runtime_class_when_configured():
         runtime_class="gvisor",
     )
 
-    backend._run_sync(_job(), _job(), "session-1", job_timeout=1.0)
+    await backend._run_async(_job(), _job(), "session-1", job_timeout=1.0)
 
     _, kwargs = batch_api.create_namespaced_job.call_args
     pod_spec = kwargs["body"]["spec"]["template"]["spec"]
@@ -146,12 +146,12 @@ def test_sets_runtime_class_when_configured():
 
 
 @pytest.mark.unit
-def test_omits_runtime_class_when_unset():
+async def test_omits_runtime_class_when_unset():
     batch_api = MagicMock()
     job_store = _FakeJobStore([_FakeJobRecord(WorkerJobStatus.COMPLETED)])
     backend = _backend(job_store=job_store, batch_api=batch_api)
 
-    backend._run_sync(_job(), _job(), "session-1", job_timeout=1.0)
+    await backend._run_async(_job(), _job(), "session-1", job_timeout=1.0)
 
     _, kwargs = batch_api.create_namespaced_job.call_args
     pod_spec = kwargs["body"]["spec"]["template"]["spec"]
