@@ -72,36 +72,44 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
      `persistence_provider.py` registry pattern) and wiring `bootstrap/container.py` to configure it
      during `wire_agent_definitions_loader()`, same as persistence. Verified: full `worker` test
      suite green (26 batches, 0 failed) after the change, dispatched via real CI.
-2. **Wire `AgentRunner` across the new process boundary — traced the exact blocker, not fixed yet.**
-   Today's subprocess/Docker/K8s backends already speak `SubprocessJobEnvelope` in/`RunResult` out,
-   and `SubprocessExecutionBackend` already accepts a configurable `python_executable`/`command` (so
-   pointing it at `backend/agent-runtime/.venv/bin/python` instead of `worker`'s own interpreter is
-   mechanically straightforward). **The real blocker is upstream of that**, in
-   `backend/worker/src/bootstrap/containers/engagement_container.py`:
-   - `EngagementContainer.get_worker_orchestrator()` calls `from cys_core.runtime.agent import
-     get_runtime; runtime = get_runtime()` **unconditionally, before branching on
-     `settings.execution_backend`** — so even `subprocess`/`k8s`/`docker` mode constructs a full
-     in-process `AgentRuntime` (and imports langchain/langgraph/litellm) that then goes unused.
-   - `EngagementContainer.get_meta_planner()` separately does the same direct
-     `from cys_core.runtime.agent import get_runtime` import, unconditionally, to build `MetaPlanner`
-     — which `get_run_worker_job()` wires into *every* job pipeline (`WorkerPipelineDeps.meta_planner`)
-     regardless of execution backend.
-   - `WorkerOrchestrator.__init__` (`interfaces/worker/orchestrator.py`) always builds
-     `self._run_worker_job` via `container.get_run_worker_job(runtime=self.runtime, ...)` even when an
-     out-of-process `execution_backend` is passed in — `_run_worker_job` is genuinely needed
-     regardless of backend (its `mark_job_timeout`/`try_salvage_partial`/`mark_runtime_failure`
-     methods are backend-agnostic bookkeeping), but building it currently forces `runtime` to be a
-     real `AgentRuntime`, not just an `AgentRunner` Protocol value.
-   - Net effect: as long as these three call sites exist, `backend/worker/` (or its future
-     `dispatcher` rename) **cannot** drop the langchain/langgraph/litellm dependency, no matter what
-     `EXECUTION_BACKEND` is configured — this is the concrete reason item 1's package split can't
-     finish either. Fixing this means making `runtime` lazy/optional in `WorkerOrchestrator` and
-     `get_worker_orchestrator()`, and giving `MetaPlanner` its own decoupled construction path (it's
-     an engagement-level planning call, not per-job agent execution — worth checking whether it
-     even needs to run in `dispatcher` at all vs. also moving to `agent-runtime`). **Deliberately not
-     attempted blind in this pass**: this is live per-job dispatch construction with zero existing
-     test coverage for a "lazy runtime" path — needs its own careful pass with real test coverage,
-     not a same-session edit on top of an already-large diff.
+2. **Wire `AgentRunner` across the new process boundary — one real coupling point fixed
+   (2026-07-20), the rest still open.** Today's subprocess/Docker/K8s backends already speak
+   `SubprocessJobEnvelope` in/`RunResult` out, and `SubprocessExecutionBackend` already accepts a
+   configurable `python_executable`/`command` (so pointing it at
+   `backend/agent-runtime/.venv/bin/python` instead of `worker`'s own interpreter is mechanically
+   straightforward — not done yet).
+   - **Fixed:** `EngagementContainer.get_worker_orchestrator()` and `.get_meta_planner()`
+     (`backend/worker/src/bootstrap/containers/engagement_container.py`) both used to call
+     `from cys_core.runtime.agent import get_runtime; runtime = get_runtime()`
+     **unconditionally**, before branching on `settings.execution_backend` — so even
+     `subprocess`/`k8s`/`docker` mode constructed a full in-process `AgentRuntime` (importing
+     langchain/langgraph/litellm) that then went completely unused, since actual execution for
+     those backends happens in a child process via `execution_backend.execute(...)`, never through
+     `WorkerOrchestrator._run_worker_job`. Fixed by adding
+     `cys_core/application/ports/lazy_agent_runner.py::LazyInProcessAgentRunner` — an
+     `AgentRunner`/`PlannerRuntime`-shaped proxy that defers the `cys_core.runtime.agent` import
+     until `arun`/`aresume` is actually called — and passing it instead of a real runtime for
+     `subprocess`/`k8s`/`docker` backends in both call sites. `in_process` mode is unchanged (still
+     calls `get_runtime()` directly, same as before). Verified via CI: new regression tests assert
+     `get_runtime()` raises if called for non-`in_process` backends, and that the lazy proxy
+     correctly delegates to the real runtime when actually invoked.
+   - **What this does NOT solve, to be precise about it**: this removes the *eager, unconditional*
+     import, not the dependency itself. If `MetaPlanner`'s planning path (or any other lazy-proxy
+     call) is ever actually invoked during a `subprocess`/`k8s`/`docker`-backend run, the process
+     *will* still import `cys_core.runtime.agent` at that point. So this is real, safe progress
+     toward item 1's package split — `worker` can now select a non-`in_process` backend without
+     forcing langchain to load — but it does **not** yet make it safe to physically remove
+     `cys_core/runtime/agent.py` from a future slim `dispatcher` package, since `MetaPlanner` (used
+     for engagement-level planning, wired into every job pipeline regardless of backend) still needs
+     it whenever a planning call actually happens. That requires either giving `MetaPlanner` its own
+     process-boundary call to `agent-runtime`, or moving engagement-level planning there too — open
+     question, not decided.
+   - `WorkerOrchestrator.__init__` (`interfaces/worker/orchestrator.py`) still always builds
+     `self._run_worker_job` via `container.get_run_worker_job(runtime=self.runtime, ...)` — left
+     unchanged; it's genuinely needed regardless of backend for backend-agnostic bookkeeping
+     (`mark_job_timeout`/`try_salvage_partial`/`mark_runtime_failure`), and the lazy-runtime fix
+     above already satisfies its `runtime: AgentRunner` type without needing to make the field
+     optional.
 3. **`model-gateway` needs to actually be called.** `AgentRuntime` still calls `litellm`
    in-process directly; `model-gateway` (the LLM-call chokepoint) exists, is tested, but nothing
    points at it (`MSP_BACKLOG.md` §29.4). Wiring `agent_runtime` to call out to `model-gateway`

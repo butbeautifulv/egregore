@@ -109,29 +109,38 @@ class EngagementContainer:
             # composition root, not in interfaces/worker/orchestrator.py (docs/
             # MSP_BACKLOG.md §22.3/§29's dispatcher/agent_runtime split) — swapping
             # which AgentRunner implementation backs the dispatcher is a change to this one line,
-            # not to WorkerOrchestrator itself.
-            from cys_core.runtime.agent import get_runtime
+            # not to WorkerOrchestrator itself. For non-in_process backends, the actual job
+            # execution happens in a child process instead, so `runtime` is only ever used for
+            # WorkerOrchestrator's shared bookkeeping (_run_worker_job's mark_job_timeout etc.) —
+            # LazyInProcessAgentRunner defers the cys_core.runtime.agent import (langchain/
+            # langgraph/litellm) until something actually calls arun/aresume on it, which never
+            # happens on these paths (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2).
             from interfaces.worker.orchestrator import WorkerOrchestrator
 
-            runtime = get_runtime()
             backend_kind = self.settings.execution_backend
             if backend_kind == "in_process":
-                self._worker_orchestrators[persona] = WorkerOrchestrator(persona=persona, runtime=runtime)
+                from cys_core.runtime.agent import get_runtime
+
+                self._worker_orchestrators[persona] = WorkerOrchestrator(persona=persona, runtime=get_runtime())
             elif backend_kind == "subprocess":
+                from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
                 from cys_core.infrastructure.execution.subprocess_backend import (
                     SubprocessExecutionBackend,
                 )
 
                 self._worker_orchestrators[persona] = WorkerOrchestrator(
-                    persona=persona, runtime=runtime, execution_backend=SubprocessExecutionBackend()
+                    persona=persona,
+                    runtime=LazyInProcessAgentRunner(),
+                    execution_backend=SubprocessExecutionBackend(),
                 )
             elif backend_kind == "k8s":
+                from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
                 from cys_core.infrastructure.execution.k8s_backend import K8sExecutionBackend
 
                 settings = self.settings
                 self._worker_orchestrators[persona] = WorkerOrchestrator(
                     persona=persona,
-                    runtime=runtime,
+                    runtime=LazyInProcessAgentRunner(),
                     execution_backend=K8sExecutionBackend(
                         job_store=self._container.get_job_store(),
                         namespace=settings.k8s_namespace,
@@ -144,6 +153,7 @@ class EngagementContainer:
                     ),
                 )
             elif backend_kind == "docker":
+                from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
                 from cys_core.infrastructure.execution.docker_backend import DockerExecutionBackend
 
                 extra_run_args: list[str] = []
@@ -153,7 +163,7 @@ class EngagementContainer:
                     extra_run_args += ["--env-file", self.settings.docker_env_file]
                 self._worker_orchestrators[persona] = WorkerOrchestrator(
                     persona=persona,
-                    runtime=runtime,
+                    runtime=LazyInProcessAgentRunner(),
                     execution_backend=DockerExecutionBackend(
                         image=self.settings.docker_worker_image,
                         extra_run_args=extra_run_args,
@@ -239,11 +249,21 @@ class EngagementContainer:
         if self._meta_planner is not None:
             return self._meta_planner
         from cys_core.application.use_cases.meta_planner import MetaPlanner
-        from cys_core.runtime.agent import get_runtime
+
+        # Same lazy-import reasoning as get_worker_orchestrator() above: only in_process
+        # mode needs get_runtime() resolved eagerly here.
+        if self.settings.execution_backend == "in_process":
+            from cys_core.runtime.agent import get_runtime
+
+            planner_runtime = get_runtime()
+        else:
+            from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+
+            planner_runtime = LazyInProcessAgentRunner()
 
         container = self._container
         self._meta_planner = MetaPlanner(
-            runtime=get_runtime(),
+            runtime=planner_runtime,
             engagement_store=self.get_engagement_state_store(),
             resource_source=container.get_resource_source_port(),
             persona_ranking=container.get_persona_ranking_port(),

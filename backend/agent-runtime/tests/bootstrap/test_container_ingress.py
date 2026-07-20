@@ -99,3 +99,98 @@ def test_meta_planner_uses_agent_runtime_not_ingress_orchestrator(monkeypatch):
     planner = container.get_meta_planner()
 
     assert planner._inner.runtime is runtime
+
+
+@pytest.mark.unit
+def test_subprocess_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent_runtime(monkeypatch):
+    """Regression: get_worker_orchestrator() used to call cys_core.runtime.agent.get_runtime()
+    unconditionally, before branching on execution_backend — meaning subprocess/k8s/docker modes
+    (whose actual job execution never touches `runtime` at all, see WorkerOrchestrator.run_job)
+    still forced an eager import of the langchain/langgraph-dependent agent runtime just to pick
+    an out-of-process backend. Fixed by passing LazyInProcessAgentRunner instead of a real one for
+    non-in_process backends (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2)."""
+    from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+
+    monkeypatch.setenv("EXECUTION_BACKEND", "subprocess")
+    container = Container(Settings(use_kafka=False))
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        def __init__(self, *, persona=None, runtime=None, execution_backend=None, **_kwargs):
+            captured["runtime"] = runtime
+
+    monkeypatch.setattr("interfaces.worker.orchestrator.WorkerOrchestrator", FakeOrchestrator)
+
+    def _fail_get_runtime():
+        raise AssertionError("get_runtime() must not be called for backend_kind='subprocess'")
+
+    monkeypatch.setattr("cys_core.runtime.agent.get_runtime", _fail_get_runtime)
+
+    container.get_worker_orchestrator(persona="soc")
+
+    assert isinstance(captured["runtime"], LazyInProcessAgentRunner)
+
+
+@pytest.mark.unit
+def test_k8s_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent_runtime(monkeypatch):
+    from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+
+    monkeypatch.setenv("EXECUTION_BACKEND", "k8s")
+    container = Container(Settings(use_kafka=False))
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        def __init__(self, *, persona=None, runtime=None, execution_backend=None, **_kwargs):
+            captured["runtime"] = runtime
+
+    monkeypatch.setattr("interfaces.worker.orchestrator.WorkerOrchestrator", FakeOrchestrator)
+
+    def _fail_get_runtime():
+        raise AssertionError("get_runtime() must not be called for backend_kind='k8s'")
+
+    monkeypatch.setattr("cys_core.runtime.agent.get_runtime", _fail_get_runtime)
+
+    container.get_worker_orchestrator(persona="soc")
+
+    assert isinstance(captured["runtime"], LazyInProcessAgentRunner)
+
+
+@pytest.mark.unit
+def test_docker_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent_runtime(monkeypatch):
+    from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+
+    monkeypatch.setenv("EXECUTION_BACKEND", "docker")
+    container = Container(Settings(use_kafka=False))
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        def __init__(self, *, persona=None, runtime=None, execution_backend=None, **_kwargs):
+            captured["runtime"] = runtime
+
+    monkeypatch.setattr("interfaces.worker.orchestrator.WorkerOrchestrator", FakeOrchestrator)
+
+    def _fail_get_runtime():
+        raise AssertionError("get_runtime() must not be called for backend_kind='docker'")
+
+    monkeypatch.setattr("cys_core.runtime.agent.get_runtime", _fail_get_runtime)
+
+    container.get_worker_orchestrator(persona="soc")
+
+    assert isinstance(captured["runtime"], LazyInProcessAgentRunner)
+
+
+@pytest.mark.unit
+def test_meta_planner_gets_lazy_runtime_for_subprocess_backend(monkeypatch):
+    from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+
+    monkeypatch.setenv("EXECUTION_BACKEND", "subprocess")
+    container = Container(Settings(use_kafka=False))
+
+    def _fail_get_runtime():
+        raise AssertionError("get_runtime() must not be called for backend_kind='subprocess'")
+
+    monkeypatch.setattr("cys_core.runtime.agent.get_runtime", _fail_get_runtime)
+
+    planner = container.get_meta_planner()
+
+    assert isinstance(planner._inner.runtime, LazyInProcessAgentRunner)
