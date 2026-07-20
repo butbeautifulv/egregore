@@ -142,9 +142,8 @@ def _reset_container_and_memory_catalog(monkeypatch: pytest.MonkeyPatch) -> None
     """Use in-memory catalog and reset DI container between tests."""
     import bootstrap.container as container_mod
     from bootstrap.settings import get_settings, settings
-    from cys_core.application.runtime_config import configure_from_settings
-
     from cys_core.application.ports.profile_policy_provider import configure_profile_policy_provider
+    from cys_core.application.runtime_config import configure_from_settings
 
     monkeypatch.setenv("AUTH_ENABLED", "0")
     monkeypatch.setenv("USE_MEMORY_FALLBACK", "true")
