@@ -20,7 +20,10 @@ egregore-model-gateway = "interfaces.cli.main:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-pythonpath = ["src", "../.."]
+# "." makes scripts.* importable from tests/architecture/ — in worker/tool-gateway
+# this happens as a side effect of tests/conftest.py forcing a package-root sys.path
+# insertion; model-gateway has no tests/conftest.py, so it needs an explicit entry.
+pythonpath = ["src", "../..", "."]
 markers = [
     "unit: fast isolated tests",
     "integration: multi-module wiring",
