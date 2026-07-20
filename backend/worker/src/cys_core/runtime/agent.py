@@ -667,3 +667,39 @@ class AgentRuntime:
 @lru_cache
 def get_runtime() -> AgentRuntime:
     return AgentRuntime()
+
+
+# Named AgentRunner registry — mirrors the existing ChatModelProvider/ModelConnector
+# pattern (cys_core/llm/__init__.py's _MODEL_CONNECTORS/get_model_connector), which
+# already proves per-vendor LLM swapping works via config (LLM_MODEL, e.g.
+# "anthropic/claude-sonnet-4" vs "xai/grok-2" vs "openai/gpt-4o" — litellm handles the
+# vendor call, zero code change needed). This registry is the equivalent seam one layer
+# up: swapping the *agent framework* itself (today only "langgraph"/AgentRuntime is
+# registered), not just which model vendor it calls. See
+# docs/MICROSERVICES_SPLIT_PLAN.md §1 item 4 — a second AgentRunner implementation only
+# needs to satisfy the AgentRunner Protocol (arun/aresume); it is not required to use
+# ModelConnector, litellm, or LangChain internally at all.
+_DEFAULT_AGENT_RUNNER_NAME = "langgraph"
+# `lambda: get_runtime()` rather than the bare function object: this indirection makes
+# the registry resolve the module-global `get_runtime` name fresh on every call, so
+# `monkeypatch.setattr("cys_core.runtime.agent.get_runtime", fake)` in existing tests
+# still takes effect — a directly-bound `get_runtime` reference here would have
+# captured the original function object at import time and ignored the monkeypatch.
+_AGENT_RUNNERS: dict[str, Callable[[], AgentRuntime]] = {
+    _DEFAULT_AGENT_RUNNER_NAME: lambda: get_runtime(),
+}
+
+
+def configure_agent_runner(name: str, factory: Callable[[], AgentRuntime]) -> None:
+    """Register a named AgentRunner factory. `factory` is called fresh on every
+    `get_agent_runner(name)` lookup — callers wanting a singleton (like the default
+    "langgraph" entry does via `get_runtime`'s own `@lru_cache`) should memoize inside
+    their own factory."""
+    _AGENT_RUNNERS[name] = factory
+
+
+def get_agent_runner(name: str | None = None) -> AgentRuntime:
+    runner_name = name or _DEFAULT_AGENT_RUNNER_NAME
+    if runner_name not in _AGENT_RUNNERS:
+        raise ValueError(f"Unknown agent runner: {runner_name!r} (registered: {sorted(_AGENT_RUNNERS)})")
+    return _AGENT_RUNNERS[runner_name]()

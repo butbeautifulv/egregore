@@ -119,11 +119,40 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
    points at it (`MSP_BACKLOG.md` §29.4). Wiring `agent_runtime` to call out to `model-gateway`
    instead of litellm directly is part of making the split "secure by design regardless of which
    runtime is plugged in" (`MSP_BACKLOG.md` §22.8–§22.11).
-4. **`ModelConnector`/`ChatModelProvider`'s return type is pinned to `langchain_core.BaseChatModel`**
-   (`cys_core/application/ports/llm.py`, `cys_core/llm/protocol.py`). Blocks a genuinely
-   framework-neutral second `AgentRunner` implementation (the actual point of this split — "so i can
-   run grok claude etc from dispatcher if i want to switch runtime"). Needs a framework-neutral
-   model-handle type at this boundary. Not started.
+4. **Swap the agent core, not just the model vendor — reframed 2026-07-20, selector now built.**
+   Two genuinely different things were conflated under "switch runtime":
+   - **Switching the LLM *vendor*** (Claude/GPT/Grok/etc.) **already works today, zero code
+     needed**: `LLM_MODEL` (`bootstrap/settings.py`) is a litellm-style `provider/model` string
+     (default `anthropic/claude-sonnet-4`); litellm itself dispatches to 100+ providers from that
+     one string. `ModelConnector`/`ChatModelProvider`'s return type being pinned to
+     `langchain_core.BaseChatModel` (`cys_core/application/ports/llm.py`,
+     `cys_core/llm/protocol.py`) doesn't block this at all — it's an internal detail of how
+     `AgentRuntime` itself talks to litellm, irrelevant to which vendor gets called.
+   - **Switching the agent *framework/product*** (a different agent SDK entirely, not just a
+     different model behind the same LangGraph loop) — **this is what was actually blocked, and
+     not by the `BaseChatModel` pinning**: a new `AgentRunner` implementation only has to satisfy
+     the `AgentRunner` Protocol (`arun`/`aresume`); it is free to call litellm directly (itself
+     already vendor-neutral, returns provider-agnostic `ModelResponse`, not a LangChain type) or a
+     completely different SDK's own API — it never has to touch `ModelConnector` at all. What was
+     actually missing was a **named registry/selector** to plug a second implementation into,
+     instead of the one hardcoded `@lru_cache get_runtime() -> AgentRuntime` singleton.
+   - **Built**: `cys_core/runtime/agent.py::get_agent_runner(name)`/`configure_agent_runner(name,
+     factory)` — mirrors the already-proven `ChatModelProvider`/`get_model_connector(name)` pattern
+     in `cys_core/llm/__init__.py` (same registry shape, same reason it's not premature: an
+     identical mechanism already ships and is exercised for LLM providers). New `AGENT_RUNNER_IMPL`
+     setting (`bootstrap/settings.py`, default `"langgraph"`) selects the entry;
+     `EngagementContainer.get_worker_orchestrator()`/`get_meta_planner()`'s `in_process` branches
+     now resolve through it instead of calling `get_runtime()` directly. Default behavior is
+     byte-for-byte unchanged (`_AGENT_RUNNERS["langgraph"]` still resolves to the same
+     `get_runtime()` singleton). Verified via CI: registry tests (register/select/unknown-name
+     error), plus an end-to-end container test proving `AGENT_RUNNER_IMPL` actually selects a
+     registered fake implementation through `get_worker_orchestrator()`.
+   - **What's still not done**: only one implementation (`"langgraph"`/`AgentRuntime`) is
+     registered — the selector mechanism is real and tested, but nobody has built or registered a
+     second, genuinely different `AgentRunner` yet. That's real, separate, substantial engineering
+     (a correct tool-calling loop with equivalent security-middleware/HITL/budget-tracking coverage
+     to what `AgentRuntime._build_middleware` provides today) — deliberately not attempted blind in
+     this pass.
 5. **HITL pause/resume across the boundary.** Today's mechanism is `langgraph.interrupt()` +
    checkpointer — fundamentally in-process-shaped. A real design already exists
    (`MSP_BACKLOG.md` §35: refuse-then-retry with an `approval_id` token, reusing

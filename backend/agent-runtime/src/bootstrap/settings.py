@@ -533,6 +533,12 @@ class Settings(BaseSettings):
     )
     worker_dequeue_timeout_s: float = Field(default=2.0, validation_alias="WORKER_DEQUEUE_TIMEOUT_S")
     execution_backend: str = Field(default="in_process", validation_alias="EXECUTION_BACKEND")
+    # Which named AgentRunner implementation backs in_process execution (docs/
+    # MICROSERVICES_SPLIT_PLAN.md §1 item 4) — registered via
+    # cys_core.runtime.agent.configure_agent_runner. Only "langgraph" (today's
+    # AgentRuntime) exists today; this is the selector, not a claim that alternatives
+    # ship yet.
+    agent_runner_impl: str = Field(default="langgraph", validation_alias="AGENT_RUNNER_IMPL")
 
     reconcile_synthesis_stale_multiplier: float = Field(
         default=2.0, validation_alias="RECONCILE_SYNTHESIS_STALE_MULTIPLIER"

@@ -194,3 +194,47 @@ def test_meta_planner_gets_lazy_runtime_for_subprocess_backend(monkeypatch):
     planner = container.get_meta_planner()
 
     assert isinstance(planner._inner.runtime, LazyInProcessAgentRunner)
+
+
+@pytest.mark.unit
+def test_worker_orchestrator_honors_agent_runner_impl_setting(monkeypatch, request):
+    """End-to-end: AGENT_RUNNER_IMPL selects which registered AgentRunner
+    implementation backs in_process execution, via the same registry mechanism
+    proven in tests/runtime/test_agent_runner_registry.py
+    (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 4)."""
+    from cys_core.runtime import agent as agent_module
+    from cys_core.runtime.agent import configure_agent_runner
+
+    # configure_agent_runner mutates the module-level registry dict in place —
+    # snapshot its *contents* before registering, restore after, so this
+    # registration doesn't leak into other tests sharing the same process.
+    original_runners = dict(agent_module._AGENT_RUNNERS)
+
+    def _restore_runners() -> None:
+        agent_module._AGENT_RUNNERS.clear()
+        agent_module._AGENT_RUNNERS.update(original_runners)
+
+    request.addfinalizer(_restore_runners)
+
+    class FakeAlternativeAgentRunner:
+        async def arun(self, *args, **kwargs):
+            return {"ok": True}
+
+        async def aresume(self, *args, **kwargs):
+            return {"resumed": True}
+
+    fake_instance = FakeAlternativeAgentRunner()
+    configure_agent_runner("fake-alternative", lambda: fake_instance)
+    monkeypatch.setenv("AGENT_RUNNER_IMPL", "fake-alternative")
+    container = Container(Settings(use_kafka=False))
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        def __init__(self, *, persona=None, runtime=None, execution_backend=None, **_kwargs):
+            captured["runtime"] = runtime
+
+    monkeypatch.setattr("interfaces.worker.orchestrator.WorkerOrchestrator", FakeOrchestrator)
+
+    container.get_worker_orchestrator(persona="soc")
+
+    assert captured["runtime"] is fake_instance

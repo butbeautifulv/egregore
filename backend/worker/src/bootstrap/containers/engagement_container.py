@@ -119,9 +119,11 @@ class EngagementContainer:
 
             backend_kind = self.settings.execution_backend
             if backend_kind == "in_process":
-                from cys_core.runtime.agent import get_runtime
+                from cys_core.runtime.agent import get_agent_runner
 
-                self._worker_orchestrators[persona] = WorkerOrchestrator(persona=persona, runtime=get_runtime())
+                self._worker_orchestrators[persona] = WorkerOrchestrator(
+                    persona=persona, runtime=get_agent_runner(self.settings.agent_runner_impl)
+                )
             elif backend_kind == "subprocess":
                 from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
                 from cys_core.infrastructure.execution.subprocess_backend import (
@@ -251,11 +253,11 @@ class EngagementContainer:
         from cys_core.application.use_cases.meta_planner import MetaPlanner
 
         # Same lazy-import reasoning as get_worker_orchestrator() above: only in_process
-        # mode needs get_runtime() resolved eagerly here.
+        # mode needs the agent runner resolved eagerly here.
         if self.settings.execution_backend == "in_process":
-            from cys_core.runtime.agent import get_runtime
+            from cys_core.runtime.agent import get_agent_runner
 
-            planner_runtime = get_runtime()
+            planner_runtime = get_agent_runner(self.settings.agent_runner_impl)
         else:
             from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
