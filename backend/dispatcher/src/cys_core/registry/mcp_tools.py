@@ -17,6 +17,16 @@ from cys_core.registry.tools import tool_registry
 
 logger = structlog.get_logger(__name__)
 
+# NOTE: unlike worker/agent-runtime's copy of this file, ainvoke() here is intentionally left
+# thread-wrapping the sync invoke() rather than converted to an async-native gateway call
+# (docs/MSP_BACKLOG.md §52.6, plan §1 item 7). Reason: dispatcher's LangGraph tool wrappers
+# built via mcp_tool_registry.resolve() are wired into build_worker_pipeline() but their
+# _arun/ainvoke are never actually called at runtime — the runtime attached to the pipeline is
+# always LazyInProcessAgentRunner, whose arun/aresume are never invoked (real job execution is
+# delegated to a child process/container; see get_meta_planner() below and
+# tests/bootstrap/test_container_ingress.py). Converting dead-at-runtime code here would be pure
+# churn — revisit only if dispatcher ever grows an in-process agent loop of its own.
+
 
 def require_sandbox(sandbox_id: str) -> None:
     if not sandbox_id or sandbox_id == "host":

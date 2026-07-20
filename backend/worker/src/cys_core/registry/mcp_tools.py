@@ -10,7 +10,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from bootstrap.settings import settings
 from cys_core.application.datasources.attach_filter import filter_attachable_tools
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
-from cys_core.infrastructure.http_client import sync_http_client
+from cys_core.infrastructure.http_client import async_http_client, sync_http_client
 from cys_core.observability.metrics import metrics
 from cys_core.observability.tracing import inject_correlation_headers
 from cys_core.registry.tools import tool_registry
@@ -32,12 +32,14 @@ class McpToolRegistry:
         *,
         use_gateway: bool | None = None,
         client: httpx.Client | None = None,
+        async_client: httpx.AsyncClient | None = None,
         mcp_server_id: str | None = None,
         profile_id: str = "cybersec-soc",
     ) -> None:
         self.gateway_url = (gateway_url or self._resolve_gateway_url(mcp_server_id, profile_id)).rstrip("/")
         self.use_gateway = settings.use_tool_gateway if use_gateway is None else use_gateway
         self._client = client
+        self._async_client = async_client
 
     @staticmethod
     def _resolve_gateway_url(mcp_server_id: str | None, profile_id: str) -> str:
@@ -209,18 +211,52 @@ class McpToolRegistry:
     ) -> dict[str, Any]:
         import asyncio
 
-        return await asyncio.to_thread(
-            self.invoke,
-            tool_name,
-            sandbox_id,
-            args,
-            persona=persona,
-            job_id=job_id,
-            correlation_id=correlation_id,
-            profile_id=profile_id,
-            workspace_id=workspace_id,
-            token=token,
-        )
+        require_sandbox(sandbox_id)
+        try:
+            if self.use_gateway:
+                try:
+                    result = await self._agateway_invoke(
+                        tool_name,
+                        sandbox_id,
+                        args,
+                        persona=persona,
+                        job_id=job_id,
+                        correlation_id=correlation_id,
+                        profile_id=profile_id,
+                        workspace_id=workspace_id,
+                        token=token,
+                    )
+                    metrics.record_tool_invocation(tool_name, success=result.get("success", True))
+                    return result
+                except Exception as exc:
+                    logger.warning(
+                        "mcp_gateway_invoke_failed_falling_back_to_local",
+                        tool_name=tool_name,
+                        persona=persona,
+                        job_id=job_id,
+                        error=str(exc),
+                    )
+            # _local_invoke fans out to ~30 sync adapters (some doing blocking I/O of their
+            # own) — threading only this fallback, instead of the whole method, keeps the
+            # common case (gateway reachable) off the thread pool entirely while still
+            # isolating the sync adapter path from the event loop when it is taken.
+            result = await asyncio.to_thread(
+                self._local_invoke,
+                tool_name,
+                sandbox_id,
+                args,
+                persona=persona,
+                profile_id=profile_id,
+                job_id=job_id,
+                correlation_id=correlation_id,
+                workspace_id=workspace_id,
+                token=token,
+            )
+            metrics.record_tool_invocation(tool_name, success=result.get("success", True))
+            return result
+        except Exception:
+            metrics.record_tool_invocation(tool_name, success=False)
+            raise
 
     def _local_invoke(
         self,
@@ -291,6 +327,47 @@ class McpToolRegistry:
             return response.json()
         with sync_http_client(timeout=settings.veil_mcp_timeout, headers=headers) as client:
             response = client.post(f"{self.gateway_url}/invoke", json=body)
+            response.raise_for_status()
+            return response.json()
+
+    async def _agateway_invoke(
+        self,
+        tool_name: str,
+        sandbox_id: str,
+        args: dict[str, Any],
+        *,
+        persona: str,
+        job_id: str,
+        correlation_id: str,
+        profile_id: str = DEFAULT_PROFILE_ID,
+        workspace_id: str = "",
+        token: str = "",
+    ) -> dict[str, Any]:
+        body = {
+            "tool_name": tool_name,
+            "args": args,
+            "persona": persona,
+            "sandbox_id": sandbox_id,
+            "job_id": job_id,
+            "correlation_id": correlation_id,
+            "profile_id": profile_id,
+        }
+        if workspace_id:
+            body["workspace_id"] = workspace_id
+        if token:
+            body["sandbox_token"] = token
+        headers: dict[str, str] = inject_correlation_headers()
+        if workspace_id:
+            headers["X-Workspace-Id"] = workspace_id
+        gateway_token = settings.gateway_access_token.get_secret_value()
+        if gateway_token:
+            headers["Authorization"] = f"Bearer {gateway_token}"
+        if self._async_client is not None:
+            response = await self._async_client.post(f"{self.gateway_url}/invoke", json=body, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        async with async_http_client(timeout=settings.veil_mcp_timeout, headers=headers) as client:
+            response = await client.post(f"{self.gateway_url}/invoke", json=body)
             response.raise_for_status()
             return response.json()
 
