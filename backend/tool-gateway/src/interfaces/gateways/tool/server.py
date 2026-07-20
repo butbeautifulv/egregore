@@ -87,7 +87,7 @@ async def _route(method: str, path: str, headers: dict[str, str], body: bytes) -
         except ValidationError as exc:
             raise _HttpError(422, str(exc)) from exc
         workspace_id = headers.get("x-workspace-id", "")
-        response = await asyncio.to_thread(invoke_tool, request, auth=auth, workspace_id=workspace_id)
+        response = await invoke_tool(request, auth=auth, workspace_id=workspace_id)
         return 200, response.model_dump_json().encode("utf-8"), "application/json"
 
     raise _HttpError(404, "not found")

@@ -6,7 +6,7 @@ from interfaces.gateways.tool.mappers import to_command, to_response
 from interfaces.gateways.tool.models import ToolInvokeRequest, ToolInvokeResponse
 
 
-def invoke_tool(
+async def invoke_tool(
     request: ToolInvokeRequest,
     *,
     auth: AuthClaims | None = None,
@@ -20,5 +20,5 @@ def invoke_tool(
             "user_id": request.user_id or (auth.sub if auth else ""),
         }
     )
-    result = get_container().get_tool_execution_gateway().invoke(to_command(enriched))
+    result = await get_container().get_tool_execution_gateway().invoke(to_command(enriched))
     return to_response(result)

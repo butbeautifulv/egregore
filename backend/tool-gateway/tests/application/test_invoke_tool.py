@@ -21,8 +21,18 @@ def _command(**overrides) -> ToolInvokeCommand:
     return ToolInvokeCommand(**base)
 
 
+async def _adapter_returning(value):
+    """invoke_adapter is async (real MCP adapters await network I/O) — tests
+    stand in with a coroutine function returning a fixed value."""
+    return value
+
+
+async def _adapter_echoing_name(name, _args):
+    return {"adapter": name}
+
+
 @pytest.mark.unit
-def test_invoke_tool_rejects_tool_with_no_adapter():
+async def test_invoke_tool_rejects_tool_with_no_adapter():
     """No fallback to tool_registry.get(...).invoke(...) — a tool with no gateway
     adapter (agent-runtime-internal, e.g. reasoning/orchestration primitives) is
     rejected with a clear error instead of silently executing via the registry.
@@ -37,112 +47,112 @@ def test_invoke_tool_rejects_tool_with_no_adapter():
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,
-        invoke_adapter=lambda _name, _args: None,
+        invoke_adapter=lambda _name, _args: _adapter_returning(None),
         tool_registry=registry,
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda cmd, res: recorded.append((cmd, res)),
     )
-    result = invoke.execute(_command(tool_name="reasoning_step"))
+    result = await invoke.execute(_command(tool_name="reasoning_step"))
     assert result.success is False
     assert "no Tool Gateway adapter" in result.error
     assert len(recorded) == 1
 
 
 @pytest.mark.unit
-def test_invoke_tool_chain_depth_error():
+async def test_invoke_tool_chain_depth_error():
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: (_ for _ in ()).throw(ToolChainDepthExceeded("too deep")),
-        invoke_adapter=lambda _name, _args: None,
+        invoke_adapter=lambda _name, _args: _adapter_returning(None),
         tool_registry=MagicMock(),
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda *_a: None,
     )
-    result = invoke.execute(_command(tool_name="run_active_scan"))
+    result = await invoke.execute(_command(tool_name="run_active_scan"))
     assert result.success is False
     assert "too deep" in result.error
 
 
 @pytest.mark.unit
-def test_invoke_tool_rejects_out_of_scope_tool():
+async def test_invoke_tool_rejects_out_of_scope_tool():
     """Scope enforcement happens at the gateway itself, independent of whatever
     checked (or didn't check) scope before the call reached here — the whole
     point of moving this here. See docs/MSP_BACKLOG.md §22-23."""
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,
-        invoke_adapter=lambda _name, _args: {"ok": True},
+        invoke_adapter=lambda _name, _args: _adapter_returning({"ok": True}),
         tool_registry=MagicMock(),
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda *_a: None,
         check_scope=lambda _cmd: (_ for _ in ()).throw(ScopeViolation("tool not allowed")),
     )
-    result = invoke.execute(_command(tool_name="run_active_scan"))
+    result = await invoke.execute(_command(tool_name="run_active_scan"))
     assert result.success is False
     assert "tool not allowed" in result.error
 
 
 @pytest.mark.unit
-def test_invoke_tool_rejects_over_rate_limit():
+async def test_invoke_tool_rejects_over_rate_limit():
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,
-        invoke_adapter=lambda _name, _args: {"ok": True},
+        invoke_adapter=lambda _name, _args: _adapter_returning({"ok": True}),
         tool_registry=MagicMock(),
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda *_a: None,
         check_rate_limit=lambda _cmd: (_ for _ in ()).throw(RateLimitExceeded("too many calls")),
     )
-    result = invoke.execute(_command(tool_name="run_active_scan"))
+    result = await invoke.execute(_command(tool_name="run_active_scan"))
     assert result.success is False
     assert "too many calls" in result.error
 
 
 @pytest.mark.unit
-def test_invoke_tool_rejects_invalid_sandbox_token():
+async def test_invoke_tool_rejects_invalid_sandbox_token():
     """docs/MSP_BACKLOG.md §11.5/§37: mint_sandbox_token() minted a token
     nothing verified for a long time — this proves the gateway rejects on its own
     check_sandbox_token result, independent of whatever the caller did or didn't verify."""
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,
-        invoke_adapter=lambda _name, _args: {"ok": True},
+        invoke_adapter=lambda _name, _args: _adapter_returning({"ok": True}),
         tool_registry=MagicMock(),
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda *_a: None,
         check_sandbox_token=lambda _cmd: (_ for _ in ()).throw(SandboxTokenInvalid("missing_sandbox_token")),
     )
-    result = invoke.execute(_command(tool_name="run_active_scan"))
+    result = await invoke.execute(_command(tool_name="run_active_scan"))
     assert result.success is False
     assert "missing_sandbox_token" in result.error
 
 
 @pytest.mark.unit
-def test_invoke_tool_defaults_check_scope_and_rate_limit_to_noop():
+async def test_invoke_tool_defaults_check_scope_and_rate_limit_to_noop():
     """Callers that predate check_scope/check_rate_limit/check_sandbox_token (existing
     production wiring elsewhere, other tests) must keep working unchanged."""
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,
-        invoke_adapter=lambda name, _args: {"adapter": name},
+        invoke_adapter=_adapter_echoing_name,
         tool_registry=MagicMock(),
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda *_a: None,
     )
-    result = invoke.execute(_command(tool_name="run_active_scan"))
+    result = await invoke.execute(_command(tool_name="run_active_scan"))
     assert result.success is True
 
 
 @pytest.mark.unit
-def test_invoke_tool_uses_adapter_when_present():
+async def test_invoke_tool_uses_adapter_when_present():
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,
-        invoke_adapter=lambda name, _args: {"adapter": name},
+        invoke_adapter=_adapter_echoing_name,
         tool_registry=MagicMock(),
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda *_a: None,
     )
-    result = invoke.execute(_command(tool_name="custom_adapter_tool"))
+    result = await invoke.execute(_command(tool_name="custom_adapter_tool"))
     assert result.success is True
     assert result.data == {"adapter": "custom_adapter_tool"}

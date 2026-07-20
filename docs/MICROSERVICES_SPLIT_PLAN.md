@@ -374,8 +374,25 @@ Each item: one line, pointer to full reasoning. None of these are blocked on §1
 - **No async Postgres driver anywhere** (`psycopg` sync, not `psycopg.AsyncConnection`) — the
   single biggest structural lever left; DB concurrency is thread-pool-capped everywhere.
   `MSP_BACKLOG.md` §25.4, §25.5.
-- **Tool-gateway's async MCP client code (`acall_siem_tool`/`acall_veil_tool`) is fully implemented
-  but unused** — `invoke_adapter()` hardcodes the sync variants. `MSP_BACKLOG.md` §25.4.
+- **Fixed in `backend/tool-gateway` (2026-07-20)**: `invoke_adapter()` now awaits
+  `acall_siem_tool`/`acall_veil_tool` instead of the sync `call_siem_tool`/`call_veil_tool`
+  variants, and `server.py`'s `/invoke` route calls `invoke_tool()` directly instead of
+  wrapping it in `asyncio.to_thread` — one less thread-pool hop on the Tool Gateway's hot path.
+  Required threading `async`/`await` through the whole chain: `ToolInvokePort.execute`,
+  `ToolExecutionGatewayPort.invoke`, `InvokeTool.execute`/`_execute_inner`/`_execute_tool`,
+  `LocalToolExecutionGateway.invoke`, `handler.py::invoke_tool()` — a Protocol-signature change,
+  not a one-line fix, since every direct (non-mocked) caller/test constructing these objects had
+  to become async too (12 files: 7 `src/`, 5 `tests/`). Verified: `ruff`/`ty check src` clean
+  locally; full verification pending the next dispatched CI run. `nessus` (no async MCP client
+  exists) and the plain-function `ADAPTERS` dict entries are unchanged, still called inline —
+  out of scope, no async client to switch to.
+  - **Not yet done**: the identical pattern exists in `worker`/`agent-runtime`/`dispatcher`'s own
+    copies of `invoke_tool.py`/`adapters/__init__.py`/`local_gateway.py` (this is a
+    "duplicate-everything" codebase — `cys_core/registry/mcp_tools.py`'s `_local_invoke` wraps the
+    exact same sync chain in `asyncio.to_thread` in all three). Deliberately not synced this pass —
+    tool-gateway is the package where the win is clearest (it's the actual network-facing async
+    server); the other three call this in-process from inside LangChain tool wrappers, a different
+    call shape worth its own pass rather than blindly copy-pasting this diff three more times.
 - **`K8sExecutionBackend`'s poll loop occupies a thread-pool slot for the full job timeout** via
   `time.sleep` instead of an async K8s watch API. `MSP_BACKLOG.md` §25.4.
 

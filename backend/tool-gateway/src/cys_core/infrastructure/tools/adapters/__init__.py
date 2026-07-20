@@ -8,7 +8,7 @@ from cys_core.infrastructure.tools.adapters.nessus_mcp import call_nessus_tool, 
 from cys_core.infrastructure.tools.adapters.rag import rag_query_tool
 from cys_core.infrastructure.tools.adapters.read_document import read_document
 from cys_core.infrastructure.tools.adapters.siem import query_siem_readonly_search
-from cys_core.infrastructure.tools.adapters.siem_mcp import call_siem_tool, is_siem_tool
+from cys_core.infrastructure.tools.adapters.siem_mcp import acall_siem_tool, is_siem_tool
 from cys_core.infrastructure.tools.adapters.soc_stubs import (
     analyze_workflow,
     audit_evidence,
@@ -29,7 +29,7 @@ from cys_core.infrastructure.tools.adapters.soc_stubs import (
     run_active_scan,
     transcribe_audio,
 )
-from cys_core.infrastructure.tools.adapters.veil_mcp import call_veil_tool, is_veil_tool
+from cys_core.infrastructure.tools.adapters.veil_mcp import acall_veil_tool, is_veil_tool
 from cys_core.infrastructure.tools.adapters.web_search import web_search
 
 AdapterFn = Callable[[dict[str, Any]], dict[str, Any]]
@@ -66,11 +66,17 @@ ADAPTERS: dict[str, AdapterFn] = {
 }
 
 
-def invoke_adapter(tool_name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+async def invoke_adapter(tool_name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    # veil/siem go through their real async MCP client (acall_*) so the Tool
+    # Gateway's event loop isn't blocked/thread-pool-hopped for the network
+    # call — see docs/MICROSERVICES_SPLIT_PLAN.md §2 "Async / performance".
+    # nessus and the plain-function ADAPTERS below have no async MCP client
+    # yet, so they still run inline (same behavior as before, just awaited
+    # from an async caller now).
     if is_veil_tool(tool_name):
-        return call_veil_tool(tool_name, args)
+        return await acall_veil_tool(tool_name, args)
     if is_siem_tool(tool_name):
-        return call_siem_tool(tool_name, args)
+        return await acall_siem_tool(tool_name, args)
     if is_nessus_tool(tool_name):
         return call_nessus_tool(tool_name, args)
     adapter = ADAPTERS.get(tool_name)

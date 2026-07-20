@@ -40,11 +40,11 @@ def test_gateway_invoke_query_siem_readonly():
 
 
 @pytest.mark.unit
-def test_handler_uses_adapter_not_registry_stub():
+async def test_handler_uses_adapter_not_registry_stub():
     from bootstrap.container import get_container
 
     get_container()
-    response = invoke_tool(
+    response = await invoke_tool(
         ToolInvokeRequest(
             tool_name="query_siem_readonly",
             args={"query": "beacon"},

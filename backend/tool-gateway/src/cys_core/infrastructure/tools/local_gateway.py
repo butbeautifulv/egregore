@@ -11,8 +11,8 @@ class LocalToolExecutionGateway:
     def __init__(self, invoke_tool: ToolInvokePort) -> None:
         self._invoke_tool = invoke_tool
 
-    def invoke(self, command: ToolInvokeCommand) -> ToolInvokeResult:
-        result = self._invoke_tool.execute(command)
+    async def invoke(self, command: ToolInvokeCommand) -> ToolInvokeResult:
+        result = await self._invoke_tool.execute(command)
         stub = None
         if result.data.get("status") == "simulated" or result.data.get("stub"):
             stub = StubToolResult(tool_name=command.tool_name, simulated=True, note=str(result.data.get("note", "")))

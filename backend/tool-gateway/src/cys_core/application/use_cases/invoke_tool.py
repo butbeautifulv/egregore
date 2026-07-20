@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from cys_core.application.authz.service import AuthzDenied
@@ -28,7 +28,7 @@ class InvokeTool:
         *,
         require_sandbox: Callable[[str], None],
         check_tool_chain: Callable[[ToolInvokeCommand], None],
-        invoke_adapter: Callable[[str, dict[str, Any]], dict[str, Any] | None],
+        invoke_adapter: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any] | None]],
         tool_registry: ToolRegistryPort,
         sanitize_tool_output_or_raise: Callable[[Any], str],
         record_tool_invocation: Callable[[ToolInvokeCommand, ToolInvokeResult], None],
@@ -149,8 +149,8 @@ class InvokeTool:
             )
         return None
 
-    def _execute_tool(self, command: ToolInvokeCommand) -> dict[str, Any]:
-        adapter_result = self.invoke_adapter(command.tool_name, command.args)
+    async def _execute_tool(self, command: ToolInvokeCommand) -> dict[str, Any]:
+        adapter_result = await self.invoke_adapter(command.tool_name, command.args)
         if adapter_result is not None:
             return adapter_result
         # No fallback to tool_registry.get(...).invoke(...) here by design: every
@@ -165,7 +165,7 @@ class InvokeTool:
             "or an agent-runtime-internal tool not routable through the gateway"
         )
 
-    def execute(self, command: ToolInvokeCommand) -> ToolInvokeResult:
+    async def execute(self, command: ToolInvokeCommand) -> ToolInvokeResult:
         profile_id = command.profile_id or DEFAULT_PROFILE_ID
         with self._tracing.span(
             "tool.invoke",
@@ -174,9 +174,9 @@ class InvokeTool:
             job_id=command.job_id,
             engagement_id=command.correlation_id,
         ):
-            return self._execute_inner(command, profile_id)
+            return await self._execute_inner(command, profile_id)
 
-    def _execute_inner(self, command: ToolInvokeCommand, profile_id: str) -> ToolInvokeResult:
+    async def _execute_inner(self, command: ToolInvokeCommand, profile_id: str) -> ToolInvokeResult:
         try:
             self.require_sandbox(command.sandbox_id)
             self.check_tool_chain(command)
@@ -216,7 +216,7 @@ class InvokeTool:
                     profile_id=profile_id,
                     persona=command.persona,
                 )
-            data = self._execute_tool(command)
+            data = await self._execute_tool(command)
             sanitized = self.sanitize_tool_output_or_raise(data)
             response = ToolInvokeResult(
                 success=True,

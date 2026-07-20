@@ -41,8 +41,12 @@ class _FakeDatasourceCatalog:
         )
 
 
+async def _no_op_adapter(_name, _args):
+    return None
+
+
 @pytest.mark.unit
-def test_invoke_tool_denies_siem_without_workspace_grant(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_invoke_tool_denies_siem_without_workspace_grant(monkeypatch: pytest.MonkeyPatch) -> None:
     from cys_core.application.datasources import providers
 
     monkeypatch.setattr(providers, "_catalog", _FakeDatasourceCatalog())
@@ -50,7 +54,7 @@ def test_invoke_tool_denies_siem_without_workspace_grant(monkeypatch: pytest.Mon
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,
-        invoke_adapter=lambda _name, _args: None,
+        invoke_adapter=_no_op_adapter,
         tool_registry=MagicMock(),
         sanitize_tool_output_or_raise=lambda raw: str(raw),
         record_tool_invocation=lambda *_a: None,
@@ -63,6 +67,6 @@ def test_invoke_tool_denies_siem_without_workspace_grant(monkeypatch: pytest.Mon
         sandbox_id="sb-1",
         workspace_id="ws-no-siem",
     )
-    result = invoke.execute(command)
+    result = await invoke.execute(command)
     assert result.success is False
     assert result.error == "AUTHZ_DENIED"

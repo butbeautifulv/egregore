@@ -10,7 +10,7 @@ from cys_core.infrastructure.tools.local_gateway import LocalToolExecutionGatewa
 
 
 @pytest.mark.unit
-def test_local_gateway_delegates_to_invoke_tool():
+async def test_local_gateway_delegates_to_invoke_tool():
     invoke = MagicMock(spec=InvokeTool)
     invoke.execute.return_value = ToolInvokeResult(
         success=True,
@@ -25,7 +25,7 @@ def test_local_gateway_delegates_to_invoke_tool():
         persona="soc",
         sandbox_id="sb-1",
     )
-    result = gateway.invoke(command)
+    result = await gateway.invoke(command)
     invoke.execute.assert_called_once_with(command)
     assert result.success is True
     assert result.stub_result is not None

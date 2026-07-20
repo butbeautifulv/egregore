@@ -47,7 +47,7 @@ def test_attach_filter_keeps_siem_for_cybersec_soc() -> None:
 
 
 @pytest.mark.unit
-def test_invoke_tool_denies_mutate_capability_without_grant(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_invoke_tool_denies_mutate_capability_without_grant(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "cys_core.application.use_cases.invoke_tool.authorize_tool_datasource",
         lambda **kwargs: AuthorizationDecision(
@@ -57,15 +57,19 @@ def test_invoke_tool_denies_mutate_capability_without_grant(monkeypatch: pytest.
             tags=["deny", "capability"],
         ),
     )
+
+    async def _adapter(_name, _args):
+        return {"ok": True}
+
     use_case = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _req: None,
-        invoke_adapter=lambda _name, _args: {"ok": True},
+        invoke_adapter=_adapter,
         tool_registry=__import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(),
         sanitize_tool_output_or_raise=lambda data: str(data),
         record_tool_invocation=lambda *_a: None,
     )
-    response = use_case.execute(
+    response = await use_case.execute(
         ToolInvokeRequest(
             tool_name="query_siem_readonly",
             args={"query": "x"},
@@ -81,8 +85,8 @@ def test_invoke_tool_denies_mutate_capability_without_grant(monkeypatch: pytest.
 
 
 @pytest.mark.unit
-def test_invoke_tool_exec_denies_general_assistant_siem() -> None:
-    response = invoke_tool(
+async def test_invoke_tool_exec_denies_general_assistant_siem() -> None:
+    response = await invoke_tool(
         ToolInvokeRequest(
             tool_name="query_siem_readonly",
             args={"query": "test"},
@@ -98,8 +102,8 @@ def test_invoke_tool_exec_denies_general_assistant_siem() -> None:
 
 
 @pytest.mark.unit
-def test_deny_emits_policy_and_tool_audit_events() -> None:
-    invoke_tool(
+async def test_deny_emits_policy_and_tool_audit_events() -> None:
+    await invoke_tool(
         ToolInvokeRequest(
             tool_name="rag_query",
             args={"query": "q"},
