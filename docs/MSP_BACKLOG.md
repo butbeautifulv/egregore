@@ -2,10 +2,11 @@
 
 > **This is the archive.** Every §-numbered section below is a historical record of work already
 > done on the microservices split — investigations, fixes, decisions, and their reasoning, in the
-> order they happened. Section numbers (§0–§50.1) are preserved exactly as written so every
-> existing `docs/MSP_BACKLOG.md §XX` reference in code comments/docstrings/settings across the
-> repo stays valid.
+> order they happened. Section numbers are preserved exactly as written so every existing
+> `docs/MSP_BACKLOG.md §XX` reference in code comments/docstrings/settings across the repo stays
+> valid.
 >
+> **New session? Start at [`docs/MSP_START_HERE.md`](MSP_START_HERE.md).**
 > **For the current, active plan** — what's still not done, prioritized, straight to the point —
 > see [`docs/MICROSERVICES_SPLIT_PLAN.md`](MICROSERVICES_SPLIT_PLAN.md). This file is reference
 > material for *why* things are the way they are; that one is the to-do list.
@@ -5765,7 +5766,10 @@ committed) — this class of proof cannot run in CI, which has no live Postgres/
 key. Static checks run per package (`ruff check`, `ty check src`, `lint-imports`,
 `verify_import_boundaries.py`, `uv lock --check`) on all three touched packages
 (`worker`/`dispatcher`/`agent-runtime`) — all clean. No `pytest` run at any point.
-<!-- commit sha / CI run id filled in after push -->
+
+CI: commit `0728150` (initial fix) caught a real regression in real CI (run `29765663658`,
+`unit-tests (dispatcher)` failed — see §56.2's "Mistake made and reverted"); commit `178e9fa`
+(revert + fix) confirmed green in run `29766915855` (`conclusion: success`).
 
 ### 56.6. Second `AgentRunner`: `"react"` / `MinimalReactAgentRunner` (§1 item 2, user-chosen shape)
 
@@ -5825,7 +5829,8 @@ CI and produces ~1750 pre-existing, unrelated diagnostics when pointed at the fu
 checking new test files individually alongside their `src` targets is the correct local proxy),
 `lint-imports`, `verify_import_boundaries.py` — all clean across `worker`/`dispatcher`/
 `agent-runtime`. No `pytest` run locally.
-<!-- commit sha / CI run id filled in after push -->
+
+CI: commit `178e9fa`, run `29766915855`, `conclusion: success`.
 
 ## 57. model-gateway `arch-lint` CI coverage (§2 model-gateway theme, partial)
 
@@ -5867,5 +5872,23 @@ contracts kept), `uv run python scripts/verify_import_boundaries.py` (both check
 `bash scripts/verify_no_langfuse_in_core.sh` (OK), `ruff check`, `ty check src` — all clean. No
 `pytest` run locally (the new `tests/architecture/test_import_boundaries.py` itself invokes both
 scripts as subprocesses, so its assertions were checked by running the scripts directly, not by
-running pytest).
-<!-- commit sha / CI run id filled in after push -->
+running pytest). This missed a real bug — see §57.2 — because collection-time import errors in
+`tests/architecture/` aren't exercised by running the scripts directly; only actually collecting the
+test module (or CI) would have caught it.
+
+Commit `4e60633`, run `29767335618`: **failed** — `arch-lint (model-gateway)` and
+`unit-tests (model-gateway)` both errored at collection, `ModuleNotFoundError: No module named
+'scripts.verify_import_boundaries'`. Fixed in §57.2.
+
+### 57.2. Bug found: `tests/architecture/test_import_boundaries.py` couldn't import `scripts.*`
+
+Root cause, confirmed by reproducing locally with `uv run pytest tests/architecture/
+--collect-only -q` (collection-only, not a full suite run): `worker`/`tool-gateway`'s identical test
+only works because their `tests/conftest.py` — combined with `tests/__init__.py` making `tests` a
+package — forces pytest to insert the package root onto `sys.path` as a side effect of importing the
+conftest module (confirmed by dumping `sys.path` during collection: the bare package-root path only
+appears when a `tests/conftest.py` exists). `model-gateway` has no `tests/conftest.py` at all, so
+that insertion never happened, and `scripts` (living at `model-gateway/scripts/`) was never
+reachable. Fixed by adding `"."` to `pythonpath` in `pyproject.toml` explicitly, rather than
+depending on that undocumented side effect. Commit `809e06a`, run `29767979281` (pending at time of
+writing — see plan for current status).
