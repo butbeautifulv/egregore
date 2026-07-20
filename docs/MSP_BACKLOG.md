@@ -5524,3 +5524,30 @@ real CI and confirmed `{"conclusion":"success"}` before starting the next change
 `29737230804`/`29740254391`/`29742484596`. No `pytest` run locally at any point this session; only
 `ruff`/`ty check src`/`uv lock --check`/`docker build`/`hadolint` used as local pre-CI static checks,
 per standing instruction. See `docs/MICROSERVICES_SPLIT_PLAN.md` for what's still open.
+
+## 53. Plan §1 item 7: synced the tool-gateway async fix to `worker`/`agent-runtime`
+
+`McpToolRegistry.ainvoke()` (`cys_core/registry/mcp_tools.py`, both packages) thread-wrapped the
+*entire* sync `invoke()` — including the gateway HTTP call — via `asyncio.to_thread`, spending a
+thread-pool slot on every tool call from the LangGraph agent loop even in the common case (gateway
+reachable). Added `_agateway_invoke()` using `httpx.AsyncClient` (via the existing
+`async_http_client` helper) directly; only the local ~30-adapter fallback path (still sync,
+deliberately not converted — same call-shape reasoning as §52.6's own note) stays thread-wrapped.
+Added `async_client` as an optional constructor param (mirroring the existing sync `client` param)
+so tests can inject a mock transport without a real socket.
+
+`dispatcher`'s identical copy of this file was deliberately left untouched, with a code comment
+explaining why: its `mcp_tool_registry.resolve()` wires LangChain tool wrappers into
+`build_worker_pipeline()`, but the `runtime` attached there is always `LazyInProcessAgentRunner` —
+whose `arun`/`aresume` (and therefore those wrappers' `_arun`/`ainvoke`) are never actually called,
+since real job execution is delegated to a child process/container in dispatcher. Converting
+dead-at-runtime code would be pure churn.
+
+Added `ainvoke`/`_agateway_invoke` test coverage to both packages — none existed before (only the
+sync `invoke()` path was tested). Verified `ruff`/`ty check`/`lint-imports`/`uv lock --check` clean
+across `worker`/`agent-runtime`/`dispatcher`, confirmed green in real CI: commit `42052da`, run
+`29745927378`, `{"conclusion":"success"}`.
+
+Also fixed the plan doc's own "Working conventions" CI wording (commit `4b49adc`) — it read as "wait
+for the run before doing anything else"; corrected to "dispatch in the background and keep working,
+only the claim of done/verified requires checking the actual result first."

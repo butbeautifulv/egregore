@@ -339,6 +339,17 @@ class Settings(BaseSettings):
     tool_gateway_bind_host: str = Field(default="0.0.0.0", validation_alias="TOOL_GATEWAY_BIND_HOST")
     tool_gateway_bind_port: int = Field(default=8092, validation_alias="TOOL_GATEWAY_BIND_PORT")
 
+    model_gateway_url: str = Field(
+        default="http://localhost:8093",
+        validation_alias="MODEL_GATEWAY_URL",
+    )
+    # Which named ChatModelProvider backs get_model_connector()/get_provider() by
+    # default (docs/MSP_BACKLOG.md §29, plan §1 item 2) — "litellm" (direct in-process
+    # call, today's default) or "model-gateway" (route through the network chokepoint
+    # instead). Same seam AGENT_RUNNER_IMPL is for cys_core.runtime.agent, one layer
+    # down: swapping which model transport is used, not which agent framework.
+    model_provider: str = Field(default="litellm", validation_alias="MODEL_PROVIDER")
+
     veil_mcp_url: str = Field(
         default="http://localhost:8091/mcp",
         validation_alias="VEIL_MCP_URL",

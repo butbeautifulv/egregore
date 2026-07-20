@@ -27,6 +27,8 @@ class ModelMessage:
     role: MessageRole
     content: str
     source: UntrustedSource | None = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    tool_call_id: str = ""
 
 
 @dataclass
@@ -39,6 +41,8 @@ class ModelInvokeCommand:
     temperature: float | None = None
     max_tokens: int | None = None
     session_id: str = "default"
+    tools: list[dict[str, Any]] = field(default_factory=list)
+    tool_choice: str | dict[str, Any] | None = None
 
 
 @dataclass
@@ -50,9 +54,19 @@ class ModelInvokeResult:
     model: str = ""
     usage: dict[str, Any] = field(default_factory=dict)
     error: str = ""
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
 
 CompletionFn = Callable[..., Awaitable[dict[str, Any]]]
+
+
+def _to_litellm_message(message: ModelMessage) -> dict[str, Any]:
+    payload: dict[str, Any] = {"role": message.role, "content": message.content}
+    if message.role == "assistant" and message.tool_calls:
+        payload["tool_calls"] = message.tool_calls
+    if message.role == "tool" and message.tool_call_id:
+        payload["tool_call_id"] = message.tool_call_id
+    return payload
 
 
 class InvokeModel:
@@ -114,7 +128,9 @@ class InvokeModel:
                 wrapped = self._sanitizer.sanitize(message.content, source=source)
             except SecurityViolation:
                 return self._refuse("hard_injection_in_message")
-            sanitized.append(ModelMessage(role=message.role, content=wrapped, source=source))
+            sanitized.append(
+                ModelMessage(role=message.role, content=wrapped, source=source, tool_call_id=message.tool_call_id)
+            )
         return sanitized
 
     async def execute(self, command: ModelInvokeCommand) -> ModelInvokeResult:
@@ -131,7 +147,7 @@ class InvokeModel:
 
         model = command.model or self._default_model
         litellm_messages = [{"role": "system", "content": command.system_prompt}] + [
-            {"role": m.role, "content": m.content} for m in sanitized_messages
+            _to_litellm_message(m) for m in sanitized_messages
         ]
         try:
             raw = await self._complete(
@@ -139,6 +155,8 @@ class InvokeModel:
                 messages=litellm_messages,
                 temperature=command.temperature,
                 max_tokens=command.max_tokens,
+                tools=command.tools,
+                tool_choice=command.tool_choice,
             )
         except Exception as exc:
             self._record_invocation(command.persona, False)
@@ -155,4 +173,5 @@ class InvokeModel:
             content=content,
             model=model,
             usage=raw.get("usage", {}),
+            tool_calls=raw.get("tool_calls", []),
         )

@@ -60,6 +60,29 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
 
 
 @pytest.mark.unit
+def test_model_gateway_provider_registered_and_selectable(monkeypatch):
+    """docs/MSP_BACKLOG.md §29, plan §1 item 2: model-gateway is registered under
+    the "model-gateway" name in the same registry the litellm-vendor-swap seam
+    already used, selectable via configure_default_llm_provider (the MODEL_PROVIDER
+    setting's bootstrap-time wiring point)."""
+    import cys_core.llm as llm
+    from cys_core.llm.model_gateway_provider import ModelGatewayProvider
+
+    assert isinstance(llm.get_provider("model-gateway"), ModelGatewayProvider)
+    assert llm.get_model_connector("model-gateway").name == "model-gateway"
+
+    try:
+        llm.configure_default_llm_provider("model-gateway")
+        assert llm.get_provider() is llm.get_provider("model-gateway")
+        assert llm.get_model_connector().name == "model-gateway"
+    finally:
+        llm.configure_default_llm_provider("litellm")
+
+    with pytest.raises(ValueError, match="Unknown LLM provider"):
+        llm.configure_default_llm_provider("does-not-exist")
+
+
+@pytest.mark.unit
 def test_normalize_messages_merges_system_at_start():
     from cys_core.llm import litellm_provider as provider
 

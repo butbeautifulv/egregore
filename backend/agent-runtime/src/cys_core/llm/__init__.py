@@ -8,16 +8,39 @@ from cys_core.application.ports import ModelConnector
 from cys_core.application.ports.trace_callbacks import get_trace_callbacks
 from cys_core.application.runtime_config import get_default_job_recursion_limit, get_recursion_limit_for_persona
 from cys_core.llm.litellm_provider import LiteLLMProvider
+from cys_core.llm.model_gateway_provider import ModelGatewayProvider
 from cys_core.llm.protocol import ChatModelProvider
 
 _PROVIDER_NAME = "litellm"
+
+
+def _default_model_gateway_provider() -> ModelGatewayProvider:
+    from bootstrap.settings import settings
+
+    return ModelGatewayProvider(
+        gateway_url=settings.model_gateway_url,
+        shared_secret=settings.gateway_access_token.get_secret_value(),
+    )
+
+
 _PROVIDERS: dict[str, ChatModelProvider] = {
     _PROVIDER_NAME: LiteLLMProvider(),
+    "model-gateway": _default_model_gateway_provider(),
 }
 
 
 def configure_llm_provider(name: str, provider: ChatModelProvider) -> None:
     _PROVIDERS[name] = provider
+
+
+def configure_default_llm_provider(name: str) -> None:
+    """Switch which provider get_provider()/get_model_connector() resolve to when
+    called with no explicit name — the bootstrap-time selector driven by the
+    MODEL_PROVIDER setting, mirrors cys_core.runtime.agent's AGENT_RUNNER_IMPL seam."""
+    global _PROVIDER_NAME
+    if name not in _PROVIDERS:
+        raise ValueError(f"Unknown LLM provider: {name}")
+    _PROVIDER_NAME = name
 
 
 def get_provider(name: str | None = None) -> ChatModelProvider:
@@ -64,6 +87,7 @@ class LLMConnector:
 
 _MODEL_CONNECTORS: dict[str, ModelConnector] = {
     "litellm": LLMConnector("litellm"),
+    "model-gateway": LLMConnector("model-gateway"),
 }
 
 

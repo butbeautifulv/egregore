@@ -76,6 +76,7 @@ class Container:
         configure_persona_budgets(load_persona_budgets(self.settings))
         self._wire_infra_settings(self.settings)
         self._wire_catalog_singleton_rebind()
+        self._wire_llm_provider(self.settings)
 
         self._policy = PolicyContainer(self.settings)
         self._catalog = CatalogContainer(self)
@@ -433,6 +434,12 @@ class Container:
             )
 
         configure_catalog_singleton_rebind(_rebind)
+
+    @staticmethod
+    def _wire_llm_provider(settings: Settings) -> None:
+        from cys_core.llm import configure_default_llm_provider
+
+        configure_default_llm_provider(settings.model_provider)
 
     # ------------------------------------------------------------------
     # Cross-cutting bootstrap wiring (touches multiple sub-containers)

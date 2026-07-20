@@ -1,7 +1,7 @@
 # Microservices Split — Active Plan
 
 > Full history, investigations, and reasoning behind every decision below live in
-> [`docs/MSP_BACKLOG.md`](MSP_BACKLOG.md) (§0–§52). This file is the current to-do list only —
+> [`docs/MSP_BACKLOG.md`](MSP_BACKLOG.md) (§0–§53). This file is the current to-do list only —
 > straight to the point, no narrative. When an item below is done, move its summary to
 > `MSP_BACKLOG.md` and delete it from here.
 
@@ -15,14 +15,15 @@ physical copy of `cys_core.domain`/`bootstrap`/generic infra — deliberate dupl
 | `backend/api/` | FastAPI ingress/CRUD, event routing, HITL resume over HTTP | Deployed, CI-complete |
 | `backend/worker/` | Original monolith (agent runtime + queue consumption + control-plane daemons) | **Deployed, unchanged** — not yet retired |
 | `backend/tool-gateway/` | PEP for sandboxed agent tool calls (async stdlib server) | Deployed, CI-complete |
-| `backend/model-gateway/` | LLM-call chokepoint (input sanitize, prompt-digest check, output-leakage guard) | Built, tested, **not wired into anything** |
+| `backend/model-gateway/` | LLM-call chokepoint (input sanitize, prompt-digest check, output-leakage guard) | Built, tested; `agent-runtime` wiring written, **pending CI confirmation** |
 | `backend/agent-runtime/` | Swappable agent-execution runtime (LangGraph today) — full copy of `worker` | Package exists, CI-green, **not called by anything yet** |
 | `backend/dispatcher/` | Queue + budget/policy + `ExecutionBackend` dispatch, no agent-execution engine | Package exists, CI-green, **not deployed** |
 
 `backend/worker/` is not deleted or renamed — stays deployed until `dispatcher`+`agent-runtime` are
 proven out end-to-end and a deliberate cutover retires it. See `MSP_BACKLOG.md` §52 for exactly how
 the split (§52.1), the `AgentRunner` registry (§52.3), the deploy bootstrap (§52.5), and the
-tool-gateway async fix (§52.6) were built and verified.
+tool-gateway async fix (§52.6) were built and verified, and §53 for the same async fix synced to
+`worker`/`agent-runtime`.
 
 ---
 
@@ -37,8 +38,15 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
    `SubprocessExecutionBackend`, or `k8s`/`docker` backends pointing at a real `agent-runtime` image)
    but is unverified — needs a live Postgres-backed environment neither local dev nor CI has today.
    Blocked on item 3 below (no deploy target to point at yet). `MSP_BACKLOG.md` §52.1–§52.4.
-2. **Wire `agent-runtime` → `model-gateway`.** `AgentRuntime` still calls `litellm` directly, in-
-   process; `model-gateway` exists and is tested but nothing calls it. `MSP_BACKLOG.md` §29.4.
+2. **Wire `agent-runtime` → `model-gateway`.** Code written, pending real-CI confirmation before
+   this is called done (session discipline: dispatch, don't claim). Extended model-gateway's
+   request/response contract with tool-calling support (was text-only, useless for a SOC agent
+   that calls tools constantly); added `ModelGatewayChatModel`/`ModelGatewayProvider` in
+   `agent-runtime`, registered in the existing `ChatModelProvider` registry under
+   `"model-gateway"`, selectable via a new `MODEL_PROVIDER` setting (default stays `"litellm"` —
+   this is a selector, not a cutover). Streaming still goes through a single-chunk fallback
+   (`POST /v1/model/invoke` has no streaming endpoint, `MSP_BACKLOG.md` §29.4's own documented
+   gap, not solved here).
 3. **Deploy bootstrap: compose/Helm entries.** Dockerfiles exist and are CI-verified (§52.5), but
    there's no `docker-compose.dev.yml` entry and no Helm/K8s manifest for either package. Needs a
    deliberate decision on execution-backend shape for a real multi-container deploy — `subprocess`
@@ -56,10 +64,6 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
    the split in production with HITL-gated personas. `MSP_BACKLOG.md` §35.
 6. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
    only, zero code. Only after items 1–3 are stable. `MSP_BACKLOG.md` §22.5.
-7. **Sync the tool-gateway async fix to `worker`/`agent-runtime`/`dispatcher`.** Their own copies of
-   `invoke_tool.py`/`local_gateway.py`/`mcp_tools.py::_local_invoke` still wrap tool invocation in
-   `asyncio.to_thread`, same pattern already fixed in `tool-gateway` (§52.6) — different call shape
-   (in-process from LangChain tool wrappers), worth its own pass.
 
 ---
 

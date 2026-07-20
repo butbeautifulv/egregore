@@ -38,7 +38,7 @@ def test_gateway_invoke_refuses_untrusted_system_prompt():
 
 @pytest.mark.unit
 def test_gateway_invoke_success(monkeypatch):
-    async def fake_complete(*, model, messages, temperature, max_tokens):
+    async def fake_complete(*, model, messages, temperature, max_tokens, **_kwargs):
         return {"content": "the answer is 4", "usage": {"total_tokens": 12}}
 
     monkeypatch.setattr("bootstrap.container._litellm_complete", fake_complete)
