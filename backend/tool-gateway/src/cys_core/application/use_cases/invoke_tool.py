@@ -15,7 +15,12 @@ from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, A
 from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
 from cys_core.domain.datasources.authz import AuthorizationDecision
 from cys_core.domain.datasources.schema_models import ModelFamily
-from cys_core.domain.tools.exceptions import SandboxTokenInvalid, ScopeViolation, ToolChainDepthExceeded
+from cys_core.domain.tools.exceptions import (
+    HitlRequired,
+    SandboxTokenInvalid,
+    ScopeViolation,
+    ToolChainDepthExceeded,
+)
 from cys_core.domain.tools.models import ToolInvokeCommand, ToolInvokeResult
 from cys_core.security.rate_limit import RateLimitExceeded
 
@@ -38,6 +43,7 @@ class InvokeTool:
         check_scope: Callable[[ToolInvokeCommand], None] | None = None,
         check_rate_limit: Callable[[ToolInvokeCommand], None] | None = None,
         check_sandbox_token: Callable[[ToolInvokeCommand], None] | None = None,
+        check_hitl: Callable[[ToolInvokeCommand], None] | None = None,
     ) -> None:
         self.require_sandbox = require_sandbox
         self.check_tool_chain = check_tool_chain
@@ -62,6 +68,13 @@ class InvokeTool:
         # actually crosses the trust boundary. Same no-op-default rollout shape as
         # check_scope/check_rate_limit above.
         self.check_sandbox_token = check_sandbox_token or (lambda _cmd: None)
+        # docs/MSP_BACKLOG.md §35/§58: risk classification for HITL used to only ever
+        # run in-process inside the LangGraph runtime, before a tool call ever reached this
+        # gateway — a differently-implemented agent runtime (e.g. MinimalReactAgentRunner) has
+        # no obligation to run that same check. Enforcing it here closes that gap at the one
+        # chokepoint every runtime's tool calls must cross regardless of implementation, same
+        # shape as check_scope/check_sandbox_token above.
+        self.check_hitl = check_hitl or (lambda _cmd: None)
 
     def _datasource_deny_response(
         self,
@@ -183,6 +196,7 @@ class InvokeTool:
             self.check_sandbox_token(command)
             self.check_scope(command)
             self.check_rate_limit(command)
+            self.check_hitl(command)
             deny = authorize_tool_datasource(
                 tool_name=command.tool_name,
                 persona=command.persona,
@@ -241,6 +255,15 @@ class InvokeTool:
                 success=False,
                 tool_name=command.tool_name,
                 error=str(exc),
+            )
+        except HitlRequired as exc:
+            response = ToolInvokeResult(
+                success=False,
+                tool_name=command.tool_name,
+                error="hitl_required",
+                hitl_required=True,
+                risk_level=exc.risk_level,
+                approval_token=exc.approval_token,
             )
         except RateLimitExceeded as exc:
             response = ToolInvokeResult(

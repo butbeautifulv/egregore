@@ -38,10 +38,16 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
    review). Deliberately deferred — not yet decided. `MSP_BACKLOG.md` §52.4, §52.5.
 2. **HITL pause/resume redesign for the cross-process case.** Today's mechanism
    (`langgraph.interrupt()` + checkpointer) is in-process-shaped and won't survive `agent-runtime`
-   being a separate process. Design exists (refuse-then-retry with an `approval_id` token, reusing
-   `ResumeHitlJob`'s anti-tampering pattern) but is **not implemented**. Neither `AgentRunner`
-   implementation (`langgraph` or `react`) supports resume across process boundaries yet.
-   `MSP_BACKLOG.md` §35.
+   being a separate process. Design (`§35`): refuse-then-retry with an approval token, reusing
+   `ResumeHitlJob`'s anti-tampering pattern. **Half built** (`§58`): `tool-gateway` can now classify
+   risk and mint/verify approval tokens on its own (`TOOL_HITL_MODE`, default `shadow` — changes
+   nothing live yet). **Still missing**: `SecurityMiddleware.wrap_tool_call`/`awrap_tool_call`
+   (`worker`/`agent-runtime`) don't yet notice `hitl_required` in a tool-gateway response, call
+   `interrupt()` post-handler, or retry with the approval token; `MinimalReactAgentRunner` doesn't
+   inspect this field either. Neither `AgentRunner` implementation supports resume across process
+   boundaries yet. Do not flip `TOOL_HITL_MODE` to `enforce` until the runtime-side half exists and
+   both halves are proven together with a real HITL-gated persona (same live-sandbox rigor as
+   `§56`). `MSP_BACKLOG.md` §35, §58.
 3. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
    only, zero code. Only after item 1 is stable. `MSP_BACKLOG.md` §22.5.
 

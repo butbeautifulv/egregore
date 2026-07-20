@@ -68,6 +68,46 @@ def _resolve_sandbox_token_violation(command: "ToolInvokeCommand", *, secret: by
     return None
 
 
+def _resolve_hitl_decision(command: "ToolInvokeCommand", *, policy_port, secret: bytes) -> tuple[str, str] | None:
+    """Return (risk_level, approval_token) if this call needs human approval, else None.
+
+    A present, valid approval_token bound to this exact tool_name+args (mint_approval_token/
+    verify_approval_token, cys_core.domain.security.approval_tokens) skips re-classification —
+    this is the retry path after a human has already approved. A missing/invalid/mismatched
+    token does not itself deny the call; it just falls through to classification like a first
+    attempt would, so a stale or tampered token can't add a stronger block, only fail to grant
+    a bypass. docs/MSP_BACKLOG.md §35/§58.
+    """
+    from cys_core.domain.policy.pure import classify_tool_risk_pure
+    from cys_core.domain.security.approval_tokens import args_hash, mint_approval_token, verify_approval_token
+    from cys_core.domain.security.risk import parse_threshold
+
+    if command.approval_token:
+        claims = verify_approval_token(command.approval_token, secret=secret)
+        if (
+            claims is not None
+            and claims.tool_name == command.tool_name
+            and claims.args_hash == args_hash(command.args)
+        ):
+            return None
+
+    from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+
+    profile_id = command.profile_id or DEFAULT_PROFILE_ID
+    policy = policy_port.get_policy(profile_id)
+    risk = classify_tool_risk_pure(command.tool_name, policy)
+    threshold = parse_threshold(policy_port.get_hitl_threshold(profile_id))
+    if risk <= threshold:
+        return None
+    token = mint_approval_token(
+        tool_name=command.tool_name,
+        tool_args=command.args,
+        ttl_s=900,
+        secret=secret,
+    )
+    return risk.value, token
+
+
 class ToolsContainer:
     """Owns tool-chain policy, invocation use case, and execution gateway."""
 
@@ -157,6 +197,33 @@ class ToolsContainer:
             return
         raise SandboxTokenInvalid(violation)
 
+    def _check_hitl(self, command: "ToolInvokeCommand") -> None:
+        from cys_core.domain.tools.exceptions import HitlRequired
+
+        mode = self.settings.tool_hitl_mode
+        if mode == "off":
+            return
+        decision = _resolve_hitl_decision(
+            command,
+            policy_port=self._container.get_profile_policy_port(),
+            secret=self.settings.bus_signing_key_bytes,
+        )
+        if decision is None:
+            return
+        risk_level, approval_token = decision
+        if mode == "shadow":
+            # Same rollout stance as tool_scope_mode/tool_sandbox_token_mode: log what would
+            # have been refused pending approval, block nothing, until real traffic confirms
+            # which calls actually trip this before it can deny a live call.
+            logger.warning(
+                "tool_gateway_hitl_required_shadow",
+                persona=command.persona,
+                tool_name=command.tool_name,
+                risk_level=risk_level,
+            )
+            return
+        raise HitlRequired(risk_level=risk_level, approval_token=approval_token)
+
     def get_invoke_tool(self):
         if self._invoke_tool is not None:
             return self._invoke_tool
@@ -180,6 +247,7 @@ class ToolsContainer:
             check_scope=self._check_scope,
             check_rate_limit=self._check_rate_limit,
             check_sandbox_token=self._check_sandbox_token,
+            check_hitl=self._check_hitl,
         )
         return self._invoke_tool
 

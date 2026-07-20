@@ -489,6 +489,18 @@ class Settings(BaseSettings):
         "mcp_tools.py) is confirmed to actually be sending one. Same off|shadow|enforce shape "
         "as tool_scope_mode/authz_mode.",
     )
+    tool_hitl_mode: str = Field(
+        default="shadow",
+        validation_alias="TOOL_HITL_MODE",
+        description="off|shadow|enforce for InvokeTool's tool-call-level HITL risk check "
+        "(docs/MSP_BACKLOG.md §35/§58). Classifies each call via classify_tool_risk_pure "
+        "against the persona's hitl_threshold; in 'enforce' a call above threshold is refused "
+        "with hitl_required=True instead of executed, mirroring the caller's own "
+        "check_scope/check_sandbox_token rollout: default 'shadow' logs what would have been "
+        "refused without blocking anything, until real traffic confirms which calls actually "
+        "need this before it can deny a live call. Same off|shadow|enforce shape as "
+        "tool_scope_mode/tool_sandbox_token_mode.",
+    )
     allow_legacy_tenant_tokens: bool = Field(
         default=False,
         validation_alias="ALLOW_LEGACY_TENANT_TOKENS",
@@ -812,6 +824,9 @@ class Settings(BaseSettings):
         if self.tool_sandbox_token_mode.lower() not in _ALLOWED_AUTHZ_MODES:
             raise ValueError(f"TOOL_SANDBOX_TOKEN_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}")
         self.tool_sandbox_token_mode = self.tool_sandbox_token_mode.lower()
+        if self.tool_hitl_mode.lower() not in _ALLOWED_AUTHZ_MODES:
+            raise ValueError(f"TOOL_HITL_MODE must be one of {sorted(_ALLOWED_AUTHZ_MODES)}")
+        self.tool_hitl_mode = self.tool_hitl_mode.lower()
         return self
 
     def resolve_worker_job_timeout(self, *, persona: str, phase: str | None = None) -> float:

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from cys_core.application.use_cases.invoke_tool import InvokeTool
-from cys_core.domain.tools.exceptions import SandboxTokenInvalid, ScopeViolation, ToolChainDepthExceeded
+from cys_core.domain.tools.exceptions import HitlRequired, SandboxTokenInvalid, ScopeViolation, ToolChainDepthExceeded
 from cys_core.domain.tools.models import ToolInvokeCommand
 from cys_core.security.rate_limit import RateLimitExceeded
 
@@ -125,6 +125,37 @@ async def test_invoke_tool_rejects_invalid_sandbox_token():
     result = await invoke.execute(_command(tool_name="run_active_scan"))
     assert result.success is False
     assert "missing_sandbox_token" in result.error
+
+
+@pytest.mark.unit
+async def test_invoke_tool_refuses_pending_hitl_approval_instead_of_executing():
+    """docs/MSP_BACKLOG.md §35/§58: the tool adapter must never run when check_hitl
+    says the call needs a human — this is the refuse-then-retry design's core guarantee."""
+    executed = False
+
+    async def _adapter(_name, _args):
+        nonlocal executed
+        executed = True
+        return {"ok": True}
+
+    invoke = InvokeTool(
+        require_sandbox=lambda _sid: None,
+        check_tool_chain=lambda _cmd: None,
+        invoke_adapter=_adapter,
+        tool_registry=MagicMock(),
+        sanitize_tool_output_or_raise=lambda raw: str(raw),
+        record_tool_invocation=lambda *_a: None,
+        check_hitl=lambda _cmd: (_ for _ in ()).throw(
+            HitlRequired(risk_level="high", approval_token="tok-1")
+        ),
+    )
+    result = await invoke.execute(_command(tool_name="run_playbook"))
+    assert result.success is False
+    assert result.error == "hitl_required"
+    assert result.hitl_required is True
+    assert result.risk_level == "high"
+    assert result.approval_token == "tok-1"
+    assert executed is False
 
 
 @pytest.mark.unit

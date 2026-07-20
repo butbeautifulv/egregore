@@ -5890,5 +5890,82 @@ conftest module (confirmed by dumping `sys.path` during collection: the bare pac
 appears when a `tests/conftest.py` exists). `model-gateway` has no `tests/conftest.py` at all, so
 that insertion never happened, and `scripts` (living at `model-gateway/scripts/`) was never
 reachable. Fixed by adding `"."` to `pythonpath` in `pyproject.toml` explicitly, rather than
-depending on that undocumented side effect. Commit `809e06a`, run `29767979281` (pending at time of
-writing — see plan for current status).
+depending on that undocumented side effect. Commit `809e06a`, run `29767979281`,
+`conclusion: success` — model-gateway `arch-lint` CI coverage (§57) is now genuinely green,
+confirmed end to end after the bug found in §57.2.
+
+## 58. §35's design B built: tool-gateway-side HITL risk classification (§1 item 2, first half)
+
+`§35` left a fully-specified design (option B: refuse-then-retry with an approval token) but
+explicitly deferred implementing it — no live LLM/agent run existed in this environment to verify
+it against, and "getting HITL wrong either blocks legitimate operator work or lets a high-risk
+action through unapproved" made shipping it on unit tests alone a real risk. `§56` changed the
+first half of that calculus (live Postgres/Redis/DeepSeek key now proven in this sandbox); this
+entry builds the half of design B that's genuinely independent and self-contained, landed
+shadow-mode-default so it changes nothing live yet — the other half (below, "not done") still
+needs the same live-proof rigor `§56` used before this can actually gate a real call.
+
+### 58.1. What was built
+
+`tool-gateway` is the only one of the four `InvokeTool` copies with the `check_scope`/
+`check_rate_limit`/`check_sandbox_token` chokepoint pattern at all (confirmed by diffing all four
+copies — `worker`/`agent-runtime`/`dispatcher`'s copies are a simpler, unguarded local-execution
+variant with none of those checks, so `check_hitl` only needed real wiring in one place):
+
+- **`cys_core/domain/security/approval_tokens.py`** (new, `tool-gateway` only): `mint_approval_token`/
+  `verify_approval_token`, byte-for-byte the same HMAC-signed, stateless shape as the existing
+  `sandbox_tokens.py` in the same directory — deliberately reused rather than inventing a second
+  pattern. Binds `{tool_name, args_hash, exp}`, not just an opaque id: the entire anti-tampering
+  point (matching `§35`'s "mirror `ResumeHitlJob`'s `params_hash` bypass-guard pattern") is that a
+  token approved for one set of args must not silently approve a substituted, more dangerous set of
+  args presented on retry — verified directly, not just asserted (see §58.3).
+- **`ToolInvokeCommand.approval_token`** / **`ToolInvokeResult.hitl_required`/`risk_level`/
+  `approval_token`** — added to all four packages' copies of `models.py` (identical before
+  editing) for wire-format parity, since this model is the HTTP contract between
+  worker/agent-runtime (callers) and tool-gateway (server).
+- **`HitlRequired` exception** (`cys_core/domain/tools/exceptions.py`, tool-gateway) — same shape
+  as `ScopeViolation`/`SandboxTokenInvalid`: raised by `check_hitl`, caught in `InvokeTool.
+  _execute_inner`, turned into a refusal `ToolInvokeResult` (`success=False,
+  error="hitl_required", hitl_required=True, risk_level=..., approval_token=...`) **without ever
+  calling the tool adapter** — verified by a unit test asserting the adapter's execution flag stays
+  `False`.
+- **`ToolsContainer._check_hitl`/`_resolve_hitl_decision`** (tool-gateway) — classifies risk via
+  the existing `classify_tool_risk_pure`/`parse_threshold` (same functions the in-process LangGraph
+  `SecurityMiddleware` already uses, just called from tool-gateway instead of from inside the
+  runtime process). A present `approval_token` is checked first: valid signature + matching
+  `tool_name` + matching `args_hash` skips reclassification (the retry-after-approval path);
+  anything else (missing, wrong secret, wrong tool, mismatched args, expired) falls through to a
+  fresh classification rather than adding an extra block — a stale or tampered token can't grant a
+  bypass, but it also can't make an otherwise-fine call fail.
+- **`TOOL_HITL_MODE`** setting (`off|shadow|enforce`, default `shadow`) — identical rollout shape
+  to `tool_scope_mode`/`tool_sandbox_token_mode`: `shadow` logs `tool_gateway_hitl_required_shadow`
+  with the risk level whenever a call would have been refused, blocking nothing, until real traffic
+  confirms this classifies calls the way operators actually expect before it can deny a live one.
+
+### 58.2. Why this is exactly half of `§35`'s design, not the whole thing
+
+This closes the piece of design B that's genuinely independent — tool-gateway can now classify
+risk and mint/verify approval tokens entirely on its own, with zero coupling to LangGraph or any
+particular `AgentRunner`. It does **not** yet close the loop: nothing on the runtime side
+(`SecurityMiddleware.wrap_tool_call`/`awrap_tool_call` in `worker`/`agent-runtime`) has been
+changed to actually notice `hitl_required=True` in a tool-gateway response, call `interrupt()` at
+that point (moved from before the network call to after it, per `§35.2`'s exact ordering change),
+or retry with `approval_token` on resume. `MinimalReactAgentRunner` also doesn't inspect this field
+yet. Until that side is built, `TOOL_HITL_MODE=enforce` would simply make a risky tool call fail
+with an error no caller currently knows how to recover from — **not implemented as a live control,
+still shadow-mode-only by default, and not to be flipped to enforce until the runtime-side half
+exists and both halves are proven together with a real HITL-gated persona**, the same live-sandbox
+rigor `§56` used for the process-boundary proof.
+
+### 58.3. Verification
+
+Local: `ruff check`, `ty check src`, `lint-imports`, `uv lock --check` — all clean on
+`tool-gateway` (the only package with real logic changes) and on `worker`/`agent-runtime`/
+`dispatcher` (model-field-only changes). `pytest --collect-only` on the three new/changed test
+files (`tests/domain/security/test_approval_tokens.py`, `tests/application/test_invoke_tool.py`,
+`tests/bootstrap/test_tools_container.py`) — 25+15+8 tests collect cleanly, none run. Additionally,
+given the security stakes, `_resolve_hitl_decision` was exercised directly with a standalone
+script (not `pytest`) covering: low-risk auto-allow, high-risk refusal with a minted token,
+valid-token bypass, and three known-should-not-bypass cases (args differ, tool_name differs, wrong
+signing secret) — all six passed. No `pytest` run at any point.
+<!-- commit sha / CI run id filled in after push -->

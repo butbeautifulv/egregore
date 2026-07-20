@@ -49,6 +49,12 @@ class ToolInvokeCommand(BaseModel):
     # cys_core.domain.security.sandbox_tokens) — minted but never verified
     # anywhere until docs/MSP_BACKLOG.md §37 wired it here.
     sandbox_token: str = ""
+    # Presented on retry after a human approves a previously-refused high-risk
+    # call — InvokeTool's check_hitl skips re-classification when this matches
+    # the exact tool_name/args the token was minted for (mint_approval_token/
+    # verify_approval_token, cys_core.domain.security.approval_tokens).
+    # docs/MSP_BACKLOG.md §35/§58.
+    approval_token: str = ""
 
 
 class ToolInvokeResult(BaseModel):
@@ -58,3 +64,9 @@ class ToolInvokeResult(BaseModel):
     sanitized_payload: str = ""
     error: str = ""
     stub_result: StubToolResult | None = None
+    # Set when InvokeTool refused to execute pending human approval (§35/§58) —
+    # error is "hitl_required" in that case, approval_token is what the caller
+    # must present on retry once a human approves.
+    hitl_required: bool = False
+    risk_level: str = ""
+    approval_token: str = ""
