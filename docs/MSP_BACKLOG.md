@@ -5268,3 +5268,23 @@ applying the `new_follow_up_id()`-style mitigation blindly to all of them would 
 on sites that may not be exposed at all, not the same "narrow, proven, zero-regression-risk" shape
 §48's actual fix had. Not pursuing the rest of the sweep this round; noted here so the next pass
 starts from "one confirmed non-issue, ~15 untraced" instead of re-deriving that this needs tracing.
+
+## 51. This document split in two (2026-07-20)
+
+Explicit user instruction: separate everything already done into an archive, make the active plan
+doc simple and straight to the point, and make explicit the next headline goal — splitting `worker`
+into separate `dispatcher`/`agent-runtime` services (resolving §22.6's open question in favor of
+extraction, not just an internal module boundary).
+
+Everything above this point (§0–§50.1) is that archive, moved here verbatim with section numbers
+preserved exactly so every existing `docs/MSP_BACKLOG.md §XX` reference across the codebase (~100
+files: settings.py error messages, docstrings, README/AGENTS.md, CI configs, deploy manifests, test
+files — mechanically redirected from the old filename in the same commit) stays meaningful. The new
+`docs/MICROSERVICES_SPLIT_PLAN.md` is the active to-do list from here forward — short, no narrative,
+organized purely around what's not done yet. See it for current status.
+
+Verified: `ruff` clean across all four packages, YAML validity checked on every touched non-Python
+config file, full `pytest_batches.sh` green in all three duplicated packages (0 failures) locally,
+and confirmed green in real CI (`gh workflow run "Release Gate"`, run `29724183820`,
+`{"conclusion":"success"}`, zero failed jobs) — the redirect is pure string substitution and broke
+nothing.
