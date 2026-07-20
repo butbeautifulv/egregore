@@ -1,7 +1,7 @@
 [project]
 name = "egregore-api"
 version = "0.1.0"
-description = "Egregore API service — FastAPI CRUD + ingress only, zero agent-execution frameworks (langchain/langgraph/deepagents/litellm). Meta-LLM planning is enqueued as a WorkerJob and runs entirely in worker (docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2)."
+description = "Egregore API service — FastAPI CRUD + ingress only, zero agent-execution frameworks (langchain/langgraph/deepagents/litellm). Meta-LLM planning is enqueued as a WorkerJob and runs entirely in worker (docs/MSP_BACKLOG.md §0/§1.2)."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
@@ -21,7 +21,7 @@ dependencies = [
     # ImportError) because this was never a declared dependency anywhere.
     "jsonschema>=4.23.0",
     # Absorbed from egregore-contracts (backend/contracts retired, see
-    # docs/MICROSERVICES_SPLIT_PLAN.md §18): generic Postgres/Kafka/Redis
+    # docs/MSP_BACKLOG.md §18): generic Postgres/Kafka/Redis
     # infra, auth, observability wiring that cys_core.infrastructure/bootstrap
     # depend on, physically duplicated into this package's own src/.
     "psycopg[binary]>=3.3.0",

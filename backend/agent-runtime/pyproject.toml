@@ -1,7 +1,7 @@
 [project]
 name = "egregore-agent-runtime"
 version = "0.1.0"
-description = "Egregore agent-runtime service — the LangChain/LangGraph agent-execution runtime, extracted from egregore-worker as its own deployable (docs/MICROSERVICES_SPLIT_PLAN.md §1). Phase 1: physical package split only, still exercised in-process via backend/worker's own copy — not yet wired across a real process boundary (see docs/MICROSERVICES_SPLIT_PLAN.md §1 phase 3)."
+description = "Egregore agent-runtime service — the LangChain/LangGraph agent-execution runtime, extracted from egregore-worker as its own deployable (docs/MSP_BACKLOG.md §52.1). Physical package split is done and CI-green; not yet wired across a real process boundary to dispatcher — that's still open (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 1)."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
@@ -21,7 +21,7 @@ dependencies = [
     "rapidfuzz>=3.13.0",
     "pyyaml>=6.0",
     # Absorbed from egregore-contracts (backend/contracts retired, see
-    # docs/MICROSERVICES_SPLIT_PLAN.md §18): generic Postgres/Kafka/Redis
+    # docs/MSP_BACKLOG.md §18): generic Postgres/Kafka/Redis
     # infra, auth, observability wiring that cys_core.infrastructure/bootstrap
     # depend on, physically duplicated into this package's own src/.
     "psycopg[binary]>=3.3.0",
@@ -47,7 +47,7 @@ egregore-agent-runtime = "interfaces.cli.main:main"
 # `uv run egregore run-sandboxed-job` — the same script name egregore-worker exports today,
 # since docker_worker_image/k8s_worker_image still point at worker's image. Once those settings
 # point at an agent-runtime-built image instead, that same hardcoded command must keep working
-# without touching dispatcher's execution-backend code (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 7).
+# without touching dispatcher's execution-backend code (docs/MSP_BACKLOG.md §52.5).
 egregore = "interfaces.cli.main:main"
 
 [tool.pytest.ini_options]

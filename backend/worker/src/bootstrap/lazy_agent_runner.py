@@ -14,7 +14,7 @@ class LazyInProcessAgentRunner:
     time (`EngagementContainer.get_worker_orchestrator`/`get_meta_planner`)
     keeps those paths from importing the agent runtime's framework
     dependency merely to select an out-of-process execution backend. See
-    docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2.
+    docs/MSP_BACKLOG.md §52.2.
     """
 
     async def arun(self, *args: Any, **kwargs: Any) -> dict[str, Any]:

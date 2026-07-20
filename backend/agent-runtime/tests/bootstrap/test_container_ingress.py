@@ -108,7 +108,7 @@ def test_subprocess_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent
     (whose actual job execution never touches `runtime` at all, see WorkerOrchestrator.run_job)
     still forced an eager import of the langchain/langgraph-dependent agent runtime just to pick
     an out-of-process backend. Fixed by passing LazyInProcessAgentRunner instead of a real one for
-    non-in_process backends (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2)."""
+    non-in_process backends (docs/MSP_BACKLOG.md §52.2)."""
     from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
     monkeypatch.setenv("EXECUTION_BACKEND", "subprocess")
@@ -201,7 +201,7 @@ def test_worker_orchestrator_honors_agent_runner_impl_setting(monkeypatch, reque
     """End-to-end: AGENT_RUNNER_IMPL selects which registered AgentRunner
     implementation backs in_process execution, via the same registry mechanism
     proven in tests/runtime/test_agent_runner_registry.py
-    (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 4)."""
+    (docs/MSP_BACKLOG.md §52.3)."""
     from cys_core.runtime import agent as agent_module
     from cys_core.runtime.agent import configure_agent_runner
 

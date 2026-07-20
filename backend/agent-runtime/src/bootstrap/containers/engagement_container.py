@@ -114,7 +114,7 @@ class EngagementContainer:
             # WorkerOrchestrator's shared bookkeeping (_run_worker_job's mark_job_timeout etc.) —
             # LazyInProcessAgentRunner defers the cys_core.runtime.agent import (langchain/
             # langgraph/litellm) until something actually calls arun/aresume on it, which never
-            # happens on these paths (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2).
+            # happens on these paths (docs/MSP_BACKLOG.md §52.2).
             from interfaces.worker.orchestrator import WorkerOrchestrator
 
             backend_kind = self.settings.execution_backend

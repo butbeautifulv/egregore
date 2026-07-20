@@ -34,7 +34,7 @@ def test_configure_agent_runner_registers_a_new_named_implementation():
     AgentRunner-Protocol-shaped factory under a new name and selecting it by name
     is all a genuinely different agent implementation needs to do to plug in here —
     it does not need to touch ModelConnector, litellm, or LangChain at all
-    (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 4)."""
+    (docs/MSP_BACKLOG.md §52.3)."""
 
     class FakeAlternativeAgentRunner:
         async def arun(self, *args, **kwargs):

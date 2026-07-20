@@ -21,7 +21,7 @@ dependencies = [
     "rapidfuzz>=3.13.0",
     "pyyaml>=6.0",
     # Absorbed from egregore-contracts (backend/contracts retired, see
-    # docs/MICROSERVICES_SPLIT_PLAN.md §18): generic Postgres/Kafka/Redis
+    # docs/MSP_BACKLOG.md §18): generic Postgres/Kafka/Redis
     # infra, auth, observability wiring that cys_core.infrastructure/bootstrap
     # depend on, physically duplicated into this package's own src/.
     "psycopg[binary]>=3.3.0",

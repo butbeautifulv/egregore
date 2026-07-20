@@ -1,7 +1,7 @@
 [project]
 name = "egregore-tool-gateway"
 version = "0.1.0"
-description = "Egregore MCP Tool Gateway — the PEP for sandboxed agent tool calls (SIEM/RAG/web/files/sandbox/veil/nessus). No agent-execution frameworks (langchain/langgraph/deepagents/litellm) — every tool it can invoke is a plain-function adapter, see docs/MICROSERVICES_SPLIT_PLAN.md §21.5."
+description = "Egregore MCP Tool Gateway — the PEP for sandboxed agent tool calls (SIEM/RAG/web/files/sandbox/veil/nessus). No agent-execution frameworks (langchain/langgraph/deepagents/litellm) — every tool it can invoke is a plain-function adapter, see docs/MSP_BACKLOG.md §21.5."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
@@ -15,7 +15,7 @@ dependencies = [
     "qdrant-client>=1.12.0",
     "langfuse>=4.6.1",
     # Absorbed from egregore-contracts (backend/contracts retired, see
-    # docs/MICROSERVICES_SPLIT_PLAN.md §18): generic Postgres/Kafka/Redis
+    # docs/MSP_BACKLOG.md §18): generic Postgres/Kafka/Redis
     # infra, auth, observability wiring that cys_core.infrastructure/bootstrap
     # depend on, physically duplicated into this package's own src/.
     "psycopg[binary]>=3.3.0",

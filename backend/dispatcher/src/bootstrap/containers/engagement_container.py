@@ -118,7 +118,7 @@ class EngagementContainer:
                 "interpreter cannot execute jobs (cys_core.runtime lives in "
                 "backend/agent-runtime now, not here). Point it at agent-runtime's venv "
                 "python, e.g. /opt/agent-runtime/.venv/bin/python "
-                "(see docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2)."
+                "(see docs/MSP_BACKLOG.md §52.2)."
             )
         return python_executable
 
@@ -133,7 +133,7 @@ class EngagementContainer:
             # WorkerOrchestrator's shared bookkeeping (_run_worker_job's mark_job_timeout etc.) —
             # LazyInProcessAgentRunner defers the cys_core.runtime.agent import (langchain/
             # langgraph/litellm) until something actually calls arun/aresume on it, which never
-            # happens on these paths (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2).
+            # happens on these paths (docs/MSP_BACKLOG.md §52.2).
             from interfaces.worker.orchestrator import WorkerOrchestrator
 
             backend_kind = self.settings.execution_backend
@@ -279,7 +279,7 @@ class EngagementContainer:
         # in_process is not supported in dispatcher (see get_worker_orchestrator() above) —
         # always use the lazy proxy; its arun/aresume are never actually called since
         # meta-planning is gated behind RunWorkerJob.execute(), which only InProcessExecutionBackend
-        # invokes (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2).
+        # invokes (docs/MSP_BACKLOG.md §52.2).
         from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
         from cys_core.application.use_cases.meta_planner import MetaPlanner
 

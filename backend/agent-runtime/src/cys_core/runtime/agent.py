@@ -676,7 +676,7 @@ def get_runtime() -> AgentRuntime:
 # vendor call, zero code change needed). This registry is the equivalent seam one layer
 # up: swapping the *agent framework* itself (today only "langgraph"/AgentRuntime is
 # registered), not just which model vendor it calls. See
-# docs/MICROSERVICES_SPLIT_PLAN.md §1 item 4 — a second AgentRunner implementation only
+# docs/MSP_BACKLOG.md §52.3 — a second AgentRunner implementation only
 # needs to satisfy the AgentRunner Protocol (arun/aresume); it is not required to use
 # ModelConnector, litellm, or LangChain internally at all.
 _DEFAULT_AGENT_RUNNER_NAME = "langgraph"

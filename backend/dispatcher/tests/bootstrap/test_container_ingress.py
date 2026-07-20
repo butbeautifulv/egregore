@@ -155,7 +155,7 @@ def test_in_process_backend_fails_clearly_not_silently(monkeypatch):
 def test_subprocess_backend_forwards_agent_runtime_python_executable(monkeypatch):
     """AGENT_RUNTIME_PYTHON_EXECUTABLE is how dispatcher points its subprocess spawns at
     backend/agent-runtime's own venv instead of its own sys.executable (docs/
-    MICROSERVICES_SPLIT_PLAN.md §1 item 2)."""
+    MSP_BACKLOG.md §52.2)."""
     monkeypatch.setenv("EXECUTION_BACKEND", "subprocess")
     monkeypatch.setenv("AGENT_RUNTIME_PYTHON_EXECUTABLE", "/opt/agent-runtime/.venv/bin/python")
     container = Container(Settings(use_kafka=False))

@@ -16,7 +16,7 @@ defaults to `subprocess` here (not `in_process`, which is structurally unsupport
 Still keeps `langchain-core`/`langgraph`/`litellm` as real dependencies: `cys_core/llm`'s
 message/tool vocabulary and `cys_core/persistence.py`'s LangGraph checkpoint types are used by
 tool-registry/job-routing code that isn't itself the agent loop (traced in full in
-`docs/MICROSERVICES_SPLIT_PLAN.md` §1 item 1) — not yet decoupled from those lower-level types.
+`docs/MSP_BACKLOG.md` §52.1) — not yet decoupled from those lower-level types.
 
 Fully self-contained — its own physical copy of domain models, port interfaces, and generic
 infra clients (no shared package with any other `backend/` package, see `docs/MSP_BACKLOG.md`
