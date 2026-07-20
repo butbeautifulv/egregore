@@ -10,7 +10,7 @@ deepagents/litellm) — every tool it can invoke is a plain-function adapter
 in `cys_core/infrastructure/tools/adapters/`, extracted from worker's
 LangChain-typed tool registry with zero duplication (the registry's own
 `@tool` wrappers delegate to the same functions). See
-`docs/MICROSERVICES_SPLIT_PLAN.md` §21 for the full history: §21.1–§21.2
+`docs/MSP_BACKLOG.md` §21 for the full history: §21.1–§21.2
 (langchain-core removed from `api`, FastAPI replaced in worker's original
 in-package gateway), §21.5 (registry decoupled from the gateway's execution
 path), §21.6 (this package extracted, physical-copy pattern matching

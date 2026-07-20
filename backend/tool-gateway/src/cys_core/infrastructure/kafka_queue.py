@@ -207,7 +207,7 @@ class KafkaJobQueue:
             # meant for another persona. Requeuing is correct, but if this
             # counter keeps climbing for one persona, no worker instance is
             # actually listening for it — the job is being recycled forever,
-            # not making progress. See docs/MICROSERVICES_SPLIT_PLAN.md §16.
+            # not making progress. See docs/MSP_BACKLOG.md §16.
             metrics.record_job_queue_persona_requeued(job.persona)
             await self.aenqueue(job)
         return None

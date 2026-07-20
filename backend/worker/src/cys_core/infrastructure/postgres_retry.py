@@ -20,7 +20,7 @@ def connect_with_retry(
     Every store's _connect() used to call psycopg.connect() directly, one shot — a
     Postgres restart or brief network blip failed the very next query with no retry,
     unlike the graceful-degradation paths (falling back to in-memory) that already
-    exist elsewhere. docs/MICROSERVICES_SPLIT_PLAN.md §24.4 point 4."""
+    exist elsewhere. docs/MSP_BACKLOG.md §24.4 point 4."""
     attempt = 0
     while True:
         try:

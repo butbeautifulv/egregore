@@ -26,7 +26,7 @@ def test_settings_auth_enabled_requires_shared_secret() -> None:
 
 @pytest.mark.unit
 def test_settings_prod_rejects_auth_disabled() -> None:
-    """docs/MICROSERVICES_SPLIT_PLAN.md §11.2's prod-guard pattern, applied to
+    """docs/MSP_BACKLOG.md §11.2's prod-guard pattern, applied to
     model-gateway: api/worker/tool-gateway all refuse to start at STAGE=prod with
     their own off-by-default auth toggle disabled — this package's settings.py
     never got the same guard when it was built in §29."""

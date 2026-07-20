@@ -27,7 +27,7 @@ worker:
     maxReplicas: 4
     targetCPUUtilization: 70
 
-# The PEP for sandboxed agent tool calls — see docs/MICROSERVICES_SPLIT_PLAN.md
+# The PEP for sandboxed agent tool calls — see docs/MSP_BACKLOG.md
 # §21.6. Own image (own Dockerfile.tool-gateway, own package, no langchain/
 # agent-execution frameworks), same pattern as `ui` above rather than sharing
 # `image:`.

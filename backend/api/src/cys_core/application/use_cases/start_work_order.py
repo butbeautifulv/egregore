@@ -270,7 +270,7 @@ class StartWorkOrder:
     async def execute(self, request: WorkOrderRequest) -> tuple[Engagement, RoutingDecision, list[str]]:
         request = self._with_workspace(request)
         intake = self._validate_intake(request)
-        # 5-whys root cause fix (docs/MICROSERVICES_SPLIT_PLAN.md §11.7/§13 Phase 12):
+        # 5-whys root cause fix (docs/MSP_BACKLOG.md §11.7/§13 Phase 12):
         # `goal` here reaches _enqueue_initial_qa_job's WorkerJob payload and
         # _persist_initial_turn's memory write *directly*, independent of
         # StartEngagement.execute()'s own sanitization — this is the one place in

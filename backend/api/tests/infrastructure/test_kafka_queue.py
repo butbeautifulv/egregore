@@ -124,7 +124,7 @@ async def test_kafka_queue_catchall_worker_consumes_planner_job() -> None:
     """A worker started with no --persona (empty string, e.g. scripts/dev.sh's and
     deploy/docker-compose.dev.yml's default) must consume a WorkerJob(persona="planner")
     without requeuing it — this is the deployment invariant documented in AGENTS.md
-    and docs/MICROSERVICES_SPLIT_PLAN.md §16 that api's StartEngagement enqueue path
+    and docs/MSP_BACKLOG.md §16 that api's StartEngagement enqueue path
     (task #56/#57) depends on. persona="" here, not a truthy scoped value.
     """
     queue = KafkaJobQueue(persona="", bootstrap_servers="localhost:19092")

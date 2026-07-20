@@ -196,7 +196,7 @@ class LiteLLMChatModel(BaseChatModel):
         if self.num_retries > 0:
             # litellm's own retry loop only fires on transient failures
             # (408/409/429/5xx) — never on 4xx client errors — and applies
-            # its own backoff between attempts. docs/MICROSERVICES_SPLIT_PLAN.md
+            # its own backoff between attempts. docs/MSP_BACKLOG.md
             # §24: previously unset, so a single rate limit or provider blip
             # failed the whole worker job with no retry at all.
             call_kwargs["num_retries"] = self.num_retries

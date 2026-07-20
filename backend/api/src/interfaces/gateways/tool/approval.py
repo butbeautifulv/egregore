@@ -113,7 +113,7 @@ async def record_hitl_approval_blocking(
     approval_id: str | None = None,
 ) -> tuple[HitlApprovalRecord, bool]:
     """Like record_hitl_approval, but awaits the real Kafka publish outcome instead of
-    firing-and-forgetting it (docs/MICROSERVICES_SPLIT_PLAN.md §10.3/§41). Used for the
+    firing-and-forgetting it (docs/MSP_BACKLOG.md §10.3/§41). Used for the
     approve/edit HITL decision path: a high-risk action is about to execute off the back
     of this audit record, so a publish failure needs to be observable to the caller rather
     than degrading to a background warning log the caller never sees."""

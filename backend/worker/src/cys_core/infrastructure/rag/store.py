@@ -14,7 +14,7 @@ logger = structlog.get_logger(__name__)
 class QdrantUnavailableError(Exception):
     """Raised instead of silently degrading — rag_query() (cys_core.infrastructure.rag.retrieve)
     already has fail-closed handling designed for exactly this (RetrievalResult.fail_closed),
-    docs/MICROSERVICES_SPLIT_PLAN.md §10.5's requirement — but QdrantVectorStore previously
+    docs/MSP_BACKLOG.md §10.5's requirement — but QdrantVectorStore previously
     swallowed the failure and returned empty/stale results from an in-memory store instead of
     raising, silently bypassing that handling. See §39."""
 

@@ -107,7 +107,7 @@ class EngagementContainer:
         if persona not in self._worker_orchestrators:
             # The one concrete AgentRuntime import in this whole seam lives here, in the
             # composition root, not in interfaces/worker/orchestrator.py (docs/
-            # MICROSERVICES_SPLIT_PLAN.md §22.3/§29's dispatcher/agent_runtime split) — swapping
+            # MSP_BACKLOG.md §22.3/§29's dispatcher/agent_runtime split) — swapping
             # which AgentRunner implementation backs the dispatcher is a change to this one line,
             # not to WorkerOrchestrator itself.
             from cys_core.runtime.agent import get_runtime

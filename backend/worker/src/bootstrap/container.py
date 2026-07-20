@@ -88,7 +88,7 @@ class Container:
         # PersistenceContainer/CatalogContainer — these back onto
         # cys_core.infrastructure.sandbox/cys_core.persistence/context.factory/
         # reflexion.memory/registry.tool_registry_adapter, none of which exist
-        # in api. See docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2/§18.
+        # in api. See docs/MSP_BACKLOG.md §0/§1.2/§18.
         self._context_summarizer = None
         self._reflexion_store = None
         self._tool_registry_port = None
@@ -226,7 +226,7 @@ class Container:
         # Adapts onto the same episodic-memory backend (Postgres, with connect-with-retry
         # and memory fallback already wired) instead of the module's own bare in-memory
         # default — reflexion lessons used to be lost on every process restart with no
-        # durable path at all. docs/MICROSERVICES_SPLIT_PLAN.md §9/§38.
+        # durable path at all. docs/MSP_BACKLOG.md §9/§38.
         from cys_core.infrastructure.reflexion.memory import EpisodicReflexionStore
 
         self._reflexion_store = EpisodicReflexionStore(self.get_episodic_memory_store())

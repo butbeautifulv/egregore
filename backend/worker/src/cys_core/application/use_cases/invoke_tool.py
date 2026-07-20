@@ -141,7 +141,7 @@ class InvokeTool:
         # registered above. Tools with no adapter are agent-runtime-internal
         # primitives (reasoning/orchestration/LLM calls) that only make sense
         # inside the in-process LangGraph loop and were never meant to cross
-        # this HTTP boundary — see docs/MICROSERVICES_SPLIT_PLAN.md §21.5.
+        # this HTTP boundary — see docs/MSP_BACKLOG.md §21.5.
         raise KeyError(
             f"tool {command.tool_name!r} has no Tool Gateway adapter — either unregistered, "
             "or an agent-runtime-internal tool not routable through the gateway"

@@ -2,7 +2,7 @@
 
 FastAPI CRUD + event ingress. Fully self-contained — its own physical copy
 of domain models, port interfaces, and generic infra clients (no shared
-package with `egregore-worker`, see `docs/MICROSERVICES_SPLIT_PLAN.md`
+package with `egregore-worker`, see `docs/MSP_BACKLOG.md`
 §18). See the task #38 plan for why the packages are independent: the
 queue message and Postgres rows are the only things allowed to cross the
 api/worker boundary.
@@ -15,4 +15,4 @@ never constructs a `MetaPlanner`/`PlanInvestigation` at all. For
 worker's `RunWorkerJob` recognizes that job (`is_engagement_plan_job`) and
 runs `EngagementPlannerRunner`, the real planner with the real runtime,
 which enqueues the resulting persona jobs itself. See
-`docs/MICROSERVICES_SPLIT_PLAN.md` §16.
+`docs/MSP_BACKLOG.md` §16.

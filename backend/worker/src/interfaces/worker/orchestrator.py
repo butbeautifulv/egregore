@@ -65,7 +65,7 @@ def _max_dependency_deferrals() -> int:
 class WorkerOrchestrator:
     """Dequeue → budget → worker pipeline execution.
 
-    Depends only on the `AgentRunner` port (docs/MICROSERVICES_SPLIT_PLAN.md §22.3/§22.4's
+    Depends only on the `AgentRunner` port (docs/MSP_BACKLOG.md §22.3/§22.4's
     `AgentRuntimePort`), never on `cys_core.runtime.agent`'s concrete `AgentRuntime`/`get_runtime`
     by import path — this is the dispatcher/agent_runtime seam. Which concrete implementation to
     use by default is a composition-root decision (`bootstrap/containers/engagement_container.py`),

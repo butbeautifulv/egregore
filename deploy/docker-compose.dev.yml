@@ -48,7 +48,7 @@ services:
     profiles:
       - app
 
-  # The PEP for sandboxed agent tool calls — see docs/MICROSERVICES_SPLIT_PLAN.md
+  # The PEP for sandboxed agent tool calls — see docs/MSP_BACKLOG.md
   # §21.6. Previously only reachable via `make dev-tool-gateway` run manually
   # alongside `docker compose up` — now a real service in the same stack, same
   # pattern as api/worker above.

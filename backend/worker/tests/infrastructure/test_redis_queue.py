@@ -83,7 +83,7 @@ def test_redis_reconnects_after_init_ping_failure(monkeypatch: pytest.MonkeyPatc
 
     def _from_url(*_args, **_kwargs):
         calls["n"] += 1
-        # ensure_connected() now retries once with backoff (docs/MICROSERVICES_SPLIT_PLAN.md
+        # ensure_connected() now retries once with backoff (docs/MSP_BACKLOG.md
         # §33) -- both attempts made during construction must fail for this test to still
         # exercise "falls back to memory, reconnects on a later call" rather than
         # self-healing within the construction call itself.

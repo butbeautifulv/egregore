@@ -120,7 +120,7 @@ async def create_engagement(
     # Legacy entry point — delegates to StartWorkOrder (the same use case
     # POST /v1/work-orders calls) so there is exactly one real
     # implementation underneath both routes. See
-    # docs/MICROSERVICES_SPLIT_PLAN.md §16.9/task #61: kept for callers that
+    # docs/MSP_BACKLOG.md §16.9/task #61: kept for callers that
     # depend on this URL directly rather than removed, since both existing
     # UI clients already prefer /v1/work-orders and only fall back here on
     # 404.

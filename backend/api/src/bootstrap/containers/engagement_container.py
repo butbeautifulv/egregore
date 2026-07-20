@@ -19,7 +19,7 @@ class EngagementContainer:
     PlanStrategy.META_LLM it enqueues a WorkerJob(persona="planner",
     work_kind="engagement_plan") and returns — worker's RunWorkerJob recognizes
     that job and runs EngagementPlannerRunner (the real planner, with the real
-    runtime) instead. See docs/MICROSERVICES_SPLIT_PLAN.md §1.2.
+    runtime) instead. See docs/MSP_BACKLOG.md §1.2.
     """
 
     def __init__(self, container: "Container") -> None:

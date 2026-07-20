@@ -20,7 +20,7 @@ from tests.conftest import default_policy_port
 async def test_meta_llm_engagement_enqueues_planner_job_not_in_process() -> None:
     """api must never construct a MetaPlanner — it enqueues a WorkerJob(persona="planner",
     work_kind="engagement_plan") and returns immediately. See
-    docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2 — the real planner (with the real agent
+    docs/MSP_BACKLOG.md §0/§1.2 — the real planner (with the real agent
     runtime) lives in worker's EngagementPlannerRunner now, not here.
     """
     eng_store = MemoryEngagementStateStore()

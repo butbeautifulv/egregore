@@ -25,7 +25,7 @@ async def start_with_retry(
     is expected to raise broadly (aiokafka doesn't have one narrow connection-error type, and
     every existing call site already caught `Exception` this broadly before this helper
     existed) — anything it raises after the retry budget is exhausted propagates unchanged.
-    docs/MICROSERVICES_SPLIT_PLAN.md §24.4 point 4/§36."""
+    docs/MSP_BACKLOG.md §24.4 point 4/§36."""
     attempt = 0
     while True:
         try:

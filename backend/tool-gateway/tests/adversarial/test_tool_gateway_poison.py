@@ -9,7 +9,7 @@ from tests.tool_gateway.gateway_client import GatewayTestClient
 def test_gateway_invoke_blocks_poisoned_tool_backend(monkeypatch):
     # Poison via a gateway ADAPTERS entry (the only way a tool reaches
     # InvokeTool's execution path here — no langchain_core.tools registry to
-    # inject into anymore, see docs/MICROSERVICES_SPLIT_PLAN.md §21.5/§21.6).
+    # inject into anymore, see docs/MSP_BACKLOG.md §21.5/§21.6).
     # Same security property as before: the sanitizer must still block a
     # poisoned/prompt-injecting tool response regardless of which adapter
     # produced it.

@@ -15,7 +15,7 @@ def _require_sandbox(sandbox_id: str) -> None:
     # Inlined rather than imported from cys_core.registry.mcp_tools (worker's
     # HTTP client to this gateway, not part of this package) — this package
     # is the gateway server, not a caller of it. See
-    # docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # docs/MSP_BACKLOG.md §21.6.
     if not sandbox_id or sandbox_id == "host":
         raise PermissionError("Tool requires sandbox context — denied on host")
 
@@ -27,7 +27,7 @@ def _resolve_scope_violation(command: "ToolInvokeCommand") -> str | None:
     # ScopeMiddleware, which a differently-implemented agent runtime has no
     # obligation to call. Enforcing it here closes that gap at the one
     # chokepoint every runtime's tool calls must cross regardless of
-    # implementation. See docs/MICROSERVICES_SPLIT_PLAN.md §22.10/§23.
+    # implementation. See docs/MSP_BACKLOG.md §22.10/§23.
     from cys_core.domain.security.scope import ScopePolicy
     from cys_core.registry.agents import get_agent_registry
 
@@ -49,7 +49,7 @@ def _resolve_sandbox_token_violation(command: "ToolInvokeCommand", *, secret: by
     # time-bound token identifying which sandboxed run is calling since before this
     # package's own §21.6 extraction, but nothing ever verified it here — the one chokepoint
     # every runtime's tool calls must cross regardless of implementation. See
-    # docs/MICROSERVICES_SPLIT_PLAN.md §11.5/§37.
+    # docs/MSP_BACKLOG.md §11.5/§37.
     from cys_core.domain.security.sandbox_tokens import verify_sandbox_token
 
     if not command.sandbox_token:
@@ -95,7 +95,7 @@ class ToolsContainer:
         # Same RedisRateLimiter class already used for job-queue/follow-up
         # enqueue paths, now also applied per tool call — previously present
         # in this package but only ever wired to those two paths, never to
-        # the tool-invocation path itself. docs/MICROSERVICES_SPLIT_PLAN.md
+        # the tool-invocation path itself. docs/MSP_BACKLOG.md
         # §22.10/§23.
         if self._tool_rate_limiter is None:
             from cys_core.security.rate_limit import RedisRateLimiter
@@ -118,7 +118,7 @@ class ToolsContainer:
             return
         if mode == "shadow":
             # Rollout found a real gap during implementation (docs/
-            # MICROSERVICES_SPLIT_PLAN.md §23): at least one persona's
+            # MSP_BACKLOG.md §23): at least one persona's
             # declared tool list didn't match what its own tests exercise it
             # against, which means blind enforcement here would have blocked
             # legitimate calls. Logging every would-be denial so the gap

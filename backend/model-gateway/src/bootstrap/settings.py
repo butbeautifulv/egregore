@@ -24,7 +24,7 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="ALLOW_INSECURE_PROD_AUTH",
         description="Explicit, temporary override to let STAGE=prod start with "
-        "MODEL_GATEWAY_AUTH_ENABLED=0 (docs/MICROSERVICES_SPLIT_PLAN.md §11.2's prod-guard "
+        "MODEL_GATEWAY_AUTH_ENABLED=0 (docs/MSP_BACKLOG.md §11.2's prod-guard "
         "pattern, applied here — api/worker/tool-gateway all gate their own off-by-default "
         "auth toggle on STAGE=prod; this package's settings.py never got the same guard when "
         "it was built in §29). Never set this for a real deployment.",
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
         if self.stage == "prod" and not self.auth_enabled and not self.allow_insecure_prod_auth:
             raise ValueError(
                 "MODEL_GATEWAY_AUTH_ENABLED must be true when STAGE=prod (see "
-                "docs/MICROSERVICES_SPLIT_PLAN.md §11.2) — set ALLOW_INSECURE_PROD_AUTH=1 "
+                "docs/MSP_BACKLOG.md §11.2) — set ALLOW_INSECURE_PROD_AUTH=1 "
                 "only for a deliberate, temporary exception"
             )
 

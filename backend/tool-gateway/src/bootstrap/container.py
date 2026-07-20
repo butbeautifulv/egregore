@@ -86,7 +86,7 @@ class Container:
         # PersistenceContainer/CatalogContainer — these back onto
         # cys_core.infrastructure.sandbox/cys_core.persistence/context.factory/
         # reflexion.memory/registry.tool_registry_adapter, none of which exist
-        # in api. See docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2/§18.
+        # in api. See docs/MSP_BACKLOG.md §0/§1.2/§18.
         self._reflexion_store = None
         self._tool_registry_port = None
 
@@ -102,12 +102,12 @@ class Container:
 
     # get_event_router/get_route_event/get_dispatch_event delegating
     # wrappers removed along with their EngagementContainer implementations
-    # — see docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # — see docs/MSP_BACKLOG.md §21.6.
 
     # get_worker_orchestrator/get_run_worker_job/get_agent_runtime/
     # get_meta_planner delegating wrappers removed along with their
     # EngagementContainer implementations — see
-    # docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # docs/MSP_BACKLOG.md §21.6.
 
     def wire_engagement_egress(self) -> None:
         self._engagement.wire_engagement_egress()
@@ -120,11 +120,11 @@ class Container:
 
     # get_orchestration_port delegating wrapper removed along with its
     # EngagementContainer implementation — see
-    # docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # docs/MSP_BACKLOG.md §21.6.
 
     # get_bus_ingress_router/wire_bus_router/get_plan_investigation
     # delegating wrappers removed along with their EngagementContainer
-    # implementations — see docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # implementations — see docs/MSP_BACKLOG.md §21.6.
 
     # ------------------------------------------------------------------
     # Persistence / queue / transport / sandbox / memory
@@ -139,7 +139,7 @@ class Container:
     # get_sandbox_connector (cys_core.infrastructure.sandbox — mints
     # short-lived MCP Tool Gateway credentials for a sandboxed agent run)
     # removed — only ever called by the deleted worker-job-pipeline cluster.
-    # See docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # See docs/MSP_BACKLOG.md §21.6.
 
     # get_persistence_context/get_async_persistence_context (worker's copy)
     # open the LangGraph checkpoint/store connector (cys_core.persistence) —
@@ -147,11 +147,11 @@ class Container:
     # persistence. Removed along with the configure_persistence_providers(...)
     # call in wire_agent_definitions_loader() below that only ever passed
     # these two methods by reference (lazily, never actually invoked here).
-    # See docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # See docs/MSP_BACKLOG.md §21.6.
 
     # get_job_store delegating wrapper removed along with its
     # PersistenceContainer implementation — see
-    # docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # docs/MSP_BACKLOG.md §21.6.
 
     def get_bus_dedup_store(self):
         return self._persistence.get_bus_dedup_store()
@@ -173,7 +173,7 @@ class Container:
 
     # get_context_summarizer (cys_core.infrastructure.context.factory)
     # removed — only ever called by the deleted agent-run/context-building
-    # cluster. See docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # cluster. See docs/MSP_BACKLOG.md §21.6.
 
     def get_reflexion_store(self):
         if self._reflexion_store is not None:
@@ -241,7 +241,7 @@ class Container:
         # pre-invoke validation) — never for execution (§21.5 removed that
         # fallback entirely). A registry with no entries produces exactly
         # that degrade-gracefully behavior. See
-        # docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+        # docs/MSP_BACKLOG.md §21.6.
         if self._tool_registry_port is not None:
             return self._tool_registry_port
 
@@ -411,7 +411,7 @@ class Container:
     # the in-process LangGraph agent run pending human approval — unrelated
     # to interfaces/gateways/tool/approval.py's own tool-call approval flow.
     # Removed, its call already dropped from get_container() below. See
-    # docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # docs/MSP_BACKLOG.md §21.6.
 
     def wire_tool_backend(self) -> None:
         # configure_tool_backend(_GatewayToolBackend()) (worker's copy) wires
@@ -420,7 +420,7 @@ class Container:
         # the agent-facing LangChain tools, which live in worker only. This
         # package's own /invoke path reaches the same query_siem_readonly_search/
         # rag_query_tool functions directly via ADAPTERS, never through that
-        # global. See docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+        # global. See docs/MSP_BACKLOG.md §21.6.
         from cys_core.infrastructure.tools.audit import configure_tool_audit
         from cys_core.infrastructure.tools.gateway_factory import configure_tool_execution_gateway
 
@@ -431,7 +431,7 @@ class Container:
         # package, and cys_core.application.workers/__init__.py (needed to
         # reach tool_execution_tracker) eagerly imports WorkerAgentExecutor,
         # which pulls in cys_core.llm (langchain_core). Not this package's
-        # concern. See docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+        # concern. See docs/MSP_BACKLOG.md §21.6.
 
     # wire_bus_reload (interfaces.worker.orchestrator.build_agent_bus)
     # removed — SecureAgentBus inter-agent messaging, not this package's
@@ -451,7 +451,7 @@ class Container:
 
     def wire_catalog_ports(self) -> None:
         # Trimmed for the standalone tool-gateway package (see
-        # docs/MICROSERVICES_SPLIT_PLAN.md §21.6): the full version of this
+        # docs/MSP_BACKLOG.md §21.6): the full version of this
         # method (worker's copy) also wires agent-catalog/persona-quality/
         # skill/budget-metrics/output-schema-catalog/default-tool-provider —
         # all agent-runtime/planning concerns InvokeTool's execution path
@@ -496,7 +496,7 @@ def get_container() -> Container:
     # LangGraph agent-run pause/resume, unrelated to
     # interfaces/gateways/tool/approval.py's own tool-call approval flow)
     # are worker/agent-runtime-only; InvokeTool never touches any of them.
-    # See docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # See docs/MSP_BACKLOG.md §21.6.
     container.wire_tool_backend()
     container.wire_engagement_egress()
     return container

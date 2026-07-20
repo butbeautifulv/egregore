@@ -36,7 +36,7 @@ def call_with_retry(fn: Callable[[], T], *, max_retries: int, source: str) -> T:
     """Retry fn() on transient MCP/HTTP failures (timeout, connection error, or
     408/409/429/5xx) with jittered exponential backoff. Everything else (other
     4xx, malformed JSON, arbitrary application exceptions) propagates on the
-    first attempt — retrying those can't help. docs/MICROSERVICES_SPLIT_PLAN.md
+    first attempt — retrying those can't help. docs/MSP_BACKLOG.md
     §24: every MCP client call used to be single-shot — one dropped connection
     aborted the tool call outright instead of transparently recovering."""
     attempt = 0

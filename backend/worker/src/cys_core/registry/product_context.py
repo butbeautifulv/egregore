@@ -14,7 +14,7 @@ from cys_core.domain.security.system_prompt_assembler import assemble_trusted_sy
 
 # Not Path(__file__)-relative: this module is physically duplicated into
 # both backend/api and backend/worker (no shared package between them, see
-# docs/MICROSERVICES_SPLIT_PLAN.md §18) at different nesting depths —
+# docs/MSP_BACKLOG.md §18) at different nesting depths —
 # `Path(__file__).resolve().parents[N]` broke once this stopped being one
 # level below whichever service was actually running.
 # `uv run egregore ...` always invokes with CWD set to that service's own

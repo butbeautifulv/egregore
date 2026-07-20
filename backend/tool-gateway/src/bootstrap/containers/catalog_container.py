@@ -22,7 +22,7 @@ class CatalogContainer:
 
     get_tool_registry_port() is worker-only (cys_core.infrastructure.registry.
     tool_registry_adapter wraps the LangChain tool registry, worker-only per
-    docs/MICROSERVICES_SPLIT_PLAN.md §1) — it lives directly on worker's own
+    docs/MSP_BACKLOG.md §1) — it lives directly on worker's own
     Container now, not here, so this shared container never reaches for a
     module that doesn't exist in api.
     """

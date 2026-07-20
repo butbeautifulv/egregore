@@ -19,7 +19,7 @@ class PersistenceContainer:
     (agent-execution concerns, cys_core.infrastructure.sandbox/cys_core.persistence/
     context.factory/reflexion.memory don't exist outside worker) — those live
     directly on worker's own Container now, not here. See
-    docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2 for why this generic container
+    docs/MSP_BACKLOG.md §0/§1.2 for why this generic container
     must not carry methods that only resolve inside one sibling package.
     """
 
@@ -45,7 +45,7 @@ class PersistenceContainer:
     # get_job_store (interfaces.control_plane.job_store, worker's copy) —
     # only ever called by the event-enqueue pipeline and the platform-gauges
     # metrics refresh, neither reachable from the gateway. Removed. See
-    # docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # docs/MSP_BACKLOG.md §21.6.
 
     def get_bus_dedup_store(self):
         if self._bus_dedup_store is None:

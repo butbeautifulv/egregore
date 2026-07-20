@@ -168,7 +168,7 @@ jobs:
       run:
         # cys_core/domain is physically duplicated into worker/, api/, and
         # tool-gateway/ (backend/contracts retired, see
-        # docs/MICROSERVICES_SPLIT_PLAN.md §18/§21.6) — each package
+        # docs/MSP_BACKLOG.md §18/§21.6) — each package
         # measures its own copy independently.
         working-directory: backend/${{ matrix.service }}
     steps:

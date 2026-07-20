@@ -43,8 +43,11 @@ physical copy of domain models/generic infra, no shared package between
 them — plus `model-gateway`, a newer, standalone LLM-call chokepoint
 (sanitization/guardrails) that exists and is tested but isn't wired into
 the runtime or deploy topology yet (see
-[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §29,
-§47-49). See that doc for the full history.
+[docs/MSP_BACKLOG.md](docs/MSP_BACKLOG.md) §29,
+§47-49). Current active plan — what's still not done, prioritized (headlined by splitting
+`worker` into separate `dispatcher`/`agent-runtime` services):
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md). Full history/reasoning
+behind everything already done: `docs/MSP_BACKLOG.md`.
 
 ```bash
 cd backend/worker && uv sync
@@ -194,7 +197,7 @@ egregore/
 `backend/contracts/` (an earlier shared domain/ports/infra package) and
 `backend/shared/` (the pre-split monolith before that) have both been
 retired — worker, api, tool-gateway, and model-gateway are fully independent
-packages, see [docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md)
+packages, see [docs/MSP_BACKLOG.md](docs/MSP_BACKLOG.md)
 §18, §21.6, §29.
 
 ## Роли агентов

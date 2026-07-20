@@ -91,7 +91,7 @@ def _judge_search_relevance_llm(query: str, results_text: str) -> bool | None:
         from cys_core.domain.workers.job_budget import JobBudgetTracker
 
         # cys_core.llm isn't part of this package (no agent-execution
-        # frameworks, see docs/MICROSERVICES_SPLIT_PLAN.md §21.5) — always
+        # frameworks, see docs/MSP_BACKLOG.md §21.5) — always
         # falls through to the except below (skip LLM-based judging).
         # Deliberate, not stale — see multimodal.py's vision_analyze for the
         # same pattern/reasoning.

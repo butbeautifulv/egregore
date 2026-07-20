@@ -167,7 +167,7 @@ def test_litellm_thinking_token_budget_sent_via_extra_body(monkeypatch):
 
 @pytest.mark.unit
 def test_litellm_num_retries_passed_through_when_set(monkeypatch):
-    """docs/MICROSERVICES_SPLIT_PLAN.md §24: a single rate limit or provider
+    """docs/MSP_BACKLOG.md §24: a single rate limit or provider
     blip used to fail the whole worker job outright with no retry at all —
     num_retries wires litellm's own built-in retry/backoff for transient
     (408/409/429/5xx) failures."""

@@ -10,7 +10,7 @@ class EngagementContainer:
     """Owns engagement state store/egress wiring.
 
     Trimmed from worker's copy for the standalone tool-gateway package (see
-    docs/MICROSERVICES_SPLIT_PLAN.md §21.6): the worker job pipeline/meta-
+    docs/MSP_BACKLOG.md §21.6): the worker job pipeline/meta-
     planning/bus-ingress-routing/event-routing methods this class originally
     also owned are gone — none of them are reachable from
     interfaces/gateways/tool/. Cross-domain dependencies (catalog,
@@ -58,7 +58,7 @@ class EngagementContainer:
     # ingestion path, not reachable from interfaces/gateways/tool/. Removed,
     # along with get_job_store() (persistence_container.py) and
     # platform_gauges.py, whose only callers were this cluster. See
-    # docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # docs/MSP_BACKLOG.md §21.6.
 
     # get_worker_orchestrator/get_run_worker_job/get_agent_runtime/
     # get_meta_planner (worker's copy) construct and run the full agent-
@@ -70,7 +70,7 @@ class EngagementContainer:
     # check has no way to know these methods are never called and flags
     # their imports (langchain_core, cys_core.runtime, cys_core.llm) as
     # unresolved once those packages/modules aren't part of this package.
-    # See docs/MICROSERVICES_SPLIT_PLAN.md §21.6.
+    # See docs/MSP_BACKLOG.md §21.6.
 
     def wire_engagement_egress(self) -> None:
         from cys_core.infrastructure.engagement.factory import reset_engagement_egress_cache

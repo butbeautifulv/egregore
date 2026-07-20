@@ -9,7 +9,7 @@ def find_package_root(start: Path | None = None) -> Path:
     Callers should pass their own `Path(__file__)` as `start` if they need
     *their own* package's root — this module (bootstrap.paths) is physically
     duplicated into both backend/api and backend/worker (no shared package
-    between them, see docs/MICROSERVICES_SPLIT_PLAN.md §18), so relying on
+    between them, see docs/MSP_BACKLOG.md §18), so relying on
     the default (this module's own location) only ever resolves to the
     package this copy happens to live in, not necessarily the caller's.
     """

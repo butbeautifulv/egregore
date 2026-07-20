@@ -3,7 +3,7 @@
 Phases R0–R8 and shim removal (R5.10) are done.
 
 **Historical**: paths below predate the `backend/{worker,api}` package split
-(`docs/MICROSERVICES_SPLIT_PLAN.md`) — `cys_core/domain/` etc. now live
+(`docs/MSP_BACKLOG.md`) — `cys_core/domain/` etc. now live
 under each package's own `backend/{worker,api}/src/cys_core/domain/` (no
 shared package between them, see §18), and the `Verify locally` command
 below applies as-is within either package.

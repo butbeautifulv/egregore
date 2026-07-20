@@ -25,7 +25,7 @@ def test_invoke_tool_rejects_tool_with_no_adapter():
     """No fallback to tool_registry.get(...).invoke(...) — a tool with no gateway
     adapter (agent-runtime-internal, e.g. reasoning/orchestration primitives) is
     rejected with a clear error instead of silently executing via the registry.
-    See docs/MICROSERVICES_SPLIT_PLAN.md §21.5."""
+    See docs/MSP_BACKLOG.md §21.5."""
     registry = MagicMock()
     # .get() raising simulates "no schema hint available" — fetch_tool_input_schema
     # catches this and skips pre-invoke schema validation; the point of this test is

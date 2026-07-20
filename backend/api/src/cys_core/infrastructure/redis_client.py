@@ -16,7 +16,7 @@ class ResilientRedisClient:
 
     ensure_connected() used to try exactly once and give up (or raise, if strict) on any
     failure — a Redis restart or brief network blip failed the very next call outright, same
-    gap Postgres had before docs/MICROSERVICES_SPLIT_PLAN.md §24.4 point 4/§32 closed it there.
+    gap Postgres had before docs/MSP_BACKLOG.md §24.4 point 4/§32 closed it there.
     """
 
     def __init__(

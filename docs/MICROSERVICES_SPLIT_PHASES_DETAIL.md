@@ -1,6 +1,6 @@
 # Детализация фаз: API / Worker / Agent Runtime split
 
-> Дочерний документ к [`MICROSERVICES_SPLIT_PLAN.md`](MICROSERVICES_SPLIT_PLAN.md) §7.
+> Дочерний документ к [`MSP_BACKLOG.md`](MSP_BACKLOG.md) §7.
 > Здесь фазы 1–7 из §7 разбиты на под-фазы с маленьким diff'ом каждая: что меняется,
 > в каких файлах, как проверить, что ничего не сломалось. §8/§9 (domain-agnostic ядро,
 > память) сюда не входят — там не "фазы" в этом смысле, а рефактор-цели и целевая
@@ -1086,7 +1086,7 @@ SOC-триаж джобах — не unit-тестами с фейковыми c
   `JobRecord.payload` как самостоятельной под-фазы.
 
 Тот же анализ применён к самым конкретным находкам родительского документа
-[`MICROSERVICES_SPLIT_PLAN.md`](MICROSERVICES_SPLIT_PLAN.md) (§12 там): Reflexion
+[`MSP_BACKLOG.md`](MSP_BACKLOG.md) (§12 там): Reflexion
 lessons без durability (§9.2.4 — тот же системный корень #1, что и A/D/I), и пять
 находок из §11 (AuthN/AuthZ) — все три authz-переключателя выключены по умолчанию
 (§11.2), пустой `organization_id` обходит tenant-проверку (§11.3), ReBAC не защищает

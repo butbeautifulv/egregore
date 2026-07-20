@@ -196,7 +196,7 @@ class RedisJobQueue:
         # dequeue() already calls _ensure_redis() internally and falls back to the in-memory
         # queue on failure — no need for a separate pre-check here, just offload the whole call
         # (previously there was a redundant, *unwrapped* _ensure_redis() check before this: with
-        # ensure_connected() now retrying with backoff (docs/MICROSERVICES_SPLIT_PLAN.md §33), that
+        # ensure_connected() now retrying with backoff (docs/MSP_BACKLOG.md §33), that
         # would have blocked the event loop for the whole retry duration whenever Redis is down).
         return await asyncio.to_thread(self.dequeue, timeout)
 

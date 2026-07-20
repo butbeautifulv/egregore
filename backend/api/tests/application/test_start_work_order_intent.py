@@ -101,7 +101,7 @@ async def test_start_work_order_resolves_default_workspace() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_start_work_order_initial_qa_sanitizes_goal_in_enqueued_job() -> None:
-    """Regression for 5-whys root cause fix (docs/MICROSERVICES_SPLIT_PLAN.md
+    """Regression for 5-whys root cause fix (docs/MSP_BACKLOG.md
     §11.7/§13 Phase 12): the initial_qa path builds a WorkerJob payload
     (operator_message/goal) and enqueues it *directly* — independent of
     StartEngagement.execute()'s own sanitization — so an injection payload in

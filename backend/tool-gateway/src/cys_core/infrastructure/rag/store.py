@@ -14,7 +14,7 @@ logger = structlog.get_logger(__name__)
 class QdrantUnavailableError(Exception):
     """Raised instead of silently degrading — rag_query() (cys_core.infrastructure.rag.retrieve)
     already has fail-closed handling designed for exactly this (RetrievalResult.fail_closed),
-    docs/MICROSERVICES_SPLIT_PLAN.md §10.5's requirement — but QdrantVectorStore previously
+    docs/MSP_BACKLOG.md §10.5's requirement — but QdrantVectorStore previously
     swallowed the failure and returned empty/stale results from an in-memory store instead of
     raising, silently bypassing that handling. See §39."""
 
@@ -90,7 +90,7 @@ class QdrantVectorStore:
     def _embedding_vector(self, text: str) -> list[float]:
         try:
             # litellm isn't part of this package (no agent-execution
-            # frameworks, see docs/MICROSERVICES_SPLIT_PLAN.md §21.5) — with
+            # frameworks, see docs/MSP_BACKLOG.md §21.5) — with
             # settings.use_real_embeddings on, this always falls through to
             # the pseudo-embedding fallback below. Deliberate, not stale —
             # same pattern as multimodal.py's vision_analyze.

@@ -26,7 +26,7 @@ def _settings_env_files() -> tuple[str, ...]:
     Does not look for "this module's own nearest pyproject.toml" — this
     module (bootstrap.settings) is physically duplicated into both
     backend/api and backend/worker (no shared package between them, see
-    docs/MICROSERVICES_SPLIT_PLAN.md §18), so `Path(__file__)` here only
+    docs/MSP_BACKLOG.md §18), so `Path(__file__)` here only
     ever resolves to the package this copy happens to live in, not
     necessarily the service actually running. CWD already covers the
     "this service's own .env" case correctly.
@@ -336,7 +336,7 @@ class Settings(BaseSettings):
         description="Retries with jittered exponential backoff for transient MCP call "
         "failures (timeout, connection error, or 408/409/429/5xx status) shared by the "
         "SIEM/Veil/Veneno MCP clients. Non-transient failures (other 4xx, malformed JSON) "
-        "propagate on the first attempt. docs/MICROSERVICES_SPLIT_PLAN.md §24 — previously "
+        "propagate on the first attempt. docs/MSP_BACKLOG.md §24 — previously "
         "every MCP call was single-shot: one dropped connection aborted the tool call outright.",
     )
 
@@ -470,7 +470,7 @@ class Settings(BaseSettings):
         default="shadow",
         validation_alias="TOOL_SCOPE_MODE",
         description="off|shadow|enforce for InvokeTool's least-privilege ScopePolicy check "
-        "(docs/MICROSERVICES_SPLIT_PLAN.md §23). Default 'shadow' (log violations, never block) "
+        "(docs/MSP_BACKLOG.md §23). Default 'shadow' (log violations, never block) "
         "rather than 'enforce' because the check surfaced a real gap during rollout: at least "
         "one persona's declared tool list is missing tools its own adapters are exercised "
         "against in this package's tests — enforcing blind would risk blocking legitimate calls "
@@ -482,7 +482,7 @@ class Settings(BaseSettings):
         default="shadow",
         validation_alias="TOOL_SANDBOX_TOKEN_MODE",
         description="off|shadow|enforce for verifying ToolInvokeCommand.sandbox_token "
-        "(docs/MICROSERVICES_SPLIT_PLAN.md §11.5/§37). mint_sandbox_token() has minted this "
+        "(docs/MSP_BACKLOG.md §11.5/§37). mint_sandbox_token() has minted this "
         "signed, time-bound token since before this package's own extraction, but nothing ever "
         "verified it — callers that predate this check don't attach one at all yet, so default "
         "'shadow' (log a missing/invalid token, never block) until every caller (worker's "
@@ -493,7 +493,7 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="ALLOW_LEGACY_TENANT_TOKENS",
         description="Whether require_tenant_match() trusts the requested tenant_id when the "
-        "JWT lacks an organization_id claim (docs/MICROSERVICES_SPLIT_PLAN.md §11.3 — this used "
+        "JWT lacks an organization_id claim (docs/MSP_BACKLOG.md §11.3 — this used "
         "to be unconditional 'legacy token' backward-compat behavior; now it's opt-in). Default "
         "False is a behavior change from before this flag existed — a missing organization_id "
         "claim now rejects the request instead of silently trusting the caller.",
@@ -502,7 +502,7 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="ALLOW_INSECURE_PROD_AUTHZ",
         description="Explicit, temporary override to let STAGE=prod start with "
-        "AUTH_ENABLED=0/RBAC_ENABLED=0/AUTHZ_MODE!=enforce (docs/MICROSERVICES_SPLIT_PLAN.md "
+        "AUTH_ENABLED=0/RBAC_ENABLED=0/AUTHZ_MODE!=enforce (docs/MSP_BACKLOG.md "
         "§11.2 — these three switches are off by default so the API authenticates/authorizes "
         "nobody out of the box). Never set this for a real deployment; it exists only so a "
         "prod-STAGE box mid-migration to enforce mode isn't hard-blocked from starting at all.",
@@ -787,13 +787,13 @@ class Settings(BaseSettings):
                 if not self.auth_enabled:
                     raise ValueError(
                         "AUTH_ENABLED must be true when STAGE=prod (see "
-                        "docs/MICROSERVICES_SPLIT_PLAN.md §11.2) — set ALLOW_INSECURE_PROD_AUTHZ=1 "
+                        "docs/MSP_BACKLOG.md §11.2) — set ALLOW_INSECURE_PROD_AUTHZ=1 "
                         "only for a deliberate, temporary exception"
                     )
                 if self.authz_mode.lower() != "enforce":
                     raise ValueError(
                         "AUTHZ_MODE must be 'enforce' when STAGE=prod (see "
-                        "docs/MICROSERVICES_SPLIT_PLAN.md §11.2) — set ALLOW_INSECURE_PROD_AUTHZ=1 "
+                        "docs/MSP_BACKLOG.md §11.2) — set ALLOW_INSECURE_PROD_AUTHZ=1 "
                         "only for a deliberate, temporary exception"
                     )
 

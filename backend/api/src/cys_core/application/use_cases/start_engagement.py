@@ -74,7 +74,7 @@ class StartEngagement:
         return f"eng-{uuid.uuid4().hex[:12]}"
 
     async def execute(self, request: EngagementRequest) -> tuple[Engagement, RoutingDecision, list[str]]:
-        # 5-whys root cause fix (docs/MICROSERVICES_SPLIT_PLAN.md §11.7/§13 Phase 12):
+        # 5-whys root cause fix (docs/MSP_BACKLOG.md §11.7/§13 Phase 12):
         # this is the one place every ingress path (POST /v1/engagements,
         # engagement_ingress.py's event-driven path, and any future one) converges
         # before `goal` is persisted/published — sanitizing here means no ingress
@@ -131,7 +131,7 @@ class StartEngagement:
         if request.plan_strategy == PlanStrategy.META_LLM:
             # Meta-LLM planning calls the real agent runtime
             # (catalog_planner_strategy.py's self.runtime.arun(...)), which api
-            # must never construct (docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2).
+            # must never construct (docs/MSP_BACKLOG.md §0/§1.2).
             # Enqueue a WorkerJob(persona="planner", work_kind="engagement_plan")
             # instead of running a planner in-process — worker's RunWorkerJob
             # recognizes it (is_engagement_plan_job) and hands it to

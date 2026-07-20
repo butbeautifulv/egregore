@@ -207,7 +207,7 @@ class WorkerJobFinalizer:
                 {"tenant_id": job.tenant_id, "persona": job.persona, "job_id": job.job_id, "success": True},
             )
         # engagement_plan jobs (the initial meta-LLM planner, see
-        # docs/MICROSERVICES_SPLIT_PLAN.md §16) already enqueue the plan's
+        # docs/MSP_BACKLOG.md §16) already enqueue the plan's
         # own persona jobs themselves (EngagementPlannerRunner honors
         # pipeline_staged correctly) — running this again here would
         # duplicate-enqueue the first staged persona's job, exactly the bug

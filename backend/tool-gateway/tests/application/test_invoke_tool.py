@@ -26,7 +26,7 @@ def test_invoke_tool_rejects_tool_with_no_adapter():
     """No fallback to tool_registry.get(...).invoke(...) — a tool with no gateway
     adapter (agent-runtime-internal, e.g. reasoning/orchestration primitives) is
     rejected with a clear error instead of silently executing via the registry.
-    See docs/MICROSERVICES_SPLIT_PLAN.md §21.5."""
+    See docs/MSP_BACKLOG.md §21.5."""
     registry = MagicMock()
     # .get() raising simulates "no schema hint available" — fetch_tool_input_schema
     # catches this and skips pre-invoke schema validation; the point of this test is
@@ -67,7 +67,7 @@ def test_invoke_tool_chain_depth_error():
 def test_invoke_tool_rejects_out_of_scope_tool():
     """Scope enforcement happens at the gateway itself, independent of whatever
     checked (or didn't check) scope before the call reached here — the whole
-    point of moving this here. See docs/MICROSERVICES_SPLIT_PLAN.md §22-23."""
+    point of moving this here. See docs/MSP_BACKLOG.md §22-23."""
     invoke = InvokeTool(
         require_sandbox=lambda _sid: None,
         check_tool_chain=lambda _cmd: None,
@@ -100,7 +100,7 @@ def test_invoke_tool_rejects_over_rate_limit():
 
 @pytest.mark.unit
 def test_invoke_tool_rejects_invalid_sandbox_token():
-    """docs/MICROSERVICES_SPLIT_PLAN.md §11.5/§37: mint_sandbox_token() minted a token
+    """docs/MSP_BACKLOG.md §11.5/§37: mint_sandbox_token() minted a token
     nothing verified for a long time — this proves the gateway rejects on its own
     check_sandbox_token result, independent of whatever the caller did or didn't verify."""
     invoke = InvokeTool(

@@ -36,7 +36,7 @@ class K8sSandboxConnector:
     (``credentials_only=False``, the default) — that path is only actually exercised
     today for token-minting on the in_process/subprocess backends, where the agent loop
     runs in the calling process regardless, per the sandbox_tokens gap in §11 of
-    docs/MICROSERVICES_SPLIT_PLAN.md. When ``credentials_only=True`` (set by
+    docs/MSP_BACKLOG.md. When ``credentials_only=True`` (set by
     ``K8sExecutionBackend`` in the pod's own env), ``create()``/``acreate()`` skip Job
     creation and just mint a token instead — the pod calling this already *is* the Job
     that backend placed for this run_id; creating another one would be a second,

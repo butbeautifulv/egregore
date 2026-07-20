@@ -51,12 +51,12 @@ class InvokeTool:
         # Defaults are no-ops rather than required args so every existing caller/test
         # that predates this check keeps working unchanged — the Tool Gateway container
         # (bootstrap/containers/tools_container.py) wires the real enforcement in.
-        # docs/MICROSERVICES_SPLIT_PLAN.md §22.10/§23: these two close the gap where
+        # docs/MSP_BACKLOG.md §22.10/§23: these two close the gap where
         # ScopePolicy/RedisRateLimiter existed in this package's domain layer but were
         # never actually invoked on the tool-invocation path.
         self.check_scope = check_scope or (lambda _cmd: None)
         self.check_rate_limit = check_rate_limit or (lambda _cmd: None)
-        # docs/MICROSERVICES_SPLIT_PLAN.md §11.5/§37: mint_sandbox_token() has minted a
+        # docs/MSP_BACKLOG.md §11.5/§37: mint_sandbox_token() has minted a
         # signed, time-bound token identifying which sandboxed run is calling since it was
         # first built, but nothing ever verified it here — the one place every tool call
         # actually crosses the trust boundary. Same no-op-default rollout shape as
@@ -159,7 +159,7 @@ class InvokeTool:
         # registered above. Tools with no adapter are agent-runtime-internal
         # primitives (reasoning/orchestration/LLM calls) that only make sense
         # inside the in-process LangGraph loop and were never meant to cross
-        # this HTTP boundary — see docs/MICROSERVICES_SPLIT_PLAN.md §21.5.
+        # this HTTP boundary — see docs/MSP_BACKLOG.md §21.5.
         raise KeyError(
             f"tool {command.tool_name!r} has no Tool Gateway adapter — either unregistered, "
             "or an agent-runtime-internal tool not routable through the gateway"

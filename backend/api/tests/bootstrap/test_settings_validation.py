@@ -74,7 +74,7 @@ def _prod_kwargs(**overrides: object) -> dict[str, object]:
 
 @pytest.mark.unit
 def test_settings_prod_rejects_auth_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """5-whys root cause #2 fix (docs/MICROSERVICES_SPLIT_PLAN.md §11.2/§13
+    """5-whys root cause #2 fix (docs/MSP_BACKLOG.md §11.2/§13
     Phase 8): STAGE=prod with AUTH_ENABLED off must refuse to start rather than
     silently authenticating nobody."""
     monkeypatch.setenv("USE_MEMORY_FALLBACK", "false")

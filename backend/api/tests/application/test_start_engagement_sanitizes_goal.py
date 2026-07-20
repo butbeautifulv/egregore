@@ -11,7 +11,7 @@ from cys_core.domain.engagement.models import EngagementRequest
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_start_engagement_sanitizes_goal_before_persisting() -> None:
-    """Regression for 5-whys root cause fix (docs/MICROSERVICES_SPLIT_PLAN.md
+    """Regression for 5-whys root cause fix (docs/MSP_BACKLOG.md
     §11.7/§13 Phase 12): engagement_ingress.py/work_orders.py/engagements.py
     never called InputSanitizer at the API boundary, so an injection payload
     in `goal` sat unsanitized in the engagement store and job_store/queue for

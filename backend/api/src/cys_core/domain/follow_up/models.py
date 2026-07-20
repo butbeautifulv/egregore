@@ -32,7 +32,7 @@ def new_follow_up_id() -> str:
     passes through RedactionService.redact_pii(), whose RU-INN pattern is a bare
     `\\b(?:\\d{10}|\\d{12})\\b` with no checksum check — an unlucky all-digit uuid4
     hex draw (~0.75% of the time) gets silently mangled into "fu-[INN_REDACTED]",
-    corrupting the id used to correlate this turn (docs/MICROSERVICES_SPLIT_PLAN.md).
+    corrupting the id used to correlate this turn (docs/MSP_BACKLOG.md).
     """
     suffix = uuid.uuid4().hex[:12]
     if suffix.isdigit():

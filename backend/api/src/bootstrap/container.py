@@ -389,7 +389,7 @@ class Container:
         # configure_persistence_providers() is NOT called here: it registers
         # the LangGraph checkpoint/store connector (cys_core.persistence,
         # worker-only) — api must never construct one. Only worker's
-        # Container wires this (see docs/MICROSERVICES_SPLIT_PLAN.md §0/§1.2).
+        # Container wires this (see docs/MSP_BACKLOG.md §0/§1.2).
 
         configure_trace_backend_factory(self.get_trace_backend)
         loader = get_default_agent_definitions_loader()

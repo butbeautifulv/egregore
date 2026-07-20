@@ -65,7 +65,7 @@ services:
       - redis
       - tool-gateway
 
-  # The PEP for sandboxed agent tool calls — see docs/MICROSERVICES_SPLIT_PLAN.md
+  # The PEP for sandboxed agent tool calls — see docs/MSP_BACKLOG.md
   # §21.6/§10.8. Placed on agent_internal (no external access) alongside
   # worker/postgres/redis: worker reaches Postgres/Redis directly today (this
   # compose file predates the full PEP-only egress model §10.8 targets), but

@@ -71,7 +71,7 @@ def vision_analyze(path: str, question: str = "Describe this image in detail.") 
         return {"success": False, "error": "vision_analyze supports image files only"}
     try:
         # cys_core.llm isn't part of this package (no agent-execution
-        # frameworks, see docs/MICROSERVICES_SPLIT_PLAN.md §21.5) — this
+        # frameworks, see docs/MSP_BACKLOG.md §21.5) — this
         # import always fails here and the except below always takes the
         # "vision model unavailable" path. Deliberate, not stale: keeping
         # this branch (rather than deleting it) means the one line to

@@ -31,7 +31,7 @@ async def redis_leader(
 ) -> AsyncIterator[bool]:
     """Try to acquire a Redis leader lock. Yields True if leader, False if skipped."""
     client_wrapper = ResilientRedisClient(redis_url)
-    # ensure_connected() now retries with backoff (docs/MICROSERVICES_SPLIT_PLAN.md §33) —
+    # ensure_connected() now retries with backoff (docs/MSP_BACKLOG.md §33) —
     # offload to a thread like the redis.set/eval calls below, not called unwrapped from this
     # async function.
     if not await asyncio.to_thread(client_wrapper.ensure_connected):

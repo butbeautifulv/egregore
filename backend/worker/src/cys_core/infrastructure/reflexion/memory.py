@@ -10,7 +10,7 @@ from cys_core.domain.security.factory import get_input_sanitizer
 # entries for the same investigation and silently return fewer than N real lessons even
 # when N exist. Filtering client-side after a wider fetch is correct (never drops a real
 # lesson) at the cost of some extra rows read — acceptable for a per-investigation lesson
-# list that's inherently small. docs/MICROSERVICES_SPLIT_PLAN.md §9/§38.
+# list that's inherently small. docs/MSP_BACKLOG.md §9/§38.
 _FETCH_MULTIPLIER = 8
 _FETCH_CAP = 200
 
@@ -40,7 +40,7 @@ class EpisodicReflexionStore:
     instead of a separate process-local list — reuses its already-tested Postgres backend,
     connect-with-retry (§32), and memory-fallback wiring rather than duplicating a new table
     and a new "restart loses everything" gap right next to the one this closes.
-    docs/MICROSERVICES_SPLIT_PLAN.md §9's audit found reflexion lessons were the one
+    docs/MSP_BACKLOG.md §9's audit found reflexion lessons were the one
     memory_type declared in the schema but never actually persisted anywhere durable."""
 
     def __init__(self, episodic_store: EpisodicMemoryStore) -> None:

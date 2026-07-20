@@ -67,7 +67,7 @@ def catalog_with_soc_profile(
     seed_agents = agents or [
         # tools= mirrors backend/agents/personas/soc/agent.yaml's real declared list —
         # AgentRegistry.load() builds from this dynamic catalog in tests (not from the
-        # real agent.yaml files, see docs/MICROSERVICES_SPLIT_PLAN.md §31), so an empty
+        # real agent.yaml files, see docs/MSP_BACKLOG.md §31), so an empty
         # default here silently defeats ScopePolicy for every "soc" tool-gateway test,
         # masking real scope-enforcement gaps instead of exercising them.
         AgentCatalogEntry(

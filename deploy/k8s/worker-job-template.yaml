@@ -53,7 +53,7 @@ spec:
             - name: USE_TOOL_GATEWAY
               value: "true"
             # 8092, not 8090 — 8090 is Veil Graph API, a different service.
-            # See docs/MICROSERVICES_SPLIT_PLAN.md §21.4/§21.6.
+            # See docs/MSP_BACKLOG.md §21.4/§21.6.
             - name: TOOL_GATEWAY_URL
               value: "http://tool-gateway:8092"
           securityContext:

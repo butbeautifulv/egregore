@@ -12,7 +12,7 @@ from interfaces.api.tenant_deps import TenantBound, require_tenant_match_http
 
 @pytest.mark.unit
 def test_tenant_bind_rejects_missing_organization_claim_by_default() -> None:
-    """5-whys root cause fix (docs/MICROSERVICES_SPLIT_PLAN.md §11.3/§13 Phase 9):
+    """5-whys root cause fix (docs/MSP_BACKLOG.md §11.3/§13 Phase 9):
     an empty organization_id claim used to silently trust the requested
     tenant_id unconditionally ('legacy tokens'). Default is now stricter —
     reject unless ALLOW_LEGACY_TENANT_TOKENS is explicitly set."""

@@ -41,4 +41,4 @@ def test_gateway_blocks_high_risk_tool_chain(monkeypatch):
 # LangGraph agent loop's own tool-call budget enforcement, a separate
 # mechanism from this gateway's check_tool_chain/ToolChainPolicy above and
 # not part of this package (cys_core/middleware/ deleted, see
-# docs/MICROSERVICES_SPLIT_PLAN.md §21.6). No equivalent here.
+# docs/MSP_BACKLOG.md §21.6). No equivalent here.

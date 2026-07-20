@@ -46,7 +46,7 @@ def require_tenant_match(
 
     When auth is None (AUTH_ENABLED=0), returns tenant_id unchanged.
     When enforce and auth present: reject mismatch. A missing organization_id
-    claim (docs/MICROSERVICES_SPLIT_PLAN.md §11.3) rejects the request unless
+    claim (docs/MSP_BACKLOG.md §11.3) rejects the request unless
     ``allow_legacy_tokens`` is explicitly set — that flag exists only for a
     deliberate, temporary migration window, not as permanent behavior; every
     time it's exercised, that's logged so an operator can tell whether it's

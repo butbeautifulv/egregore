@@ -66,10 +66,12 @@ Legacy alias: `by_role("specialist")` → `by_workers()`.
 Python backend is split into four fully independent packages, each with its
 own physical copy of `cys_core.domain`/`bootstrap`/generic infra — no shared
 package between any of them (see
-[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md) §18,
+[docs/MSP_BACKLOG.md](docs/MSP_BACKLOG.md) §18,
 §21.6, §29): nothing except the queue message, Postgres rows, and the Tool/
 Model Gateway's own HTTP contract may cross a package boundary, and
-duplication is accepted deliberately, not an oversight.
+duplication is accepted deliberately, not an oversight. **Current active plan** (what's still
+not done, headlined by splitting `worker` into separate `dispatcher`/`agent-runtime` services):
+[docs/MICROSERVICES_SPLIT_PLAN.md](docs/MICROSERVICES_SPLIT_PLAN.md).
 
 - **`backend/worker/`** (`egregore-worker`) — agent-execution runtime
   (LangChain/LangGraph today, swappable later), control-plane daemons
@@ -127,7 +129,7 @@ for isolation/scaling), the pool **must** still include an instance with
 (`WorkerJob(persona="planner", work_kind="engagement_plan"|"follow_up_plan")`)
 silently stalls forever with no error — the job just gets endlessly
 requeued. Watch `cys_job_queue_persona_requeued_total{persona="planner"}`
-for this failure mode. See docs/MICROSERVICES_SPLIT_PLAN.md §16.
+for this failure mode. See docs/MSP_BACKLOG.md §16.
 
 ### Единые точки входа
 

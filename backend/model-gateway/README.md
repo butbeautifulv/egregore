@@ -1,7 +1,7 @@
 # egregore-model-gateway
 
 The Model Gateway — the network chokepoint for LLM calls, symmetrical to the Tool Gateway
-(`backend/tool-gateway`). See `docs/MICROSERVICES_SPLIT_PLAN.md` §22.9 for the design rationale
+(`backend/tool-gateway`). See `docs/MSP_BACKLOG.md` §22.9 for the design rationale
 and §29 for this implementation's notes.
 
 Any agent runtime, regardless of framework, is configured to send model calls here instead of
