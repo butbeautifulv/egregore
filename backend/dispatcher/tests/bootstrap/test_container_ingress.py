@@ -73,6 +73,7 @@ def test_subprocess_backend_worker_orchestrator_gets_lazy_runtime(monkeypatch):
     from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
     monkeypatch.setenv("EXECUTION_BACKEND", "subprocess")
+    monkeypatch.setenv("AGENT_RUNTIME_PYTHON_EXECUTABLE", "/opt/agent-runtime/.venv/bin/python")
     container = Container(Settings(use_kafka=False))
     captured: dict[str, object] = {}
 
