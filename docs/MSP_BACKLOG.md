@@ -5626,3 +5626,30 @@ No `pytest` run locally at any point except one lapse (`pytest tests/architectur
 first diagnosing the shrink-only failure, noted rather than hidden) — every other check was
 `ruff`/`ty check`/`lint-imports`/`verify_import_boundaries.py`/`verify_no_langfuse_in_core.sh`/
 `uv lock --check`/`docker build`/`hadolint`, per standing instruction.
+
+## 55. `K8sExecutionBackend`'s poll loop made async-native (§2 async/performance item)
+
+`execute()` wrapped its entire sync `_run_sync` — including the `job_timeout`-long poll loop — in a
+single `asyncio.to_thread`, occupying one whole thread-pool slot for the full job timeout (could be
+minutes) on every K8s-backed job. Same class of fix already applied to `mcp_tools`/`tool-gateway`/
+`model-gateway` this session: thread-wrap only the actual blocking I/O, not the waiting.
+
+Worth noting precisely what this backend's poll loop actually does, since the plan doc's original
+one-line description ("instead of an async K8s watch API") was imprecise: it polls **dispatcher's
+own `job_store`** (Postgres/in-memory), not the Kubernetes API — the pod reports its result there,
+same mechanism subprocess/docker backends use. There's no K8s watch to switch to; the fix is purely
+about not blocking a thread for the wait.
+
+`_run_sync`/`_poll_for_result` → `_run_async`/`_apoll_for_result`: `batch_api.create_namespaced_job`/
+`delete_namespaced_job` (still a sync k8s client — no async client exists) thread-wrapped
+individually per call; `job_store.get()` thread-wrapped per poll (no async Postgres driver exists
+either — `MSP_BACKLOG.md` §25.4/§25.5 tracks that separately, out of scope here); the actual wait
+between polls is `await asyncio.sleep()` instead of a thread-blocking `time.sleep()`.
+
+Applied identically to `worker`/`agent-runtime`/`dispatcher` (physically duplicated file, confirmed
+byte-identical before editing) — tests updated in all three (`_run_sync` calls → `await
+backend._run_async(...)`, containing test functions marked `async def`; `asyncio_mode = "auto"` in
+all three `pyproject.toml`, no decorator needed).
+
+Verified locally (`ruff`/`ty check`/`lint-imports`/`verify_import_boundaries.py`, no `pytest`),
+confirmed green in real CI: commit `be8123e`, run `29750593911`, `{"conclusion":"success"}`.

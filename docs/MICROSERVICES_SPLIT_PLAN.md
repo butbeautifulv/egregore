@@ -1,7 +1,7 @@
 # Microservices Split — Active Plan
 
 > Full history, investigations, and reasoning behind every decision below live in
-> [`docs/MSP_BACKLOG.md`](MSP_BACKLOG.md) (§0–§54). This file is the current to-do list only —
+> [`docs/MSP_BACKLOG.md`](MSP_BACKLOG.md) (§0–§55). This file is the current to-do list only —
 > straight to the point, no narrative. When an item below is done, move its summary to
 > `MSP_BACKLOG.md` and delete it from here.
 
@@ -82,8 +82,6 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
 ### Async / performance
 - **No async Postgres driver anywhere** (`psycopg` sync) — the single biggest structural lever left;
   DB concurrency is thread-pool-capped everywhere. `MSP_BACKLOG.md` §25.4, §25.5.
-- **`K8sExecutionBackend`'s poll loop** occupies a thread-pool slot for the full job timeout via
-  `time.sleep` instead of an async K8s watch API. `MSP_BACKLOG.md` §25.4.
 
 ### Security / hardening
 - **`POST /runs/{run_id}/approve-plan`** unconditionally returns 501 — wire it up or remove it.
