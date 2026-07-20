@@ -66,27 +66,25 @@ def test_model_gateway_provider_registered_and_selectable():
     configure_default_llm_provider (the MODEL_PROVIDER setting's bootstrap-time
     wiring point — Container._wire_llm_provider, not this module, constructs the
     real ModelGatewayProvider instance, since cys_core must never import
-    bootstrap.settings directly; simulate that registration here)."""
+    bootstrap.settings directly; simulate that registration here). Doesn't assert
+    anything about "model-gateway"'s registration state on entry — Container()
+    construction elsewhere in the same pytest process also registers it as a real
+    side effect, not test pollution, so asserting "not yet registered" here would
+    be order-dependent and wrong."""
     import cys_core.llm as llm
     from cys_core.llm.model_gateway_provider import ModelGatewayProvider
 
-    # "model-gateway" is a static name in _MODEL_CONNECTORS but has no provider
-    # instance until something registers one (bootstrap, or this test).
-    with pytest.raises(ValueError, match="Unknown LLM provider"):
-        llm.get_provider("model-gateway")
-
     gateway_provider = ModelGatewayProvider(gateway_url="http://gw")
     llm.configure_llm_provider("model-gateway", gateway_provider)
-    try:
-        assert llm.get_provider("model-gateway") is gateway_provider
-        assert llm.get_model_connector("model-gateway").name == "model-gateway"
+    assert llm.get_provider("model-gateway") is gateway_provider
+    assert llm.get_model_connector("model-gateway").name == "model-gateway"
 
+    try:
         llm.configure_default_llm_provider("model-gateway")
         assert llm.get_provider() is gateway_provider
         assert llm.get_model_connector().name == "model-gateway"
     finally:
         llm.configure_default_llm_provider("litellm")
-        del llm._PROVIDERS["model-gateway"]
 
     with pytest.raises(ValueError, match="Unknown LLM provider"):
         llm.configure_default_llm_provider("does-not-exist")
