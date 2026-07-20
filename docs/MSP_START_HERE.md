@@ -11,6 +11,9 @@ Read in this order:
    comment.
 3. This file — what tends to go wrong in this project and why, so it doesn't need to be
    re-discovered every session.
+4. **[`FUTURE_REFACTORING.md`](FUTURE_REFACTORING.md)** — speculative, not committed: what the
+   architecture could become if the backlog's aspirational/deferred items were carried to their end
+   state, plus a sixth problem/solution entry on simplification and KISS/DRY.
 
 Never claim something is done, fixed, or verified without having actually run the check and read
 the real result (CI run conclusion, not just "dispatched"; test/script output, not just "should
