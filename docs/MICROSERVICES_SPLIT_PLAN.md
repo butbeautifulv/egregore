@@ -40,26 +40,29 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
    manifest — `docker` backend needs the dispatcher container to hold the `docker` CLI and a
    bind-mounted host `/var/run/docker.sock` (privilege-escalation-shaped, needs its own review).
    Deliberately deferred — not yet decided. `MSP_BACKLOG.md` §52.4, §52.5.
-2. **Register a second `AgentRunner` implementation.** The selector (`AGENT_RUNNER_IMPL`/
-   `get_agent_runner`/`configure_agent_runner`) is built and tested, but only `"langgraph"` exists.
-   User decision: build it as a minimal custom ReAct loop (not full `AgentRuntime._build_middleware`
-   parity) — proves the seam works with zero new framework lock-in. Not yet started. `MSP_BACKLOG.md`
-   §52.3.
-3. **HITL pause/resume redesign for the cross-process case.** Today's mechanism
+2. **HITL pause/resume redesign for the cross-process case.** Today's mechanism
    (`langgraph.interrupt()` + checkpointer) is in-process-shaped and won't survive `agent-runtime`
    being a separate process. Design exists (refuse-then-retry with an `approval_id` token, reusing
    `ResumeHitlJob`'s anti-tampering pattern) but is **not implemented** — do this before relying on
-   the split in production with HITL-gated personas. `MSP_BACKLOG.md` §35.
-4. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
+   the split in production with HITL-gated personas. Neither `AgentRunner` implementation
+   (`langgraph` or `react`) supports resume across process boundaries yet. `MSP_BACKLOG.md` §35.
+3. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
    only, zero code. Only after item 1 (deploy bootstrap) is stable. `MSP_BACKLOG.md` §22.5.
 
-Process boundary (previously item 1) is **proven**, `subprocess`/same-host only: `dispatcher` and
-`agent-runtime` have run live as two connected processes, a real `WorkerJob` flowed end-to-end
-through `SubprocessExecutionBackend` into a real DeepSeek LLM call with tools bound, and the result
+Process boundary is **proven**, `subprocess`/same-host only: `dispatcher` and `agent-runtime` have
+run live as two connected processes, a real `WorkerJob` flowed end-to-end through
+`SubprocessExecutionBackend` into a real DeepSeek LLM call with tools bound, and the result
 round-tripped back cleanly. Two real bugs were found and fixed along the way — litellm's own stdout
 banners were corrupting the parent's JSON parse, and `agent-runtime`'s trimmed dependencies were
 missing `fastapi` (a hard requirement of litellm's tool-calling path, not of agent-runtime itself),
 which had silently broken every tool-using persona call. `MSP_BACKLOG.md` §56.
+
+A second `AgentRunner` implementation is **registered**: `"react"`/`MinimalReactAgentRunner`
+(`cys_core/runtime/react_agent.py`) — a hand-written call-model → maybe-call-tool → repeat loop,
+zero LangGraph/middleware dependency, per the user's explicit "minimal" choice. Live-tested the same
+way as the process-boundary proof: a real DeepSeek tool call (`list_incidents`) executed and fed
+back correctly. Does not support HITL resume (see item 2) — a tool call matching a persona's
+`hitl_tools` is refused outright rather than silently allowed. `MSP_BACKLOG.md` §56.6.
 
 ---
 

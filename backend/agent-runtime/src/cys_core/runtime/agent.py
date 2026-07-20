@@ -12,7 +12,7 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from cys_core.application.policy_resolver import get_profile_policy_resolver
-from cys_core.application.ports import ModelConnector, PersistenceContext
+from cys_core.application.ports import AgentRunner, ModelConnector, PersistenceContext
 from cys_core.application.ports.stream_context import StreamContext
 from cys_core.application.reasoning.sgr_tooling import (
     resolve_agent_tool_names,
@@ -59,6 +59,7 @@ from cys_core.observability.trace_attributes import build_sgr_trace_metadata, me
 from cys_core.registry.agents import AgentDefinition, AgentRegistry, get_agent_registry
 from cys_core.registry.schemas import schema_registry
 from cys_core.registry.tools import tool_registry
+from cys_core.runtime.react_agent import MinimalReactAgentRunner
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -674,23 +675,26 @@ def get_runtime() -> AgentRuntime:
 # already proves per-vendor LLM swapping works via config (LLM_MODEL, e.g.
 # "anthropic/claude-sonnet-4" vs "xai/grok-2" vs "openai/gpt-4o" — litellm handles the
 # vendor call, zero code change needed). This registry is the equivalent seam one layer
-# up: swapping the *agent framework* itself (today only "langgraph"/AgentRuntime is
-# registered), not just which model vendor it calls. See
-# docs/MSP_BACKLOG.md §52.3 — a second AgentRunner implementation only
-# needs to satisfy the AgentRunner Protocol (arun/aresume); it is not required to use
-# ModelConnector, litellm, or LangChain internally at all.
+# up: swapping the *agent framework* itself, not just which model vendor it calls. Two
+# implementations are registered: "langgraph"/AgentRuntime (default, full middleware
+# stack) and "react"/MinimalReactAgentRunner (docs/MSP_BACKLOG.md §56 — a hand-written
+# ReAct loop with no LangGraph/middleware dependency, proving the seam with zero new
+# framework lock-in). Typed against the AgentRunner Protocol (arun/aresume), not the
+# concrete AgentRuntime class, precisely so a non-LangGraph implementation type-checks
+# here too.
 _DEFAULT_AGENT_RUNNER_NAME = "langgraph"
 # `lambda: get_runtime()` rather than the bare function object: this indirection makes
 # the registry resolve the module-global `get_runtime` name fresh on every call, so
 # `monkeypatch.setattr("cys_core.runtime.agent.get_runtime", fake)` in existing tests
 # still takes effect — a directly-bound `get_runtime` reference here would have
 # captured the original function object at import time and ignored the monkeypatch.
-_AGENT_RUNNERS: dict[str, Callable[[], AgentRuntime]] = {
+_AGENT_RUNNERS: dict[str, Callable[[], AgentRunner]] = {
     _DEFAULT_AGENT_RUNNER_NAME: lambda: get_runtime(),
+    "react": lambda: MinimalReactAgentRunner(),
 }
 
 
-def configure_agent_runner(name: str, factory: Callable[[], AgentRuntime]) -> None:
+def configure_agent_runner(name: str, factory: Callable[[], AgentRunner]) -> None:
     """Register a named AgentRunner factory. `factory` is called fresh on every
     `get_agent_runner(name)` lookup — callers wanting a singleton (like the default
     "langgraph" entry does via `get_runtime`'s own `@lru_cache`) should memoize inside
@@ -698,7 +702,7 @@ def configure_agent_runner(name: str, factory: Callable[[], AgentRuntime]) -> No
     _AGENT_RUNNERS[name] = factory
 
 
-def get_agent_runner(name: str | None = None) -> AgentRuntime:
+def get_agent_runner(name: str | None = None) -> AgentRunner:
     runner_name = name or _DEFAULT_AGENT_RUNNER_NAME
     if runner_name not in _AGENT_RUNNERS:
         raise ValueError(f"Unknown agent runner: {runner_name!r} (registered: {sorted(_AGENT_RUNNERS)})")

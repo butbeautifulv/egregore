@@ -23,6 +23,7 @@ class AgentRunner(Protocol):
         sandbox_id: str | None = None,
         stream_context: StreamContext | None = None,
         recursion_limit: int | None = None,
+        profile_id: str | None = None,
     ) -> dict[str, Any]: ...
 
     async def aresume(self, name: str, session_id: str, resume: dict[str, Any]) -> dict[str, Any]: ...

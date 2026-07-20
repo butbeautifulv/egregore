@@ -5693,17 +5693,30 @@ stdout on every retry/error — bypassing structlog entirely, even though
 the single-JSON-blob stdout contract `SubprocessExecutionBackend` depends on (`json.loads(stdout)`
 over the whole blob fails the instant anything else is on the stream).
 
-Two-layer fix, applied identically to all three physical copies (`worker`/`dispatcher`/
-`agent-runtime` — confirmed byte-identical before editing):
+Fix, applied identically to all three physical copies (`worker`/`dispatcher`/`agent-runtime` —
+confirmed byte-identical before editing):
 - `cys_core/llm/litellm_provider.py`: `litellm.suppress_debug_info = True` at module import time —
   removes the noise at the source.
 - `interfaces/cli/main.py::cmd_run_sandboxed_job`: final `print(json.dumps(out, indent=2, ...))` →
   compact single-line `print(json.dumps(out, ensure_ascii=False))`, matching what the module's own
   docstring already claimed ("one final RunResult JSON line on stdout") but the pretty-printed
   `indent=2` never actually delivered.
-- `cys_core/infrastructure/execution/subprocess_backend.py`: parse only the **last non-empty stdout
-  line**, not the whole blob — defense in depth so any *other* future dependency that prints to
-  stdout ahead of the final line (not just litellm) can't repeat this failure mode.
+
+**Mistake made and reverted**: first attempt also changed `subprocess_backend.py` to parse only
+the *last* non-empty stdout line, reasoning it'd be "defense in depth" against any future
+dependency polluting stdout the same way. That directly broke a real, deliberate, pre-existing
+regression test — `test_subprocess_backend_reports_failure_when_child_logs_leak_to_stdout`
+(Discovery H.1, `docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md`), which locks in that a child leaking
+*any* extra lines onto stdout ahead of its RunResult must fail loud
+(`run_sandboxed_job_unparseable_output`), not have the parent silently recover by trusting
+whatever's on the last line. Caught by real CI (commit `0728150`, run `29765663658`,
+`unit-tests (dispatcher)` failed: `AssertionError: assert True is False`) — not caught locally
+since this test wasn't re-run before pushing (only `ruff`/`ty`/`lint-imports` were, per the
+"never run pytest locally" standing rule; this is exactly the class of regression that rule
+trades away catching early). Reverted `subprocess_backend.py` back to whole-blob
+`json.loads(stdout.decode())` in all three packages — the "fail loud on any stdout contamination"
+behavior is the deliberately-designed, safety-conscious one; suppressing litellm's noise at the
+source (kept) is what actually needed fixing, not the parent's parse strictness.
 
 ### 56.3. Bug found: agent-runtime's tool-calling path was missing `fastapi` — every tool-using call broken
 
@@ -5752,4 +5765,64 @@ committed) — this class of proof cannot run in CI, which has no live Postgres/
 key. Static checks run per package (`ruff check`, `ty check src`, `lint-imports`,
 `verify_import_boundaries.py`, `uv lock --check`) on all three touched packages
 (`worker`/`dispatcher`/`agent-runtime`) — all clean. No `pytest` run at any point.
+<!-- commit sha / CI run id filled in after push -->
+
+### 56.6. Second `AgentRunner`: `"react"` / `MinimalReactAgentRunner` (§1 item 2, user-chosen shape)
+
+User decision going in: build the second `AgentRunner` as a **minimal custom ReAct loop**, not full
+`AgentRuntime._build_middleware` parity — proves `AGENT_RUNNER_IMPL`/`configure_agent_runner`'s
+registry actually lets the agent *core* be swapped, with zero new framework lock-in, rather than
+just describing that it theoretically could.
+
+New file `backend/agent-runtime/src/cys_core/runtime/react_agent.py`:
+`MinimalReactAgentRunner.arun()` is a hand-written loop — call the bound model, if it returns tool
+calls execute them via `tool.ainvoke()` and append a `ToolMessage`, repeat until a final answer or
+`recursion_limit`. No LangGraph, no checkpointer/graph state, none of
+`AgentRuntime._build_middleware`'s stack (Scope/ToolDedup/ToolLadder/FollowUp/SGR/ContextSummary/
+HITL-interrupt middleware). Still routes every model call through the same swappable
+`ModelConnector` (litellm/model-gateway) and every tool call through the same `tool_registry`
+(tool-gateway PEP, when configured) `AgentRuntime` uses, and still applies the same input
+sanitizer / output guardrails (`_finalize` mirrors `AgentRuntime._coerce_result`'s exact
+schema-or-wrap-in-response fallback) / `JobBudgetTracker` — the security perimeter this project
+cares about lives in those shared layers (and one level further out, in
+dispatcher/tool-gateway/model-gateway), not in LangGraph-specific middleware, so it isn't lost by
+skipping the middleware stack. Does not support HITL resume (`aresume` always returns an error); a
+tool call matching a persona's `hitl_tools` is refused outright rather than silently auto-approved
+or left to block forever — the honest, safe failure mode until the cross-process HITL redesign
+(§1 item 2 / §35) exists.
+
+Registered in `cys_core/runtime/agent.py`'s `_AGENT_RUNNERS` dict under `"react"`. This required a
+real typing fix, not just a registration line: `_AGENT_RUNNERS`/`get_agent_runner`/
+`configure_agent_runner` were typed against the concrete `AgentRuntime` class, not the
+`AgentRunner` Protocol (`cys_core/application/ports/agent_runner.py`) — harmless while only
+`AgentRuntime` itself was ever registered (a class trivially satisfies its own type), but wrong the
+moment a second, non-`AgentRuntime` implementation needed to type-check there too. Changed both to
+`AgentRunner`. That in turn surfaced a second, previously-latent gap `ty check` caught for free:
+`AgentRunner` Protocol was missing `profile_id`, a parameter `PlannerRuntime` Protocol (used by
+`MetaPlanner`, also fed from `get_agent_runner()`) requires and the concrete `AgentRuntime.arun`
+already silently accepted — added `profile_id: str | None = None` to `AgentRunner.arun` in all
+three physical copies (`worker`/`dispatcher`/`agent-runtime`).
+
+**Live-tested the same way as the process-boundary proof (§56.1), not just unit-tested**: called
+`get_agent_runner("react").arun("soc", ...)` directly against the real DeepSeek key/model. First
+run (open-ended prompt) correctly asked for missing required fields instead of guessing — legitimate
+ReAct behavior, exercised the full model-call path with tools bound. Second run, prompted to call
+`list_incidents` directly, did so for real: the tool executed, hit the actual (disabled-in-this-env)
+SIEM MCP client, got back a real `SIEM_MCP_ENABLED=false` error, and the loop fed that `ToolMessage`
+back to the model, which synthesized a coherent final answer referencing the specific error —
+genuine proof of the bind-tools → call → tool-result → final-answer cycle, not a mock.
+
+Unit tests added: `backend/agent-runtime/tests/runtime/test_react_agent.py` — happy path (no tool
+calls), a full tool-call round trip, `hitl_tools` refusal, unknown-tool-name graceful handling
+(becomes tool-result error content, not a crash), `recursion_limit` exhaustion, `aresume`'s
+not-supported error, and registry selectability via `get_agent_runner("react")`. All use fake
+model/registry/tool doubles — no live network, no Postgres.
+
+### 56.7. Verification
+
+Local: `ruff check`, `ty check src` (CI's actual scope — confirmed `ty check tests` is not run in
+CI and produces ~1750 pre-existing, unrelated diagnostics when pointed at the full `tests/` tree, so
+checking new test files individually alongside their `src` targets is the correct local proxy),
+`lint-imports`, `verify_import_boundaries.py` — all clean across `worker`/`dispatcher`/
+`agent-runtime`. No `pytest` run locally.
 <!-- commit sha / CI run id filled in after push -->

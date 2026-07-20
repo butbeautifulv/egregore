@@ -106,11 +106,11 @@ def cmd_run_sandboxed_job(args: argparse.Namespace) -> int:
 
     out = asyncio.run(_run())
     get_container().get_trace_backend().flush()
-    # Compact, single-line — SubprocessExecutionBackend parses only the last
-    # stdout line as the RunResult (see subprocess_backend.py); anything
-    # else the process tree prints to stdout (litellm banners, stray
-    # warnings) lands on earlier lines and is ignored rather than corrupting
-    # the parse.
+    # Compact, single-line — SubprocessExecutionBackend parses the whole of
+    # stdout as one RunResult JSON blob (see subprocess_backend.py) and fails
+    # loud if anything else lands on stdout first (Discovery H.1); litellm's
+    # own error/retry banners are the known way that happens, suppressed at
+    # the source via litellm.suppress_debug_info in cys_core/llm/litellm_provider.py.
     print(json.dumps(out, ensure_ascii=False))
     return 0 if out["result"]["success"] else 1
 
