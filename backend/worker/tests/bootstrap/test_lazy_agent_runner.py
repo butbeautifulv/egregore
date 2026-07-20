@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
 
 @pytest.mark.unit

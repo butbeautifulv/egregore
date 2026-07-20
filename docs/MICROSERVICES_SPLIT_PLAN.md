@@ -86,7 +86,11 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
      langchain/langgraph/litellm) that then went completely unused, since actual execution for
      those backends happens in a child process via `execution_backend.execute(...)`, never through
      `WorkerOrchestrator._run_worker_job`. Fixed by adding
-     `cys_core/application/ports/lazy_agent_runner.py::LazyInProcessAgentRunner` — an
+     `bootstrap/lazy_agent_runner.py::LazyInProcessAgentRunner` (composition-root only — CI's
+     `scripts/verify_import_boundaries.py` correctly rejected a first attempt at putting this under
+     `cys_core/application/ports/`: `application` may never import `cys_core.runtime`, even via a
+     deferred/function-local import, per the shrink-only `ALLOWLIST_APPLICATION_RUNTIME` contract) —
+     an
      `AgentRunner`/`PlannerRuntime`-shaped proxy that defers the `cys_core.runtime.agent` import
      until `arun`/`aresume` is actually called — and passing it instead of a real runtime for
      `subprocess`/`k8s`/`docker` backends in both call sites. `in_process` mode is unchanged (still

@@ -109,7 +109,7 @@ def test_subprocess_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent
     still forced an eager import of the langchain/langgraph-dependent agent runtime just to pick
     an out-of-process backend. Fixed by passing LazyInProcessAgentRunner instead of a real one for
     non-in_process backends (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2)."""
-    from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+    from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
     monkeypatch.setenv("EXECUTION_BACKEND", "subprocess")
     container = Container(Settings(use_kafka=False))
@@ -133,7 +133,7 @@ def test_subprocess_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent
 
 @pytest.mark.unit
 def test_k8s_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent_runtime(monkeypatch):
-    from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+    from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
     monkeypatch.setenv("EXECUTION_BACKEND", "k8s")
     container = Container(Settings(use_kafka=False))
@@ -157,7 +157,7 @@ def test_k8s_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent_runtim
 
 @pytest.mark.unit
 def test_docker_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent_runtime(monkeypatch):
-    from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+    from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
     monkeypatch.setenv("EXECUTION_BACKEND", "docker")
     container = Container(Settings(use_kafka=False))
@@ -181,7 +181,7 @@ def test_docker_backend_worker_orchestrator_gets_lazy_runtime_not_real_agent_run
 
 @pytest.mark.unit
 def test_meta_planner_gets_lazy_runtime_for_subprocess_backend(monkeypatch):
-    from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+    from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
     monkeypatch.setenv("EXECUTION_BACKEND", "subprocess")
     container = Container(Settings(use_kafka=False))

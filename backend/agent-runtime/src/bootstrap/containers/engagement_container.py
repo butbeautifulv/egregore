@@ -123,7 +123,7 @@ class EngagementContainer:
 
                 self._worker_orchestrators[persona] = WorkerOrchestrator(persona=persona, runtime=get_runtime())
             elif backend_kind == "subprocess":
-                from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+                from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
                 from cys_core.infrastructure.execution.subprocess_backend import (
                     SubprocessExecutionBackend,
                 )
@@ -134,7 +134,7 @@ class EngagementContainer:
                     execution_backend=SubprocessExecutionBackend(),
                 )
             elif backend_kind == "k8s":
-                from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+                from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
                 from cys_core.infrastructure.execution.k8s_backend import K8sExecutionBackend
 
                 settings = self.settings
@@ -153,7 +153,7 @@ class EngagementContainer:
                     ),
                 )
             elif backend_kind == "docker":
-                from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+                from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
                 from cys_core.infrastructure.execution.docker_backend import DockerExecutionBackend
 
                 extra_run_args: list[str] = []
@@ -257,7 +257,7 @@ class EngagementContainer:
 
             planner_runtime = get_runtime()
         else:
-            from cys_core.application.ports.lazy_agent_runner import LazyInProcessAgentRunner
+            from bootstrap.lazy_agent_runner import LazyInProcessAgentRunner
 
             planner_runtime = LazyInProcessAgentRunner()
 
