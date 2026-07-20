@@ -129,16 +129,42 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
      suite green (26 batches, 0 failed) after the change, dispatched via real CI.
 2. **Wire `AgentRunner` across the new process boundary — mechanism now built, not yet proven
    end-to-end.** Today's subprocess/Docker/K8s backends already speak `SubprocessJobEnvelope`
-   in/`RunResult` out. `dispatcher`'s `SubprocessExecutionBackend` is now constructed with
-   `python_executable=self.settings.agent_runtime_python_executable or None`
-   (`AGENT_RUNTIME_PYTHON_EXECUTABLE` setting, empty by default — falls back to `sys.executable`,
-   which fails since dispatcher's own venv doesn't have `agent-runtime`'s dependencies). **Still
+   in/`RunResult` out. `dispatcher`'s `SubprocessExecutionBackend` is constructed with
+   `python_executable=self._require_agent_runtime_python_executable()`. **Still
    missing before this actually works**: (a) a real deployment where `AGENT_RUNTIME_PYTHON_EXECUTABLE`
    points at an actually-installed `backend/agent-runtime/.venv/bin/python` (or, for containerized
    deploy, `agent-runtime`'s own image) — no deploy manifest exists yet, that's item 7; (b) an
    actual integration test spawning `agent-runtime`'s real `run-sandboxed-job` CLI from dispatcher
    and confirming a `RunResult` round-trips correctly — needs live Postgres-backed infra neither
    local dev nor CI has today, so this is genuinely unverified, not just undeployed.
+   - **Bug found and fixed (2026-07-20), via a deep "no extraneous functions" audit** (see the new
+     "Extraneous-code audit" subsection at the end of this item): `AGENT_RUNTIME_PYTHON_EXECUTABLE`
+     used to default to empty and silently fall back to `python_executable=None` →
+     `sys.executable` (dispatcher's own interpreter). That doesn't fail at startup — the child
+     process parses args and builds the container fine, then crashes deep inside
+     `RunWorkerJob.execute()` the moment a real job actually reaches the agent loop, with a
+     confusing mid-job `ModuleNotFoundError: No module named 'cys_core.runtime'` instead of a clear
+     error. Fixed: `EngagementContainer._require_agent_runtime_python_executable()`
+     (`backend/dispatcher/src/bootstrap/containers/engagement_container.py`) now raises
+     `NotImplementedError` immediately at orchestrator-construction time if the setting is unset —
+     same fail-fast discipline as the existing `in_process` branch. Test
+     `test_subprocess_backend_falls_back_to_default_python_executable_when_unset` (which had encoded
+     the old silent-fallback as "expected") replaced with
+     `test_subprocess_backend_fails_clearly_when_python_executable_unset`, asserting the raise.
+     Verified locally via `ruff`/`ty` (both clean); full verification pending the next dispatched CI
+     run.
+   - **Architectural clarification surfaced by the same audit, not yet acted on**:
+     `SubprocessExecutionBackend` + `AGENT_RUNTIME_PYTHON_EXECUTABLE` is a **same-host,
+     different-venv** mechanism — it only works if dispatcher and agent-runtime share a filesystem
+     (e.g. both venvs present on the same box/image). That is *not* the same guarantee as the
+     `K8sExecutionBackend`/`DockerExecutionBackend` paths, which already point at a genuinely
+     separate `image` (`k8s_worker_image`/`docker_worker_image`) — real container-level isolation,
+     no shared filesystem needed. If the deploy target is truly separate services/containers (the
+     stated goal — "switch core to any agent... inside safe system"), `k8s`/`docker` +
+     `agent-runtime`'s own future image (item 7) is the architecturally correct production path;
+     `subprocess`/`AGENT_RUNTIME_PYTHON_EXECUTABLE` is realistically a single-host dev/staging
+     convenience, not the hardened boundary. Not fixed now — no code change implied, just don't plan
+     production isolation around `subprocess` mode once agent-runtime has its own image.
    - **Fixed:** `EngagementContainer.get_worker_orchestrator()` and `.get_meta_planner()`
      (`backend/worker/src/bootstrap/containers/engagement_container.py`) both used to call
      `from cys_core.runtime.agent import get_runtime; runtime = get_runtime()`
@@ -177,6 +203,27 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
      (`mark_job_timeout`/`try_salvage_partial`/`mark_runtime_failure`), and the lazy-runtime fix
      above already satisfies its `runtime: AgentRunner` type without needing to make the field
      optional.
+   - **Extraneous-code audit (2026-07-20)**, in response to "make sure services carry no
+     extraneous functions, only real logic": ran `vulture` (a dead-code static analyzer) at
+     90%-confidence and 60%-confidence over all six packages' `src/`. At 90%: only Protocol-method
+     stub parameters flagged (e.g. `agent_runner.py`'s `arun(self, user_input, ...)`) — false
+     positives, not real dead code. At 60%: overwhelming noise from Pydantic/dataclass fields
+     (`settings.py`, `domain/*/models.py`) that `vulture`'s AST pass can't see are read via
+     attribute access — also not real findings, and identical in shape across every package
+     (inherited from `worker`, not introduced by the split). **No smoking gun of leftover unused
+     packages or dead top-level functions found this way.**
+   - Diffed `dispatcher`'s and `worker`'s `interfaces/cli/main.py` line-by-line: identical command
+     set (`worker`/`run-sandboxed-job`/`tool-gateway`/`critic`/`coordinator`/`status`/`agent`),
+     confirming the "kitchen-sink CLI exposes commands for services that also exist standalone
+     (e.g. `tool-gateway`)" pattern is inherited unchanged from `worker`, not new bloat from this
+     session's split — out of scope to trim here (pre-existing convention question, not a
+     regression).
+   - The one substantive finding from this audit *was* the `AGENT_RUNTIME_PYTHON_EXECUTABLE`
+     silent-fallback bug above — found by tracing `cmd_run_sandboxed_job` → `SubprocessExecutionBackend`
+     → what actually happens when the setting is unset, not by a dead-code scanner. That's the real
+     lesson: for a "duplicate everything" codebase, the risk isn't unused functions (vulture-style),
+     it's **live code paths that look wired but fail silently or late** — worth re-running this kind
+     of manual trace on `agent-runtime` → `model-gateway` wiring (item 3 below) once that's built.
 3. **`model-gateway` needs to actually be called.** `AgentRuntime` still calls `litellm`
    in-process directly; `model-gateway` (the LLM-call chokepoint) exists, is tested, but nothing
    points at it (`MSP_BACKLOG.md` §29.4). Wiring `agent_runtime` to call out to `model-gateway`

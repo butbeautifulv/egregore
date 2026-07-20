@@ -175,23 +175,17 @@ def test_subprocess_backend_forwards_agent_runtime_python_executable(monkeypatch
 
 
 @pytest.mark.unit
-def test_subprocess_backend_falls_back_to_default_python_executable_when_unset(monkeypatch):
+def test_subprocess_backend_fails_clearly_when_python_executable_unset(monkeypatch):
+    """Silently falling back to sys.executable would spawn a child that crashes
+    mid-job (cys_core.runtime doesn't exist in dispatcher's venv) instead of
+    failing clearly at orchestrator construction — same discipline as
+    test_in_process_backend_fails_clearly_not_silently above."""
     monkeypatch.setenv("EXECUTION_BACKEND", "subprocess")
+    monkeypatch.delenv("AGENT_RUNTIME_PYTHON_EXECUTABLE", raising=False)
     container = Container(Settings(use_kafka=False))
-    captured: dict[str, object] = {}
 
-    class FakeSubprocessBackend:
-        def __init__(self, *, python_executable=None, command=None):
-            captured["python_executable"] = python_executable
-
-    monkeypatch.setattr(
-        "cys_core.infrastructure.execution.subprocess_backend.SubprocessExecutionBackend",
-        FakeSubprocessBackend,
-    )
-
-    container.get_worker_orchestrator(persona="soc")
-
-    assert captured["python_executable"] is None
+    with pytest.raises(NotImplementedError, match="AGENT_RUNTIME_PYTHON_EXECUTABLE"):
+        container.get_worker_orchestrator(persona="soc")
 
 
 @pytest.mark.unit

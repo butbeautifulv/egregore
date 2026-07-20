@@ -103,6 +103,25 @@ class EngagementContainer:
         )
         return self._dispatch_event
 
+    def _require_agent_runtime_python_executable(self) -> str:
+        """AGENT_RUNTIME_PYTHON_EXECUTABLE must point at backend/agent-runtime's own
+        venv python. Falling back to dispatcher's own sys.executable would spawn a
+        child that parses args and builds the container fine, then crashes deep
+        inside RunWorkerJob.execute() the first time a real job reaches the agent
+        loop (cys_core.runtime doesn't exist in dispatcher's venv) — a confusing
+        mid-job ModuleNotFoundError instead of a clear failure at startup. Fail here
+        instead, same as the in_process branch above."""
+        python_executable = self.settings.agent_runtime_python_executable
+        if not python_executable:
+            raise NotImplementedError(
+                "AGENT_RUNTIME_PYTHON_EXECUTABLE is not set — backend/dispatcher's own "
+                "interpreter cannot execute jobs (cys_core.runtime lives in "
+                "backend/agent-runtime now, not here). Point it at agent-runtime's venv "
+                "python, e.g. /opt/agent-runtime/.venv/bin/python "
+                "(see docs/MICROSERVICES_SPLIT_PLAN.md §1 item 2)."
+            )
+        return python_executable
+
     def get_worker_orchestrator(self, persona: str | None = None):
         if persona not in self._worker_orchestrators:
             # The one concrete AgentRuntime import in this whole seam lives here, in the
@@ -139,7 +158,7 @@ class EngagementContainer:
                     persona=persona,
                     runtime=LazyInProcessAgentRunner(),
                     execution_backend=SubprocessExecutionBackend(
-                        python_executable=self.settings.agent_runtime_python_executable or None
+                        python_executable=self._require_agent_runtime_python_executable()
                     ),
                 )
             elif backend_kind == "k8s":
