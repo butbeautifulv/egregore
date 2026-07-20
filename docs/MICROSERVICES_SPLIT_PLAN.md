@@ -134,6 +134,8 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   `shadow`, never `enforce` by default on a first pass.
 - This is a "duplicate everything" codebase (§18) — before calling any fix "done," grep for other
   packages' copies of the same file.
-- Never run test suites locally — dispatch CI (`gh workflow run "Release Gate"`) and check the actual
-  run result before calling anything "verified." `ruff`/`ty check`/`lint-imports`/`docker build`/
-  `hadolint`/`uv lock --check` are fine locally (static checks, not test suites).
+- Never run test suites locally — dispatch CI (`gh workflow run "Release Gate"`) in the background
+  and keep working on the next item; don't block the session waiting on a run. Only the *claim* of
+  "verified"/"done" requires checking the actual run result first — dispatching doesn't.
+  `ruff`/`ty check`/`lint-imports`/`docker build`/`hadolint`/`uv lock --check` are fine locally
+  (static checks, not test suites).
