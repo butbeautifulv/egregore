@@ -52,7 +52,6 @@ ALLOWLIST_BOOTSTRAP_INTERFACES: frozenset[str] = frozenset(
         "src/cys_core/infrastructure/sandbox.py",
         "src/cys_core/infrastructure/tools/adapters/search_stack.py",
         "src/cys_core/infrastructure/tools/adapters/siem.py",
-        "src/cys_core/llm/__init__.py",
         "src/cys_core/middleware/security_middleware.py",
         "src/cys_core/observability/logging_setup.py",
         "src/cys_core/observability/otel_provider.py",

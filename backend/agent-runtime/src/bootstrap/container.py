@@ -437,8 +437,16 @@ class Container:
 
     @staticmethod
     def _wire_llm_provider(settings: Settings) -> None:
-        from cys_core.llm import configure_default_llm_provider
+        from cys_core.llm import configure_default_llm_provider, configure_llm_provider
+        from cys_core.llm.model_gateway_provider import ModelGatewayProvider
 
+        configure_llm_provider(
+            "model-gateway",
+            ModelGatewayProvider(
+                gateway_url=settings.model_gateway_url,
+                shared_secret=settings.gateway_access_token.get_secret_value(),
+            ),
+        )
         configure_default_llm_provider(settings.model_provider)
 
     # ------------------------------------------------------------------

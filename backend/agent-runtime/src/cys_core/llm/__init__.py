@@ -8,24 +8,21 @@ from cys_core.application.ports import ModelConnector
 from cys_core.application.ports.trace_callbacks import get_trace_callbacks
 from cys_core.application.runtime_config import get_default_job_recursion_limit, get_recursion_limit_for_persona
 from cys_core.llm.litellm_provider import LiteLLMProvider
-from cys_core.llm.model_gateway_provider import ModelGatewayProvider
 from cys_core.llm.protocol import ChatModelProvider
 
 _PROVIDER_NAME = "litellm"
 
-
-def _default_model_gateway_provider() -> ModelGatewayProvider:
-    from bootstrap.settings import settings
-
-    return ModelGatewayProvider(
-        gateway_url=settings.model_gateway_url,
-        shared_secret=settings.gateway_access_token.get_secret_value(),
-    )
-
-
+# "model-gateway" is registered here as a name only (ModelConnector doesn't read
+# settings or import bootstrap — see LLMConnector below) but its ChatModelProvider
+# instance is NOT constructed in this module: cys_core may never import
+# bootstrap.settings outside the shrink-only ALLOWLIST_BOOTSTRAP_INTERFACES
+# (scripts/verify_import_boundaries.py), same reasoning bootstrap/lazy_agent_runner.py
+# documents for the AgentRunner registry one layer down. bootstrap/container.py's
+# _wire_llm_provider() calls configure_llm_provider("model-gateway", ...) with a real
+# ModelGatewayProvider(gateway_url=..., shared_secret=...) at Container construction
+# time, before anything can actually call get_provider("model-gateway").
 _PROVIDERS: dict[str, ChatModelProvider] = {
     _PROVIDER_NAME: LiteLLMProvider(),
-    "model-gateway": _default_model_gateway_provider(),
 }
 
 

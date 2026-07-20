@@ -60,23 +60,33 @@ def test_llm_provider_selection_and_langfuse(monkeypatch):
 
 
 @pytest.mark.unit
-def test_model_gateway_provider_registered_and_selectable(monkeypatch):
-    """docs/MSP_BACKLOG.md §29, plan §1 item 2: model-gateway is registered under
-    the "model-gateway" name in the same registry the litellm-vendor-swap seam
-    already used, selectable via configure_default_llm_provider (the MODEL_PROVIDER
-    setting's bootstrap-time wiring point)."""
+def test_model_gateway_provider_registered_and_selectable():
+    """docs/MSP_BACKLOG.md §29, plan §1 item 2: model-gateway is selectable through
+    the same registry the litellm-vendor-swap seam already used, via
+    configure_default_llm_provider (the MODEL_PROVIDER setting's bootstrap-time
+    wiring point — Container._wire_llm_provider, not this module, constructs the
+    real ModelGatewayProvider instance, since cys_core must never import
+    bootstrap.settings directly; simulate that registration here)."""
     import cys_core.llm as llm
     from cys_core.llm.model_gateway_provider import ModelGatewayProvider
 
-    assert isinstance(llm.get_provider("model-gateway"), ModelGatewayProvider)
-    assert llm.get_model_connector("model-gateway").name == "model-gateway"
+    # "model-gateway" is a static name in _MODEL_CONNECTORS but has no provider
+    # instance until something registers one (bootstrap, or this test).
+    with pytest.raises(ValueError, match="Unknown LLM provider"):
+        llm.get_provider("model-gateway")
 
+    gateway_provider = ModelGatewayProvider(gateway_url="http://gw")
+    llm.configure_llm_provider("model-gateway", gateway_provider)
     try:
+        assert llm.get_provider("model-gateway") is gateway_provider
+        assert llm.get_model_connector("model-gateway").name == "model-gateway"
+
         llm.configure_default_llm_provider("model-gateway")
-        assert llm.get_provider() is llm.get_provider("model-gateway")
+        assert llm.get_provider() is gateway_provider
         assert llm.get_model_connector().name == "model-gateway"
     finally:
         llm.configure_default_llm_provider("litellm")
+        del llm._PROVIDERS["model-gateway"]
 
     with pytest.raises(ValueError, match="Unknown LLM provider"):
         llm.configure_default_llm_provider("does-not-exist")
