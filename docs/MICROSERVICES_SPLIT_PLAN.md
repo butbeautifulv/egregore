@@ -272,8 +272,34 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
 6. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
    only (`MSP_BACKLOG.md` §22.5), zero code. Likely reduces to a `runtimeClassName` field on
    `K8sExecutionBackend` rather than new backend classes, but unvalidated against a real cluster.
-7. **CI/deploy for the new `agent-runtime` package** — no Dockerfile, no compose/Helm entry, no
-   `release-gate.yml` matrix entry. Same bootstrap work `tool-gateway`/`model-gateway` each needed.
+7. **CI/deploy for `agent-runtime` and `dispatcher` — partially done 2026-07-20.**
+   `deploy/Dockerfile.agent-runtime` and `deploy/Dockerfile.dispatcher` now exist (modeled on
+   `Dockerfile.worker`'s builder/runtime split). Both built and smoke-tested locally: `docker build`
+   succeeds for each, and running `egregore --help` / `egregore-dispatcher --help` inside the built
+   images resolves correctly (confirms the entrypoint scripts are wired right, not just that the
+   image builds). One real fix needed along the way: `DockerExecutionBackend`/`K8sExecutionBackend`
+   (`backend/dispatcher/src/cys_core/infrastructure/execution/{docker,k8s}_backend.py`) hardcode the
+   literal script name `egregore` when spawning a sandboxed job in the target image — correct today
+   only because `docker_worker_image`/`k8s_worker_image` still point at `worker`'s image, whose
+   script actually is named `egregore`. `agent-runtime`'s own console-script entry is
+   `egregore-agent-runtime`, which would have silently mismatched the moment those settings pointed
+   at an agent-runtime-built image instead. Fixed by adding a second `egregore` script alias to
+   `backend/agent-runtime/pyproject.toml` (both resolve to the same `interfaces.cli.main:main`) —
+   confirmed via `uv lock --check` (no lock regen needed) and the local `docker run --entrypoint
+   egregore ... --help` smoke test above. Wired into CI: `job-dockerfile-lint.yml` (`hadolint`, also
+   clean locally against both new Dockerfiles) and `release-gate.yml`'s `build`/`container-scan`/
+   `sign` matrices (main-only/`workflow_dispatch`, so dormant on this feature branch — will actually
+   build+push+scan+sign on merge to `main`).
+   - **Still missing**: no compose entry (`deploy/docker-compose.dev.yml` only has
+     `api`/`worker`/`tool-gateway`/`ui`) and no Helm/K8s manifest. Deliberately not added this pass —
+     wiring dispatcher into compose as a real second container means picking an execution backend
+     that works *across* containers (subprocess/`AGENT_RUNTIME_PYTHON_EXECUTABLE` is same-filesystem
+     only, per the architectural note in item 2 above; `docker` backend would need the dispatcher
+     container to hold the `docker` CLI and a bind-mounted host `/var/run/docker.sock`, which grants
+     that container host-root-equivalent access — a privilege-escalation-shaped change worth a
+     deliberate, separate pass rather than folding into a "no extraneous functions" audit.
+   - Still no Dockerfile/compose/CI coverage for `model-gateway` either — pre-existing gap (§2 below),
+     not touched this pass.
 
 ### Suggested phasing (small diffs, each independently verifiable — mirrors `MSP_BACKLOG.md` §7's
 ### original phasing discipline)
@@ -304,9 +330,11 @@ extraction — mirroring the `tool-gateway`/`model-gateway` precedent (own `back
    but only `"langgraph"` exists; this step is building and registering an actual alternative.
 6. Implement the HITL pause/resume redesign (closes item 5) — do this before relying on the split
    in production with HITL-gated personas.
-7. CI/deploy bootstrap for `agent-runtime` **and now `dispatcher`** (closes item 7) — no Dockerfile,
-   compose/Helm entry, or deploy manifest exists for either yet; this is also the prerequisite for
-   step 3 above (nothing to point `AGENT_RUNTIME_PYTHON_EXECUTABLE` at without a real deploy).
+7. **Partially done 2026-07-20** — Dockerfiles for `agent-runtime`/`dispatcher` now exist, built and
+   smoke-tested locally, wired into `hadolint`/`build`/`container-scan`/`sign` CI. Still missing:
+   compose/Helm entry for either (see item 7 above for why that's deliberately deferred, not just
+   skipped), so step 3 above is still blocked — nothing yet actually runs `dispatcher` and
+   `agent-runtime` as two live, connected processes/containers.
 8. gVisor/Kata (item 6) — only after the above is stable; start with the `runtimeClassName` field
    approach on `K8sExecutionBackend`, validate against a real cluster before assuming a new backend
    class is needed.

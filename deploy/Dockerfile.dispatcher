@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1
+# cxado/egregore-dispatcher — queue consumption + budget/trust/policy +
+# ExecutionBackend dispatch, physically stripped of the agent-execution
+# engine (no cys_core/runtime, no cys_core/middleware, no langchain/
+# deepagents dependency). See docs/MICROSERVICES_SPLIT_PLAN.md §1.
+#
+# EXECUTION_BACKEND defaults to "subprocess" (bootstrap/settings.py) —
+# dispatcher never executes agent jobs itself. It shells out to
+# AGENT_RUNTIME_PYTHON_EXECUTABLE (or, for k8s/docker, K8S_WORKER_IMAGE /
+# DOCKER_WORKER_IMAGE) to run the actual job in backend/agent-runtime's own
+# environment/image. Neither is baked into this image — set them at deploy
+# time. If AGENT_RUNTIME_PYTHON_EXECUTABLE is unset in subprocess mode, the
+# container fails fast and loudly at first job-orchestrator construction
+# (EngagementContainer._require_agent_runtime_python_executable) instead of
+# crashing silently mid-job — see the fix in this same commit series.
+#
+# Build from egregore repo root: docker build -f deploy/Dockerfile.dispatcher .
+#
+# Builder: deps + uv sync. Runtime: fresh slim, OS upgraded, perl-base removed (SCA surface).
+
+FROM python:3.13-slim@sha256:bffeb7bd6a85767587059c6ba23e1e9122078e3aa3fa836099171b9bb5a9bb00 AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+WORKDIR /app
+COPY --from=ghcr.io/astral-sh/uv:0.11.12@sha256:027318b213a7804ecd085ea7efdcdc4d44fa202c6e676c86ce86c0206d38f65c /uv /usr/local/bin/uv
+
+# Layer 1: lockfile only — egregore-dispatcher is fully self-contained (no
+# backend/contracts path dependency, see docs/MICROSERVICES_SPLIT_PLAN.md
+# §18) — cached until dispatcher's own deps change.
+COPY backend/dispatcher/pyproject.toml backend/dispatcher/uv.lock backend/dispatcher/README.md ./dispatcher/
+WORKDIR /app/dispatcher
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+# Layer 2: dispatcher's own source — only reinstalls its local wheel, not
+# all deps.
+COPY backend/dispatcher/src ./src
+COPY backend/agents /app/agents
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+FROM python:3.13-slim@sha256:bffeb7bd6a85767587059c6ba23e1e9122078e3aa3fa836099171b9bb5a9bb00 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV STAGE=prod
+ENV USE_MEMORY_FALLBACK=false
+ENV AGENTS_ROOT=../agents
+ENV UV_CACHE_DIR=/tmp/uv-cache
+WORKDIR /app/dispatcher
+
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && apt-get purge -y --allow-remove-essential \
+      perl-base gzip login util-linux mount \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 10001 app \
+ && useradd --uid 10001 --gid app --home-dir /app --no-create-home app
+
+COPY --from=builder --chown=app:app /app/dispatcher /app/dispatcher
+COPY --from=builder --chown=app:app /app/agents /app/agents
+
+USER 10001
+ENV PATH="/app/dispatcher/.venv/bin:$PATH"
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["egregore-dispatcher", "status"]
+
+ENTRYPOINT ["egregore-dispatcher"]
+CMD ["worker", "--daemon", "--idle-timeout", "0"]

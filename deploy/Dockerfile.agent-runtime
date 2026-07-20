@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1
+# cxado/egregore-agent-runtime — the swappable agent-execution runtime
+# (LangChain/LangGraph today), extracted from egregore-worker. See
+# docs/MICROSERVICES_SPLIT_PLAN.md §1.
+#
+# Two ways this image is actually used:
+#   1. Standalone/monolithic (EXECUTION_BACKEND=in_process, the default): runs
+#      exactly like egregore-worker did before the split — dispatch + agent
+#      execution in one process. Default CMD below.
+#   2. As the per-job sandboxed executor for backend/dispatcher's subprocess/
+#      docker/k8s ExecutionBackends: they exec `uv run egregore
+#      run-sandboxed-job --job-json ...` inside this image (or a venv built
+#      from it) — see backend/dispatcher/src/cys_core/infrastructure/execution/
+#      {subprocess,docker,k8s}_backend.py. That's why pyproject.toml exports
+#      both `egregore-agent-runtime` and a bare `egregore` script alias: the
+#      Docker/K8s backends hardcode the latter name (same as worker's own).
+#
+# Build from egregore repo root: docker build -f deploy/Dockerfile.agent-runtime .
+#
+# Builder: deps + uv sync. Runtime: fresh slim, OS upgraded, perl-base removed (SCA surface).
+
+FROM python:3.13-slim@sha256:bffeb7bd6a85767587059c6ba23e1e9122078e3aa3fa836099171b9bb5a9bb00 AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+WORKDIR /app
+COPY --from=ghcr.io/astral-sh/uv:0.11.12@sha256:027318b213a7804ecd085ea7efdcdc4d44fa202c6e676c86ce86c0206d38f65c /uv /usr/local/bin/uv
+
+# Layer 1: lockfile only — egregore-agent-runtime is fully self-contained (no
+# backend/contracts path dependency, see docs/MICROSERVICES_SPLIT_PLAN.md
+# §18) — cached until agent-runtime's own deps change.
+COPY backend/agent-runtime/pyproject.toml backend/agent-runtime/uv.lock backend/agent-runtime/README.md ./agent-runtime/
+WORKDIR /app/agent-runtime
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+# Layer 2: agent-runtime's own source — only reinstalls its local wheel, not
+# all deps.
+COPY backend/agent-runtime/src ./src
+COPY backend/agents /app/agents
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+FROM python:3.13-slim@sha256:bffeb7bd6a85767587059c6ba23e1e9122078e3aa3fa836099171b9bb5a9bb00 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV STAGE=prod
+ENV USE_MEMORY_FALLBACK=false
+ENV AGENTS_ROOT=../agents
+ENV UV_CACHE_DIR=/tmp/uv-cache
+WORKDIR /app/agent-runtime
+
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && apt-get purge -y --allow-remove-essential \
+      perl-base gzip login util-linux mount \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 10001 app \
+ && useradd --uid 10001 --gid app --home-dir /app --no-create-home app
+
+COPY --from=builder --chown=app:app /app/agent-runtime /app/agent-runtime
+COPY --from=builder --chown=app:app /app/agents /app/agents
+
+USER 10001
+ENV PATH="/app/agent-runtime/.venv/bin:$PATH"
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["egregore", "status"]
+
+ENTRYPOINT ["egregore"]
+CMD ["worker", "--daemon", "--idle-timeout", "0"]

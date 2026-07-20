@@ -42,6 +42,13 @@ dependencies = [
 
 [project.scripts]
 egregore-agent-runtime = "interfaces.cli.main:main"
+# Also exported as the bare "egregore" name: DockerExecutionBackend/K8sExecutionBackend
+# (backend/dispatcher/src/cys_core/infrastructure/execution/{docker,k8s}_backend.py) hardcode
+# `uv run egregore run-sandboxed-job` — the same script name egregore-worker exports today,
+# since docker_worker_image/k8s_worker_image still point at worker's image. Once those settings
+# point at an agent-runtime-built image instead, that same hardcoded command must keep working
+# without touching dispatcher's execution-backend code (docs/MICROSERVICES_SPLIT_PLAN.md §1 item 7).
+egregore = "interfaces.cli.main:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
