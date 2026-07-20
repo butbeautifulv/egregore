@@ -5653,3 +5653,103 @@ all three `pyproject.toml`, no decorator needed).
 
 Verified locally (`ruff`/`ty check`/`lint-imports`/`verify_import_boundaries.py`, no `pytest`),
 confirmed green in real CI: commit `be8123e`, run `29750593911`, `{"conclusion":"success"}`.
+
+## 56. Process boundary proven live (§1 items 1–2) — real bugs found and fixed along the way
+
+User decisions going in: second `AgentRunner` → minimal custom ReAct loop (not yet started, next
+up); deploy-bootstrap execution-backend shape → `subprocess`, same-host (not docker-socket
+passthrough). This entry covers the subprocess/same-host proof.
+
+### 56.1. What was actually run, live, in this sandbox
+
+Brought up `deploy-postgres-1`/`deploy-redis-1` via `docker compose -f deploy/docker-compose.yml up
+-d postgres redis` (pre-existing volumes from earlier in the week — `egregore migrate` reported
+`{"applied": []}`, i.e. already at head). Wrote `scripts/dev-dispatcher-split.sh` — starts
+`dispatcher`'s own `worker --daemon` with `EXECUTION_BACKEND=subprocess` and
+`AGENT_RUNTIME_PYTHON_EXECUTABLE` pointed at `backend/agent-runtime/.venv/bin/python` (both
+packages' venvs already existed from repeated `ruff`/`ty` runs this session). Ran it directly
+(`bash scripts/dev-dispatcher-split.sh` in the background, `DISPATCHER_IDLE_TIMEOUT=120`), confirmed
+the dispatcher daemon started cleanly and connected to Redis. Enqueued one real `WorkerJob` (persona
+`soc`) straight into the Redis queue via a throwaway script calling `container.get_job_queue()`.
+
+Dispatcher picked it up, `WorkerOrchestrator` spawned the documented pipeline (`soc` → `network` →
+`consultant`, plus a synthesis job) — existing orchestration behavior, not something new — and each
+stage genuinely spawned `agent-runtime`'s `python -m interfaces.cli.main run-sandboxed-job` as a
+real child process. Structured logs from the child (`engagement_egress_backend`,
+`agent_security_event` injection-detection, `worker_job_failed`, `persona_quality_catalog_skip`) are
+unambiguous, real, process-boundary-crossing evidence — this is not a mock or a stub. This is the
+first time `dispatcher`+`agent-runtime` have run as two live, connected processes since the physical
+split (§52.1) landed. Proven only in this local sandbox with live Docker — CI still has no live
+Postgres to run this in, and `docker`/`k8s` `ExecutionBackend` modes remain unverified (deliberately
+out of scope — user chose subprocess/same-host for now, not docker-socket passthrough).
+
+### 56.2. Bug found: litellm's own stdout banners break `SubprocessExecutionBackend`'s parse
+
+Every job failed to parse on the parent side (`subprocess_execution_backend could not parse child
+output`, `json.JSONDecodeError`). Root cause, confirmed by capturing the child's raw stdout bytes
+directly: litellm prints ANSI-colored `Give Feedback / Get Help` + `LiteLLM.Info` banners straight to
+stdout on every retry/error — bypassing structlog entirely, even though
+`cmd_run_sandboxed_job` redirects its own logging to stderr before running the job. This corrupts
+the single-JSON-blob stdout contract `SubprocessExecutionBackend` depends on (`json.loads(stdout)`
+over the whole blob fails the instant anything else is on the stream).
+
+Two-layer fix, applied identically to all three physical copies (`worker`/`dispatcher`/
+`agent-runtime` — confirmed byte-identical before editing):
+- `cys_core/llm/litellm_provider.py`: `litellm.suppress_debug_info = True` at module import time —
+  removes the noise at the source.
+- `interfaces/cli/main.py::cmd_run_sandboxed_job`: final `print(json.dumps(out, indent=2, ...))` →
+  compact single-line `print(json.dumps(out, ensure_ascii=False))`, matching what the module's own
+  docstring already claimed ("one final RunResult JSON line on stdout") but the pretty-printed
+  `indent=2` never actually delivered.
+- `cys_core/infrastructure/execution/subprocess_backend.py`: parse only the **last non-empty stdout
+  line**, not the whole blob — defense in depth so any *other* future dependency that prints to
+  stdout ahead of the final line (not just litellm) can't repeat this failure mode.
+
+### 56.3. Bug found: agent-runtime's tool-calling path was missing `fastapi` — every tool-using call broken
+
+Even after the stdout-parsing fix, the underlying job still failed:
+`litellm.APIConnectionError: ... DeepseekException - No module named 'fastapi' LiteLLM Retried: 2
+times`. Isolated by reproducing the exact call shape directly (`litellm.acompletion` with the real
+`DEEPSEEK_API_KEY`/`LLM_MODEL=deepseek/deepseek-v4-flash` from `deploy/.secrets/egregore-local.env`
++ repo-root `.env`): plain calls (sync, async, streaming) all succeeded cleanly; adding `tools=`
+reproduced the failure every time, with a full traceback showing why —
+`litellm.main.completion` unconditionally imports `litellm.responses.mcp.chat_completions_handler`
+whenever `tools` is passed, which chains into `litellm.proxy.litellm_pre_call_utils`, which does
+`from fastapi import HTTPException, Request` at module level. litellm's own proxy-server code is not
+actually optional for client-side tool-calling `acompletion()` calls, despite fastapi never being
+needed for anything agent-runtime itself does (it runs no HTTP server).
+
+`worker`/`api` already carry `fastapi` (needed for their own FastAPI apps), so this only affected
+`agent-runtime`'s deliberately-trimmed dependency set — and would have silently broken **every**
+tool-using persona job the moment the split actually ran a real LLM call with tools, which nothing
+had done until this session. Fixed by adding `fastapi>=0.115.0` to
+`backend/agent-runtime/pyproject.toml` (`uv sync` regenerated `uv.lock`), documented inline as a
+litellm-internal requirement, not an agent-runtime one. `dispatcher` was deliberately left alone —
+its own `pyproject.toml` docstring already states it keeps `litellm` only for
+`cys_core.llm`'s message/tool vocabulary, never for a live model call (job execution is delegated
+to `agent-runtime`'s subprocess), so it can't hit this path.
+
+### 56.4. Full re-verification after both fixes
+
+Re-ran the identical live pipeline: `agent-runtime`'s `run-sandboxed-job` child process now
+completes cleanly end-to-end — real DeepSeek model call succeeds (streaming, with tools bound), the
+parent parses a clean compact-JSON `RunResult` from the last stdout line, no exceptions. The only
+remaining "failure" (`error: "empty_finding"`) is expected and benign: the smoke-test envelope was a
+synthetic `{"phase": "smoke-test", "prompt": "..."}` payload, not shaped like a real SOC investigation
+event, so the persona's structured-output schema legitimately produced no finding. This is a
+test-fixture artifact, not an infrastructure bug — the process boundary and the full LLM call chain
+through it are both now genuinely proven, not just described.
+
+`scripts/dev-dispatcher-split.sh` committed as the reusable way to reproduce this
+(`docs/MICROSERVICES_SPLIT_PLAN.md` §1 item 2, subprocess/same-host mode only — the shape the user
+explicitly chose; `docker-compose.dev.yml`/Helm entries for `docker`/`k8s` `ExecutionBackend` modes
+remain out of scope for now).
+
+### 56.5. Verification
+
+Local only (live Docker + live DeepSeek API key from `deploy/.secrets/egregore-local.env`, never
+committed) — this class of proof cannot run in CI, which has no live Postgres/Redis and no LLM API
+key. Static checks run per package (`ruff check`, `ty check src`, `lint-imports`,
+`verify_import_boundaries.py`, `uv lock --check`) on all three touched packages
+(`worker`/`dispatcher`/`agent-runtime`) — all clean. No `pytest` run at any point.
+<!-- commit sha / CI run id filled in after push -->

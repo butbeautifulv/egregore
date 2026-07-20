@@ -16,8 +16,8 @@ physical copy of `cys_core.domain`/`bootstrap`/generic infra — deliberate dupl
 | `backend/worker/` | Original monolith (agent runtime + queue consumption + control-plane daemons) | **Deployed, unchanged** — not yet retired |
 | `backend/tool-gateway/` | PEP for sandboxed agent tool calls (async stdlib server) | Deployed, CI-complete |
 | `backend/model-gateway/` | LLM-call chokepoint (input sanitize, prompt-digest check, output-leakage guard) | Deployed image (Dockerfile+CI), wired into `agent-runtime` (selectable, not default) |
-| `backend/agent-runtime/` | Swappable agent-execution runtime (LangGraph today) — full copy of `worker` | Package exists, CI-green, **not called by anything yet** |
-| `backend/dispatcher/` | Queue + budget/policy + `ExecutionBackend` dispatch, no agent-execution engine | Package exists, CI-green, **not deployed** |
+| `backend/agent-runtime/` | Swappable agent-execution runtime (LangGraph today) — full copy of `worker` | Package exists, CI-green, **process boundary proven live (local sandbox), not deployed** |
+| `backend/dispatcher/` | Queue + budget/policy + `ExecutionBackend` dispatch, no agent-execution engine | Package exists, CI-green, **process boundary proven live (local sandbox), not deployed** |
 
 `backend/worker/` is not deleted or renamed — stays deployed until `dispatcher`+`agent-runtime` are
 proven out end-to-end and a deliberate cutover retires it. See `MSP_BACKLOG.md` §52 for exactly how
@@ -34,28 +34,32 @@ caught and fixed properly, not papered over).
 agent core behind `agent-runtime` can be swapped for a different implementation without touching
 `dispatcher` — "switch core to any agent on the market, inside a safe system."
 
-1. **Prove the process boundary.** Nothing has ever actually run `dispatcher` and `agent-runtime` as
-   two live, connected processes. Mechanism exists (`AGENT_RUNTIME_PYTHON_EXECUTABLE` →
-   `SubprocessExecutionBackend`, or `k8s`/`docker` backends pointing at a real `agent-runtime` image)
-   but is unverified — needs a live Postgres-backed environment neither local dev nor CI has today.
-   Blocked on item 2 below (no deploy target to point at yet). `MSP_BACKLOG.md` §52.1–§52.4.
-2. **Deploy bootstrap: compose/Helm entries.** Dockerfiles exist and are CI-verified (§52.5), but
-   there's no `docker-compose.dev.yml` entry and no Helm/K8s manifest for either package. Needs a
-   deliberate decision on execution-backend shape for a real multi-container deploy — `subprocess`
-   mode is same-filesystem only (doesn't work across containers); `docker` backend needs the
-   dispatcher container to hold the `docker` CLI and a bind-mounted host `/var/run/docker.sock`
-   (privilege-escalation-shaped, needs its own review). `MSP_BACKLOG.md` §52.4, §52.5.
-3. **Register a second `AgentRunner` implementation.** The selector (`AGENT_RUNNER_IMPL`/
+1. **Deploy bootstrap for `docker`/`k8s` `ExecutionBackend` modes.** `subprocess`/same-host mode is
+   proven (see below) via `scripts/dev-dispatcher-split.sh`. `docker`/`k8s` modes (needed for a real
+   multi-container/multi-host deploy) still have no `docker-compose.dev.yml` entry or Helm/K8s
+   manifest — `docker` backend needs the dispatcher container to hold the `docker` CLI and a
+   bind-mounted host `/var/run/docker.sock` (privilege-escalation-shaped, needs its own review).
+   Deliberately deferred — not yet decided. `MSP_BACKLOG.md` §52.4, §52.5.
+2. **Register a second `AgentRunner` implementation.** The selector (`AGENT_RUNNER_IMPL`/
    `get_agent_runner`/`configure_agent_runner`) is built and tested, but only `"langgraph"` exists.
-   Building a second, real implementation means matching `AgentRuntime._build_middleware`'s security/
-   HITL/budget-tracking coverage — substantial, standalone engineering. `MSP_BACKLOG.md` §52.3.
-4. **HITL pause/resume redesign for the cross-process case.** Today's mechanism
+   User decision: build it as a minimal custom ReAct loop (not full `AgentRuntime._build_middleware`
+   parity) — proves the seam works with zero new framework lock-in. Not yet started. `MSP_BACKLOG.md`
+   §52.3.
+3. **HITL pause/resume redesign for the cross-process case.** Today's mechanism
    (`langgraph.interrupt()` + checkpointer) is in-process-shaped and won't survive `agent-runtime`
    being a separate process. Design exists (refuse-then-retry with an `approval_id` token, reusing
    `ResumeHitlJob`'s anti-tampering pattern) but is **not implemented** — do this before relying on
    the split in production with HITL-gated personas. `MSP_BACKLOG.md` §35.
-5. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
-   only, zero code. Only after items 1–2 are stable. `MSP_BACKLOG.md` §22.5.
+4. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
+   only, zero code. Only after item 1 (deploy bootstrap) is stable. `MSP_BACKLOG.md` §22.5.
+
+Process boundary (previously item 1) is **proven**, `subprocess`/same-host only: `dispatcher` and
+`agent-runtime` have run live as two connected processes, a real `WorkerJob` flowed end-to-end
+through `SubprocessExecutionBackend` into a real DeepSeek LLM call with tools bound, and the result
+round-tripped back cleanly. Two real bugs were found and fixed along the way — litellm's own stdout
+banners were corrupting the parent's JSON parse, and `agent-runtime`'s trimmed dependencies were
+missing `fastapi` (a hard requirement of litellm's tool-calling path, not of agent-runtime itself),
+which had silently broken every tool-using persona call. `MSP_BACKLOG.md` §56.
 
 ---
 

@@ -19,6 +19,12 @@ from cys_core.llm.tool_call_parsing import (
     tool_calls_from_content,
 )
 
+# litellm prints ANSI-colored "Give Feedback / Get Help" banners straight to
+# stdout on every retry/error, bypassing structlog entirely — fatal for
+# SubprocessExecutionBackend, whose parent parses the child's stdout as a
+# single RunResult JSON blob (docs/MSP_BACKLOG.md process-boundary work).
+litellm.suppress_debug_info = True
+
 
 def normalize_messages_for_litellm(messages: list[BaseMessage]) -> list[BaseMessage]:
     """Merge all SystemMessage entries into a single system message at the start."""

@@ -88,9 +88,16 @@ class SubprocessExecutionBackend:
             )
 
         try:
-            parsed = json.loads(stdout.decode())
+            # Only the last non-empty stdout line is the RunResult contract
+            # (interfaces.cli.main.cmd_run_sandboxed_job prints it last,
+            # compact, single-line) — anything a dependency prints to stdout
+            # ahead of it (e.g. litellm's own error banners, which bypass
+            # structlog entirely) lands on earlier lines and must not break
+            # the parse.
+            lines = [line for line in stdout.decode().splitlines() if line.strip()]
+            parsed = json.loads(lines[-1])
             return RunResult.model_validate(parsed["result"])
-        except (json.JSONDecodeError, KeyError, ValueError) as exc:
+        except (json.JSONDecodeError, KeyError, ValueError, IndexError) as exc:
             logger.error(
                 "subprocess_execution_backend could not parse child output",
                 job_id=job.job_id,

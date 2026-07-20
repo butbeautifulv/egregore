@@ -12,6 +12,14 @@ dependencies = [
     "langgraph>=1.2.4",
     "langgraph-checkpoint-postgres>=3.1.0",
     "litellm>=1.86.1",
+    # litellm's tool-calling completion path unconditionally imports its own
+    # proxy-server MCP handler chain (litellm.proxy.litellm_pre_call_utils),
+    # which imports fastapi even for plain client-side acompletion(tools=...)
+    # calls — not optional despite agent-runtime never running an HTTP
+    # server itself. Without it every tool-using agent call fails with
+    # ModuleNotFoundError, wrapped by litellm's retry loop into an opaque
+    # APIConnectionError.
+    "fastapi>=0.115.0",
     "langfuse>=4.6.1",
     "qdrant-client>=1.12.0",
     "pydantic>=2.13.4",

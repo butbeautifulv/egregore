@@ -106,7 +106,12 @@ def cmd_run_sandboxed_job(args: argparse.Namespace) -> int:
 
     out = asyncio.run(_run())
     get_container().get_trace_backend().flush()
-    print(json.dumps(out, indent=2, ensure_ascii=False))
+    # Compact, single-line — SubprocessExecutionBackend parses only the last
+    # stdout line as the RunResult (see subprocess_backend.py); anything
+    # else the process tree prints to stdout (litellm banners, stray
+    # warnings) lands on earlier lines and is ignored rather than corrupting
+    # the parse.
+    print(json.dumps(out, ensure_ascii=False))
     return 0 if out["result"]["success"] else 1
 
 
