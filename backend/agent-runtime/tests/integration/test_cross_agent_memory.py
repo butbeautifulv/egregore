@@ -39,6 +39,7 @@ async def test_second_worker_receives_first_worker_memory_context():
         send_message=lambda *args, **kwargs: {"payload": kwargs},
         receive_message=lambda *_a, **_k: None,
         record_agent_failure=lambda *_a, **_k: None,
+        escalation_paths=set(),
     )
     sandbox = SimpleNamespace(
         acreate=AsyncMock(return_value=SimpleNamespace(sandbox_id="sb-1")),

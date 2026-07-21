@@ -6350,4 +6350,30 @@ which genuinely were SIEM/threat-intel/SOC-persona-specific. The few truly SOC-s
 (`run_active_scan`, `database_delete`, `transfer_funds`) only matter for personas that have those
 tools in their list anyway, so a non-SOC persona without them is unaffected regardless. Left
 untouched; not a priority next slice after all.
+
+### 62.6. Real CI failure found and fixed: fake bus fixtures missed beyond the ones checked by hand
+
+Commit `98d8c56`, run `29817553663`: **failed** — `unit-tests (dispatcher)`, 5 tests in the
+`tests/worker` batch: `AttributeError: 'types.SimpleNamespace' object has no attribute
+'escalation_paths'` at `finding_publisher.py:135`. Root cause: `tests/application/workers/
+factory.py::build_run_worker_job_for_tests()`'s **default** `bus` (used whenever a test doesn't
+pass its own `bus=` override) is a bare `SimpleNamespace` with no `escalation_paths` — a fourth
+fake-bus site this entry's `§62.3` pass missed. `§62.3` had checked `test_finding_publisher.py`'s
+and `test_bus_loop_guard.py`'s fakes by hand but never grepped `tests/application/workers/
+factory.py` itself, nor `tests/integration/test_cross_agent_memory.py` (a fifth site, found by
+inspection afterward — its own explicit `SimpleNamespace` bus override has the identical gap; not
+in the batch that actually failed in CI, since `tests/integration`'s batch reported 0 failures, but
+the same class of bug, fixed the same way rather than left for a future surprise).
+
+`unit-tests (worker)`/`unit-tests (agent-runtime)` were **cancelled**, not run, in this same CI
+attempt — their identical copies of `factory.py` have the exact same bug (confirmed by inspection),
+so they would very likely have failed too had they been given the chance to run. Fixed
+`factory.py`'s default bus (added `escalation_paths=set()`) and `test_cross_agent_memory.py`'s
+explicit bus override, identically across `worker`/`agent-runtime`/`dispatcher` (confirmed
+byte-identical before and after). Re-verified with `ruff check`, `pytest --collect-only`, and a
+standalone script directly reconstructing `test_nonempty_soc_finding_completes_job`'s exact
+scenario against `build_run_worker_job_for_tests()`'s real (now-fixed) default bus — passed on all
+three packages. Confirmed via the CI log's own `pytest_batches.sh` output that all 24 test-directory
+batches in the failing run actually executed (not short-circuited early) and exactly one had any
+failure, so this is the complete list of what broke in that specific run — not an assumption.
 <!-- commit sha / CI run id filled in after push -->

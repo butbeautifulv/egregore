@@ -84,6 +84,7 @@ def build_run_worker_job_for_tests(**overrides) -> RunWorkerJob:
             send_message=lambda *a, **k: {"signature": "sig-1"},
             receive_message=lambda *a, **k: None,
             record_agent_failure=lambda *a, **k: None,
+            escalation_paths=set(),
         ),
     )
     transport = overrides.pop("transport", SimpleNamespace(publish_delivery=AsyncMock()))
