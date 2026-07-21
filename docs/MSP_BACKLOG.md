@@ -6103,4 +6103,10 @@ what a single lockfile line accomplishes safely.
 `version` field, not just trusting the lockfile line). `git diff web_ui/bun.lock` — exactly the one
 line changed, nothing else moved. `bun run typecheck` (`tsc --noEmit`), `bun run lint` (`eslint`),
 and a full `bun run build` (production Next.js build, all 19 routes) — all clean, no `bun test` run.
-<!-- commit sha / CI run id filled in after push -->
+
+Commit `d29b362`, run `29810859183`: **success** — 56 jobs passed, 6 skipped (deploy-stage, expected
+on a feature-branch push), 0 failed, checked via `gh run view --json jobs` (not just the top-level
+`conclusion` field, after `29769734790` and `29808680290` both taught this session that a green
+headline conclusion isn't the same as every job actually passing). This confirms both §59's
+domain-coverage fix and §60's `brace-expansion` fix together — `TOOL_HITL_MODE` is still `shadow` by
+default; nothing about this result changes that.
