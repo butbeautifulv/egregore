@@ -24,6 +24,8 @@ async def test_finding_publisher_skips_bus_for_planner():
     published: list[dict] = []
 
     class Bus:
+        escalation_paths: set[tuple[str, str]] = set()
+
         def send_message(self, sender, recipient, msg_type, payload):
             raise AssertionError("planner must not publish findings to bus")
 
@@ -51,6 +53,8 @@ async def test_finding_publisher_publishes_to_bus_and_transport():
     published: list[dict] = []
 
     class Bus:
+        escalation_paths: set[tuple[str, str]] = set()
+
         def send_message(self, sender, recipient, msg_type, payload):
             return {"signature": "sig-1"}
 

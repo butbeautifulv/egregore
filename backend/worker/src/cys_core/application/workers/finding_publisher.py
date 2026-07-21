@@ -131,7 +131,9 @@ class WorkerFindingPublisher:
             planner_plan,
             control_plane_mode=control_plane_mode,
         )
-        recipients = filter_escalation_recipients(job.persona, recipients, msg_type="finding")
+        recipients = filter_escalation_recipients(
+            job.persona, recipients, msg_type="finding", escalation_paths=self._bus.escalation_paths
+        )
         for recipient in recipients:
             envelope = self._bus.send_message(job.persona, recipient, "finding", finding_payload)
             self._bus.receive_message(recipient, envelope)

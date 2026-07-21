@@ -76,11 +76,20 @@ def filter_escalation_recipients(
     recipients: list[str],
     *,
     msg_type: str = "finding",
+    escalation_paths: set[tuple[str, str]] | None = None,
 ) -> list[str]:
-    """Drop privileged escalation paths unless message is critic-approved escalation."""
+    """Drop privileged escalation paths unless message is critic-approved escalation.
+
+    `escalation_paths` lets a caller pass the active profile's own paths (e.g.
+    `SecureAgentBus.escalation_paths`, itself resolved from `ProfilePolicyPayload.
+    escalation_paths`) instead of always using cybersec-soc's hardcoded pairs — see
+    docs/MSP_BACKLOG.md §8.4 point 3. Defaults to `ESCALATION_ONLY_PATHS` unchanged for
+    backward compatibility with any caller that doesn't pass one.
+    """
     if msg_type == "escalation":
         return list(recipients)
-    blocked = {recipient for sender_name, recipient in ESCALATION_ONLY_PATHS if sender_name == sender}
+    paths = ESCALATION_ONLY_PATHS if escalation_paths is None else escalation_paths
+    blocked = {recipient for sender_name, recipient in paths if sender_name == sender}
     if not blocked:
         return list(recipients)
     return [recipient for recipient in recipients if recipient not in blocked]

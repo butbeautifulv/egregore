@@ -70,3 +70,24 @@ def test_filter_escalation_recipients_blocks_privileged_path() -> None:
 def test_filter_escalation_recipients_allows_escalation_message() -> None:
     recipients = ["redteam", "soc"]
     assert filter_escalation_recipients("soc", recipients, msg_type="escalation") == recipients
+
+
+@pytest.mark.unit
+def test_filter_escalation_recipients_uses_the_passed_paths_instead_of_the_soc_default() -> None:
+    """docs/MSP_BACKLOG.md §8.4 point 3: a caller for a non-cybersec-soc profile must be
+    able to supply its own escalation pairs rather than always getting soc/redteam's."""
+    recipients = ["support-tier2", "customer-support"]
+    filtered = filter_escalation_recipients(
+        "customer-support",
+        recipients,
+        msg_type="finding",
+        escalation_paths={("customer-support", "support-tier2")},
+    )
+    assert filtered == ["customer-support"]
+
+
+@pytest.mark.unit
+def test_filter_escalation_recipients_empty_paths_blocks_nothing() -> None:
+    recipients = ["redteam", "soc"]
+    filtered = filter_escalation_recipients("soc", recipients, msg_type="finding", escalation_paths=set())
+    assert filtered == recipients

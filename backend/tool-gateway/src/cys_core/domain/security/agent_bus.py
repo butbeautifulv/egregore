@@ -86,9 +86,21 @@ class SecureAgentBus:
         self._breaker_reset = policy.breaker_reset_seconds
         self._bus_policy = dict(policy.bus_policy) if policy.bus_policy else dict(DEFAULT_BUS_POLICY)
         if policy.escalation_paths:
-            self._escalation_paths = {tuple(pair) for pair in policy.escalation_paths if len(pair) == 2}
+            self._escalation_paths: set[tuple[str, str]] = {
+                (pair[0], pair[1]) for pair in policy.escalation_paths if len(pair) == 2
+            }
         else:
             self._escalation_paths = set(ESCALATION_ONLY_PATHS)
+
+    @property
+    def escalation_paths(self) -> set[tuple[str, str]]:
+        """This bus's active profile's escalation pairs — resolved once in `_apply_policy`
+        from `ProfilePolicyPayload.escalation_paths`, falling back to the cybersec-soc
+        `ESCALATION_ONLY_PATHS` constant only when the policy doesn't set any. Exposed so
+        callers like `filter_escalation_recipients` (docs/MSP_BACKLOG.md §8.4 point 3) use
+        the same profile-resolved value this bus already computed, instead of re-importing
+        the hardcoded constant directly."""
+        return set(self._escalation_paths)
 
     def register_agent(
         self,

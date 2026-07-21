@@ -61,10 +61,14 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
 ## §2 — Everything else, by theme (independent of §1)
 
 ### Core architecture / domain
-- **Core still hardcodes SOC domain in 6 places** (`EventType`/`WorkerAgentName` closed `Literal`s,
-  11 concrete `Finding` subclasses, `ESCALATION_ONLY_PATHS`/`READ_ONLY_TOOLS`, unconditional
-  `ToolRegistry` SIEM/Veil/Nessus registration, `DEFAULT_PROFILE_ID`). Large cross-cutting refactor,
-  target model already written. `MSP_BACKLOG.md` §8, §24.1.
+- **Core still hardcodes SOC domain, 5 of 6 points remaining** (`EventType`/`WorkerAgentName`
+  closed `Literal`s, 11 concrete `Finding` subclasses, unconditional `ToolRegistry` SIEM/Veil/Nessus
+  registration, `product_packs.py` never wired up, no toy non-SOC-pack acceptance test). One point
+  done (`§62`): `ESCALATION_ONLY_PATHS`/`READ_ONLY_TOOLS`/`PLAN_BLOCKED_TOOLS`/`MUTATING_TOOLS` no
+  longer leak from `cybersec-soc` into every other profile pack unconditionally. `tool_risk`
+  (`ACTION_RISK_MAPPING`) has the same "leaks into every profile" shape, deliberately left
+  unconditional in that pass — natural next slice. Large cross-cutting refactor overall, target
+  model already written. `MSP_BACKLOG.md` §8, §24.1, §62.
 - **Semantic/long-term agent memory tier doesn't exist** — `memory_type` schema has `lesson`/
   `preference` slots, nothing ever writes them. `MSP_BACKLOG.md` §9.
 

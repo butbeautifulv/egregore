@@ -12,6 +12,7 @@ from cys_core.application.use_cases.enqueue_worker_jobs import EnqueueWorkerJobs
 from cys_core.application.use_cases.process_finding_critic import ProcessFindingCritic
 from cys_core.application.workers.finding_publisher import WorkerFindingPublisher
 from cys_core.domain.engagement.models import Engagement, EngagementStatus
+from cys_core.domain.policy.defaults import ESCALATION_ONLY_PATHS
 from cys_core.infrastructure.bus_dedup_store import BusDedupStore
 from cys_core.infrastructure.job_store.in_memory import InMemoryJobStore
 from cys_core.infrastructure.redis_client import ResilientRedisClient
@@ -39,6 +40,7 @@ def test_is_noop_finding_suppressed() -> None:
 @pytest.mark.asyncio
 async def test_suppressed_finding_skips_bus_publish() -> None:
     bus = MagicMock()
+    bus.escalation_paths = set(ESCALATION_ONLY_PATHS)
     transport = MagicMock()
     transport.publish_delivery = AsyncMock()
     publisher = WorkerFindingPublisher(bus=bus, transport=transport)
@@ -388,6 +390,7 @@ def test_critic_can_send_revision_to_intel():
 @pytest.mark.asyncio
 async def test_finding_publisher_filters_off_plan_recipients() -> None:
     bus = MagicMock()
+    bus.escalation_paths = set(ESCALATION_ONLY_PATHS)
     transport = MagicMock()
     transport.publish_delivery = AsyncMock()
     engagement = Engagement(id="eng-f8c54f425c09", tenant_id="default", goal="x")
@@ -641,6 +644,7 @@ async def test_critic_auto_accepts_after_revision_cap(monkeypatch: pytest.Monkey
 @pytest.mark.asyncio
 async def test_intel_finding_does_not_message_redteam() -> None:
     bus = MagicMock()
+    bus.escalation_paths = set(ESCALATION_ONLY_PATHS)
     transport = MagicMock()
     transport.publish_delivery = AsyncMock()
     store = MagicMock()

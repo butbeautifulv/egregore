@@ -73,14 +73,21 @@ def profile_policy_for(profile_id: str) -> ProfilePolicyPayload:
     product_allow = product_tool_allowlist(profile_id)
     if product_allow is not None:
         tool_allowlist[profile_id] = sorted(product_allow)
-    escalation_paths = [list(pair) for pair in sorted(ESCALATION_ONLY_PATHS)]
     updates: dict = {
         "tool_allowlist": tool_allowlist,
         "tool_risk": dict(ACTION_RISK_MAPPING),
-        "mode_policy": DEFAULT_MODE_POLICY,
-        "escalation_paths": escalation_paths,
     }
     if profile_id == DEFAULT_PROFILE_ID:
+        # mode_policy (read_only/plan_blocked/mutating tools) and escalation_paths are
+        # cybersec-soc-specific content (SIEM/threat-intel tool names, soc/redteam/network/
+        # intel/hunter persona pairs) — every other profile_id used to inherit them
+        # unconditionally here, which is exactly the "core silently stays SOC-shaped even
+        # for a non-SOC pack" gap docs/MSP_BACKLOG.md §8.2/§8.4 point 3 names. Gated so a
+        # non-SOC pack gets ProfilePolicyPayload's own empty defaults instead, unless it
+        # sets its own values below. tool_risk (ACTION_RISK_MAPPING) is a separate, larger
+        # gap left unconditional/out of scope for this pass — see §8's remaining points.
+        updates["mode_policy"] = DEFAULT_MODE_POLICY
+        updates["escalation_paths"] = [list(pair) for pair in sorted(ESCALATION_ONLY_PATHS)]
         updates["datasource_capability_grants"] = {
             DEFAULT_PROFILE_ID: {
                 "siem-readonly": ["query"],

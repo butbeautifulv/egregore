@@ -6253,3 +6253,87 @@ trusting `pytest --collect-only` alone. No `pytest` run at any point.
 
 Commit `d6d4164`, run `29814940280`: **success** — 56 jobs passed, 6 skipped (deploy-stage,
 expected), 0 failed, checked per-job.
+
+## 62. §8.4 point 3: SOC-only `mode_policy`/`escalation_paths` no longer leak into every profile
+
+User picked "domain-agnostic core refactor (§8)" as the next priority after `§61`. §8 is a large,
+multi-session effort with 6 target points (`§8.4`); this entry is deliberately scoped to **only
+point 3** — points 1, 2, 4, 5, 6 (`Literal`→`str` typing, extracting the 9 SOC `Finding`
+subclasses, conditional tool registration, wiring up `product_packs.py`, the toy non-SOC-pack
+acceptance test) are **not** touched here, left for later sessions.
+
+### 62.1. The actual bug
+
+`cys_core/domain/policy/product_payloads.py::profile_policy_for()` applied `DEFAULT_MODE_POLICY`
+(`read_only_tools`/`plan_blocked_tools`/`mutating_tools` — SIEM/threat-intel tool names) and
+`ESCALATION_ONLY_PATHS` (`soc`/`redteam`/`network`/`intel`/`hunter` persona pairs) to **every**
+`profile_id`, not just `cybersec-soc` — meaning the existing "generic" `general-assistant`/
+`gaia-benchmark` packs silently inherited SOC-specific policy today, exactly the "core stays
+SOC-shaped even for a non-SOC pack" gap `§8.2` names. Separately, `cys_core/domain/engagement/
+bus_routing.py::filter_escalation_recipients()` had **no override mechanism at all** for
+escalation pairs — it always imported the raw `ESCALATION_ONLY_PATHS` constant directly, even
+though `ProfilePolicyPayload.escalation_paths` already existed as a field and `SecureAgentBus.
+_apply_policy` already correctly read it with a fallback. `§8.4` point 3's claim ("the mechanism
+already exists, just move the values") was only half true — the data field existed, but one of its
+two real consumers never read it.
+
+### 62.2. What was built
+
+- `product_payloads.py::profile_policy_for()` — `mode_policy`/`escalation_paths` updates now gated
+  to `profile_id == DEFAULT_PROFILE_ID` only. `tool_risk` (`ACTION_RISK_MAPPING`) is deliberately
+  left unconditional — same category of problem, larger surface, explicitly out of scope here.
+- `bus_routing.py::filter_escalation_recipients()` — new `escalation_paths: set[tuple[str, str]] |
+  None = None` kwarg, defaults to `ESCALATION_ONLY_PATHS` unchanged (backward compatible).
+- `cys_core/domain/security/agent_bus.py::SecureAgentBus` — new public `escalation_paths` property
+  exposing the already-policy-resolved `_escalation_paths` (no behavior change, just a public
+  accessor other callers can use instead of reaching into a private attribute or re-importing the
+  raw constant). Fixed a real `ty check` error this introduced (`_escalation_paths` inferred as
+  `set[tuple[str, ...]]`, not `set[tuple[str, str]]` — constructed as explicit `(pair[0], pair[1])`
+  tuples instead of `tuple(pair)`).
+- `cys_core/application/workers/finding_publisher.py` — its one call to
+  `filter_escalation_recipients` now passes `escalation_paths=self._bus.escalation_paths`.
+
+Confirmed all 4 files byte-identical across `worker`/`api`/`agent-runtime`/`dispatcher`/
+`tool-gateway` before editing (`finding_publisher.py` only exists in `worker`/`agent-runtime`/
+`dispatcher` — `api`/`tool-gateway` don't run the worker pipeline); edited one canonical copy,
+verified, then diff-copied to the other packages and re-confirmed byte-identical after.
+`model-gateway` has none of these files (different domain scope, no agent bus) — correctly
+untouched.
+
+### 62.3. Regression found and fixed while adding tests
+
+Existing tests for `finding_publisher.py`/`bus_loop_guard.py` construct fake/mock bus objects that
+never had an `escalation_paths` attribute — `self._bus.escalation_paths` would have broken them.
+Two flavors, both real: plain fake `Bus` classes in `tests/application/workers/
+test_finding_publisher.py` (`AttributeError` — fixed by adding `escalation_paths: set[tuple[str,
+str]] = set()` to both), and `bus = MagicMock()` in three places in `tests/application/
+test_bus_loop_guard.py` (a bare `MagicMock` auto-generates `.escalation_paths` as another
+`MagicMock`, which is not `None`, so `filter_escalation_recipients` would try to iterate it and
+raise `TypeError` — worse, one of those three tests, `test_intel_finding_does_not_message_redteam`,
+specifically exists to prove `intel→redteam` escalation blocking works, so it needed the *real*
+`ESCALATION_ONLY_PATHS` set, not an empty one. Fixed by setting `bus.escalation_paths =
+set(ESCALATION_ONLY_PATHS)` on each mock right after construction). Propagated the same test fixes
+to `agent-runtime`/`dispatcher`'s identical copies of both files.
+
+### 62.4. Verification
+
+Local, all 5 packages: `ruff check`, `ty check src`, `lint-imports` — all clean on every touched
+`src/` file. `pytest --collect-only` on every touched/new test file across all 5 packages — 20
+tests collect in `api`/`tool-gateway`, 46 in `worker`/`agent-runtime`/`dispatcher` (the extra ones
+being `test_bus_loop_guard.py`/`test_finding_publisher.py`, which don't exist in `api`/
+`tool-gateway`) — no collection errors anywhere. No `pytest` run at any point. Given the security-
+adjacent nature of escalation-path filtering, ran a standalone script (not `pytest`) on all 5
+packages directly exercising: `cybersec-soc` keeps its `mode_policy`/`escalation_paths`
+(regression guard), `general-assistant`/`gaia-benchmark` no longer inherit them (the actual fix),
+`filter_escalation_recipients` honors a passed override, and `SecureAgentBus.escalation_paths`
+matches the policy-resolved value — all passed on all 5 packages.
+
+### 62.5. What's still open
+
+`§8.4`'s remaining 5 points (Literal→str, Finding-class extraction, conditional tool registration,
+wiring `product_packs.py`, the toy non-SOC-pack acceptance test) are untouched — this entry closes
+one narrow, real leak, not the "core is domain-agnostic" claim as a whole. `tool_risk`/
+`ACTION_RISK_MAPPING` has the same "leaks into every profile" shape as `mode_policy`/
+`escalation_paths` did but was left unconditional here — a natural next slice, not attempted in
+this pass to keep this change reviewable and behavior-preserving for `cybersec-soc`.
+<!-- commit sha / CI run id filled in after push -->

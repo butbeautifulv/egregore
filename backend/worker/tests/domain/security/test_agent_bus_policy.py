@@ -28,3 +28,13 @@ def test_secure_agent_bus_defaults_without_injection():
     assert bus._breaker_threshold == 5
     assert bus._bus_policy == dict(DEFAULT_BUS_POLICY)
     assert bus._escalation_paths == set(ESCALATION_ONLY_PATHS)
+
+
+@pytest.mark.unit
+def test_escalation_paths_property_exposes_the_resolved_policy_value():
+    """docs/MSP_BACKLOG.md §8.4 point 3: callers outside this module (e.g.
+    filter_escalation_recipients via finding_publisher.py) should use this public property
+    rather than reaching into the private _escalation_paths attribute directly."""
+    policy = ProfilePolicyPayload(escalation_paths=[["customer-support", "support-tier2"]])
+    bus = SecureAgentBus(policy=policy)
+    assert bus.escalation_paths == {("customer-support", "support-tier2")}
