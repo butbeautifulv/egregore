@@ -46,3 +46,4 @@ class ProductProfilePack(BaseModel):
     personas: list[PersonaPack] = Field(default_factory=list)
     eval_pack: EvalPack | None = None
     seed_module: str = ""
+    tool_domains: list[str] = Field(default_factory=list)

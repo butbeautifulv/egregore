@@ -6383,3 +6383,106 @@ Fix commit `61ceab8`, run `29819092352`: **success** — verified both at the to
 `unit-tests (agent-runtime)`, and `unit-tests (dispatcher)` all passed this time along with every
 other job in the matrix. §8.4 point 3 (SOC-only `mode_policy`/`escalation_paths` no longer leak
 into non-SOC profiles) is complete and green on `feature/microservice-refactoring`.
+
+---
+
+## 63. §8.4 point 4: SIEM/Veil/Nessus tool registration is now conditional on the active profile pack
+
+Per the user's explicit direction ("Domain-agnostic core refactor (§8)") this session moved on
+to point 4 of `§8.4`'s target model, after checking in on which slice to take next (point 4 —
+conditional tool registration — was chosen over points 1/5 and over pausing).
+
+### 63.1. Scope correction found before writing any code
+
+`§8.2`'s table names `cys_core/registry/tools.py` as if it were duplicated everywhere like most
+core modules. It isn't: only `worker`, `dispatcher`, and `agent-runtime` actually have
+`registry/tools.py`/`ToolRegistry` (`api` and `tool-gateway` only have `discovery_tools.py`/
+`agents.py`/`skill_registry.py`; `model-gateway` has no `cys_core/registry` package at all — it's
+a thin litellm gateway with nothing that calls tools). So "duplicate everything, fix all copies"
+here means 3 packages, not 6 — confirmed by direct filesystem check, not assumed from the table.
+
+Also found: there is currently **no existing runtime "which profile pack is this deployment
+serving" concept** at all — `profile_id` is threaded per-request/per-event (`resolve_profile_id`
+in `cys_core/domain/catalog/profile_id.py`), never as a process-level setting. `§8.4` point 5
+("wire up `product_packs.py` as the real runtime profile-pack loader") is explicitly a separate,
+larger point — but *some* minimal "active pack" signal was unavoidable to make point 4 concrete
+without prematurely doing all of point 5. Kept deliberately small: a single `PROFILE_PACK_ID` env
+var, read directly (`os.environ.get`, mirroring existing precedent in `cys_core/llm/
+litellm_provider.py`/`observability/http.py`), not threaded through each package's own
+(non-duplicated, ~870-line, per-service-shaped) `bootstrap/settings.py` — avoids a much larger,
+riskier diff across 5 different files for a self-contained decision.
+
+### 63.2. What was built
+
+1. `cys_core/domain/catalog/product_packs.py` (already domain-agnostic-shaped per `§8.3`,
+   duplicated identically across `worker`/`api`/`dispatcher`/`agent-runtime`/`tool-gateway`) —
+   added `tool_domains: list[str] = Field(default_factory=list)` to `ProductProfilePack`. A pack
+   now declares which tool families it needs instead of the core registry assuming SOC always
+   does.
+2. `bootstrap/product_packs.py` (same 5 packages, also byte-identical) —
+   `CYBERSEC_SOC_PRODUCT` now sets `tool_domains=["veil", "siem", "nessus"]`.
+   `GENERAL_ASSISTANT_PRODUCT`/`GAIA_BENCHMARK_PRODUCT` are untouched (empty list default already
+   matches their current, correct, no-SIEM-tools reality).
+3. `cys_core/registry/tools.py` (`worker`/`dispatcher`/`agent-runtime`) — the real fix. Previously:
+   ```python
+   _ALL_TOOLS.extend(build_veil_tools())
+   _ALL_TOOLS.extend(build_siem_tools())
+   _ALL_TOOLS.extend(build_nessus_tools())
+   ```
+   ran unconditionally as module-level code the instant the module was imported — before this
+   change, *any* import of `cys_core.registry.tools` anywhere, by any process, for any profile,
+   built and registered all three domain tool families. Replaced with `_active_tool_domains()`
+   (reads `PROFILE_PACK_ID`, defaults to `DEFAULT_PROFILE_ID` = `cybersec-soc`, looks up
+   `PRODUCT_PACKS[pack_id].tool_domains`, empty frozenset for unknown/unset-without-default pack)
+   and `_domain_tools()` (builds only the domain tool families present in the active set).
+   `ToolRegistry.__init__` and `.reload()` both now call `_domain_tools()` instead of the three
+   hardcoded `.extend()`/`.update()` calls — meaning registration is resolved **per construction/
+   reload call**, not baked into the module at import time at all. A non-SOC deployment
+   (`PROFILE_PACK_ID=general-assistant` or any pack that doesn't declare these domains) now never
+   builds or registers a single SIEM/Veil/Nessus tool object — not even transiently at import.
+
+### 63.3. Verification
+
+`ruff check`, `ty check src`, and `lint-imports` (all clean, including the contract check — the
+new `cys_core.registry.tools` → `bootstrap.product_packs` import doesn't break
+`domain_independent`/`application_only_domain`/`no_config_in_domain_application`, verified
+per-package, not assumed from precedent) across `worker`/`dispatcher`/`agent-runtime` (+ `api`/
+`tool-gateway` for the shared `product_packs.py` files), plus `uv lock --check` (no dependency
+changes). `pytest --collect-only` confirms the new tests collect cleanly in all 3 packages that
+have `registry/tools.py` (5 new tests each) plus the 4 packages with `bootstrap/product_packs.py`
+tests (1 updated assertion each).
+
+Per this session's standing rule (no local pytest execution), behavior was proven with a
+standalone script (not committed — lives in the job scratch dir) run against each of
+`worker`/`dispatcher`/`agent-runtime`'s real `uv` environment, exercising the actual code path
+end-to-end:
+- default/unset `PROFILE_PACK_ID` → `_active_tool_domains() == {veil, siem, nessus}`, and a fresh
+  `ToolRegistry()` includes 35 real SIEM/Veil/Nessus tool objects (built from live
+  `get_siem_allowed_tools()`/etc., not mocked).
+- explicit `PROFILE_PACK_ID=cybersec-soc` → identical to default.
+- `PROFILE_PACK_ID=general-assistant` → zero SIEM/Veil/Nessus tools built or present in the
+  registry; domain-generic base tools (`web_search`, `python_sandbox`, ...) still present and
+  unaffected.
+- unknown pack id (`does-not-exist`) → empty domain set, `ToolRegistry()` construction does not
+  raise.
+- `reload()` re-evaluates `PROFILE_PACK_ID` live: constructing a registry under the default pack,
+  then flipping the env var and calling `.reload()`, correctly drops the SOC tools — confirming
+  the gate isn't a one-time-at-import artifact but genuinely re-checked on every
+  construction/reload.
+
+All five checks passed identically on all three packages (worker, dispatcher, agent-runtime).
+
+### 63.4. What's still open (honest scope boundary)
+
+This closes `§8.4` point 4 specifically ("make registration conditional, not unconditional at
+import") — it does **not** close point 5 (`product_packs.py` as the *real* runtime loader; today
+`PROFILE_PACK_ID` is a narrow, standalone env var read only by `registry/tools.py`, not a
+general mechanism other subsystems consult) or point 6 (the toy non-SOC acceptance pack/test —
+`general-assistant` already exists as a pack definition and this entry's own verification script
+exercises it, but there's no committed, standing test asserting "constructing the whole app under
+`general-assistant` touches zero `cys_core/domain` files," which is what point 6 actually asks
+for). Points 1 (`Literal`→`str`+catalog validation) and 2 (extracting the 9 SOC `Finding`
+subclasses) remain fully untouched. `filter_tools_for_profile_live` (the existing allowlist-based
+filter applied at `resolve()`/`list_tools()` time) is unaffected and still layered on top of this
+— this change stops SOC tools from being *built* for non-SOC packs, the allowlist still separately
+governs which *built* tools a given profile/persona is allowed to *call*.

@@ -29,6 +29,7 @@ CYBERSEC_SOC_PRODUCT = ProductProfilePack(
         PersonaPack(id="soc", name="SOC Analyst", catalog_agent="soc"),
     ],
     eval_pack=EvalPack(id="soc-eval", suite="trace-critic", metrics=["faithfulness", "tool_success"]),
+    tool_domains=["veil", "siem", "nessus"],
 )
 
 GENERAL_ASSISTANT_PRODUCT = ProductProfilePack(

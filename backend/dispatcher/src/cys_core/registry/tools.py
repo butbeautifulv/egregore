@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import structlog
@@ -592,9 +593,35 @@ _ALL_TOOLS: list[BaseTool] = [
 
 _BUILTIN_TOOL_NAMES: list[str] = [tool.name for tool in _ALL_TOOLS]
 
-_ALL_TOOLS.extend(build_veil_tools())
-_ALL_TOOLS.extend(build_siem_tools())
-_ALL_TOOLS.extend(build_nessus_tools())
+_DOMAIN_TOOL_BUILDERS: dict[str, Any] = {
+    "veil": build_veil_tools,
+    "siem": build_siem_tools,
+    "nessus": build_nessus_tools,
+}
+
+
+def _active_tool_domains() -> frozenset[str]:
+    """Which domain-specific tool families (veil/siem/nessus) the active profile pack wants.
+
+    Resolved per-call (not baked in at import) so a non-SOC deployment (`PROFILE_PACK_ID`
+    set to a pack whose `tool_domains` is empty, e.g. general-assistant) never builds or
+    registers SIEM/Veil/Nessus tools at all. Unset/unknown pack id falls back to the
+    existing default (`cybersec-soc`), which declares all three — matching prior behavior.
+    """
+    from bootstrap.product_packs import PRODUCT_PACKS
+
+    pack_id = os.environ.get("PROFILE_PACK_ID", DEFAULT_PROFILE_ID)
+    pack = PRODUCT_PACKS.get(pack_id)
+    return frozenset(pack.tool_domains) if pack else frozenset()
+
+
+def _domain_tools() -> list[BaseTool]:
+    active = _active_tool_domains()
+    tools: list[BaseTool] = []
+    for domain, builder in _DOMAIN_TOOL_BUILDERS.items():
+        if domain in active:
+            tools.extend(builder())
+    return tools
 
 
 def list_tools(*, profile_id: str = DEFAULT_PROFILE_ID, enabled_only: bool = True) -> list[str]:
@@ -607,6 +634,7 @@ def list_tools(*, profile_id: str = DEFAULT_PROFILE_ID, enabled_only: bool = Tru
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, BaseTool] = {t.name: t for t in _ALL_TOOLS}
+        self._tools.update({t.name: t for t in _domain_tools()})
         self._load_catalog_overrides()
 
     def _load_catalog_overrides(self) -> None:
@@ -626,9 +654,7 @@ class ToolRegistry:
 
     def reload(self) -> None:
         self._tools = {t.name: t for t in _ALL_TOOLS}
-        self._tools.update({t.name: t for t in build_veil_tools()})
-        self._tools.update({t.name: t for t in build_siem_tools()})
-        self._tools.update({t.name: t for t in build_nessus_tools()})
+        self._tools.update({t.name: t for t in _domain_tools()})
         self._load_catalog_overrides()
 
     def get(self, name: str) -> BaseTool:

@@ -45,3 +45,49 @@ def test_all_tool_functions_and_registry_edges():
     assert json.loads(tools.execute_command.invoke({"command": "id"}))["status"] == "denied_by_policy"
     with pytest.raises(KeyError, match="Unknown tool"):
         tools.tool_registry.get("missing")
+
+
+@pytest.mark.unit
+def test_active_tool_domains_defaults_to_soc_pack_domains(monkeypatch):
+    from cys_core.registry import tools
+
+    monkeypatch.delenv("PROFILE_PACK_ID", raising=False)
+    assert tools._active_tool_domains() == frozenset({"veil", "siem", "nessus"})
+
+
+@pytest.mark.unit
+def test_active_tool_domains_empty_for_non_soc_pack(monkeypatch):
+    from cys_core.registry import tools
+
+    monkeypatch.setenv("PROFILE_PACK_ID", "general-assistant")
+    assert tools._active_tool_domains() == frozenset()
+
+
+@pytest.mark.unit
+def test_active_tool_domains_empty_for_unknown_pack(monkeypatch):
+    from cys_core.registry import tools
+
+    monkeypatch.setenv("PROFILE_PACK_ID", "does-not-exist")
+    assert tools._active_tool_domains() == frozenset()
+
+
+@pytest.mark.unit
+def test_tool_registry_omits_domain_tools_for_non_soc_pack(monkeypatch):
+    from cys_core.registry import tools
+
+    monkeypatch.setenv("PROFILE_PACK_ID", "general-assistant")
+    registry = tools.ToolRegistry()
+    domain_tool_names = {t.name for t in tools._domain_tools()}
+    assert domain_tool_names == set()
+    assert "web_search" in registry.names()
+
+
+@pytest.mark.unit
+def test_tool_registry_includes_domain_tools_for_default_soc_pack(monkeypatch):
+    from cys_core.registry import tools
+
+    monkeypatch.delenv("PROFILE_PACK_ID", raising=False)
+    registry = tools.ToolRegistry()
+    soc_domain_tools = {t.name for t in tools._domain_tools()}
+    assert soc_domain_tools
+    assert soc_domain_tools <= set(registry.names())
