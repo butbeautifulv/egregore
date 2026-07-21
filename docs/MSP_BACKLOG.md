@@ -6332,8 +6332,22 @@ matches the policy-resolved value — all passed on all 5 packages.
 
 `§8.4`'s remaining 5 points (Literal→str, Finding-class extraction, conditional tool registration,
 wiring `product_packs.py`, the toy non-SOC-pack acceptance test) are untouched — this entry closes
-one narrow, real leak, not the "core is domain-agnostic" claim as a whole. `tool_risk`/
-`ACTION_RISK_MAPPING` has the same "leaks into every profile" shape as `mode_policy`/
-`escalation_paths` did but was left unconditional here — a natural next slice, not attempted in
-this pass to keep this change reviewable and behavior-preserving for `cybersec-soc`.
+one narrow, real leak, not the "core is domain-agnostic" claim as a whole.
+
+**Correction to this entry's own first draft**: it originally called gating `tool_risk`/
+`ACTION_RISK_MAPPING` the same way "a natural next slice." On closer inspection that's overstated.
+`classify_tool_risk_pure` (`cys_core/domain/policy/pure.py`) falls back to the raw
+`ACTION_RISK_MAPPING` module constant *inside itself* whenever `policy.tool_risk` doesn't have an
+entry for a tool — so emptying a non-SOC profile's `tool_risk` in `profile_policy_for()` (mirroring
+what this entry did for `mode_policy`/`escalation_paths`) wouldn't actually change any classified
+risk level; it'd be cosmetic. A real fix means changing `classify_tool_risk_pure`'s own fallback,
+which is core risk-classification logic this same session's HITL work (`§58`/`§59`/`§61`) directly
+depends on — a bigger, riskier change than "move some values," deserving its own careful pass, not
+a quick add-on. Also lower-priority than first assumed: most of `ACTION_RISK_MAPPING`'s entries
+(`web_search`, `python_sandbox`, `write_file`, ...) are domain-generic tool names with reasonable
+universal risk levels, not SOC-specific content — unlike `READ_ONLY_TOOLS`/`ESCALATION_ONLY_PATHS`,
+which genuinely were SIEM/threat-intel/SOC-persona-specific. The few truly SOC-specific entries
+(`run_active_scan`, `database_delete`, `transfer_funds`) only matter for personas that have those
+tools in their list anyway, so a non-SOC persona without them is unaffected regardless. Left
+untouched; not a priority next slice after all.
 <!-- commit sha / CI run id filled in after push -->
