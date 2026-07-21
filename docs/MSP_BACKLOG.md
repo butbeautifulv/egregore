@@ -6250,4 +6250,6 @@ whole-package collect hits the same pre-existing, unrelated `tests/tool_gateway/
 basename collision already noted in `§59.3` (confirmed via `git status`/`git log`, predates this
 session). Both new assertions additionally verified directly via a standalone script, not by
 trusting `pytest --collect-only` alone. No `pytest` run at any point.
-<!-- commit sha / CI run id filled in after push -->
+
+Commit `d6d4164`, run `29814940280`: **success** — 56 jobs passed, 6 skipped (deploy-stage,
+expected), 0 failed, checked per-job.
