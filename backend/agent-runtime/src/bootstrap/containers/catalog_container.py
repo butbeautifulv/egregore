@@ -86,7 +86,7 @@ class CatalogContainer:
         return get_catalog_version_metric()
 
     def get_seed_catalog(self):
-        from bootstrap.catalog_loader import load_profile_pack
+        from bootstrap.catalog_loader import load_active_profile_pack
         from cys_core.application.use_cases.seed_catalog import SeedCatalog
         from cys_core.infrastructure.catalog.tool_catalog_seed import load_tools_for_seed
 
@@ -94,7 +94,7 @@ class CatalogContainer:
             self.get_agent_catalog(),
             tool_catalog=self.get_tool_catalog(),
             seed_loaders=self.get_catalog_seed_loaders_port(),
-            load_profile_pack=load_profile_pack,
+            load_profile_pack=load_active_profile_pack,
             load_tools_for_seed=load_tools_for_seed,
             reload=self.reload_catalog,
             mutation=self.get_catalog_mutation_service(),

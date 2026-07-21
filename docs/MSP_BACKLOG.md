@@ -6492,3 +6492,124 @@ governs which *built* tools a given profile/persona is allowed to *call*.
 Commit `b725d57`, run `29820779956`: **success** — verified both top-level (`status: completed`,
 `conclusion: success`) and per-job (`gh run view ... --json jobs`: 56 `success`, 6 `skipped`, zero
 anything else). §8.4 point 4 is complete and green on `feature/microservice-refactoring`.
+
+---
+
+## 64. §8.4 point 5: `product_packs.py` is now a real, invocable runtime profile-pack loader
+
+Per the user's explicit direction, this session moved on to point 5 — after checking in again
+(point 5 was chosen over points 1/2, and over pausing).
+
+### 64.1. Research before writing any code, and what it found
+
+Point 5 ("wire up `product_packs.py` as the real runtime profile-pack loading mechanism, instead
+of a parallel SOC-only path") looked, from `§8.4`'s wording, like a straight swap. Investigation
+before touching anything found it isn't:
+
+- The actual real seed path today is `bootstrap.catalog_loader.load_profile_pack()`, invoked (with
+  identical wiring) from two places: `bootstrap/containers/catalog_container.py::get_seed_catalog()`
+  (used by the operator-facing `POST /catalog/seed` and `egregore catalog seed` CLI command) and
+  `bootstrap/container.py::_ensure_dev_catalog_seeded` (dev-stage auto-seed-if-empty). Both build a
+  `SeedCatalog` with `load_profile_pack: Callable[[], tuple[ProfilePack, list]]` injected — a
+  zero-arg callable, same shape everywhere, no divergence across subsystems.
+- `load_profile_pack()` is **not SOC-content-hardcoded** — it dynamically walks
+  `agents/personas/**/agent.yaml` on disk (`bootstrap/product_loader.py::load_agent_definitions`)
+  and builds a `ProfilePack` via `bootstrap/policy_defaults.py::default_profile_pack` — the *same*
+  helper `product_pack_to_profile_pack()` already calls. So "SOC-only" doesn't mean "SOC content is
+  baked into Python" — it means **it always loads every persona on disk into a single pack keyed
+  `cybersec-soc`**, with no concept of "which pack is active" at all.
+- The real gap making a straight swap unsafe: `ProductProfilePack.personas` (`cys_core/domain/
+  catalog/product_packs.py`) is a list of **pointers** (`id`/`name`/`catalog_agent`), not full
+  persona content (system prompt, tools, skills — that content only exists in the on-disk YAML).
+  Worse: `CYBERSEC_SOC_PRODUCT.personas` in `bootstrap/product_packs.py` only lists **2** personas
+  (`consultant`, `soc`) while **17** real personas actually exist on disk (verified by direct
+  `find agents/personas/*/agent.yaml` count). Filtering the real SOC seed path down to
+  `CYBERSEC_SOC_PRODUCT.personas` today, as a literal reading of point 5 might suggest, would have
+  silently dropped 15 real personas from the one profile pack actually used in production — a
+  severe, silent regression. `CYBERSEC_SOC_PRODUCT.personas` is a stub/toy list, not a currently
+  accurate catalog, and completing it is a separate data-correctness task this entry does not do.
+
+### 64.2. What was built (given that constraint)
+
+`bootstrap/catalog_loader.py` (byte-identical across `worker`/`api`/`dispatcher`/`agent-runtime`/
+`tool-gateway`) gained two new functions, `load_profile_pack()` itself untouched:
+
+```python
+def load_profile_pack_for(pack_id: str) -> tuple[ProfilePack, list[AgentCatalogEntry]]:
+    if pack_id == DEFAULT_PROFILE_ID:
+        return load_profile_pack()          # cybersec-soc: exact prior behavior, unfiltered
+    pack = PRODUCT_PACKS.get(pack_id)
+    if pack is None:
+        raise KeyError(f"Unknown product pack: {pack_id}")
+    allowed = {p.catalog_agent for p in pack.personas if p.enabled}
+    agents = load_agent_definitions()
+    filtered = {name: defn for name, defn in agents.items() if name in allowed}
+    profile = product_pack_to_profile_pack(pack)
+    entries = apply_persona_skills([definition_to_entry(defn) for defn in filtered.values()])
+    return profile, entries
+
+
+def load_active_profile_pack() -> tuple[ProfilePack, list[AgentCatalogEntry]]:
+    return load_profile_pack_for(os.environ.get("PROFILE_PACK_ID", DEFAULT_PROFILE_ID))
+```
+
+`bootstrap/containers/catalog_container.py::get_seed_catalog()` and `bootstrap/container.py::
+_ensure_dev_catalog_seeded` (all 5 packages, each individually edited since `container.py` isn't
+byte-identical across services — `catalog_container.py` is) now inject `load_active_profile_pack`
+instead of the raw `load_profile_pack` import. Net effect: with `PROFILE_PACK_ID` unset (the real
+prod default, and every existing test's implicit assumption), **zero behavior change** — resolves
+straight to the `cybersec-soc` branch, which is `load_profile_pack()` verbatim. Set
+`PROFILE_PACK_ID=general-assistant` (or `gaia-benchmark`) and the *actual* seed path — the same one
+`/catalog/seed` and dev auto-seed use — for the first time ever filters real on-disk persona
+definitions down to just that pack's declared personas and builds its `ProfilePack` via
+`product_pack_to_profile_pack`. This is the difference between "wired up" and merely "written but
+unused": `product_packs.py` now sits directly in the one real seed call chain, not beside it.
+
+Reused the exact same `PROFILE_PACK_ID` env-var mechanism `§63` introduced for `ToolRegistry`
+gating, rather than inventing a second "which pack is active" signal — both now read the same var,
+same default, same fallback semantics.
+
+### 64.3. Verification
+
+`ruff check`, `ty check src`, `lint-imports` (contracts still pass — no new architecture-boundary
+violation), and `uv lock --check` all clean across all 5 packages. `pytest --collect-only` confirms
+the new `tests/bootstrap/test_catalog_loader_pack_scoped.py` (5 tests, byte-identical across all 5
+packages) collects cleanly, alongside the pre-existing `load_profile_pack()`-dependent tests
+(`test_profile_tools.py`, `test_catalog_memory.py`, `test_spawn_policy.py`, `registry/conftest.py`)
+— none of those call through `get_seed_catalog()`'s real container wiring (they call
+`load_profile_pack()` directly or inject their own stub callable straight into `SeedCatalog`), so
+none were at risk from this change, confirmed by reading each one rather than assumed.
+
+Per this session's standing rule (no local pytest execution), behavior was proven with a
+standalone script (not committed) run against each of the 5 packages' real `uv` environment — with
+`AGENTS_ROOT` set the same way the test suites' own `conftest.py` autouse fixture sets it, since a
+raw script outside pytest doesn't get that fixture for free (this was itself briefly mistaken for
+a real bug — the first bare run returned zero personas — until tracing it to the missing env var
+that only `conftest.py` normally supplies confirmed it was a script-harness gap, not a code defect):
+- default/unset `PROFILE_PACK_ID` → identical persona set (18 entries: 17 personas + `planner`) to
+  plain `load_profile_pack()`.
+- explicit `PROFILE_PACK_ID=cybersec-soc` → identical to default.
+- `PROFILE_PACK_ID=general-assistant` → filtered to exactly `{"consultant"}`, profile id
+  `general-assistant`.
+- `PROFILE_PACK_ID=gaia-benchmark` → filtered to exactly `{"gaia_solver"}`.
+- unknown pack id → `KeyError`, not a silent empty pack.
+
+All five checks passed identically on all five packages (worker, api, dispatcher, agent-runtime,
+tool-gateway).
+
+### 64.4. What's still open (honest scope boundary)
+
+This makes `product_packs.py` a *real, invoked* mechanism for the two packs that weren't
+production-critical (`general-assistant`, `gaia-benchmark`) — it does **not** yet make it the sole
+mechanism for `cybersec-soc`, because `CYBERSEC_SOC_PRODUCT.personas` is data-incomplete relative
+to the real 17-persona catalog (see `§64.1`) and completing that list was out of scope here (a
+data-correctness task, not a wiring task — doing it carelessly risks silently dropping real
+personas from production). `ProductProfilePack.personas` is also still just pointers, not full
+persona content — genuinely merging "pack declares its personas" with "personas carry their own
+content" (rather than filtering a separately-loaded filesystem catalog) is a larger modeling
+question not resolved here. `CYBERSEC_SOC_PRODUCT.seed_module = "bootstrap.catalog_loader.
+load_profile_pack"` (a self-referential/vestigial string) is confirmed dead — grepped, zero call
+sites read `.seed_module` anywhere — left untouched as an existing wart, not this entry's job to
+clean up. Point 6 (the toy non-SOC acceptance test proving `cys_core/domain` needs zero changes)
+is closer to meaningful now that `general-assistant`/`gaia-benchmark` are for-real seedable through
+the production seed path, but still not written. Points 1 and 2 remain fully untouched.

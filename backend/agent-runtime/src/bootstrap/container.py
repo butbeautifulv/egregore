@@ -638,7 +638,7 @@ def _ensure_dev_catalog_seeded(container: Container) -> None:
     except Exception:
         return
     try:
-        from bootstrap.catalog_loader import load_profile_pack
+        from bootstrap.catalog_loader import load_active_profile_pack
         from cys_core.application.use_cases.seed_catalog import SeedCatalog
         from cys_core.infrastructure.catalog.tool_catalog_seed import load_tools_for_seed
 
@@ -646,7 +646,7 @@ def _ensure_dev_catalog_seeded(container: Container) -> None:
             catalog,
             tool_catalog=container.get_tool_catalog(),
             seed_loaders=container.get_catalog_seed_loaders_port(),
-            load_profile_pack=load_profile_pack,
+            load_profile_pack=load_active_profile_pack,
             load_tools_for_seed=load_tools_for_seed,
             reload=container.reload_catalog,
             mutation=container.get_catalog_mutation_service(),

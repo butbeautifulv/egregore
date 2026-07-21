@@ -61,18 +61,22 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
 ## §2 — Everything else, by theme (independent of §1)
 
 ### Core architecture / domain
-- **Core still hardcodes SOC domain, 4 of 6 points remaining** (`EventType`/`WorkerAgentName`
-  closed `Literal`s, 11 concrete `Finding` subclasses, `product_packs.py` never wired up as the
-  real runtime pack loader, no toy non-SOC-pack acceptance test proving `cys_core/domain` needs
-  zero changes). Two points done: (`§62`) `ESCALATION_ONLY_PATHS`/`READ_ONLY_TOOLS`/
-  `PLAN_BLOCKED_TOOLS`/`MUTATING_TOOLS` no longer leak from `cybersec-soc` into every other profile
-  pack unconditionally; (`§63`) `ToolRegistry`'s SIEM/Veil/Nessus tool construction/registration is
-  now conditional on the active profile pack (`PROFILE_PACK_ID` env var → `ProductProfilePack.
-  tool_domains`) instead of an unconditional module-import side effect. `tool_risk`
+- **Core still hardcodes SOC domain, 3 of 6 points remaining** (`EventType`/`WorkerAgentName`
+  closed `Literal`s, 11 concrete `Finding` subclasses, no toy non-SOC-pack acceptance test proving
+  `cys_core/domain` needs zero changes). Three points done: (`§62`) `ESCALATION_ONLY_PATHS`/
+  `READ_ONLY_TOOLS`/`PLAN_BLOCKED_TOOLS`/`MUTATING_TOOLS` no longer leak from `cybersec-soc` into
+  every other profile pack unconditionally; (`§63`) `ToolRegistry`'s SIEM/Veil/Nessus tool
+  construction/registration is now conditional on the active profile pack (`PROFILE_PACK_ID` env
+  var → `ProductProfilePack.tool_domains`) instead of an unconditional module-import side effect;
+  (`§64`) the real catalog seed path (`/catalog/seed`, dev auto-seed) now resolves through
+  `product_packs.py` via the same `PROFILE_PACK_ID` var — `general-assistant`/`gaia-benchmark` are
+  for-real seedable for the first time, though `cybersec-soc` itself still can't switch to the
+  pack-filtered path yet because `CYBERSEC_SOC_PRODUCT.personas` is a stub 2-persona list against a
+  real 17-persona catalog (data-completeness gap, not wiring — see `§64.1`/`§64.4`). `tool_risk`
   (`ACTION_RISK_MAPPING`) has a similar "leaks into every profile" shape but gating it alone would
   be cosmetic without also changing `classify_tool_risk_pure`'s own fallback — a separate, riskier
   pass, not picked up here (see `§62.5`). Large cross-cutting refactor overall, target model
-  already written. `MSP_BACKLOG.md` §8, §24.1, §62, §63.
+  already written. `MSP_BACKLOG.md` §8, §24.1, §62, §63, §64.
 - **Semantic/long-term agent memory tier doesn't exist** — `memory_type` schema has `lesson`/
   `preference` slots, nothing ever writes them. `MSP_BACKLOG.md` §9.
 
