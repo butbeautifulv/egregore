@@ -20,6 +20,7 @@ from cys_core.middleware.hitl_pause import (
     register_hitl_pause,
     resume_decision_approved,
 )
+from cys_core.registry.mcp_tools import parse_hitl_marker, use_approval_token
 from cys_core.security.monitor import AgentMonitor
 from cys_core.security.rate_limit import RedisRateLimiter
 
@@ -111,6 +112,42 @@ class SecurityMiddleware(AgentMiddleware):
             )
         return None
 
+    def _gateway_hitl_marker(self, result: Any) -> dict[str, Any] | None:
+        # Distinct from _await_hitl_if_needed above: that's this process's own risk
+        # classification, checked before the tool ever runs. This is tool-gateway's
+        # independent classification, discovered only after handler(request) returns —
+        # the chokepoint every AgentRunner implementation crosses regardless of which
+        # in-process middleware (if any) it has. Keeping both is deliberate defense in
+        # depth, not redundancy: a differently-implemented runtime with no equivalent of
+        # _await_hitl_if_needed still gets stopped here. docs/MSP_BACKLOG.md §35/§58.
+        if not isinstance(result, ToolMessage):
+            return None
+        return parse_hitl_marker(str(getattr(result, "content", "") or ""))
+
+    def _resolve_gateway_hitl(self, request: ToolCallRequest, marker: dict[str, Any]) -> str:
+        """Pause for human approval of a gateway-refused call.
+
+        Returns the approval_token to retry with if approved, else "" (reject).
+        """
+        tool_name = request.tool_call.get("name", "")
+        if self.stage == "dev":
+            # Same dev-mode stance as _await_hitl_if_needed: interrupt() needs an active
+            # checkpointed graph run, which dev/test invocations don't reliably have —
+            # fail closed with a plain error instead of a raw crash.
+            return ""
+        preview = build_hitl_preview(
+            tool_name=tool_name,
+            tool_args=request.tool_call.get("args", {}),
+            risk_level=marker.get("risk_level", ""),
+            session_id=self.session_id,
+            persona=self.agent_id,
+        )
+        register_hitl_pause(preview)
+        decision = interrupt(preview)
+        if not resume_decision_approved(decision):
+            return ""
+        return marker.get("approval_token", "")
+
     def wrap_tool_call(
         self,
         request: ToolCallRequest,
@@ -141,6 +178,25 @@ class SecurityMiddleware(AgentMiddleware):
 
         try:
             result = handler(request)
+            marker = self._gateway_hitl_marker(result)
+            if marker is not None:
+                approval_token = self._resolve_gateway_hitl(request, marker)
+                if not approval_token:
+                    return ToolMessage(
+                        content=f"Tool '{tool_name}' rejected by human reviewer.",
+                        tool_call_id=request.tool_call.get("id", ""),
+                        status="error",
+                    )
+                with use_approval_token(approval_token):
+                    result = handler(request)
+                if self._gateway_hitl_marker(result) is not None:
+                    # Approved retry still refused (token expired/tampered/args changed) —
+                    # fail closed rather than silently looping or auto-approving.
+                    return ToolMessage(
+                        content=f"Tool '{tool_name}' approval retry was refused by the gateway.",
+                        tool_call_id=request.tool_call.get("id", ""),
+                        status="error",
+                    )
             if not _middleware_blocked_tool_result(result):
                 JobBudgetTracker.record_tool_call(self.session_id)
             self.monitor.log_tool_call(
@@ -197,6 +253,27 @@ class SecurityMiddleware(AgentMiddleware):
             result = handler(request)
             if inspect.isawaitable(result):
                 result = await result
+            marker = self._gateway_hitl_marker(result)
+            if marker is not None:
+                approval_token = self._resolve_gateway_hitl(request, marker)
+                if not approval_token:
+                    return ToolMessage(
+                        content=f"Tool '{tool_name}' rejected by human reviewer.",
+                        tool_call_id=request.tool_call.get("id", ""),
+                        status="error",
+                    )
+                with use_approval_token(approval_token):
+                    result = handler(request)
+                    if inspect.isawaitable(result):
+                        result = await result
+                if self._gateway_hitl_marker(result) is not None:
+                    # Approved retry still refused (token expired/tampered/args changed) —
+                    # fail closed rather than silently looping or auto-approving.
+                    return ToolMessage(
+                        content=f"Tool '{tool_name}' approval retry was refused by the gateway.",
+                        tool_call_id=request.tool_call.get("id", ""),
+                        status="error",
+                    )
             if not _middleware_blocked_tool_result(result):
                 JobBudgetTracker.record_tool_call(self.session_id)
             self.monitor.log_tool_call(

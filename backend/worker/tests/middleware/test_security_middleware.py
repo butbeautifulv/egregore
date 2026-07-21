@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -169,3 +170,127 @@ async def test_security_middleware_async_paths(monkeypatch):
             request("parse_netflow"),
             lambda _req: (_ for _ in ()).throw(ValueError("async failed")),
         )
+
+
+def _gateway_hitl_result(*, tool_call_id: str = "call-1", approval_token: str = "tok-abc") -> ToolMessage:
+    from cys_core.registry.mcp_tools import HITL_MARKER_KEY
+
+    return ToolMessage(
+        content=json.dumps(
+            {
+                HITL_MARKER_KEY: True,
+                "tool_name": "run_active_scan",
+                "risk_level": "high",
+                "approval_token": approval_token,
+            }
+        ),
+        tool_call_id=tool_call_id,
+    )
+
+
+def _gateway_hitl_middleware(monkeypatch, *, decision: dict, stage: str = "prod"):
+    import cys_core.middleware.security_middleware as security_middleware
+
+    middleware = security_middleware.SecurityMiddleware("redteam", "session-1", policy_port=fake_policy_port())
+    middleware.rate_limiter = SimpleNamespace(check=MagicMock())
+    middleware.monitor = SimpleNamespace(log_security_event=MagicMock(), log_tool_call=MagicMock())
+    middleware.stage = stage
+    middleware._await_hitl_if_needed = lambda _req: None
+    monkeypatch.setattr(security_middleware, "register_hitl_pause", lambda preview: None)
+    monkeypatch.setattr(security_middleware, "interrupt", lambda preview: decision)
+    return middleware
+
+
+@pytest.mark.unit
+def test_wrap_tool_call_retries_with_approval_token_after_gateway_hitl_approved(monkeypatch):
+    """docs/MSP_BACKLOG.md §35/§58 second half: tool-gateway's own hitl_required refusal,
+    discovered only after handler(request) returns, must pause for approval and — once
+    approved — retry with the approval_token attached so the gateway's anti-tampering check
+    (bound to this exact tool_name+args) can verify and let it through."""
+    from cys_core.registry.mcp_tools import _pending_approval_token
+
+    middleware = _gateway_hitl_middleware(monkeypatch, decision={"decision": "approve"})
+    seen_tokens = []
+
+    def handler(req):
+        seen_tokens.append(_pending_approval_token.get(""))
+        if len(seen_tokens) == 1:
+            return _gateway_hitl_result()
+        return ToolMessage(content="scan complete", tool_call_id="call-1")
+
+    result = middleware.wrap_tool_call(request("run_active_scan", args={"target": "lab"}), handler)
+    assert seen_tokens == ["", "tok-abc"]
+    assert result.content == "scan complete"
+    assert _pending_approval_token.get("") == ""
+
+
+@pytest.mark.unit
+def test_wrap_tool_call_fails_closed_when_human_rejects_gateway_hitl(monkeypatch):
+    middleware = _gateway_hitl_middleware(monkeypatch, decision={"decision": "reject"})
+    calls = {"n": 0}
+
+    def handler(req):
+        calls["n"] += 1
+        return _gateway_hitl_result()
+
+    result = middleware.wrap_tool_call(request("run_active_scan"), handler)
+    assert result.status == "error"
+    assert "rejected by human reviewer" in result.content
+    assert calls["n"] == 1  # never retried
+
+
+@pytest.mark.unit
+def test_wrap_tool_call_fails_closed_when_approved_retry_is_refused_again(monkeypatch):
+    """An approval_token retry that the gateway still refuses (expired/tampered/args changed)
+    must not loop or get silently treated as success."""
+    middleware = _gateway_hitl_middleware(monkeypatch, decision={"decision": "approve"})
+
+    def handler(req):
+        return _gateway_hitl_result()
+
+    result = middleware.wrap_tool_call(request("run_active_scan"), handler)
+    assert result.status == "error"
+    assert "refused by the gateway" in result.content
+
+
+@pytest.mark.unit
+def test_wrap_tool_call_dev_stage_fails_closed_without_calling_interrupt(monkeypatch):
+    middleware = _gateway_hitl_middleware(monkeypatch, decision={"decision": "approve"}, stage="dev")
+    interrupt_calls = {"n": 0}
+
+    import cys_core.middleware.security_middleware as security_middleware
+
+    def counting_interrupt(preview):
+        interrupt_calls["n"] += 1
+        return {"decision": "approve"}
+
+    monkeypatch.setattr(security_middleware, "interrupt", counting_interrupt)
+
+    result = middleware.wrap_tool_call(request("run_active_scan"), lambda req: _gateway_hitl_result())
+    assert result.status == "error"
+    assert interrupt_calls["n"] == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_awrap_tool_call_retries_with_approval_token_after_gateway_hitl_approved(monkeypatch):
+    from cys_core.registry.mcp_tools import _pending_approval_token
+
+    middleware = _gateway_hitl_middleware(monkeypatch, decision={"decision": "approve"})
+    middleware.rate_limiter = _AsyncNoop()
+    seen_tokens = []
+
+    async def handler(req):
+        seen_tokens.append(_pending_approval_token.get(""))
+        if len(seen_tokens) == 1:
+            return _gateway_hitl_result()
+        return ToolMessage(content="scan complete", tool_call_id="call-1")
+
+    result = await middleware.awrap_tool_call(request("run_active_scan", args={"target": "lab"}), handler)
+    assert seen_tokens == ["", "tok-abc"]
+    assert result.content == "scan complete"
+
+
+class _AsyncNoop:
+    async def acheck(self, _key):
+        return None

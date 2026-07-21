@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import time
 
 import pytest
 
-from cys_core.domain.security.approval_tokens import args_hash, mint_approval_token, verify_approval_token
+from cys_core.domain.security.approval_tokens import (
+    _b64url,
+    args_hash,
+    mint_approval_token,
+    verify_approval_token,
+)
 
 
 @pytest.mark.unit
@@ -54,6 +62,18 @@ def test_expired_property_reflects_wall_clock():
     assert claims is not None
     time.sleep(0.1)
     assert claims.expired is True
+
+
+@pytest.mark.unit
+def test_verify_rejects_a_validly_signed_token_with_an_incomplete_payload():
+    """Distinct from test_verify_rejects_tampered_payload: that one breaks the signature.
+    This one keeps the signature valid over a payload that's well-formed JSON but missing a
+    required claim (e.g. a token signed by a version of this module with a different shape),
+    exercising the KeyError branch in verify_approval_token's except clause."""
+    secret = b"secret"
+    body = _b64url(json.dumps({"tool_name": "run_playbook"}, separators=(",", ":"), sort_keys=True).encode())
+    signature = _b64url(hmac.new(secret, body.encode("ascii"), hashlib.sha256).digest())
+    assert verify_approval_token(f"{body}.{signature}", secret=secret) is None
 
 
 @pytest.mark.unit

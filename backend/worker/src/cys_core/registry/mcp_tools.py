@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -16,6 +18,39 @@ from cys_core.observability.tracing import inject_correlation_headers
 from cys_core.registry.tools import tool_registry
 
 logger = structlog.get_logger(__name__)
+
+# The marker _run/_arun emit (as JSON tool-message content) when a gateway invoke comes back
+# with hitl_required=True, so a caller (SecurityMiddleware.wrap_tool_call) can tell "the LLM
+# needs to see this as an error string" apart from "a human needs to approve this before retry"
+# — see parse_hitl_marker below. docs/MSP_BACKLOG.md §35/§58.
+HITL_MARKER_KEY = "__hitl_required__"
+
+# Carries an approved retry's approval_token from SecurityMiddleware's post-handler resume
+# path down into _run/_arun without smuggling it through the tool's own kwargs (which would
+# change args_hash and break invoke_tool's anti-tampering binding to the exact approved args).
+# Same-task contextvar propagation only — see use_approval_token below.
+_pending_approval_token: ContextVar[str] = ContextVar("_pending_approval_token", default="")
+
+
+@contextmanager
+def use_approval_token(token: str):
+    """Attach `token` to any tool invocation made within this block (this task only)."""
+    reset = _pending_approval_token.set(token)
+    try:
+        yield
+    finally:
+        _pending_approval_token.reset(reset)
+
+
+def parse_hitl_marker(content: str) -> dict[str, Any] | None:
+    """If `content` is a _run/_arun HITL-refusal marker, return its payload, else None."""
+    try:
+        payload = json.loads(content)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict) or not payload.get(HITL_MARKER_KEY):
+        return None
+    return payload
 
 
 def require_sandbox(sandbox_id: str) -> None:
@@ -111,7 +146,18 @@ class McpToolRegistry:
                 profile_id=profile_id,
                 workspace_id=workspace_id,
                 token=token,
+                approval_token=_pending_approval_token.get(""),
             )
+            if result.get("hitl_required"):
+                return json.dumps(
+                    {
+                        HITL_MARKER_KEY: True,
+                        "tool_name": tool_name,
+                        "risk_level": result.get("risk_level", ""),
+                        "approval_token": result.get("approval_token", ""),
+                    },
+                    ensure_ascii=False,
+                )
             if not result.get("success", True):
                 return json.dumps({"error": result.get("error", "gateway invoke failed")}, ensure_ascii=False)
             payload = result.get("sanitized_payload") or json.dumps(result.get("data", {}), ensure_ascii=False)
@@ -128,7 +174,18 @@ class McpToolRegistry:
                 profile_id=profile_id,
                 workspace_id=workspace_id,
                 token=token,
+                approval_token=_pending_approval_token.get(""),
             )
+            if result.get("hitl_required"):
+                return json.dumps(
+                    {
+                        HITL_MARKER_KEY: True,
+                        "tool_name": tool_name,
+                        "risk_level": result.get("risk_level", ""),
+                        "approval_token": result.get("approval_token", ""),
+                    },
+                    ensure_ascii=False,
+                )
             if not result.get("success", True):
                 return json.dumps({"error": result.get("error", "gateway invoke failed")}, ensure_ascii=False)
             payload = result.get("sanitized_payload") or json.dumps(result.get("data", {}), ensure_ascii=False)
@@ -153,6 +210,7 @@ class McpToolRegistry:
         profile_id: str = DEFAULT_PROFILE_ID,
         workspace_id: str = "",
         token: str = "",
+        approval_token: str = "",
     ) -> dict[str, Any]:
         require_sandbox(sandbox_id)
         try:
@@ -168,6 +226,7 @@ class McpToolRegistry:
                         profile_id=profile_id,
                         workspace_id=workspace_id,
                         token=token,
+                        approval_token=approval_token,
                     )
                     metrics.record_tool_invocation(tool_name, success=result.get("success", True))
                     return result
@@ -189,6 +248,7 @@ class McpToolRegistry:
                 correlation_id=correlation_id,
                 workspace_id=workspace_id,
                 token=token,
+                approval_token=approval_token,
             )
             metrics.record_tool_invocation(tool_name, success=result.get("success", True))
             return result
@@ -208,6 +268,7 @@ class McpToolRegistry:
         profile_id: str = DEFAULT_PROFILE_ID,
         workspace_id: str = "",
         token: str = "",
+        approval_token: str = "",
     ) -> dict[str, Any]:
         import asyncio
 
@@ -225,6 +286,7 @@ class McpToolRegistry:
                         profile_id=profile_id,
                         workspace_id=workspace_id,
                         token=token,
+                        approval_token=approval_token,
                     )
                     metrics.record_tool_invocation(tool_name, success=result.get("success", True))
                     return result
@@ -251,6 +313,7 @@ class McpToolRegistry:
                 correlation_id=correlation_id,
                 workspace_id=workspace_id,
                 token=token,
+                approval_token=approval_token,
             )
             metrics.record_tool_invocation(tool_name, success=result.get("success", True))
             return result
@@ -270,6 +333,7 @@ class McpToolRegistry:
         correlation_id: str = "",
         workspace_id: str = "",
         token: str = "",
+        approval_token: str = "",
     ) -> dict[str, Any]:
         from cys_core.domain.tools.models import ToolInvokeCommand
         from cys_core.infrastructure.tools.gateway_factory import get_tool_execution_gateway
@@ -285,6 +349,7 @@ class McpToolRegistry:
                 profile_id=profile_id,
                 workspace_id=workspace_id,
                 sandbox_token=token,
+                approval_token=approval_token,
             )
         )
         return result.model_dump()
@@ -301,6 +366,7 @@ class McpToolRegistry:
         profile_id: str = DEFAULT_PROFILE_ID,
         workspace_id: str = "",
         token: str = "",
+        approval_token: str = "",
     ) -> dict[str, Any]:
         body = {
             "tool_name": tool_name,
@@ -315,6 +381,8 @@ class McpToolRegistry:
             body["workspace_id"] = workspace_id
         if token:
             body["sandbox_token"] = token
+        if approval_token:
+            body["approval_token"] = approval_token
         headers: dict[str, str] = inject_correlation_headers()
         if workspace_id:
             headers["X-Workspace-Id"] = workspace_id
@@ -342,6 +410,7 @@ class McpToolRegistry:
         profile_id: str = DEFAULT_PROFILE_ID,
         workspace_id: str = "",
         token: str = "",
+        approval_token: str = "",
     ) -> dict[str, Any]:
         body = {
             "tool_name": tool_name,
@@ -356,6 +425,8 @@ class McpToolRegistry:
             body["workspace_id"] = workspace_id
         if token:
             body["sandbox_token"] = token
+        if approval_token:
+            body["approval_token"] = approval_token
         headers: dict[str, str] = inject_correlation_headers()
         if workspace_id:
             headers["X-Workspace-Id"] = workspace_id

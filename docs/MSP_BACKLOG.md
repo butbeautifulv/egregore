@@ -5968,4 +5968,101 @@ given the security stakes, `_resolve_hitl_decision` was exercised directly with 
 script (not `pytest`) covering: low-risk auto-allow, high-risk refusal with a minted token,
 valid-token bypass, and three known-should-not-bypass cases (args differ, tool_name differs, wrong
 signing secret) — all six passed. No `pytest` run at any point.
+
+Commit `e2ff2d0`, run `29769734790`: **failed** — `domain-coverage (tool-gateway)`:
+`approval_tokens.py` at 96% (2 lines missed, the `except (KeyError, ValueError, TypeError,
+json.JSONDecodeError)` branch in `verify_approval_token`), total coverage 99.95% against a
+`--cov-fail-under=100` gate. None of the six existing tests constructed a *validly-signed* token
+whose decoded payload is well-formed JSON but missing a required claim — `test_verify_rejects_
+tampered_payload` breaks the signature instead, which is caught earlier. Fixed by adding
+`test_verify_rejects_a_validly_signed_token_with_an_incomplete_payload` (builds a custom
+`{"tool_name": ...}`-only body, signs it correctly with the real HMAC construction, asserts
+`verify_approval_token` returns `None`) — confirmed to actually execute that branch via a
+standalone script before pushing (see convention on domain-coverage: no local `pytest`, blind
+through CI otherwise). Commit/run for the fix: see §59.
+
+## 59. §35's design B built: runtime-side HITL wiring (§1 item 2, second half)
+
+Closes the "still missing" half from §58.2: `worker`/`agent-runtime`'s `SecurityMiddleware` (byte-
+identical duplicates, confirmed by diff before editing) now notices a tool-gateway `hitl_required`
+refusal *after* `handler(request)` returns, pauses with `interrupt()` at that point (not before the
+network call, per §35.2's exact ordering change), and retries with the approved `approval_token` on
+resume — the piece §58.2 explicitly flagged as not yet built.
+
+### 59.1. What was built
+
+- **`cys_core/registry/mcp_tools.py`** (`worker`/`agent-runtime`, identical duplicates) —
+  `_run`/`_arun` no longer collapse `hitl_required=True` into the generic `{"error": ...}` string;
+  they emit a structured marker (`HITL_MARKER_KEY = "__hitl_required__"`, plus `risk_level`/
+  `approval_token`/`tool_name`) via the new `parse_hitl_marker`. A new `_pending_approval_token`
+  `ContextVar` + `use_approval_token(token)` context manager carries an approved retry's token down
+  into `invoke`/`ainvoke` → `_local_invoke`/`_gateway_invoke`/`_agateway_invoke` (all four now take
+  `approval_token: str = ""` and, for the gateway path, add it to the request body) without
+  smuggling it through the tool's own kwargs — smuggling it through args would change `args_hash`
+  and break `_resolve_hitl_decision`'s anti-tampering binding to the exact approved call.
+- **`cys_core/middleware/security_middleware.py`** (`worker`/`agent-runtime`, identical
+  duplicates) — `wrap_tool_call`/`awrap_tool_call` gained `_gateway_hitl_marker`/
+  `_resolve_gateway_hitl`: after `handler(request)` returns, check for the marker; if present, pause
+  (`build_hitl_preview`/`register_hitl_pause`/`interrupt()`, same helpers `_await_hitl_if_needed`
+  already used) and on approval retry `handler(request)` once more inside `use_approval_token(...)`.
+  Reject → `status="error"`, no retry. Approved-but-still-refused-on-retry (stale/tampered
+  token, or a policy that reclassifies mid-flight) → fails closed with its own distinct error
+  message rather than looping or silently succeeding. `stage == "dev"` fails closed without calling
+  `interrupt()` at all, mirroring `_await_hitl_if_needed`'s existing dev-mode stance (`interrupt()`
+  needs an active checkpointed graph run that dev/test invocations don't reliably have).
+- Deliberately kept `_await_hitl_if_needed` (the existing pre-handler, in-process classification)
+  unchanged rather than replacing it — the two are complementary, not redundant: the pre-handler
+  check is a fast local gate using this process's own policy-port snapshot; the new post-handler
+  check is tool-gateway's independent classification, the chokepoint every `AgentRunner`
+  implementation crosses regardless of which in-process middleware (if any) it has. A future,
+  non-LangGraph `AgentRunner` with no equivalent of `_await_hitl_if_needed` still gets stopped by
+  the second layer, which is the actual point of moving classification into tool-gateway in the
+  first place.
+
+### 59.2. `MinimalReactAgentRunner` — correcting §58.2's claim
+
+§58.2 said `MinimalReactAgentRunner` "doesn't inspect this field either," implying it was in scope
+for this half. On inspection (`agent-runtime/src/cys_core/runtime/react_agent.py`), that's not
+quite the shape of the gap: `MinimalReactAgentRunner` resolves tools through `cys_core.registry.
+tools.tool_registry` (`veil_tools.py`/`siem_tools.py`/`nessus_tools.py`), which call their own
+adapters (e.g. `call_siem_tool`) directly — **not** through `McpToolRegistry`/`mcp_tool_registry`,
+and therefore not through tool-gateway's `InvokeTool` chokepoint at all. This is the same,
+already-documented "4 different `InvokeTool` copies, only tool-gateway's is guarded" gap from §58.1
+— a real, pre-existing limitation, but not one this session's marker/retry plumbing could close,
+since there is no tool-gateway HTTP round-trip in that path to carry the marker in the first place.
+`MinimalReactAgentRunner` already has its own honest, separate fail-closed behavior for this: static
+`hitl_tools` on the persona definition are refused outright (`aresume` has no interrupt/checkpointer
+to resume). Left as-is; closing it for real means routing `MinimalReactAgentRunner`'s tools through
+`McpToolRegistry` (or an equivalent gateway-calling path), which is a bigger, separate change than
+"inspect one more field."
+
+### 59.3. Verification
+
+Local, both packages (`worker`/`agent-runtime`, byte-identical after edits, confirmed by diff):
+`ruff check`, `ty check src`, `lint-imports` — all clean. `uv lock --check` — no drift.
+`pytest --collect-only` on `tests/middleware/`, `tests/registry/` — 84+8 tests and 6 tests collect
+cleanly in each package, none run. A whole-repo `pytest --collect-only` in `worker` hit two
+pre-existing, unrelated basename collisions (`tests/observability/test_policy_gate.py` vs. a
+same-named file elsewhere, same for `test_models.py`) — confirmed via `git status`/`git log` these
+files predate this session's changes; not investigated further, out of scope here.
+
+Given the security stakes (same standard as §58), the actual retry/pause/reject logic was exercised
+directly with a standalone script (not `pytest`), run against both packages separately: gateway
+refusal → human approves → retry carries the exact `approval_token` and the contextvar resets after
+→ result is the real tool output, not an error; gateway refusal → human rejects → fails closed,
+handler never retried; human approves but the retry is refused again by the gateway → fails closed
+with a distinct message, no infinite loop; `parse_hitl_marker` doesn't false-positive on plain error
+JSON or non-JSON tool output; `stage == "dev"` fails closed without ever calling `interrupt()`. 14
+checks, all passed, in both `worker` and `agent-runtime`. Separately verified the `_run`/`_arun`
+closures themselves (not just the middleware) surface the marker instead of the generic error, and
+thread the pending approval token into `invoke()` and reset it afterward — 2 more checks, passed in
+`worker` (byte-identical code in `agent-runtime`, not re-run there).
+
+Also fixed, in the same pass: the real CI failure recorded in §58.3 (`approval_tokens.py` domain
+coverage). New test added, confirmed via standalone script to exercise the previously-missed branch.
+
+Still not done, not claimed done: `TOOL_HITL_MODE=enforce` is untested against a real live LLM/agent
+run (same live-sandbox rigor `§56` used for the process-boundary proof) — this entry closes the
+"runtime doesn't know how to react" gap, not the "prove it end-to-end against a real HITL-gated
+persona" gap `§58.2` also named. Do not flip `TOOL_HITL_MODE` to `enforce` until that proof exists.
 <!-- commit sha / CI run id filled in after push -->

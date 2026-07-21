@@ -36,18 +36,18 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
    or Helm/K8s manifest — `docker` backend needs the dispatcher container to hold the `docker` CLI
    and a bind-mounted host `/var/run/docker.sock` (privilege-escalation-shaped, needs its own
    review). Deliberately deferred — not yet decided. `MSP_BACKLOG.md` §52.4, §52.5.
-2. **HITL pause/resume redesign for the cross-process case.** Today's mechanism
-   (`langgraph.interrupt()` + checkpointer) is in-process-shaped and won't survive `agent-runtime`
-   being a separate process. Design (`§35`): refuse-then-retry with an approval token, reusing
-   `ResumeHitlJob`'s anti-tampering pattern. **Half built** (`§58`): `tool-gateway` can now classify
-   risk and mint/verify approval tokens on its own (`TOOL_HITL_MODE`, default `shadow` — changes
-   nothing live yet). **Still missing**: `SecurityMiddleware.wrap_tool_call`/`awrap_tool_call`
-   (`worker`/`agent-runtime`) don't yet notice `hitl_required` in a tool-gateway response, call
-   `interrupt()` post-handler, or retry with the approval token; `MinimalReactAgentRunner` doesn't
-   inspect this field either. Neither `AgentRunner` implementation supports resume across process
-   boundaries yet. Do not flip `TOOL_HITL_MODE` to `enforce` until the runtime-side half exists and
-   both halves are proven together with a real HITL-gated persona (same live-sandbox rigor as
-   `§56`). `MSP_BACKLOG.md` §35, §58.
+2. **HITL pause/resume redesign for the cross-process case.** Design (`§35`, refuse-then-retry
+   with an approval token) is now built both sides for the LangGraph path: `tool-gateway` classifies
+   risk and mint/verifies approval tokens (`§58`); `worker`/`agent-runtime`'s `SecurityMiddleware`
+   now notices a gateway `hitl_required` refusal after `handler(request)` returns, pauses with
+   `interrupt()` there, and retries with the token on approval (`§59`). `TOOL_HITL_MODE` still
+   defaults to `shadow` — changes nothing live yet. **Still missing before `enforce` is safe**:
+   proof against a real live LLM/agent run with a real HITL-gated persona (same live-sandbox rigor
+   as `§56`) — nothing here has been exercised end to end yet, only unit-level and standalone-script
+   verified. Separately, `MinimalReactAgentRunner`'s tools don't route through tool-gateway's
+   `InvokeTool` at all (they call `siem_mcp`/`veil`/`nessus` adapters directly) — a real, older,
+   already-documented gap (`§58.1`'s "4 `InvokeTool` copies" finding), not closed by `§59` and not
+   in scope for the approval-token retry work. `MSP_BACKLOG.md` §35, §58, §59.
 3. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
    only, zero code. Only after item 1 is stable. `MSP_BACKLOG.md` §22.5.
 
