@@ -6613,3 +6613,10 @@ sites read `.seed_module` anywhere — left untouched as an existing wart, not t
 clean up. Point 6 (the toy non-SOC acceptance test proving `cys_core/domain` needs zero changes)
 is closer to meaningful now that `general-assistant`/`gaia-benchmark` are for-real seedable through
 the production seed path, but still not written. Points 1 and 2 remain fully untouched.
+
+### 64.5. CI confirmation
+
+Commit `b44467f`, run `29823653514`: **success** — verified both top-level (`status: completed`,
+`conclusion: success`) and per-job (`gh run view ... --json jobs`: 56 `success`, 6 `skipped`, zero
+anything else). §8.4 point 5 is complete (to the scope described in `§64.4`) and green on
+`feature/microservice-refactoring`.
