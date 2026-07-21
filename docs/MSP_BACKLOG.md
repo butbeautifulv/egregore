@@ -6486,3 +6486,9 @@ subclasses) remain fully untouched. `filter_tools_for_profile_live` (the existin
 filter applied at `resolve()`/`list_tools()` time) is unaffected and still layered on top of this
 — this change stops SOC tools from being *built* for non-SOC packs, the allowlist still separately
 governs which *built* tools a given profile/persona is allowed to *call*.
+
+### 63.5. CI confirmation
+
+Commit `b725d57`, run `29820779956`: **success** — verified both top-level (`status: completed`,
+`conclusion: success`) and per-job (`gh run view ... --json jobs`: 56 `success`, 6 `skipped`, zero
+anything else). §8.4 point 4 is complete and green on `feature/microservice-refactoring`.
