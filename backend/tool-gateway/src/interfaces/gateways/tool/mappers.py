@@ -17,6 +17,7 @@ def to_command(request: ToolInvokeRequest) -> ToolInvokeCommand:
         organization_id=request.organization_id,
         user_id=request.user_id,
         sandbox_token=request.sandbox_token,
+        approval_token=request.approval_token,
     )
 
 
@@ -27,4 +28,7 @@ def to_response(result: ToolInvokeResult) -> ToolInvokeResponse:
         data=result.data,
         sanitized_payload=result.sanitized_payload,
         error=result.error,
+        hitl_required=result.hitl_required,
+        risk_level=result.risk_level,
+        approval_token=result.approval_token,
     )

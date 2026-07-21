@@ -37,17 +37,22 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
    and a bind-mounted host `/var/run/docker.sock` (privilege-escalation-shaped, needs its own
    review). Deliberately deferred — not yet decided. `MSP_BACKLOG.md` §52.4, §52.5.
 2. **HITL pause/resume redesign for the cross-process case.** Design (`§35`, refuse-then-retry
-   with an approval token) is now built both sides for the LangGraph path: `tool-gateway` classifies
-   risk and mint/verifies approval tokens (`§58`); `worker`/`agent-runtime`'s `SecurityMiddleware`
-   now notices a gateway `hitl_required` refusal after `handler(request)` returns, pauses with
-   `interrupt()` there, and retries with the token on approval (`§59`). `TOOL_HITL_MODE` still
-   defaults to `shadow` — changes nothing live yet. **Still missing before `enforce` is safe**:
-   proof against a real live LLM/agent run with a real HITL-gated persona (same live-sandbox rigor
-   as `§56`) — nothing here has been exercised end to end yet, only unit-level and standalone-script
-   verified. Separately, `MinimalReactAgentRunner`'s tools don't route through tool-gateway's
-   `InvokeTool` at all (they call `siem_mcp`/`veil`/`nessus` adapters directly) — a real, older,
-   already-documented gap (`§58.1`'s "4 `InvokeTool` copies" finding), not closed by `§59` and not
-   in scope for the approval-token retry work. `MSP_BACKLOG.md` §35, §58, §59.
+   with an approval token) is built both sides for the LangGraph path and **proven live end to end**
+   (`§61`): `tool-gateway` classifies risk and mints/verifies approval tokens (`§58`);
+   `worker`/`agent-runtime`'s `SecurityMiddleware` notices a gateway `hitl_required` refusal after
+   `handler(request)` returns, pauses with `interrupt()` there, persists the pause to Postgres, and
+   retries with the token on approval (`§59`) — a real DeepSeek-driven run against a real live
+   tool-gateway server genuinely paused, persisted, resumed, and completed with real tool execution
+   (`§61`), which also found and fixed a real bug (`§61.2`: the HTTP wire DTOs were silently
+   dropping the new fields). `TOOL_HITL_MODE` still defaults to `shadow` — changes nothing live yet.
+   **What the live proof didn't cover** (`§61.4`): the reject path live, both `SecurityMiddleware`
+   checks running together (real default; the proof isolated the new one), more than one
+   tool/persona, concurrent runs. Flipping `TOOL_HITL_MODE`'s default is a product decision, not
+   just a technical one, and hasn't been made. Separately, `MinimalReactAgentRunner`'s tools don't
+   route through tool-gateway's `InvokeTool` at all (they call `siem_mcp`/`veil`/`nessus` adapters
+   directly) — a real, older, already-documented gap (`§58.1`'s "4 `InvokeTool` copies" finding),
+   not closed by `§59`/`§61` and not in scope for the approval-token retry work. `MSP_BACKLOG.md`
+   §35, §58, §59, §61.
 3. **Sandbox isolation beyond K8s/Docker** (gVisor `runtimeClassName`, Kata Containers) — documented
    only, zero code. Only after item 1 is stable. `MSP_BACKLOG.md` §22.5.
 

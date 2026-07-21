@@ -6110,3 +6110,144 @@ on a feature-branch push), 0 failed, checked via `gh run view --json jobs` (not 
 headline conclusion isn't the same as every job actually passing). This confirms both §59's
 domain-coverage fix and §60's `brace-expansion` fix together — `TOOL_HITL_MODE` is still `shadow` by
 default; nothing about this result changes that.
+
+## 61. Live end-to-end proof of the §35/§58/§59 HITL redesign — found and fixed a real bug
+
+`§58.2`/`§59.3` both said the same thing: unit-level and standalone-script verified, but never
+proven live against a real LLM run, and `TOOL_HITL_MODE` must not flip to `enforce` until that
+proof exists. This entry is that proof — same live-sandbox rigor as `§56` — and it found a real
+bug that no unit test could have caught, because the bug was entirely in a layer none of §58/§59's
+unit tests touched.
+
+### 61.1. Setup
+
+`docker compose -f deploy/docker-compose.yml up -d postgres redis` (same containers `§56` used,
+data already at migration head). Ran `backend/tool-gateway` as a real standalone HTTP server
+(`uv run egregore tool-gateway --host 127.0.0.1 --port 8092`, `TOOL_HITL_MODE=enforce`,
+`AUTH_ENABLED=false`) — confirmed via `curl /health`. Ran `backend/agent-runtime`'s real
+`AgentRuntime` (the `"langgraph"` `AgentRunner`) directly from a throwaway script
+(`STAGE=staging`, `USE_TOOL_GATEWAY=true`, `TOOL_GATEWAY_URL=http://127.0.0.1:8092`, real
+`DEEPSEEK_API_KEY`/`LLM_MODEL=deepseek/deepseek-v4-flash` from `deploy/.secrets/
+egregore-local.env` + repo-root `.env`), calling `get_runtime().arun("gaia_solver", ..., sandbox_tools=
+mcp_tool_registry.resolve(...))` — `sandbox_tools` had to be built and passed explicitly;
+`AgentRuntime.arun` defaults to `cys_core.registry.tools.tool_registry` (the direct-adapter
+registry, bypasses tool-gateway entirely) unless `sandbox_tools` is given, exactly mirroring how
+`run_worker_job.py`'s `_prepare_agent_inputs` builds them for a real sandboxed run.
+
+Persona/tool choice: `gaia_solver` + `python_sandbox` (`ACTION_RISK_MAPPING["python_sandbox"] =
+"high"`, default `hitl_auto_approve_threshold = "low"`) — deliberately **not** `redteam`+
+`run_active_scan` (the combo used throughout `§58`/`§59`'s docs), because `redteam`'s
+`agent.yaml` sets `hitl_tools: {run_active_scan: true}`, which builds LangGraph's own
+`HumanInTheLoopMiddleware` on top — a second, unrelated gate that would have made it impossible to
+tell which mechanism actually fired. `gaia_solver`'s `hitl_tools: {}` is empty, so only
+`SecurityMiddleware`'s two checks are in play. Also monkeypatched
+`SecurityMiddleware._await_hitl_if_needed` to a no-op for this run: it and the new post-handler
+check both read `classify_tool_risk_pure` against the same threshold, so with both active the
+pre-handler always wins first for any tool already flagged high-risk — leaving the new,
+tool-gateway-driven path unreachable in this environment's current default config. Isolating it
+this way was necessary to prove the new mechanism specifically, not a shortcut around a real gate
+(both checks remain active in the real, shipped code — this only patched the copy inside the
+one-off proof script).
+
+### 61.2. Bug found: HTTP wire DTOs never got the `§58` fields, so they were silently dropped
+
+First attempt: the model called `python_sandbox` twice and both calls **succeeded**, executing
+real code. Live tool-gateway server log was completely empty — the call never actually reached it
+(routing was fine; this red herring was a stale-checkpoint collision from reusing a `session_id`
+across two script runs — LangGraph resumed a prior thread's already-completed state instead of
+starting fresh. Fixed by using a fresh, timestamped `session_id` per run in the script itself).
+
+Second attempt, fresh session: real result was `"Unfortunately, executing python_sandbox requires
+operator approval (HITL). Nevertheless, the tool was called twice — [it just answered from its own
+knowledge anyway]."` — the model was reading and paraphrasing a refusal, but no `interrupt()` fired
+and no pending approval was ever registered. Diagnosed by monkeypatching `McpToolRegistry.
+_agateway_invoke` in the script to print the raw dict returned by the live gateway:
+
+```
+{'success': False, 'tool_name': 'python_sandbox', 'data': {}, 'sanitized_payload': '',
+ 'error': 'hitl_required'}
+```
+
+No `hitl_required`/`risk_level`/`approval_token` keys at all — tool-gateway's own `InvokeTool`/
+`ToolsContainer._check_hitl` (§58) computed them correctly on the *domain* model
+(`cys_core.domain.tools.models.ToolInvokeResult`), but the **HTTP-facing DTOs** in
+`interfaces/gateways/tool/models.py` (`ToolInvokeRequest`/`ToolInvokeResponse`) and
+`interfaces/gateways/tool/mappers.py` (`to_command`/`to_response`) are a separate, hand-maintained
+transport-mapping layer that `§58` never touched when it added the fields to the domain model —
+`to_response` explicitly listed 4 fields (`success`/`tool_name`/`data`/`sanitized_payload`/`error`)
+and silently dropped everything else; `to_command` had the matching gap on the request side
+(`approval_token` from a retry would never have reached `InvokeTool` at all). Neither `§58`'s nor
+`§59`'s unit tests could have caught this — they all construct `ToolInvokeCommand`/`ToolInvokeResult`
+directly in-process, never round-tripping through the actual HTTP JSON boundary. **This is exactly
+the class of bug `MSP_START_HERE.md` §5 already named** ("local static checks don't match CI's/
+production's real invocation shape") — the fix for that problem class is "run it live," which is
+what this entry is.
+
+Fixed: added `approval_token: str = ""` to `ToolInvokeRequest`, `hitl_required: bool = False`/
+`risk_level: str = ""`/`approval_token: str = ""` to `ToolInvokeResponse`, and the corresponding
+lines in `to_command`/`to_response`. Added `backend/tool-gateway/tests/interfaces/gateways/tool/
+test_mappers.py` (new `tests/interfaces/` dir — this whole handler/mappers/models/server/auth layer
+had zero test coverage before now) — two regression tests asserting exactly these fields survive
+the DTO round trip, verified directly via a standalone script (not `pytest`) before relying on
+collection.
+
+### 61.3. Full proof, after the fix
+
+Restarted the live tool-gateway server (picks up the code change) and reran the identical script.
+Real, complete cycle, confirmed at every step:
+
+1. Live gateway response: `{'success': False, ..., 'hitl_required': True, 'risk_level': 'high',
+   'approval_token': 'eyJhcmdz...'}` — real HMAC-signed token, present this time.
+2. `SecurityMiddleware.awrap_tool_call`'s new post-handler check detected the marker, built the
+   preview, called `register_hitl_pause` + `interrupt()` — the security-event log shows a genuine
+   LangGraph `Interrupt(value={'action': 'tool_call', 'tool': 'python_sandbox', ...,
+   'approval_id': 'appr-1b744c47a2ca', ...})` actually raised, not a monkeypatched stand-in.
+   `arun()` returned `{"raw_response": ""}` — the graph genuinely paused, no final answer.
+3. A real pending approval was persisted to the **Postgres-backed** job store (not memory
+   fallback): queried `hitl_pause._pause_registry.list_pending_approvals()` directly and got back
+   `{'tool_name': 'python_sandbox', 'tool_args': {'kwargs': {'code': 'print(6 * 7)'}}, 'risk_level':
+   'high', 'approval_id': 'appr-1b744c47a2ca', ...}` for the exact session.
+4. Called `runtime.aresume("gaia_solver", session_id, {"decision": "approve"})` — LangGraph
+   resumed the same thread from its Postgres checkpoint. `SecurityMiddleware`'s retry
+   (`use_approval_token(...)`) attached the approval token; tool-gateway validated it against the
+   exact `tool_name`+`args_hash` it was minted for and let the call through this time.
+   `python_sandbox` actually executed for real. Final result: `{"reply": "42", ...,
+   "task_completed": true}` — a genuine answer produced only after real human-approval-gated tool
+   execution, not a refusal, not a mock.
+
+**Known LangGraph replay quirk, noted not glossed over**: on resume, the log shows `python_sandbox`
+invoked twice before the final success — LangGraph's functional-API `interrupt()` replays a node's
+code from its start on every resume, so `wrap_tool_call`'s first `handler(request)` call (the one
+*before* `interrupt()`) re-runs too, hitting the live gateway again with no token attached yet (and
+being refused again, harmlessly) before reaching `interrupt()` a second time — which this replay
+correctly short-circuits to the cached decision instead of pausing again — and only *then* retrying
+with the token attached. This costs one redundant, harmlessly-refused gateway round trip per resume;
+it does not weaken the security property (`InvokeTool`'s chokepoint keeps refusing on every replay
+attempt until a valid, matching token is actually presented) and was not the focus of this pass.
+
+### 61.4. What this does and doesn't prove
+
+Proves: the full `§35` design (tool-gateway classifies and refuses → runtime notices, pauses, and
+persists → resume retries with a validated approval token → gateway lets the retried call through)
+works, live, against a real model, a real Postgres checkpointer, and a real HTTP round trip — for
+one tool (`python_sandbox`), one persona (`gaia_solver`), one approve path, with the pre-handler
+in-process check deliberately disabled to isolate the new mechanism.
+
+Does **not** prove: the reject path live (only unit-tested, `§59.3`); behavior with the pre-handler
+check *also* active (the real, shipped default — both checks running together was never exercised
+live in this pass, only unit-tested in isolation); any tool/persona besides this one combination;
+concurrent runs; `MinimalReactAgentRunner` (still doesn't route tools through tool-gateway at all,
+`§59.2`). `TOOL_HITL_MODE` stays `shadow` by default — this closes the "does the mechanism actually
+work live" gap `§58.2`/`§59.3` both flagged, not the separate "is it safe to flip the default"
+decision, which is a product call, not a technical one, and hasn't been made.
+
+### 61.5. Verification
+
+Live (Docker Postgres/Redis, real DeepSeek key, real tool-gateway HTTP server) — this class of
+proof cannot run in CI. Static checks on the two changed files and the new test: `ruff check`,
+`ty check src`, `lint-imports` — all clean. `pytest --collect-only` — new test collects (2 tests);
+whole-package collect hits the same pre-existing, unrelated `tests/tool_gateway/test_models.py`
+basename collision already noted in `§59.3` (confirmed via `git status`/`git log`, predates this
+session). Both new assertions additionally verified directly via a standalone script, not by
+trusting `pytest --collect-only` alone. No `pytest` run at any point.
+<!-- commit sha / CI run id filled in after push -->

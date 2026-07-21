@@ -19,6 +19,7 @@ class ToolInvokeRequest(BaseModel):
     organization_id: str = ""
     user_id: str = ""
     sandbox_token: str = ""
+    approval_token: str = ""
 
 
 class ToolInvokeResponse(BaseModel):
@@ -29,3 +30,6 @@ class ToolInvokeResponse(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
     sanitized_payload: str = ""
     error: str = ""
+    hitl_required: bool = False
+    risk_level: str = ""
+    approval_token: str = ""
