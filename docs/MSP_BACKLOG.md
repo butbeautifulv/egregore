@@ -6065,4 +6065,42 @@ Still not done, not claimed done: `TOOL_HITL_MODE=enforce` is untested against a
 run (same live-sandbox rigor `§56` used for the process-boundary proof) — this entry closes the
 "runtime doesn't know how to react" gap, not the "prove it end-to-end against a real HITL-gated
 persona" gap `§58.2` also named. Do not flip `TOOL_HITL_MODE` to `enforce` until that proof exists.
+
+Commit `4751142`, run `29808680290`: **failed** — unrelated to any of the above.
+`osa / trivy-fs`: `web_ui/bun.lock` — `brace-expansion@1.1.15` flagged `CVE-2026-13149`, high
+severity; `config/security-gate-policy.yaml`'s `osa` control blocks on any high finding. Confirmed
+this is not caused by this session's diff: the two prior runs on this branch (`29767979281`,
+`29769734790`) both had `osa / trivy-fs` green — the finding is new because Trivy's vulnerability DB
+was pulled fresh on this run and now flags a CVE that didn't exist/wasn't loaded before, not because
+`web_ui/` was touched (it wasn't, until this fix).
+
+## 60. Unrelated CI break: `brace-expansion` CVE-2026-13149 in `web_ui/bun.lock`
+
+Root cause: `minimatch@3.1.5` (pulled in by `eslint`/`eslint-plugin-import`/`eslint-plugin-jsx-a11y`/
+`eslint-plugin-react`/`@eslint/config-array`/`@eslint/eslintrc`, all declaring `minimatch: ^3.1.5` —
+`3.1.5` is the newest published `3.x`, confirmed via `npm view minimatch versions`) depends on
+`brace-expansion: ^1.1.7`, hoisted to a single hosted `1.1.15` in the lockfile. `1.1.16` exists
+upstream, same dependency shape (`balanced-match@^1.0.0`, `concat-map@0.0.1`, confirmed via
+`npm view brace-expansion@1.1.16 dependencies`), and still satisfies `^1.1.7`.
+
+Fix: hand-edited the single hoisted `brace-expansion` lockfile entry from `1.1.15` to `1.1.16`
+(version + the real npm-registry `sha512` integrity for that exact version) rather than using `bun
+update` or `overrides` — tried both first and rejected them: `bun update brace-expansion` promotes it
+to an unused top-level `package.json` dependency at the *newest* overall version (`5.0.7`, several
+majors ahead) while leaving the actually-vulnerable nested `minimatch`-chain resolution completely
+untouched (verified by inspecting the resulting lockfile diff); a flat `package.json` `overrides`
+entry would apply globally, and `bun install` warned it does **not** support npm's nested/scoped
+override syntax needed to target just the `minimatch` chain — a flat override forcing `1.1.16` would
+also hit the unrelated, already-on-a-safe-major `@ts-morph/common`/`@typescript-eslint` chains
+(pinned separately at `brace-expansion@5.0.7`, confirmed untouched by this fix), a semver-incompatible
+downgrade for those, and likely a bad enough break in build tooling that it wasn't worth the risk for
+what a single lockfile line accomplishes safely.
+
+### 60.1. Verification
+
+`bun install --frozen-lockfile` accepted the hand-edited lockfile and installed the real
+`brace-expansion@1.1.16` package (confirmed via `node_modules/brace-expansion/package.json`'s
+`version` field, not just trusting the lockfile line). `git diff web_ui/bun.lock` — exactly the one
+line changed, nothing else moved. `bun run typecheck` (`tsc --noEmit`), `bun run lint` (`eslint`),
+and a full `bun run build` (production Next.js build, all 19 routes) — all clean, no `bun test` run.
 <!-- commit sha / CI run id filled in after push -->
