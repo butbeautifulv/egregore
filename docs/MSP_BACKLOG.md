@@ -6376,4 +6376,10 @@ scenario against `build_run_worker_job_for_tests()`'s real (now-fixed) default b
 three packages. Confirmed via the CI log's own `pytest_batches.sh` output that all 24 test-directory
 batches in the failing run actually executed (not short-circuited early) and exactly one had any
 failure, so this is the complete list of what broke in that specific run — not an assumption.
-<!-- commit sha / CI run id filled in after push -->
+
+Fix commit `61ceab8`, run `29819092352`: **success** — verified both at the top level
+(`status: completed`, `conclusion: success`) and per-job (`gh run view ... --json jobs`: 56 jobs
+`success`, 6 `skipped`, zero anything else), confirming `unit-tests (worker)`,
+`unit-tests (agent-runtime)`, and `unit-tests (dispatcher)` all passed this time along with every
+other job in the matrix. §8.4 point 3 (SOC-only `mode_policy`/`escalation_paths` no longer leak
+into non-SOC profiles) is complete and green on `feature/microservice-refactoring`.
