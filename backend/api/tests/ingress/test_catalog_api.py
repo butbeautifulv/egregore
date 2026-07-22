@@ -71,6 +71,34 @@ def test_catalog_control_persona_mutation_denied(client):
 
 
 @pytest.mark.unit
+def test_catalog_list_includes_hitl_auto_approve(client):
+    listed = client.get("/catalog/agents")
+    assert listed.status_code == 200
+    agents = listed.json()["agents"]
+    assert agents
+    assert "hitl_auto_approve" in agents[0]
+
+
+@pytest.mark.unit
+def test_catalog_put_hitl_auto_approve_round_trip(client):
+    put = client.put(
+        "/catalog/agents/test-hitl-auto",
+        json={
+            "description": "demo",
+            "role": "worker",
+            "tools": [],
+            "skills": [],
+            "hitl_auto_approve": True,
+        },
+    )
+    assert put.status_code == 200
+    assert put.json()["hitl_auto_approve"] is True
+    got = client.get("/catalog/agents/test-hitl-auto")
+    assert got.status_code == 200
+    assert got.json()["hitl_auto_approve"] is True
+
+
+@pytest.mark.unit
 def test_catalog_seed(client):
     seeded = client.post("/catalog/seed")
     assert seeded.status_code == 200

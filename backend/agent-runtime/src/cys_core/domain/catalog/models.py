@@ -120,6 +120,7 @@ class AgentCatalogEntry(BaseModel):
     skills: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
     hitl_tools: dict[str, bool] = Field(default_factory=dict)
+    hitl_auto_approve: bool = False
     trust_level: str = "internal"
     bus_recipients: list[str] = Field(default_factory=list)
     persona_prompt: str = ""

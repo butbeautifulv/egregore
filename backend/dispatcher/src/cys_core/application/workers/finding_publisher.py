@@ -8,7 +8,7 @@ from cys_core.application.bus_planner_gate import (
     filter_bus_recipients_for_plan,
     filter_escalation_recipients,
 )
-from cys_core.application.engagement_streaming import publish_assistant_snapshot
+from cys_core.application.engagement_streaming import publish_assistant_snapshot, publish_finding_snapshot
 from cys_core.application.findings.outcome_mapper import synthesis_outcome_from_context
 from cys_core.application.ports.bus import AgentTransportConnector
 from cys_core.application.ports.catalog import AgentCatalogPort
@@ -195,6 +195,15 @@ class WorkerFindingPublisher:
             investigation_id,
             finding_entry,
         )
+        if self._engagement_egress is not None:
+            publish_finding_snapshot(
+                egress=self._engagement_egress,
+                engagement_id=investigation_id,
+                job_id=job.job_id,
+                persona=job.persona,
+                tenant_id=job.tenant_id,
+                finding=result,
+            )
 
     def publish_final_report(
         self,

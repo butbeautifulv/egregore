@@ -83,6 +83,7 @@ def _load_agent_from_dir(agent_dir: Path, product: ProductContext) -> AgentDefin
         tools=config.tools,
         skills=config.skills,
         hitl_tools=config.hitl_tools,
+        hitl_auto_approve=config.hitl_auto_approve,
         trust_level=config.trust_level,
         bus_recipients=config.bus_recipients,
         sample_input=sample_input,

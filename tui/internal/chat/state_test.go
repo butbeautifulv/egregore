@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/butbeautifulv/egregore/tui/internal/api"
@@ -61,6 +62,59 @@ func TestApplyChatEventAssistantDone(t *testing.T) {
 	entry := state.Get("job-1")
 	if len(entry.Turns) != 1 || entry.Turns[0] != "done text" || entry.Buffer != "" {
 		t.Fatalf("unexpected entry after done: %+v", entry)
+	}
+}
+
+func TestApplyChatEventHitlPending(t *testing.T) {
+	state := NewState()
+	features := api.APIFeatures{StreamAgentTools: true}
+	changed := state.ApplyEvent(api.EngagementStreamEvent{
+		Type: "hitl_pending",
+		Payload: map[string]interface{}{
+			"job_id":      "job-1",
+			"approval_id": "appr-1",
+			"tool_name":   "run_active_scan",
+			"risk_level":  "high",
+		},
+	}, features, "eng-1")
+	if !changed {
+		t.Fatal("expected change")
+	}
+	entry := state.Get("job-1")
+	if entry == nil || entry.Hitl == nil || entry.Hitl.Status != "pending" {
+		t.Fatalf("unexpected hitl: %+v", entry)
+	}
+}
+
+func TestApplyChatEventHitlResolvedReject(t *testing.T) {
+	state := NewState()
+	features := api.APIFeatures{}
+	state.ApplyEvent(api.EngagementStreamEvent{
+		Type: "hitl_pending",
+		Payload: map[string]interface{}{
+			"job_id":      "job-1",
+			"approval_id": "appr-1",
+			"tool_name":   "run_active_scan",
+		},
+	}, features, "eng-1")
+	state.ApplyEvent(api.EngagementStreamEvent{
+		Type: "hitl_resolved",
+		Payload: map[string]interface{}{
+			"job_id":      "job-1",
+			"approval_id": "appr-1",
+			"decision":    "reject",
+		},
+	}, features, "eng-1")
+	entry := state.Get("job-1")
+	if entry.Hitl.Status != "rejected" || !strings.Contains(entry.Buffer, "cancelled") {
+		t.Fatalf("unexpected entry after reject: %+v", entry)
+	}
+}
+
+func TestFormatJobFailureReason(t *testing.T) {
+	msg := formatJobFailure("empty_finding", "schema_invalid")
+	if msg != "Agent finished without a valid structured result." {
+		t.Fatalf("unexpected message: %s", msg)
 	}
 }
 

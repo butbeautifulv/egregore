@@ -44,7 +44,10 @@ export default function ApprovalsPage() {
       ) : null}
 
       {approvals.length === 0 && !error ? (
-        <EmptyTableState title="No pending approvals" description="All tool actions are resolved." />
+        <EmptyTableState
+          title="No pending approvals"
+          description="When an agent pauses for a high-risk tool, the approval appears inline in the work order chat. This page is a global inbox for all pending actions."
+        />
       ) : approvals.length > 0 ? (
         <DataTable
           columns={columns}

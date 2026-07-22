@@ -1,10 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useRef, useState } from "react"
-import { ShieldAlertIcon } from "lucide-react"
+import { useEffect, useMemo, useRef } from "react"
 
-import { listPendingApprovals, type PendingApproval } from "@/lib/api-client"
 import { formatPlannerError } from "@/lib/format-api-error"
 import { dedupeFindingsByPersona } from "@/lib/finding-display"
 import {
@@ -15,7 +13,6 @@ import {
 } from "@/lib/follow-up"
 import type { AgentChatEntry, JobSummary } from "@/lib/types"
 import { ApiErrorAlert } from "@/components/api-error-alert"
-import { ApprovalActions } from "@/components/approval-actions"
 import { AgentMessageBlock } from "@/components/engagement/agent-message-block"
 import { FindingContent } from "@/components/engagement/finding-content"
 import { OutcomeHero, outcomeCopyText } from "@/components/engagement/outcome-hero"
@@ -72,10 +69,12 @@ function OperatorTurnBlock({
   pair,
   followUpChildEntries,
   findingsByJobId,
+  autoApprovePersonas,
 }: {
   pair: FollowUpPair
   followUpChildEntries: Map<string, AgentChatEntry[]>
   findingsByJobId: Map<string, Record<string, unknown>>
+  autoApprovePersonas?: Set<string>
 }) {
   const childEntries = followUpChildEntries.get(pair.followUpId) ?? []
   return (
@@ -105,6 +104,7 @@ function OperatorTurnBlock({
                 entry={entry}
                 finding={findingsByJobId.get(entry.jobId)}
                 defaultOpen={entry.streaming}
+                autoApprovePersonas={autoApprovePersonas}
               />
             ))}
           </CollapsibleContent>
@@ -131,6 +131,7 @@ export function EngagementChatThread({
   composerDisabled = false,
   isFirstFollowUp = false,
   isTerminal = false,
+  autoApprovePersonas,
 }: {
   className?: string
   entries: AgentChatEntry[]
@@ -149,13 +150,12 @@ export function EngagementChatThread({
   composerDisabled?: boolean
   isFirstFollowUp?: boolean
   isTerminal?: boolean
+  autoApprovePersonas?: Set<string>
 }) {
-  const [approvals, setApprovals] = useState<PendingApproval[]>([])
   const followUpTailRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(false)
   const prevFollowUpSendingRef = useRef(false)
   const prevFollowUpsLengthRef = useRef(followUps.length)
-  const jobIds = useMemo(() => new Set(jobs.map((j) => j.job_id)), [jobs])
   const { initialPair, followUpPairs } = useMemo(
     () => splitInitialAndFollowUpPairs(followUps),
     [followUps],
@@ -177,25 +177,6 @@ export function EngagementChatThread({
     }
     return map
   }, [findings])
-
-  useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const response = await listPendingApprovals()
-        if (cancelled) return
-        setApprovals(response.approvals.filter((a) => jobIds.has(a.job_id)))
-      } catch {
-        if (!cancelled) setApprovals([])
-      }
-    }
-    void load()
-    const timer = setInterval(load, 8000)
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [jobIds])
 
   useEffect(() => {
     const updateStickToBottom = () => {
@@ -241,8 +222,6 @@ export function EngagementChatThread({
     prevFollowUpsLengthRef.current = followUps.length
   }, [followUps.length])
 
-  const hitlForThread = approvals
-
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       <div className="border">
@@ -272,6 +251,7 @@ export function EngagementChatThread({
               pair={initialPair}
               followUpChildEntries={followUpChildEntries}
               findingsByJobId={findingsByJobId}
+              autoApprovePersonas={autoApprovePersonas}
             />
           ) : null}
 
@@ -292,20 +272,6 @@ export function EngagementChatThread({
               <ApiErrorAlert title="Planner failed" message={formatPlannerError(plannerError)} />
             </div>
           ) : null}
-
-          {hitlForThread.map((approval) => (
-            <div key={approval.approval_id} className={`${CHAT_COLUMN_CLASS} space-y-3`}>
-              <Marker variant="border" className="text-destructive">
-                <MarkerIcon>
-                  <ShieldAlertIcon />
-                </MarkerIcon>
-                <MarkerContent>Approval needed · {approval.tool_name}</MarkerContent>
-              </Marker>
-              <div className="bg-muted/40 border p-3">
-                <ApprovalActions approval={approval} />
-              </div>
-            </div>
-          ))}
 
           {entries.length === 0 && !plannerError && !isTerminal && !hasInitialOperatorTurn ? (
             <div className={CHAT_COLUMN_CLASS}>
@@ -332,6 +298,7 @@ export function EngagementChatThread({
                   entry={entry}
                   finding={findingsByJobId.get(entry.jobId)}
                   defaultOpen={entry.streaming || isOutcomeJob}
+                  autoApprovePersonas={autoApprovePersonas}
                 />
               )
             })
@@ -367,6 +334,7 @@ export function EngagementChatThread({
               pair={pair}
               followUpChildEntries={followUpChildEntries}
               findingsByJobId={findingsByJobId}
+              autoApprovePersonas={autoApprovePersonas}
             />
           ))}
           <div ref={followUpTailRef} />
@@ -386,7 +354,7 @@ export function EngagementChatThread({
         <div className="border px-4 py-4">
           <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-2">
             <p className="text-muted-foreground text-xs">
-              This engagement streams agent output live. HITL tool approvals appear above when needed.
+              This engagement streams agent output live. Tool approvals appear inline in each agent run when required.
             </p>
             <Button type="button" variant="outline" size="sm" asChild>
               <Link href="/">New work order</Link>

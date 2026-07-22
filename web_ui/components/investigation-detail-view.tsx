@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import { ApiError, getEngagementEvents, getInvestigation, getInvestigationJobs } from "@/lib/api-client"
+import { ApiError, getEngagementEvents, getInvestigation, getInvestigationJobs, listPendingApprovals } from "@/lib/api-client"
 import { formatApiError, getApiErrorTitle } from "@/lib/format-api-error"
 import { plannerJobId, eventDedupeKey, eventPayload, shouldRefreshOnEvent, sortChatEntries } from "@/lib/engagement-chat-state"
 import { isFollowUpJobId, buildFollowUpJobMap, groupFollowUpChildEntries, isFollowUpChildJob, isFollowUpOrchestratorJob, isFollowUpTurn } from "@/lib/follow-up"
@@ -13,6 +13,7 @@ import { EngagementChatThread } from "@/components/engagement/engagement-chat-th
 import { usePlatformBreadcrumbLabel } from "@/components/platform-breadcrumb"
 import { useApiFeatures } from "@/hooks/use-api-features"
 import { useEngagementChatState } from "@/hooks/use-engagement-chat"
+import { useHitlAutoApproveCatalog } from "@/hooks/use-hitl-auto-approve-catalog"
 import { useFollowUpMessages } from "@/hooks/use-follow-up-messages"
 import { useEngagementStream } from "@/hooks/use-engagement-stream"
 import { EgregoreRouteSkeleton } from "@/components/skeletons"
@@ -40,6 +41,7 @@ export function InvestigationDetailView({
   usePlatformBreadcrumbLabel(detail?.investigation_id ?? investigationId)
 
   const { features } = useApiFeatures()
+  const { autoApprovePersonas } = useHitlAutoApproveCatalog()
   const chatDetail = useMemo(
     () =>
       detail
@@ -56,13 +58,14 @@ export function InvestigationDetailView({
         : undefined,
     [detail],
   )
-  const { entries, handleEvent } = useEngagementChatState(investigationId, features, chatDetail, jobs)
+  const { entries, handleEvent, hydrateApprovals } = useEngagementChatState(investigationId, features, chatDetail, jobs)
   const { messages: followUps, sending: followUpSending, sendFollowUp, handleStreamEvent } =
     useFollowUpMessages(investigationId)
   const seenKeysRef = useRef(new Set<string>())
   const replayedRef = useRef(false)
   const followUpJobMapRef = useRef(new Map<string, string>())
   const refreshDetailOnlyRef = useRef<() => Promise<void>>(async () => {})
+  const refreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refreshDetailOnly = useCallback(async () => {
     if (!investigationId) return
@@ -90,6 +93,19 @@ export function InvestigationDetailView({
   useEffect(() => {
     refreshDetailOnlyRef.current = refreshDetailOnly
   })
+
+  useEffect(() => {
+    if (refreshRetryTimerRef.current) {
+      clearTimeout(refreshRetryTimerRef.current)
+      refreshRetryTimerRef.current = null
+    }
+    return () => {
+      if (refreshRetryTimerRef.current) {
+        clearTimeout(refreshRetryTimerRef.current)
+        refreshRetryTimerRef.current = null
+      }
+    }
+  }, [investigationId])
 
   const applyEngagementEvent = useCallback(
     (event: Parameters<typeof handleEvent>[0]) => {
@@ -128,6 +144,17 @@ export function InvestigationDetailView({
       handleStreamEvent(event)
       if (shouldRefreshOnEvent(event)) {
         void refreshDetailOnlyRef.current()
+      }
+      const phase = event.phase ?? ""
+      const jobFinishedSuccess =
+        payload.success !== false &&
+        (event.type === "job_finished" || (event.type === "status" && phase === "job_finished"))
+      if (jobFinishedSuccess) {
+        if (refreshRetryTimerRef.current) clearTimeout(refreshRetryTimerRef.current)
+        refreshRetryTimerRef.current = setTimeout(() => {
+          refreshRetryTimerRef.current = null
+          void refreshDetailOnlyRef.current()
+        }, 500)
       }
     },
     [handleEvent, handleStreamEvent],
@@ -170,6 +197,23 @@ export function InvestigationDetailView({
     replayedRef.current = true
     void replayEngagementEvents()
   }, [investigationId, replayEngagementEvents])
+
+  useEffect(() => {
+    if (!jobs.length) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await listPendingApprovals()
+        if (cancelled) return
+        hydrateApprovals(response.approvals)
+      } catch {
+        // optional when auth/API unavailable
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [investigationId, jobs, hydrateApprovals])
 
   useEffect(() => {
     if (initialDetail) return
@@ -385,6 +429,7 @@ export function InvestigationDetailView({
         }
         isFirstFollowUp={isFirstFollowUp}
         isTerminal={terminal}
+        autoApprovePersonas={autoApprovePersonas}
       />
     </div>
   )

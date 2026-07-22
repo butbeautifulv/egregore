@@ -819,6 +819,7 @@ export type PendingApproval = {
   tool_args: Record<string, unknown>
   risk_level: string
   approval_id: string
+  correlation_id?: string
 }
 
 export function listPendingApprovals() {
@@ -850,6 +851,7 @@ export type CatalogAgent = {
   version_tag?: string
   enabled?: boolean
   empirical_trust?: number
+  hitl_auto_approve?: boolean
 }
 
 export type CatalogAgentDetail = CatalogAgent & {

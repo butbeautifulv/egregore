@@ -78,4 +78,11 @@ export type AgentChatEntry = {
   isControlError: boolean
   /** Highest assistant_delta seq applied for this job (SSE replay idempotency). */
   lastAssistantSeq?: number
+  hitl?: {
+    approvalId: string
+    toolName: string
+    toolArgs: Record<string, unknown>
+    riskLevel: string
+    status: "pending" | "approved" | "rejected"
+  }
 }

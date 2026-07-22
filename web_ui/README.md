@@ -45,14 +45,14 @@ API must be running on `http://localhost:8080`.
 | `EGREGORE_AUTH_UI_ENFORCED` | — | Set to `1` to require UI login cookie before operator routes |
 | `EGREGORE_DEMO_TOKEN` | `egregore-demo-token` | Token stored in session cookie by `/api/auth/login` stub |
 | `NEXT_PUBLIC_LANGFUSE_HOST` | `http://localhost:3001` | External Langfuse UI (optional; not embedded) |
-| `NEXT_PUBLIC_EGRESS_SSE` | `1` in dev example | Per-engagement SSE for live agent chat on `/work-orders/[id]` only |
+| `NEXT_PUBLIC_EGRESS_SSE` | `1` in dev example | Per-engagement SSE for live agent chat on `/work-orders/[id]`; requires backend `STREAM_AGENT_OUTPUT=true` — see [../docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md) §7 |
 
 ## Data loading (REST vs SSE)
 
 | Page | Transport | Endpoints |
 |------|-----------|-----------|
 | `/` (home) | **REST JSON** | `GET /api/egregore/v1/work-orders` (fallback: `/v1/engagements`) for the table; Start card renders without waiting |
-| `/work-orders/[id]` | REST + **SSE** | `GET` work order/engagement + jobs + `Accept: text/event-stream` for live agent tokens |
+| `/work-orders/[id]` | REST + **SSE** | `GET` work order/engagement + jobs + `Accept: text/event-stream` for live agent tokens. Header badge **Stream connected** when SSE is open. See [../docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md) §7 |
 
 Home does **not** use SSE. If the work order list fails or times out, the Start card stays visible; only the table shows an error.
 

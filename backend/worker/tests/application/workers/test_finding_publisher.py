@@ -77,7 +77,38 @@ async def test_finding_publisher_publishes_to_bus_and_transport():
 
 
 @pytest.mark.unit
-def test_finding_publisher_persists_memory():
+def test_append_engagement_finding_publishes_assistant_snapshot() -> None:
+    events: list[tuple[str, str, dict]] = []
+
+    class Store:
+        def append_finding(self, tenant_id: str, investigation_id: str, finding: dict) -> None:
+            return None
+
+        def get(self, tenant_id: str, investigation_id: str):
+            return None
+
+    class Egress:
+        def publish_event(self, engagement_id: str, event_type: str, payload: dict) -> None:
+            events.append((engagement_id, event_type, payload))
+
+    publisher = WorkerFindingPublisher(
+        bus=SimpleNamespace(send_message=lambda *a, **k: {}, receive_message=lambda *a, **k: None),
+        transport=SimpleNamespace(publish_delivery=AsyncMock()),
+        engagement_store=Store(),
+        engagement_egress=Egress(),
+    )
+    job = WorkerJob(job_id="j-soc-1", event_id="e1", persona="soc", correlation_id="inv-1")
+    publisher.append_engagement_finding(
+        job=job,
+        result={"summary": "beacon detected", "severity": "high"},
+        investigation_id="inv-1",
+    )
+    assert len(events) == 1
+    assert events[0][1] == "assistant_snapshot"
+    assert events[0][2]["job_id"] == "j-soc-1"
+    assert "beacon detected" in events[0][2]["text"]
+
+
     stored: list[dict] = []
 
     class Writer:

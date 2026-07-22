@@ -439,15 +439,18 @@ class Container:
     # ------------------------------------------------------------------
 
     def wire_hitl_pause(self) -> None:
+        from cys_core.infrastructure.engagement.hitl_egress import publish_hitl_pending
         from cys_core.infrastructure.kafka_paused import publish_paused_job_sync
         from cys_core.middleware import hitl_pause
         from cys_core.observability.metrics import metrics
 
         store = self.get_job_store()
+        egress = self.get_engagement_egress()
 
         class _JobStoreHitlAdapter:
             def pause_for_hitl(self, pending: Any, preview: dict[str, Any]) -> None:
                 store.pause_for_hitl(pending, preview)
+                publish_hitl_pending(egress, store, preview, pending)
 
             def list_pending_approvals(self) -> list[Any]:
                 return store.list_pending_approvals()

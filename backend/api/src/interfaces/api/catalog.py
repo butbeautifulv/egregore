@@ -53,6 +53,7 @@ class AgentCatalogOut(BaseModel):
     version_tag: str = ""
     enabled: bool = True
     empirical_trust: float = 0.75
+    hitl_auto_approve: bool = False
 
 
 class AgentCatalogDetailOut(AgentCatalogOut):
@@ -78,6 +79,7 @@ class AgentCatalogPut(BaseModel):
     budget_max_cost_usd: float | None = None
     budget_max_tool_calls: int | None = None
     data_clearance: str = "internal"
+    hitl_auto_approve: bool | None = None
 
 
 class ToolCatalogPut(BaseModel):
@@ -147,6 +149,7 @@ def _entry_out(entry) -> AgentCatalogOut:
         version_tag=entry.version_tag,
         enabled=entry.enabled,
         empirical_trust=entry.quality.empirical_trust,
+        hitl_auto_approve=entry.hitl_auto_approve,
     )
 
 
@@ -165,6 +168,7 @@ def _detail_out(entry) -> AgentCatalogDetailOut:
         version_tag=entry.version_tag,
         enabled=entry.enabled,
         empirical_trust=entry.quality.empirical_trust,
+        hitl_auto_approve=entry.hitl_auto_approve,
         persona_prompt=persona,
         system_prompt=ctx.text,
         system_prompt_digest=ctx.digest,

@@ -73,6 +73,9 @@ export function eventDedupeKey(event: EngagementStreamEvent): string {
       payload.error ?? "",
     ].join("|")
   }
+  if (type === "hitl_pending" || type === "hitl_resolved") {
+    return [type, payload.job_id ?? "", payload.approval_id ?? "", payload.decision ?? ""].join("|")
+  }
   return [
     type,
     event.phase ?? "",
@@ -89,6 +92,9 @@ export function shouldRefreshOnEvent(event: EngagementStreamEvent): boolean {
   const payload = eventPayload(event)
   if (payload.success === false && (type === "job_finished" || (type === "status" && phase === "job_finished"))) {
     return false
+  }
+  if (type === "hitl_resolved") {
+    return true
   }
   if (["assistant_done", "job_finished", "job_started", "error", "control", "report", "outcome_ready"].includes(type)) {
     return true
@@ -165,6 +171,64 @@ function controlEventText(type: string, payload: Record<string, unknown>): strin
   return JSON.stringify(payload, null, 2)
 }
 
+export type JobFailureInput = {
+  error?: string
+  reason?: string
+}
+
+export function formatJobFailure({ error = "", reason = "" }: JobFailureInput): string {
+  const err = error.trim()
+  const reasonKey = reason.trim().toLowerCase()
+
+  if (reasonKey === "schema_invalid") {
+    if (err.startsWith("empty_finding:")) {
+      const gaps = err.slice("empty_finding:".length).replace(/,/g, ", ")
+      return `Agent finished without a valid structured result (missing: ${gaps}).`
+    }
+    return "Agent finished without a valid structured result."
+  }
+  if (reasonKey === "grounding_rejected") {
+    if (err.startsWith("ungrounded_finding:")) {
+      const detail = err.slice("ungrounded_finding:".length).replace(/,/g, ", ")
+      return `Result failed evidence or grounding checks: ${detail}`
+    }
+    return "Result failed evidence or grounding checks."
+  }
+  if (reasonKey === "llm_error") {
+    if (err.startsWith("model_refusal:")) {
+      return `Model refused: ${err.slice("model_refusal:".length)}`
+    }
+    return "Model refused or returned unusable output."
+  }
+  if (reasonKey === "tool_error") {
+    if (err.startsWith("tools_not_executed:")) {
+      return `Tools were planned but never executed. ${err.slice("tools_not_executed:".length)}`
+    }
+    return "A tool call failed during this run."
+  }
+  if (reasonKey === "tool_invalid_args") {
+    return "A tool was called with invalid arguments."
+  }
+  if (reasonKey === "timeout") {
+    return "The agent run timed out before completing."
+  }
+  if (reasonKey === "budget_exceeded") {
+    return "The agent run exceeded its cost or token budget."
+  }
+  if (reasonKey === "sandbox_error") {
+    return "The execution sandbox failed."
+  }
+  if (reasonKey === "security_violation") {
+    return "The run was blocked by a security policy."
+  }
+  if (reasonKey === "cancelled") {
+    return "The agent run was cancelled."
+  }
+
+  return formatJobError(err || reason || "Agent job failed")
+}
+
+/** @deprecated Prefer formatJobFailure({ error, reason }) */
 export function formatJobError(err: string): string {
   if (err.startsWith("tools_not_executed:")) {
     return `Tools were planned in JSON but never executed. ${err.slice("tools_not_executed:".length)}`
@@ -250,6 +314,36 @@ export function applyChatEvent(
 
   const entry = ensureChatEntry(state, jobId, persona)
 
+  if (type === "hitl_pending") {
+    entry.hitl = {
+      approvalId: String(payload.approval_id ?? ""),
+      toolName: String(payload.tool_name ?? payload.tool ?? "tool"),
+      toolArgs:
+        payload.tool_args && typeof payload.tool_args === "object"
+          ? (payload.tool_args as Record<string, unknown>)
+          : payload.args && typeof payload.args === "object"
+            ? (payload.args as Record<string, unknown>)
+            : {},
+      riskLevel: String(payload.risk_level ?? payload.risk ?? ""),
+      status: "pending",
+    }
+    entry.streaming = false
+    return true
+  }
+
+  if (type === "hitl_resolved") {
+    const decision = String(payload.decision ?? "")
+    if (entry.hitl) {
+      entry.hitl.status = decision === "reject" ? "rejected" : "approved"
+    }
+    if (decision === "reject") {
+      entry.jobError = "hitl_rejected"
+      entry.buffer = formatJobFailure({ error: "hitl_rejected", reason: "cancelled" })
+      entry.streaming = false
+    }
+    return true
+  }
+
   if (controlTypes.includes(type)) {
     if (!shouldApplyControlEvent(type, payload)) {
       return false
@@ -327,13 +421,40 @@ export function applyChatEvent(
     return true
   }
 
+  if (type === "status" && event.phase === "job_started") {
+    entry.streaming = true
+    entry.agentExpanded = true
+    return true
+  }
+
+  if (type === "outcome_ready") {
+    const outcome = payload.outcome
+    if (outcome && typeof outcome === "object" && !Array.isArray(outcome)) {
+      const record = outcome as Record<string, unknown>
+      const summary = record.summary ? String(record.summary).trim() : ""
+      entry.buffer = summary || JSON.stringify(record, null, 2)
+    }
+    entry.streaming = false
+    return true
+  }
+
+  if (type === "status" && event.phase === "final_report") {
+    const report = payload.report
+    if (report && typeof report === "object" && !Array.isArray(report)) {
+      const record = report as Record<string, unknown>
+      const summary = record.summary ? String(record.summary).trim() : ""
+      entry.buffer = summary || JSON.stringify(record, null, 2)
+    }
+    entry.streaming = false
+    return true
+  }
+
   if (type === "status" && event.phase === "job_finished") {
     const err = String(payload.error ?? "unknown")
+    const reason = payload.reason ? String(payload.reason) : ""
     if (payload.success === false) {
       entry.jobError = err
-      if (!entry.buffer) {
-        entry.buffer = formatJobError(err)
-      }
+      entry.buffer = formatJobFailure({ error: err, reason })
       entry.agentExpanded = false
     } else {
       entry.jobError = ""
@@ -429,6 +550,33 @@ export function applyChatEvent(
   return false
 }
 
+export function hydrateHitlFromPending(
+  state: ChatStateMap,
+  approvals: {
+    job_id: string
+    approval_id: string
+    tool_name: string
+    tool_args?: Record<string, unknown>
+    risk_level?: string
+    persona?: string
+  }[],
+  jobIds: Set<string>,
+): void {
+  for (const approval of approvals) {
+    if (!jobIds.has(approval.job_id)) continue
+    const entry = ensureChatEntry(state, approval.job_id, approval.persona)
+    if (entry.hitl?.status === "approved" || entry.hitl?.status === "rejected") continue
+    entry.hitl = {
+      approvalId: approval.approval_id,
+      toolName: approval.tool_name,
+      toolArgs: approval.tool_args ?? {},
+      riskLevel: approval.risk_level ?? "",
+      status: "pending",
+    }
+    entry.streaming = false
+  }
+}
+
 export function hydrateFailedJobsFromList(
   state: ChatStateMap,
   jobs: { job_id: string; persona: string; status: string; error?: string; reason?: string }[],
@@ -438,9 +586,10 @@ export function hydrateFailedJobsFromList(
     if (job.status !== "failed") continue
     const entry = ensureChatEntry(state, job.job_id, job.persona)
     if (entry.jobError || entry.buffer) continue
-    const err = job.error?.trim() || job.reason?.trim() || "Agent job failed"
-    entry.jobError = err
-    entry.buffer = formatJobError(err)
+    const err = job.error?.trim() || ""
+    const reason = job.reason?.trim() || ""
+    entry.jobError = err || reason || "Agent job failed"
+    entry.buffer = formatJobFailure({ error: err, reason })
     entry.streaming = false
   }
   for (const persona of failedPersonas) {

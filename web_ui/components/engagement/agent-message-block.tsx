@@ -8,6 +8,7 @@ import { FindingContent } from "@/components/engagement/finding-content"
 import { MessageActions } from "@/components/engagement/message-actions"
 import { ReasoningBlock } from "@/components/engagement/reasoning-block"
 import { ToolCallList } from "@/components/engagement/tool-call-list"
+import { HitlApprovalBlock } from "@/components/engagement/hitl-approval-block"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import { findingEnvelope } from "@/lib/finding-display"
 import { resolveEntryCopyText } from "@/lib/chat-message-text"
@@ -22,6 +23,7 @@ import {
 import { Spinner } from "@/vendor/gui/ui/spinner"
 
 function statusLabel(entry: AgentChatEntry): string {
+  if (entry.hitl?.status === "pending") return "awaiting approval"
   if (entry.streaming) return "streaming"
   if (entry.jobError) return "failed"
   return "completed"
@@ -31,10 +33,12 @@ export function AgentMessageBlock({
   entry,
   finding,
   defaultOpen,
+  autoApprovePersonas,
 }: {
   entry: AgentChatEntry
   finding?: Record<string, unknown>
   defaultOpen?: boolean
+  autoApprovePersonas?: Set<string>
 }) {
   const [reasoningOpen, setReasoningOpen] = useState(
     defaultOpen ?? (entry.streaming || entry.agentExpanded),
@@ -64,6 +68,11 @@ export function AgentMessageBlock({
         </div>
 
         {hasTools ? <ToolCallList tools={entry.tools} /> : null}
+
+        <HitlApprovalBlock
+          entry={entry}
+          autoApprove={autoApprovePersonas?.has(entry.persona) ?? false}
+        />
 
         {hasReasoning ? (
           <Collapsible open={reasoningOpen} onOpenChange={setReasoningOpen}>
@@ -112,8 +121,11 @@ export function AgentMessageBlock({
           )}
         </div>
 
-        {!entry.streaming && (entry.jobError || entry.isControlError) ? (
+        {!entry.streaming && entry.isControlError ? (
           <p className="text-destructive text-xs">{entry.jobError || "Control error"}</p>
+        ) : null}
+        {!entry.streaming && entry.jobError && !entry.buffer && !entry.isControlError ? (
+          <p className="text-destructive text-xs">{entry.jobError}</p>
         ) : null}
 
         {!entry.streaming && copyText ? <MessageActions text={copyText} /> : null}

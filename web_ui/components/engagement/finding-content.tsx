@@ -1,6 +1,7 @@
 import { JsonPayloadView } from "@/components/json-payload-view"
 import { StructuredFieldRow } from "@/components/structured-field-row"
 import {
+  formatFindingField,
   hasFindingValue,
   isDisplayableFindingKey,
   mergeFindingContext,
@@ -76,7 +77,7 @@ function RemainingFields({
   return (
     <>
       {entries.map(([key, value]) => (
-        <StructuredFieldRow key={key} title={formatJsonLabel(key)}>
+        <StructuredFieldRow key={key} title={formatFindingField(key)}>
           <FieldValue value={value} />
         </StructuredFieldRow>
       ))}
@@ -87,15 +88,17 @@ function RemainingFields({
 export function FindingContent({
   data,
   evidenceManifest,
+  profileId: _profileId,
 }: {
   data: Record<string, unknown>
   evidenceManifest?: Record<string, unknown>
+  profileId?: string
 }) {
   const raw = asString(data.raw_response)
   if (raw) {
     const parsed = parseJsonMaybe(raw)
     if (parsed && isPlainObject(parsed)) {
-      return <FindingContent data={parsed} evidenceManifest={evidenceManifest} />
+      return <FindingContent data={parsed} evidenceManifest={evidenceManifest} profileId={_profileId} />
     }
     if (!data.summary && !data.finding) {
       return (

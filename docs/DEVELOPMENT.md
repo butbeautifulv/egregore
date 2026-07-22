@@ -119,12 +119,12 @@ Cloud API keys (`ANTHROPIC_API_KEY`, etc.) can stay empty for Ollama.
 
 ### vLLM / other OpenAI-compat servers
 
-Use the provider prefix LiteLLM expects (e.g. `openai/Qwen3.6-27B-NVFP4`) and set `LLM_BASE_URL` to the server `/v1` base URL. Model id must match `GET /v1/models`.
+Use the provider prefix LiteLLM expects and set `LLM_BASE_URL` to the server `/v1` base URL. Model id must match `GET /v1/models` (currently `Kbenkhaled/Qwen3.5-27B-NVFP4` — alias for Qwen3.6 weights on the GPU host).
 
 ```bash
 LLM_PROVIDER=litellm
-LLM_MODEL=openai/Qwen3.6-27B-NVFP4
-LLM_BASE_URL=http://10.8.185.186:11612/v1
+LLM_MODEL=openai/Kbenkhaled/Qwen3.5-27B-NVFP4
+LLM_BASE_URL=http://10.8.185.185:11611/v1
 LLM_TEMPERATURE=0.1
 ```
 
@@ -174,6 +174,66 @@ curl -s localhost:8080/metrics | grep cys_events_ingested
 
 After `ingest`, `cys_events_ingested_total` should increase. Grafana: http://localhost:3002 (admin / admin).
 
+### 6. HITL approval in chat (dispatcher split stack)
+
+HITL defaults to `shadow` — approvals only appear when enforcement is on.
+
+```bash
+# Infra + API (from repo root)
+docker compose -f deploy/docker-compose.yml up -d
+./scripts/dev-dispatcher-split.sh   # dispatcher + agent-runtime + tool-gateway
+
+# web_ui/.env.local
+NEXT_PUBLIC_EGRESS_SSE=1
+NEXT_PUBLIC_HITL_CHAT_AUTO_APPROVE=1
+
+cd web_ui && bun x next dev --webpack
+
+# agent-runtime / dispatcher .env
+TOOL_HITL_MODE=enforce
+```
+
+After changing `agent.yaml` `hitl_auto_approve`, re-seed catalog: `curl -X POST http://localhost:8080/catalog/seed`.
+
+Personas with `hitl_auto_approve: true` (e.g. `gaia_solver`, `consultant`) auto-resume in chat when `NEXT_PUBLIC_HITL_CHAT_AUTO_APPROVE=1`. Resume uses `actor: chat-auto-approve`. This is UI-only — the job still pauses server-side first.
+
+Smoke: start a work order whose persona calls a high-risk tool (e.g. `run_active_scan`). The approval card should appear **inside** the agent chat bubble (not only on `/approvals`). Approve via the inline card or `POST /jobs/{id}/resume`; the agent should resume and SSE should emit `hitl_resolved`.
+
+### 7. Live chat streaming
+
+Agent answers appear during the run (SSE `assistant_delta`) and on completion without page refresh.
+
+| Env | Where | Purpose |
+|-----|-------|---------|
+| `NEXT_PUBLIC_EGRESS_SSE=1` | `web_ui/.env.local` | Browser opens per-engagement SSE |
+| `STREAM_AGENT_OUTPUT=true` | `backend/agent-runtime/.env` | Live `assistant_delta` / gated planner snapshots |
+| `STREAM_AGENT_TOKEN_STREAMING=true` | `backend/agent-runtime/.env` | Token-by-token demo (requires output flag + streaming LLM) |
+| `STREAM_AGENT_OUTPUT=true` | `backend/api/.env` | `/health` → `features.stream_agent_output` |
+| `STREAM_AGENT_TOOLS=true` | both | Tool cards in chat (health exposes only when output+tools) |
+| `EGRESS_BATCH_SECONDS=0` | `agent-runtime` | Optional per-token publish (default batches 50ms) |
+
+```bash
+# Infra
+docker compose -f deploy/docker-compose.yml up -d postgres redis
+
+# API + dispatcher split (agent-runtime subprocess per job)
+cd backend/api && uv run egregore serve --port 8080
+./scripts/dev-dispatcher-split.sh
+
+# UI (webpack — Turbopack has module issues in this repo)
+cd web_ui && bun x next dev --webpack
+```
+
+Verify:
+
+```bash
+curl -s localhost:8080/health | jq '.features.stream_agent_output'   # true
+```
+
+Open a work order → header badge **Stream connected** → DevTools Network → SSE `/stream` shows `assistant_delta` during run. Finding text also arrives via ungated `assistant_snapshot` on job save.
+
+See [`docs/operator-console-contract.md`](operator-console-contract.md) §5 for event semantics. Consultant `AgentRunKernel` may not stream live deltas yet.
+
 ## OpenTelemetry (optional)
 
 ```bash
@@ -195,6 +255,7 @@ HTTP spans export to Tempo on `localhost:4317`. Explore in Grafana → Tempo. LL
 | Jobs never run | Workers must be running (`make dev`); postgres + redis healthy (`docker compose ps`) |
 | Port 3000 in use | Operator UI uses **3000**; Langfuse uses **3001** |
 | UI dev `ENOSPC` | `cd web_ui && bunx next dev --webpack` or `bun run build && bun run start` |
+| Agent answers only after page refresh | Enable `STREAM_AGENT_OUTPUT=true` on **agent-runtime** + **api**; `NEXT_PUBLIC_EGRESS_SSE=1` in web_ui; restart api + `dev-dispatcher-split.sh`. See §7 |
 
 ### Langfuse trace diagnosis
 

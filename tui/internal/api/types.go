@@ -88,13 +88,14 @@ type JobSummary struct {
 }
 
 type PendingApproval struct {
-	JobID      string                 `json:"job_id"`
-	SessionID  string                 `json:"session_id"`
-	Persona    string                 `json:"persona"`
-	ToolName   string                 `json:"tool_name"`
-	ToolArgs   map[string]interface{} `json:"tool_args"`
-	RiskLevel  string                 `json:"risk_level"`
-	ApprovalID string                 `json:"approval_id"`
+	JobID          string                 `json:"job_id"`
+	SessionID      string                 `json:"session_id"`
+	Persona        string                 `json:"persona"`
+	ToolName       string                 `json:"tool_name"`
+	ToolArgs       map[string]interface{} `json:"tool_args"`
+	RiskLevel      string                 `json:"risk_level"`
+	ApprovalID     string                 `json:"approval_id"`
+	CorrelationID  string                 `json:"correlation_id"`
 }
 
 type EngagementStreamEvent struct {

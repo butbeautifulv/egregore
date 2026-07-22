@@ -205,3 +205,13 @@ func FormatOutcome(data map[string]interface{}) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func str(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprint(v)
+}

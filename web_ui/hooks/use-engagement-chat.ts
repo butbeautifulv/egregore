@@ -9,9 +9,10 @@ import {
   createChatEntry,
   hydrateChatFromDetail,
   hydrateFailedJobsFromList,
+  hydrateHitlFromPending,
   type ChatStateMap,
 } from "@/lib/engagement-chat-state"
-import type { AgentChatEntry, ApiFeatures } from "@/lib/types"
+import type { AgentChatEntry, ApiFeatures, PendingApproval } from "@/lib/types"
 
 function cloneChatState(state: ChatStateMap): AgentChatEntry[] {
   return [...state.values()].map((entry) => ({
@@ -19,6 +20,7 @@ function cloneChatState(state: ChatStateMap): AgentChatEntry[] {
     turns: [...entry.turns],
     tools: [...entry.tools],
     reasoning: entry.reasoning ? { ...entry.reasoning, reasoning_steps: [...entry.reasoning.reasoning_steps] } : null,
+    hitl: entry.hitl ? { ...entry.hitl, toolArgs: { ...entry.hitl.toolArgs } } : undefined,
   }))
 }
 
@@ -102,11 +104,20 @@ export function useEngagementChatState(
     [flushNow],
   )
 
+  const hydrateApprovals = useCallback(
+    (approvals: PendingApproval[]) => {
+      const jobIds = new Set(jobs.map((job) => job.job_id))
+      hydrateHitlFromPending(stateRef.current, approvals, jobIds)
+      flushNow()
+    },
+    [jobs, flushNow],
+  )
+
   useEffect(() => {
     return () => {
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current)
     }
   }, [])
 
-  return { entries, handleEvent, setExpanded, flushNow }
+  return { entries, handleEvent, setExpanded, flushNow, hydrateApprovals }
 }

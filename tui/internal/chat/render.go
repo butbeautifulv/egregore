@@ -65,6 +65,15 @@ func renderEntry(entry *Entry, opts RenderOptions, width int) string {
 		b.WriteString("\n")
 	}
 
+	if entry.Hitl != nil && entry.Hitl.Status == "pending" {
+		b.WriteString(textutil.WrapLine(fmt.Sprintf(
+			"  ⏸ Awaiting approval: %s (%s risk)",
+			entry.Hitl.ToolName,
+			entry.Hitl.RiskLevel,
+		), width))
+		b.WriteString("\n")
+	}
+
 	for _, turn := range entry.Turns {
 		b.WriteString(jsonfmt.FormatMessage(turn, width))
 		b.WriteString("\n")

@@ -1,3 +1,4 @@
+import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import type { PendingApproval } from "@/lib/types"
@@ -36,6 +37,22 @@ export function createApprovalColumns(): ColumnDef<PendingApproval>[] {
       accessorKey: "job_id",
       header: ({ column }) => <DataTableColumnHeader column={column} title="Job" />,
       cell: ({ row }) => <code className="text-xs">{row.original.job_id}</code>,
+    },
+    {
+      id: "work_order",
+      header: "Work order",
+      cell: ({ row }) => {
+        const correlationId = row.original.correlation_id?.trim()
+        if (!correlationId) {
+          return <span className="text-muted-foreground text-xs">—</span>
+        }
+        return (
+          <Link className="text-primary text-xs hover:underline" href={`/work-orders/${correlationId}`}>
+            Open in chat
+          </Link>
+        )
+      },
+      enableSorting: false,
     },
     {
       id: "actions",

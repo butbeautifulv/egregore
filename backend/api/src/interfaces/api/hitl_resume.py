@@ -16,13 +16,31 @@ HitlResumeError = ResumeHitlJobError
 
 
 async def resume_worker_job(job_id: str, request: JobResumeRequest) -> dict[str, Any]:
+    container = get_container()
+    store = container.get_job_store()
+    record = store.get(job_id)
+    pending_approval_id = record.pending_hitl.approval_id if record and record.pending_hitl else ""
+    correlation_id = record.correlation_id if record else ""
+
     use_case = ResumeHitlJob(
-        job_store=get_container().get_job_store(),
-        job_queue_factory=lambda persona: get_container().get_job_queue(persona=persona),
+        job_store=store,
+        job_queue_factory=lambda persona: container.get_job_queue(persona=persona),
         record_hitl_approval=record_hitl_approval,
         params_hash=params_hash,
         record_approval_bypass=metrics.record_approval_bypass,
         record_hitl_approval_blocking=record_hitl_approval_blocking,
-        audit_failclosed_mode=get_container().settings.hitl_audit_failclosed_mode,
+        audit_failclosed_mode=container.settings.hitl_audit_failclosed_mode,
     )
-    return await use_case.execute(job_id, request)
+    result = await use_case.execute(job_id, request)
+
+    from cys_core.infrastructure.engagement.hitl_egress import publish_hitl_resolved
+
+    publish_hitl_resolved(
+        container.get_engagement_egress(),
+        correlation_id=correlation_id,
+        job_id=job_id,
+        approval_id=request.approval_id or pending_approval_id,
+        decision=request.decision,
+        actor=request.actor or "operator",
+    )
+    return result

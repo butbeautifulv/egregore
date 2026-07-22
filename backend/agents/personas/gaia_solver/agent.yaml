@@ -17,6 +17,7 @@ tools:
   - delegate_research
 skills: []
 hitl_tools: {}
+hitl_auto_approve: true
 trust_level: internal
 bus_recipients:
   - critic

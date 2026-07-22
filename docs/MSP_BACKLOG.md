@@ -6620,3 +6620,37 @@ Commit `b44467f`, run `29823653514`: **success** — verified both top-level (`s
 `conclusion: success`) and per-job (`gh run view ... --json jobs`: 56 `success`, 6 `skipped`, zero
 anything else). §8.4 point 5 is complete (to the scope described in `§64.4`) and green on
 `feature/microservice-refactoring`.
+
+## 65. Operator UI: HITL in chat + domain-agnostic finding display
+
+Delivered as microphases P0–P13 on branch `engage/phase-hitl-ui-*`:
+
+- **HITL in chat timeline** — `hitl_pending` / `hitl_resolved` engagement SSE events; inline
+  `HitlApprovalBlock` in `AgentMessageBlock`; mount-time `hydrateHitlFromPending` fallback when SSE
+  is off; `/approvals` kept as secondary inbox with `correlation_id` deep-link to work orders.
+- **Backend egress** — shared `hitl_egress.py` in agent-runtime / dispatcher / worker / api;
+  `wire_hitl_pause()` publishes `hitl_pending`; resume publishes `hitl_resolved`.
+- **Error dedup** — `formatJobFailure({ error, reason })` uses structured `WorkerJobFailureReason`;
+  agent bubble no longer shows duplicate raw `empty_finding` + formatted buffer.
+- **Domain-agnostic findings** — `PROFILE_MARKERS`, `formatFindingField`, generic KV for unknown
+  pack fields; `OutcomeHero` reads `final_report` shape, not SOC-only templates.
+- **TUI parity** — `chat.State` handles `hitl_*` events + `formatJobFailure(reason)`; approvals
+  table shows `correlation_id`.
+- **Dev docs** — `POSTGRES_DB=egregore` in all `backend/*/.env.example`; `DEVELOPMENT.md` §6 HITL
+  smoke with `TOOL_HITL_MODE=enforce` on dispatcher split stack.
+
+Out of scope (still MSP tracks): full §8 core domain extraction; cross-process HITL protocol (§35).
+
+## 66. Chat HITL auto-approve (catalog-driven, UI-only)
+
+- **`hitl_auto_approve: bool`** on `agent.yaml` → `AgentCatalogEntry` → `GET /catalog/agents`.
+- Web UI: when `NEXT_PUBLIC_HITL_CHAT_AUTO_APPROVE=1` and persona is flagged, `HitlApprovalBlock`
+  auto-calls `POST /jobs/{id}/resume` with `actor: chat-auto-approve` on `hitl_pending` / hydrate.
+- Seed personas: `gaia_solver`, `consultant`. Dedupe via `claimAutoApprove(approval_id)`.
+- Not a server bypass — job still enters `AWAITING_APPROVAL`; chat-only (not `/approvals` inbox).
+
+## 67. Live chat streaming (SSE + finding snapshot)
+
+- **Root cause:** `STREAM_AGENT_OUTPUT=false` in dev `.env` — no `assistant_delta`; findings only via detail hydrate after refresh.
+- **Fix:** `publish_finding_snapshot` (ungated `assistant_snapshot` on `append_engagement_finding`); chat handles `job_started`, `outcome_ready`, `final_report`; delayed detail refresh on `job_finished`.
+- **Dev:** `STREAM_AGENT_OUTPUT` + `STREAM_AGENT_TOKEN_STREAMING` on agent-runtime; `NEXT_PUBLIC_EGRESS_SSE=1`; see `DEVELOPMENT.md` §7.

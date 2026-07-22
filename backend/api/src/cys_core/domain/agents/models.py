@@ -18,6 +18,7 @@ class AgentConfig(BaseModel):
     tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     hitl_tools: dict[str, bool] = Field(default_factory=dict)
+    hitl_auto_approve: bool = False
     trust_level: str = "internal"
     bus_recipients: list[str] = Field(default_factory=list)
     language: str = "ru"
@@ -41,6 +42,7 @@ class AgentDefinition(BaseModel):
     tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     hitl_tools: dict[str, bool] = Field(default_factory=dict)
+    hitl_auto_approve: bool = False
     trust_level: str = "internal"
     bus_recipients: list[str] = Field(default_factory=list)
     sample_input: str | None = None

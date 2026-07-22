@@ -1,6 +1,6 @@
 import { isPlainObject } from "@/lib/json-display"
 
-export const FINDING_MARKERS = new Set([
+export const PROFILE_MARKERS = new Set([
   "summary",
   "finding",
   "topic",
@@ -58,6 +58,15 @@ export const FINDING_MARKERS = new Set([
   "recommended_atomic_tests",
   "d3fend_controls",
 ])
+
+/** @deprecated Use PROFILE_MARKERS — kept for existing imports */
+export const FINDING_MARKERS = PROFILE_MARKERS
+
+export function formatFindingField(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
 
 const META_KEYS = new Set(["persona", "job_id", "agent", "event_id", "correlation_id", "tenant_id", "sandbox_id"])
 

@@ -13,12 +13,13 @@ func ApprovalCells(a api.PendingApproval) []string {
 	persona := style.Truncate(a.Persona, 12)
 	tool := style.Truncate(a.ToolName, 20)
 	risk := style.Truncate(a.RiskLevel, 8)
-	return []string{status, persona, tool, risk}
+	workOrder := style.Truncate(a.CorrelationID, 16)
+	return []string{status, persona, tool, risk, workOrder}
 }
 
 // ApprovalHeader returns column titles.
 func ApprovalHeader() []string {
-	return []string{"Status", "Persona", "Tool", "Risk"}
+	return []string{"Status", "Persona", "Tool", "Risk", "Work order"}
 }
 
 // ApprovalJobID returns trimmed job id for display.

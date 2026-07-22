@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 
-import { resumeJob } from "@/lib/api-client"
-import { formatApiError } from "@/lib/format-api-error"
+import { resumeHitlApproval, formatHitlResumeError } from "@/lib/hitl-resume"
 import type { PendingApproval } from "@/lib/types"
 import {
   AlertDialog,
@@ -54,14 +53,10 @@ export function ApprovalActions({
     setMessage(null)
     setError(null)
     try {
-      await resumeJob(approval.job_id, {
-        decision,
-        approval_id: approval.approval_id,
-        actor: "operator-ui",
-      })
+      await resumeHitlApproval(approval, decision, "operator-ui")
       setMessage(decision === "approve" ? "Approved" : "Rejected")
     } catch (exc) {
-      setError(formatApiError(exc, "Action failed"))
+      setError(formatHitlResumeError(exc, "Action failed"))
     } finally {
       setLoading(false)
     }

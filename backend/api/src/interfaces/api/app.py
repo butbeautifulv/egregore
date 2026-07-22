@@ -477,7 +477,16 @@ def create_app(ingress: EventIngress | None = None) -> FastAPI:
                     filtered.append(item)
             pending = filtered
         metrics.refresh_hitl_pending(len(pending))
-        return {"count": len(pending), "approvals": [item.model_dump() for item in pending]}
+        approvals = []
+        for item in pending:
+            payload = item.model_dump()
+            record = _job_store().get(item.job_id)
+            if record is not None:
+                payload["correlation_id"] = record.correlation_id or ""
+            else:
+                payload["correlation_id"] = ""
+            approvals.append(payload)
+        return {"count": len(approvals), "approvals": approvals}
 
     @app.post("/jobs/{job_id}/resume")
     async def resume_job(

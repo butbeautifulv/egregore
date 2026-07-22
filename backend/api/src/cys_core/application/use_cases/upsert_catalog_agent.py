@@ -41,6 +41,12 @@ class UpsertCatalogAgent:
                 if not get_use_dynamic_catalog():
                     raise
         existing = self.catalog.get_agent(name)
+        raw_hitl_auto = body.get("hitl_auto_approve")
+        hitl_auto_approve = (
+            bool(raw_hitl_auto)
+            if raw_hitl_auto is not None
+            else (existing.hitl_auto_approve if existing else False)
+        )
         entry = AgentCatalogEntry(
             name=name,
             description=body.get("description", ""),
@@ -69,6 +75,7 @@ class UpsertCatalogAgent:
                 existing.budget_max_tool_calls if existing else None,
             ),
             data_clearance=body.get("data_clearance", existing.data_clearance if existing else "internal"),
+            hitl_auto_approve=hitl_auto_approve,
         )
         if self._mutation is not None:
             saved = self._mutation.upsert_agent(entry, actor=actor)

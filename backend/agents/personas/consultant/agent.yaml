@@ -17,6 +17,7 @@ skills:
   - compliance-frameworks
   - secure-deployment
 hitl_tools: {}
+hitl_auto_approve: true
 trust_level: internal
 bus_recipients:
   - critic

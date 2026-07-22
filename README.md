@@ -78,7 +78,7 @@ cd web_ui && cp .env.local.example .env.local && bun install && bun run dev
 
 Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8080/status](http://localhost:8080/status).
 
-**Smoke (consultant advisory):** goal «Как защититься от вирусов?» → Response shows consultant JSON, critic verdict (`critic:{engagement_id}`), coordinator narrative (`coordinator:{engagement_id}`). Enable `STREAM_AGENT_OUTPUT=true` in local env. If consultant findings are summary-only, re-seed catalog: `uv run egregore catalog seed` (ensures `ConsultantFinding` schema).
+**Smoke (consultant advisory):** goal «Как защититься от вирусов?» → Response shows consultant JSON, critic verdict (`critic:{engagement_id}`), coordinator narrative (`coordinator:{engagement_id}`). Enable live chat per [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) §7 (`STREAM_AGENT_OUTPUT=true` on agent-runtime + api, `NEXT_PUBLIC_EGRESS_SSE=1`). If consultant findings are summary-only, re-seed catalog: `uv run egregore catalog seed` (ensures `ConsultantFinding` schema).
 
 **Smoke pitfalls:** use a **new** engagement after code/deploy changes (old `eng-smoke-*` rows may be pytest leftovers in Postgres). Restart `egregore serve` and `egregore worker` after env changes (avoid duplicate worker processes). Integration test [`test_shared_engagement_state`](backend/worker/tests/worker/test_shared_engagement_state.py) uses prefix `eng-test-shared-` and deletes its row — do not confuse with manual smoke.
 

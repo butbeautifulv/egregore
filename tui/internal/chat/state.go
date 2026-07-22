@@ -25,6 +25,13 @@ type Reasoning struct {
 	TaskCompleted    bool
 }
 
+type Hitl struct {
+	ApprovalID string
+	ToolName   string
+	RiskLevel  string
+	Status     string // pending, approved, rejected
+}
+
 type Entry struct {
 	JobID          string
 	Persona        string
@@ -32,6 +39,7 @@ type Entry struct {
 	Turns          []string
 	Reasoning      *Reasoning
 	Tools          []ToolCall
+	Hitl           *Hitl
 	Streaming      bool
 	AgentExpanded  bool
 	JobError       string
@@ -105,6 +113,8 @@ func EventDedupeKey(event api.EngagementStreamEvent) string {
 			preview = preview[:64]
 		}
 		return strings.Join([]string{typ, str(payload["job_id"]), str(payload["tool_name"]), str(payload["tool_call_id"]), preview, str(payload["error"])}, "|")
+	case "hitl_pending", "hitl_resolved":
+		return strings.Join([]string{typ, str(payload["job_id"]), str(payload["approval_id"]), str(payload["decision"])}, "|")
 	default:
 		verdict, _ := json.Marshal(payload["verdict"])
 		return strings.Join([]string{typ, event.Phase, str(payload["job_id"]), str(payload["persona"]), str(payload["summary"]), string(verdict)}, "|")
@@ -117,6 +127,7 @@ func ShouldRefreshOnEvent(event api.EngagementStreamEvent) bool {
 	refreshTypes := map[string]bool{
 		"assistant_done": true, "job_finished": true, "job_started": true,
 		"error": true, "control": true, "report": true,
+		"hitl_pending": true, "hitl_resolved": true,
 	}
 	if refreshTypes[typ] {
 		return true
@@ -157,6 +168,34 @@ func (s *State) ApplyEvent(event api.EngagementStreamEvent, features api.APIFeat
 	}
 
 	entry := s.Ensure(jobID, persona)
+
+	if typ == "hitl_pending" {
+		entry.Hitl = &Hitl{
+			ApprovalID: str(payload["approval_id"]),
+			ToolName:   str(payload["tool_name"]),
+			RiskLevel:  str(payload["risk_level"]),
+			Status:     "pending",
+		}
+		entry.Streaming = false
+		return true
+	}
+	if typ == "hitl_resolved" {
+		decision := str(payload["decision"])
+		if entry.Hitl == nil {
+			entry.Hitl = &Hitl{ApprovalID: str(payload["approval_id"])}
+		}
+		if decision == "approve" {
+			entry.Hitl.Status = "approved"
+		} else {
+			entry.Hitl.Status = "rejected"
+			entry.JobError = "hitl_rejected"
+			if entry.Buffer == "" {
+				entry.Buffer = formatJobFailure("hitl_rejected", "cancelled")
+			}
+		}
+		entry.Streaming = false
+		return true
+	}
 
 	if controlTypes[typ] {
 		if !shouldApplyControlEvent(typ, payload) {
@@ -211,10 +250,11 @@ func (s *State) ApplyEvent(event api.EngagementStreamEvent, features api.APIFeat
 			if errMsg == "" {
 				errMsg = "unknown"
 			}
+			reason := str(payload["reason"])
 			if payload["success"] == false {
 				entry.JobError = errMsg
 				if entry.Buffer == "" {
-					entry.Buffer = formatJobError(errMsg)
+					entry.Buffer = formatJobFailure(errMsg, reason)
 				}
 				entry.AgentExpanded = false
 			} else {
@@ -557,6 +597,45 @@ func stringList(v interface{}) []string {
 		}
 	}
 	return out
+}
+
+func formatJobFailure(err, reason string) string {
+	reasonKey := strings.ToLower(strings.TrimSpace(reason))
+	switch reasonKey {
+	case "schema_invalid":
+		if strings.HasPrefix(err, "empty_finding:") {
+			gaps := strings.ReplaceAll(err[len("empty_finding:"):], ",", ", ")
+			return "Agent finished without a valid structured result (missing: " + gaps + ")."
+		}
+		return "Agent finished without a valid structured result."
+	case "grounding_rejected":
+		if strings.HasPrefix(err, "ungrounded_finding:") {
+			detail := strings.ReplaceAll(err[len("ungrounded_finding:"):], ",", ", ")
+			return "Result failed evidence or grounding checks: " + detail
+		}
+		return "Result failed evidence or grounding checks."
+	case "llm_error":
+		if strings.HasPrefix(err, "model_refusal:") {
+			return "Model refused: " + err[len("model_refusal:"):]
+		}
+		return "Model refused or returned unusable output."
+	case "tool_error":
+		if strings.HasPrefix(err, "tools_not_executed:") {
+			return "Tools were planned but never executed. " + err[len("tools_not_executed:"):]
+		}
+		return "A tool call failed during this run."
+	case "tool_invalid_args":
+		return "A tool was called with invalid arguments."
+	case "timeout":
+		return "The agent run timed out before completing."
+	case "budget_exceeded":
+		return "The agent run exceeded its cost or token budget."
+	case "sandbox_error":
+		return "The execution sandbox failed."
+	case "cancelled":
+		return "The agent run was cancelled."
+	}
+	return formatJobError(err)
 }
 
 func formatJobError(err string) string {
