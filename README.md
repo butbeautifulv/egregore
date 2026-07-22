@@ -94,6 +94,24 @@ If staged pipeline jobs stay `pending` with a long Redis backlog, flush the work
 
 Docker app profile (no host Node/Python): `make dev-docker` (requires `.env`).
 
+### k3s offline (dispatcher split)
+
+Production P30 path — **not** the local worker monolith:
+
+```bash
+# From cxado meta-repo root (after commit projects/egregore)
+TAG="$(git -C projects/egregore rev-parse --short HEAD)"
+./scripts/k8s/cxado-nexus-deploy.sh --build --tag "${TAG}"
+```
+
+UI: `https://192.168.0.133:30300` · SSOT: [docs/deploy/K3S.md](docs/deploy/K3S.md)
+
+| Path | When |
+|------|------|
+| Local `make dev` / worker monolith | Laptop dev, legacy rollback |
+| `./scripts/dev-dispatcher-split.sh` | Local dispatcher + subprocess agent-runtime |
+| `cxado-nexus-deploy.sh` | Offline k3s (`EXECUTION_BACKEND=k8s`, HITL enforce) |
+
 ### CLI smoke test
 
 ```bash

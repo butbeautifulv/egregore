@@ -218,6 +218,18 @@ StartWorkOrder → StartEngagement → EventRouter → JobQueue
 
 **Visual architecture site** (for designers/architects): [docs/architecture-site/](../../docs/architecture-site/) in meta-repo · k3s offline `https://<host>:30080`
 
+## k3s offline verify (P30)
+
+From cxado meta-repo after deploy:
+
+```bash
+./scripts/k8s/verify-egregore-rollout.sh
+./scripts/k8s/smoke-test-egregore-obs.sh
+curl -sk https://192.168.0.133:30300/api/egregore/health | jq '.features.stream_agent_output'
+```
+
+Topology SSOT: [docs/deploy/K3S.md](docs/deploy/K3S.md) · Kaniko loop: [nexus-egregore-loop.md](../../../docs/deploy/nexus-egregore-loop.md)
+
 ## Мастер-план (cloud / Cursor agents)
 
 Исполнение production roadmap — по [docs/MASTER_PLAN_SECURE_PLATFORM.md](docs/MASTER_PLAN_SECURE_PLATFORM.md).
