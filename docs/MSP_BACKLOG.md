@@ -6654,3 +6654,14 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
 - **Root cause:** `STREAM_AGENT_OUTPUT=false` in dev `.env` — no `assistant_delta`; findings only via detail hydrate after refresh.
 - **Fix:** `publish_finding_snapshot` (ungated `assistant_snapshot` on `append_engagement_finding`); chat handles `job_started`, `outcome_ready`, `final_report`; delayed detail refresh on `job_finished`.
 - **Dev:** `STREAM_AGENT_OUTPUT` + `STREAM_AGENT_TOKEN_STREAMING` on agent-runtime; `NEXT_PUBLIC_EGRESS_SSE=1`; see `DEVELOPMENT.md` §7.
+- **K3s parity:** dispatcher split + agent-runtime Batch Jobs — see `docs/deploy/K3S.md` §68 backlog entry.
+
+## 68. K3s dispatcher cutover
+
+- **Topology:** `egregore-api` + `egregore-dispatcher` + k8s `egregore-agent-runtime` Jobs + `tool-gateway` + `egregore-ui`; `egregore-worker` scaled to 0.
+- **Images:** split corp Dockerfiles (`deploy/Dockerfile.corp.{api,dispatcher,agent-runtime,tool-gateway}`) + Kaniko jobs 22–25.
+- **Helm:** dispatcher Deployment + RBAC; `EXECUTION_BACKEND=k8s`, `TOOL_HITL_MODE=enforce`, `K8S_WORKER_IMAGE` from `agentRuntime.image`.
+- **K8s Jobs:** `envFrom` ConfigMap/Secret on agent-runtime pods (Postgres/Redis/streaming).
+- **Obs:** Prometheus job `egregore-dispatcher`; verify/e2e/smoke scripts dispatcher-aware.
+- **SSOT:** `docs/deploy/K3S.md`, meta `docs/deploy/nexus-egregore-loop.md`.
+- Cross-refs: §65 HITL enforce on cluster; §67 streaming via agent-runtime job env.

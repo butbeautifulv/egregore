@@ -1,7 +1,8 @@
 imagePullSecrets: []
 
+# Legacy monolith alias — maps to api.image for migrate-job backward compat.
 image:
-  repository: cxado/egregore
+  repository: cxado/egregore-api
   tag: local
   pullPolicy: IfNotPresent
 
@@ -13,9 +14,29 @@ ui:
   replicas: 1
 
 api:
+  image:
+    repository: cxado/egregore-api
+    tag: local
+    pullPolicy: IfNotPresent
   replicas: 1
   port: 8080
   uvicornWorkers: 1
+
+dispatcher:
+  enabled: false
+  image:
+    repository: cxado/egregore-dispatcher
+    tag: local
+    pullPolicy: IfNotPresent
+  replicas: 2
+  idleTimeout: 0
+  metricsPort: 8081
+
+agentRuntime:
+  image:
+    repository: cxado/egregore-agent-runtime
+    tag: local
+    pullPolicy: IfNotPresent
 
 worker:
   replicas: 2
@@ -42,6 +63,9 @@ toolGateway:
 
 rollout:
   api:
+    maxSurge: 1
+    maxUnavailable: 0
+  dispatcher:
     maxSurge: 1
     maxUnavailable: 0
   worker:
@@ -80,6 +104,9 @@ env:
   streamAgentTools: "true"
   streamAgentTokenStreaming: "false"
   controlMode: ""
+  executionBackend: ""
+  toolHitlMode: ""
+  k8sWorkerImage: ""
 
 obs:
   traceBackend: "composite"
@@ -148,6 +175,13 @@ resources:
       cpu: 500m
       memory: 1Gi
   worker:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1536Mi
+  dispatcher:
     requests:
       cpu: 200m
       memory: 512Mi

@@ -212,6 +212,14 @@ Agent answers appear during the run (SSE `assistant_delta`) and on completion wi
 | `STREAM_AGENT_TOOLS=true` | both | Tool cards in chat (health exposes only when output+tools) |
 | `EGRESS_BATCH_SECONDS=0` | `agent-runtime` | Optional per-token publish (default batches 50ms) |
 
+**K3s (offline P30):** same flags via Helm `egregore-env` ConfigMap; agent-runtime runs in Batch Jobs with `envFrom`. See [`docs/deploy/K3S.md`](deploy/K3S.md).
+
+| Env | K3s source | Notes |
+|-----|------------|-------|
+| `STREAM_AGENT_*` | `values-egregore-offline.yaml` → ConfigMap | Inherited by Job pods |
+| `TOOL_HITL_MODE=enforce` | Helm `env.toolHitlMode` | No `NEXT_PUBLIC_HITL_CHAT_AUTO_APPROVE` on cluster UI |
+| `EXECUTION_BACKEND=k8s` | Helm `env.executionBackend` | Dispatcher creates Jobs |
+
 ```bash
 # Infra
 docker compose -f deploy/docker-compose.yml up -d postgres redis

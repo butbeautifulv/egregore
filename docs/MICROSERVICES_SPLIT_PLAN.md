@@ -6,22 +6,22 @@
 > no narrative. When an item below is done, move its summary to `MSP_BACKLOG.md` and delete it from
 > here.
 
-## Current state (as of 2026-07-20)
+## Current state (as of 2026-07-22)
 
 Six independent backend packages, no shared package between any of them (deliberate duplication,
 `MSP_BACKLOG.md` §18):
 
 | Package | Status |
 |---|---|
-| `backend/api/` | Deployed, CI-complete |
-| `backend/worker/` | **Deployed, unchanged** — original monolith, not yet retired |
+| `backend/api/` | Deployed (k3s + local), CI-complete |
+| `backend/worker/` | **Retired on k3s** (`replicas: 0`); kept for rollback |
 | `backend/tool-gateway/` | Deployed, CI-complete |
 | `backend/model-gateway/` | Deployed image, wired into `agent-runtime` (selectable, not default) |
-| `backend/agent-runtime/` | CI-green, process boundary proven live (local sandbox), not deployed |
-| `backend/dispatcher/` | CI-green, process boundary proven live (local sandbox), not deployed |
+| `backend/agent-runtime/` | Deployed as k3s Batch Job executor (`MSP_BACKLOG.md` §68) |
+| `backend/dispatcher/` | Deployed on k3s (`EXECUTION_BACKEND=k8s`, `MSP_BACKLOG.md` §68) |
 
-`backend/worker/` stays deployed until `dispatcher`+`agent-runtime` are proven out end-to-end and a
-deliberate cutover retires it.
+`backend/worker/` monolith is scaled to 0 on offline k3s; dispatcher + agent-runtime Jobs are the
+production path. Local dev still supports worker monolith and `dev-dispatcher-split.sh`.
 
 ---
 
@@ -32,10 +32,10 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
 `dispatcher` — "switch core to any agent on the market, inside a safe system."
 
 1. **Deploy bootstrap for `docker`/`k8s` `ExecutionBackend` modes.** `subprocess`/same-host mode is
-   proven (`MSP_BACKLOG.md` §56). `docker`/`k8s` modes still have no `docker-compose.dev.yml` entry
-   or Helm/K8s manifest — `docker` backend needs the dispatcher container to hold the `docker` CLI
-   and a bind-mounted host `/var/run/docker.sock` (privilege-escalation-shaped, needs its own
-   review). Deliberately deferred — not yet decided. `MSP_BACKLOG.md` §52.4, §52.5.
+   proven (`MSP_BACKLOG.md` §56). **`k8s` mode deployed on offline P30** (`MSP_BACKLOG.md` §68):
+   dispatcher Deployment + agent-runtime Batch Jobs + Helm/RBAC/Kaniko split images. `docker` backend
+   still needs dispatcher container `docker` CLI + `/var/run/docker.sock` — deliberately deferred.
+   `MSP_BACKLOG.md` §52.4, §52.5.
 2. **HITL pause/resume redesign for the cross-process case.** Design (`§35`, refuse-then-retry
    with an approval token) is built both sides for the LangGraph path and **proven live end to end**
    (`§61`): `tool-gateway` classifies risk and mints/verifies approval tokens (`§58`);

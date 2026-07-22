@@ -1,0 +1,36 @@
+# Corp / offline build — Nexus base + PyPI, no BuildKit cache mounts (Kaniko-compatible).
+# egregore-tool-gateway image. Build from egregore repo root: docker build -f deploy/Dockerfile.corp.tool-gateway .
+ARG NEXUS_REGISTRY=nexus.svo.aero:8345
+ARG NEXUS_PYPI_HOST=nexus.svo.aero:8443
+ARG NEXUS_PYPI_REPO=srsips-pypi
+ARG NEXUS_USER
+ARG NEXUS_PASSWORD
+
+FROM ${NEXUS_REGISTRY}/library/python:3.13-slim
+WORKDIR /app
+RUN pip install --no-cache-dir uv
+
+ENV UV_INDEX_URL=https://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_PYPI_HOST}/repository/${NEXUS_PYPI_REPO}/simple
+
+COPY backend/tool-gateway/pyproject.toml backend/tool-gateway/uv.lock backend/tool-gateway/README.md ./tool-gateway/
+WORKDIR /app/tool-gateway
+RUN uv sync --frozen --no-dev --no-install-project
+
+COPY backend/tool-gateway/src ./src
+COPY backend/agents /app/agents
+RUN uv sync --frozen --no-dev
+
+ENV PYTHONUNBUFFERED=1
+ENV STAGE=prod
+ENV USE_MEMORY_FALLBACK=false
+ENV AGENTS_ROOT=../agents
+
+RUN groupadd -g 10001 app && useradd -u 10001 -g app -m app && chown -R app:app /app
+USER 10001
+
+EXPOSE 8092
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/health', timeout=3)" || exit 1
+
+CMD ["uv", "run", "egregore", "tool-gateway", "--host", "0.0.0.0", "--port", "8092"]

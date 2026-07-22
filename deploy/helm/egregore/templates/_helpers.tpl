@@ -17,7 +17,19 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{- define "egregore.image" -}}
-{{- printf "%s:%s" .Values.image.repository .Values.image.tag }}
+{{- printf "%s:%s" .Values.api.image.repository .Values.api.image.tag }}
+{{- end }}
+
+{{- define "egregore.apiImage" -}}
+{{- printf "%s:%s" .Values.api.image.repository .Values.api.image.tag }}
+{{- end }}
+
+{{- define "egregore.dispatcherImage" -}}
+{{- printf "%s:%s" .Values.dispatcher.image.repository .Values.dispatcher.image.tag }}
+{{- end }}
+
+{{- define "egregore.agentRuntimeImage" -}}
+{{- printf "%s:%s" .Values.agentRuntime.image.repository .Values.agentRuntime.image.tag }}
 {{- end }}
 
 {{- define "egregore.uiImage" -}}

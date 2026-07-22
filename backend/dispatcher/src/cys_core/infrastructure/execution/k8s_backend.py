@@ -53,6 +53,8 @@ class K8sExecutionBackend:
         poll_interval_s: float = 1.0,
         tool_gateway_url: str = "",
         runtime_class: str | None = None,
+        config_map_name: str = "egregore-env",
+        secret_name: str = "egregore-secrets",
     ) -> None:
         """``job_timeout_resolver(job) -> float`` resolves the per-persona/
         per-phase job timeout (Settings.resolve_worker_job_timeout) — injected
@@ -74,6 +76,8 @@ class K8sExecutionBackend:
         self._poll_interval_s = poll_interval_s
         self._tool_gateway_url = tool_gateway_url
         self._runtime_class = runtime_class
+        self._config_map_name = config_map_name
+        self._secret_name = secret_name
 
     def _load_batch_api(self) -> Any:
         try:
@@ -121,23 +125,27 @@ class K8sExecutionBackend:
             "metadata": {
                 "name": job_name,
                 "namespace": self.namespace,
-                "labels": {"app": "egregore-worker", "persona": persona, "run-id": run_id[:32]},
+                "labels": {
+                    "app": "egregore-agent-runtime",
+                    "persona": persona,
+                    "run-id": run_id[:32],
+                },
             },
             "spec": {
                 "ttlSecondsAfterFinished": 300,
                 "activeDeadlineSeconds": int(job_timeout) + 30,
                 "backoffLimit": 0,
                 "template": {
-                    "metadata": {"labels": {"app": "egregore-worker", "persona": persona}},
+                    "metadata": {
+                        "labels": {"app": "egregore-agent-runtime", "persona": persona},
+                    },
                     "spec": {
                         **pod_spec,
                         "containers": [
                             {
-                                "name": "worker",
+                                "name": "agent-runtime",
                                 "image": self._image,
-                                # "uv run egregore ..." not bare "egregore" — the worker
-                                # image doesn't export the venv's bin/ onto PATH (see
-                                # deploy/Dockerfile's own CMD), only `uv run` resolves it.
+                                "workingDir": "/app/agent-runtime",
                                 "args": [
                                     "uv",
                                     "run",
@@ -145,6 +153,10 @@ class K8sExecutionBackend:
                                     "run-sandboxed-job",
                                     "--job-json",
                                     "env:JOB_PAYLOAD_JSON",
+                                ],
+                                "envFrom": [
+                                    {"configMapRef": {"name": self._config_map_name}},
+                                    {"secretRef": {"name": self._secret_name}},
                                 ],
                                 "env": env,
                                 "securityContext": {

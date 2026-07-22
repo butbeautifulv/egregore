@@ -59,10 +59,11 @@ spec:
       {{- end }}
       containers:
         - name: api
-          image: {{ include "egregore.image" . | quote }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ include "egregore.apiImage" . | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           {{- include "egregore.containerSecurityContext" . | nindent 10 }}
-          command: ["/app/.venv/bin/egregore", "serve", "--host", "0.0.0.0", "--port", "{{ .Values.api.port }}", "--workers", "{{ .Values.api.uvicornWorkers }}"]
+          workingDir: /app/api
+          command: ["uv", "run", "egregore", "serve", "--host", "0.0.0.0", "--port", "{{ .Values.api.port }}", "--workers", "{{ .Values.api.uvicornWorkers }}"]
           ports:
             - containerPort: {{ .Values.api.port }}
           envFrom:

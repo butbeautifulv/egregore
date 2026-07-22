@@ -1,59 +1,41 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: worker-{{ persona }}-{{ run_id }}
+  name: agent-runtime-{{ persona }}-{{ run_id }}
   namespace: egregore
   labels:
-    app: egregore-worker
+    app: egregore-agent-runtime
     persona: "{{ persona }}"
 spec:
   ttlSecondsAfterFinished: 300
-  # activeDeadlineSeconds is set per-job by K8sExecutionBackend (job_timeout + margin),
-  # not hardcoded here — this template is illustrative of the shape K8sExecutionBackend
-  # generates programmatically (cys_core/infrastructure/execution/k8s_backend.py), not
-  # rendered directly by anything today.
   backoffLimit: 0
   template:
     metadata:
       labels:
-        app: egregore-worker
+        app: egregore-agent-runtime
         persona: "{{ persona }}"
     spec:
-      # Optional (Phase 4, e.g. "gvisor") — omitted entirely for runc, today's default.
-      # Templated per-deploy (dev/staging/prod can differ), not hardcoded; set from
-      # K8S_RUNTIME_CLASS on the Dispatcher (K8sExecutionBackend), same env var this
-      # illustrative template's other {{ }} placeholders stand in for. Requires the
-      # containerd shim + RuntimeClass CR already installed on the cluster (Phase 4.1,
-      # ops, not this repo).
       runtimeClassName: "{{ runtime_class }}"
       restartPolicy: Never
       containers:
-        - name: worker
-          image: egregore-worker:latest
-          # Runs *this specific* job — not a queue-draining daemon (Phase 3.0 fix:
-          # the previous `worker.daemon --persona X --max-jobs 1` picked up whatever
-          # was next in the shared queue, not necessarily this run_id). "uv run
-          # egregore ..." not bare "egregore" — the image doesn't export the venv's
-          # bin/ onto PATH, only `uv run` resolves it (see deploy/Dockerfile.worker CMD).
+        - name: agent-runtime
+          image: egregore-agent-runtime:latest
+          workingDir: /app/agent-runtime
           args: ["uv", "run", "egregore", "run-sandboxed-job", "--job-json", "env:JOB_PAYLOAD_JSON"]
+          envFrom:
+            - configMapRef:
+                name: egregore-env
+            - secretRef:
+                name: egregore-secrets
           env:
             - name: RUN_ID
               value: "{{ run_id }}"
-            # Full SubprocessJobEnvelope (job/budgeted/session_id) as JSON — env var
-            # rather than stdin, since K8s pods can't be piped stdin after creation
-            # (Discovery E, docs/MICROSERVICES_SPLIT_PHASES_DETAIL.md).
             - name: JOB_PAYLOAD_JSON
               value: "{{ job_payload_json }}"
-            # RunWorkerJob.execute() running in this pod still calls
-            # K8sSandboxConnector.create() for token minting — this tells it to just
-            # mint the token instead of creating a second, parasitic Job for the same
-            # run_id (Discovery F).
             - name: K8S_SANDBOX_CREDENTIALS_ONLY
               value: "true"
             - name: USE_TOOL_GATEWAY
               value: "true"
-            # 8092, not 8090 — 8090 is Veil Graph API, a different service.
-            # See docs/MSP_BACKLOG.md §21.4/§21.6.
             - name: TOOL_GATEWAY_URL
               value: "http://tool-gateway:8092"
           securityContext:

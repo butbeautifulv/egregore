@@ -41,15 +41,22 @@ if [[ -n "${SSH_HOST}" ]] && [[ "${VEIL_MCP_URL}" == http://localhost* ]]; then
 fi
 
 if [[ -n "${SSH_HOST}" ]]; then
-  if kubectl_cmd -n "${NS_APP}" get deploy egregore-worker >/dev/null 2>&1; then
-    if kubectl_cmd -n "${NS_APP}" exec -i deploy/egregore-worker -- /app/.venv/bin/python - "${VEIL_MCP_URL}" \
+  exec_target="egregore-api"
+  if kubectl_cmd -n "${NS_APP}" get deploy egregore-dispatcher >/dev/null 2>&1; then
+    disp_replicas="$(kubectl_cmd -n "${NS_APP}" get deploy egregore-dispatcher -o jsonpath='{.spec.replicas}' 2>/dev/null || echo 0)"
+    if [[ "${disp_replicas}" != "0" ]]; then
+      exec_target="egregore-dispatcher"
+    fi
+  fi
+  if kubectl_cmd -n "${NS_APP}" get deploy "${exec_target}" >/dev/null 2>&1; then
+    if kubectl_cmd -n "${NS_APP}" exec -i "deploy/${exec_target}" -- sh -c 'uv run python -' "${VEIL_MCP_URL}" \
       < "${PY_SCRIPT}" >>"${LOG_FILE}" 2>&1; then
-      pass "veil-mcp chain via egregore-worker"
+      pass "veil-mcp chain via ${exec_target}"
     else
-      bad "veil-mcp chain via egregore-worker (see ${LOG_FILE})"
+      bad "veil-mcp chain via ${exec_target} (see ${LOG_FILE})"
     fi
   else
-    bad "egregore-worker deploy not found for k3s smoke"
+    bad "${exec_target} deploy not found for k3s smoke"
   fi
 else
   PYTHON="${ROOT}/projects/egregore/.venv/bin/python"

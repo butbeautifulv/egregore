@@ -1,41 +1,65 @@
+{{- if .Values.dispatcher.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: egregore-dispatcher
+  labels:
+    app: egregore-dispatcher
+    {{- include "egregore.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: egregore-dispatcher
+  ports:
+    - name: metrics
+      port: {{ .Values.dispatcher.metricsPort | default 8081 }}
+      targetPort: metrics
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: egregore-worker
+  name: egregore-dispatcher
   labels:
-    app: egregore-worker
+    app: egregore-dispatcher
     {{- include "egregore.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.worker.replicas }}
+  replicas: {{ .Values.dispatcher.replicas }}
   revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: {{ .Values.rollout.worker.maxSurge }}
-      maxUnavailable: {{ .Values.rollout.worker.maxUnavailable }}
+      maxSurge: {{ .Values.rollout.dispatcher.maxSurge }}
+      maxUnavailable: {{ .Values.rollout.dispatcher.maxUnavailable }}
   selector:
     matchLabels:
-      app: egregore-worker
+      app: egregore-dispatcher
   template:
     metadata:
       labels:
-        app: egregore-worker
+        app: egregore-dispatcher
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: {{ .Values.worker.metricsPort | default 8081 | quote }}
+        prometheus.io/port: {{ .Values.dispatcher.metricsPort | default 8081 | quote }}
         prometheus.io/path: "/metrics"
     spec:
+      serviceAccountName: egregore-dispatcher
+      automountServiceAccountToken: true
       enableServiceLinks: false
-      {{- include "egregore.podSecurityContext" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.worker.nodeSelector }}
+      {{- with .Values.dispatcher.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.worker.tolerations }}
+      {{- with .Values.dispatcher.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -46,27 +70,27 @@ spec:
           whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
           labelSelector:
             matchLabels:
-              app: egregore-worker
+              app: egregore-dispatcher
       {{- end }}
       containers:
-        - name: worker
-          image: {{ include "egregore.agentRuntimeImage" . | quote }}
-          imagePullPolicy: {{ .Values.agentRuntime.image.pullPolicy }}
+        - name: dispatcher
+          image: {{ include "egregore.dispatcherImage" . | quote }}
+          imagePullPolicy: {{ .Values.dispatcher.image.pullPolicy }}
           {{- include "egregore.containerSecurityContext" . | nindent 10 }}
-          workingDir: /app/agent-runtime
+          workingDir: /app/dispatcher
           command:
             - uv
             - run
-            - egregore
+            - egregore-dispatcher
             - worker
             - --daemon
             - --idle-timeout
-            - {{ .Values.worker.idleTimeout | quote }}
+            - {{ .Values.dispatcher.idleTimeout | quote }}
             - --metrics-port
-            - {{ .Values.worker.metricsPort | default 8081 | quote }}
+            - {{ .Values.dispatcher.metricsPort | default 8081 | quote }}
           ports:
             - name: metrics
-              containerPort: {{ .Values.worker.metricsPort | default 8081 }}
+              containerPort: {{ .Values.dispatcher.metricsPort | default 8081 }}
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -77,10 +101,10 @@ spec:
             - name: PROMETHEUS_MULTIPROC_DIR
               value: /tmp/prom-multiproc
             - name: EGREGORE_METRICS_PORT
-              value: {{ .Values.worker.metricsPort | default 8081 | quote }}
+              value: {{ .Values.dispatcher.metricsPort | default 8081 | quote }}
             - name: OTEL_SERVICE_NAME
-              value: egregore-worker
-          {{- with .Values.resources.worker }}
+              value: egregore-dispatcher
+          {{- with .Values.resources.dispatcher }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -112,3 +136,4 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+{{- end }}

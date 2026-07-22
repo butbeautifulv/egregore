@@ -75,6 +75,17 @@ data:
   {{- if .Values.env.controlMode }}
   CONTROL_MODE: {{ .Values.env.controlMode | quote }}
   {{- end }}
+  {{- if .Values.env.executionBackend }}
+  EXECUTION_BACKEND: {{ .Values.env.executionBackend | quote }}
+  {{- end }}
+  {{- if .Values.env.toolHitlMode }}
+  TOOL_HITL_MODE: {{ .Values.env.toolHitlMode | quote }}
+  {{- end }}
+  {{- if .Values.env.k8sWorkerImage }}
+  K8S_WORKER_IMAGE: {{ .Values.env.k8sWorkerImage | quote }}
+  {{- else if .Values.dispatcher.enabled }}
+  K8S_WORKER_IMAGE: {{ include "egregore.agentRuntimeImage" . | quote }}
+  {{- end }}
   {{- if .Values.env.useKafka }}
   USE_KAFKA: {{ .Values.env.useKafka | quote }}
   {{- end }}

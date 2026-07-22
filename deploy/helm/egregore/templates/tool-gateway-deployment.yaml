@@ -51,9 +51,10 @@ spec:
       containers:
         - name: tool-gateway
           image: {{ include "egregore.toolGatewayImage" . | quote }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.toolGateway.image.pullPolicy }}
           {{- include "egregore.containerSecurityContext" . | nindent 10 }}
-          command: ["egregore", "tool-gateway", "--host", "0.0.0.0", "--port", "{{ .Values.toolGateway.port }}"]
+          workingDir: /app/tool-gateway
+          command: ["uv", "run", "egregore", "tool-gateway", "--host", "0.0.0.0", "--port", "{{ .Values.toolGateway.port }}"]
           ports:
             - containerPort: {{ .Values.toolGateway.port }}
           envFrom:

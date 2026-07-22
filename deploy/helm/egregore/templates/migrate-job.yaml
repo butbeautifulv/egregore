@@ -17,10 +17,11 @@ spec:
       {{- end }}
       containers:
         - name: migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ include "egregore.apiImage" . | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           {{- include "egregore.containerSecurityContext" . | nindent 10 }}
-          command: ["/app/.venv/bin/egregore", "migrate"]
+          workingDir: /app/api
+          command: ["uv", "run", "egregore", "migrate"]
           envFrom:
             - configMapRef:
                 name: {{ include "egregore.fullname" . }}-env
