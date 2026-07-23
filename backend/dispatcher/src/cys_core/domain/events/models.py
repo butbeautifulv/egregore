@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+
 # Plain str, not a closed Literal (MSP_BACKLOG.md §8.4 point 1) — the set of valid
 # event types is profile-pack-specific (cybersec-soc's "siem.alert"/"edr.alert"/...
 # vs. a hypothetical other pack's own vocabulary), not something cys_core/domain
@@ -29,6 +31,7 @@ class SecurityEvent(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     tenant_id: str = "default"
     correlation_id: str = ""
+    profile_id: str = DEFAULT_PROFILE_ID
 
 
 class RoutingRule(BaseModel):

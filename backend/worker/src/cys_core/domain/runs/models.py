@@ -56,6 +56,7 @@ class RunContext(BaseModel):
             context_id=context_id,
             kind=ContextKind.EVENT,
             tenant_id=event.tenant_id,
+            profile_id=event.profile_id,
         )
 
     @classmethod
@@ -69,6 +70,7 @@ class RunContext(BaseModel):
             parent_context_id=parent_id if parent_id and parent_id != job.job_id else None,
             parent_kind=ContextKind.EVENT if parent_id else None,
             spawn_depth=int(job.payload.get("spawn_depth", 0)),
+            profile_id=job.profile_id,
         )
 
     @classmethod
