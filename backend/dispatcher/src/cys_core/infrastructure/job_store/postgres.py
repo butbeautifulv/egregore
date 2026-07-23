@@ -177,7 +177,7 @@ class PostgresJobStore:
             status=WorkerJobStatus.PENDING,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
-           event_id=event_id,
+            event_id=event_id,
             profile_id=profile_id,
         )
 
