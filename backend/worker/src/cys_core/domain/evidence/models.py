@@ -47,7 +47,7 @@ class DataGap(BaseModel):
 
 class EvidenceManifest(BaseModel):
     telemetry_level: TelemetryLevel = "metadata_only"
-    enrichment_sources: list[str] = Field(default_factory=lambda: ["siem"])
+    enrichment_sources: list[str] = Field(default_factory=list)
     required_external_sources: list[str] = Field(default_factory=list)
     observations: list[Observation] = Field(default_factory=list)
     field_availability: list[FieldAvailability] = Field(default_factory=list)

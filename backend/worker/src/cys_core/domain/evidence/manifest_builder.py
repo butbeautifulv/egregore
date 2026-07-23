@@ -477,7 +477,7 @@ def merge_manifests(*manifests: EvidenceManifest) -> EvidenceManifest:
 
     return EvidenceManifest(
         telemetry_level=telemetry_level,  # type: ignore[arg-type]
-        enrichment_sources=sorted(enrichment) or ["siem"],
+        enrichment_sources=sorted(enrichment),
         required_external_sources=sorted(required),
         observations=list(obs.values()),
         field_availability=list(availability.values()),
