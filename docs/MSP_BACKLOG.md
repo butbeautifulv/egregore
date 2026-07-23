@@ -7249,12 +7249,15 @@ a dict that reaches `MemoryEntryValidator.validate()` (confirmed by grep to be t
   `MemoryEntryValidator`.
 - **`egregore-pysandbox-{hex12}` (`docker_sandbox.py` container name)** — **not at risk**: passed to
   the Docker CLI/API as a container name, never persisted as investigation content.
-- **`ephemeral_trajectory_id()` (`traj-`)** — left as genuinely unresolved in §78 (no confirmed
-  caller found near memory-write content construction, but `new_trajectory`'s own downstream use
-  wasn't fully traced). Still the one honestly-open item, and it's the lowest-priority of the
-  original list (the name itself signals "not meant to persist").
+- **`ephemeral_trajectory_id()` (`traj-`)** — closes the last open item from §78. Traced
+  `new_trajectory()` (`kernel_mappers.py:15`, the function `agent_run_kernel.py` actually calls):
+  it builds `trajectory_id=f"traj-{request.run_id}"` directly from `request.run_id`, **not** via
+  `ephemeral_trajectory_id()` at all. Grepped `ephemeral_trajectory_id` across every package
+  (api/worker/dispatcher/agent-runtime/tool-gateway) — it has **zero callers anywhere**, only its
+  own definition. Dead code, same shape as `mrec-`'s `MemoryRecord`: not merely safe, not reachable
+  at all.
 
-**Final tally**: of §48.4's ~30 sites, one was a real bug reachable today (`follow_up_id`, fixed in
+**Final tally** (every site now traced, none left open): of §48.4's ~30 sites, one was a real bug reachable today (`follow_up_id`, fixed in
 §48) and every other site checked is safe — either by a different transport entirely (Kafka bus,
 `EngagementEgressPort` SSE, RAG vector store, Docker container naming), by being used as a scope/
 namespace key rather than a content field, or (for `mrec-`) by being dead code. One site
