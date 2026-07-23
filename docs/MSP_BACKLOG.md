@@ -7062,3 +7062,61 @@ calls; `enforce` returns a failed gateway response and fails closed if Redis can
 limiter stays in bootstrap and is injected as an async application callback, preserving the
 model-gateway domain/application boundaries. `uv lock`, Ruff, and ty passed locally; Release Gate
 was dispatched and is pending. Job-level budget accounting remains a separate open item.
+
+## 77. Consultant two-phase LangGraph — uncommitted feature found and reconciled, not yet landed (2026-07-23)
+
+`§73`'s handoff already flagged "the `consultant_graph`/`react_agent`/`planner_strategy` two-phase-
+graph feature across worker/dispatcher/agent-runtime" as part of the user's uncommitted pile, but
+neither this file nor `MICROSERVICES_SPLIT_PLAN.md` ever described *what* it is — this entry closes
+that gap. It has its own ADR: `docs/adr/consultant-two-phase-graph.md` (Status: Accepted,
+2026-07-22).
+
+**What it is**: fixes `GRAPH_RECURSION_LIMIT` failures on consultant advisory jobs. A single ReAct
+agent combining tools + `response_format=ConsultantFinding` kept requesting tools instead of
+emitting JSON once the tool ladder blocked further calls. New design (rejected alternatives —
+second emit-only `arun` phase, bumping `recursion_limit` to 50 — recorded in the ADR):
+- `cys_core/runtime/consultant_graph.py` (agent-runtime + worker, new file): explicit two-node
+  LangGraph — `research` (tools on, no `response_format`) → `synthesize` (`tools=[]`,
+  `response_format=ConsultantFinding`), conditional edge on `consultant_ladder_complete(job_id)` or
+  an outer step cap.
+- `cys_core/application/planning/planner_strategy.py` (all three packages, new file, byte-identical
+  across copies — verified): `PlannerContext`/`PlannerStrategy` protocol,
+  `DeterministicAdvisoryPlannerStrategy` (advisory goal + no incident id + consultant available →
+  consultant-only plan, no planner LLM call), `PlannerRouter` wrapping it with LLM-strategy
+  fallback. Wired into dispatcher's `catalog_planner_strategy.py:324` as
+  `PlannerRouter().route(context, _LlmPlanner(self))` — confirmed correct; dispatcher has no
+  `cys_core/runtime/` directory at all (it plans, doesn't execute the graph), so it correctly only
+  carries `planner_strategy.py` + `worker_profile_hooks.py`, not `consultant_graph.py`/
+  `react_agent.py`. Not a gap.
+- `bootstrap/worker_profile_hooks.py` (all three packages, new file): `retry_nudge()` — profile-
+  scoped retry prompts (grounding-gap nudge, tool-retry nudge, per-persona finding-emission nudges).
+- `failure_reason.py`: `recursion_limit_exhausted` now maps to `LLM_ERROR` instead of `TIMEOUT`.
+- Feature flag `CONSULTANT_TWO_PHASE_GRAPH` (default `false`) in all three packages' `settings.py`
+  + `.env.example` — off by default, consistent with this plan's `off|shadow|enforce`-style rollout
+  convention (`MICROSERVICES_SPLIT_PLAN.md` "Working conventions"). soc/intel/hunter personas are
+  unchanged (still single-phase ReAct).
+
+**Reconciliation done this session** (code itself untouched otherwise):
+- `worker_profile_hooks.py` had 4 `E501` lint errors (one 176-char signature, three long f-string-
+  style prompt lines) — identical in all three package copies, meaning they were already byte-for-
+  byte synced before this session touched them. Rewrapped the signature across multiple lines and
+  extracted the three long message strings into a local `note` variable; behavior unchanged. Fixed
+  identically in agent-runtime, worker, and dispatcher — `ruff check` now clean repo-wide in all
+  three packages (`uv run ruff check .`).
+- `ty check` scoped to just `consultant_graph.py`/`planner_strategy.py`/`worker_profile_hooks.py`:
+  zero diagnostics attributable to these files in any package (the ~1700–1800 diagnostics from an
+  unscoped `ty check .` are pre-existing repo-wide baseline noise, unrelated to this feature).
+- `pytest --collect-only` for the new/touched test files (`tests/runtime/test_consultant_graph.py`,
+  `tests/runtime/test_agent_streaming.py`, `tests/worker/test_consultant_tool_ladder.py`,
+  `tests/application/test_catalog_planner_strategy.py`, dispatcher's
+  `tests/application/test_run_engagement_planner.py`) collects cleanly (18 tests agent-runtime, 12
+  worker, 3 dispatcher) — imports resolve, nothing broken at collection time.
+
+**Status: still not committed.** Per this plan's working conventions, real test bodies were not run
+locally (`tests/runtime/test_consultant_graph.py` etc. need a live/mocked LLM run, not just
+collection). The ADR's own suggested enablement step — flip `CONSULTANT_TWO_PHASE_GRAPH=true` in dev
+— has not been done and shouldn't be until that suite is actually green, which needs CI, not a local
+run. This feature's files are **only part of** the large uncommitted pile in the working tree: the
+pile also contains a separate, unrelated `tool_call_id_from_mapping` middleware refactor (`§73`) and
+a large batch of pre-existing `web_ui` SSE work — neither is touched or described by this entry, and
+neither should be swept into a commit of this feature.

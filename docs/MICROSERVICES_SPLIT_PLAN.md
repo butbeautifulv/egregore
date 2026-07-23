@@ -146,6 +146,14 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
 - **Agent-session self-looping** — event-gated self-continuation for egregore's own SOC personas,
   mirroring Claude Code's `/loop`. `MSP_BACKLOG.md` §28.
 
+### Consultant two-phase LangGraph (uncommitted, code-complete)
+- **Fixes `GRAPH_RECURSION_LIMIT` on consultant advisory jobs** — new `research`/`synthesize`
+  two-node graph so tool use and structured-output emission never compete in one ReAct loop. ADR:
+  `docs/adr/consultant-two-phase-graph.md`. Code present and lint/type-clean in all three packages
+  (worker/dispatcher/agent-runtime as applicable); flag `CONSULTANT_TWO_PHASE_GRAPH` defaults
+  `false`. Not committed. Needs: real test-body run (not just collect) via CI, then flip the flag in
+  dev once green. `MSP_BACKLOG.md` §77.
+
 ---
 
 ## Working conventions
