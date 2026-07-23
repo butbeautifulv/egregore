@@ -6709,3 +6709,12 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
   passed) — a slip against this session's own "never run test suites locally" rule (should have
   been `--collect-only` plus waiting for CI); noted so it isn't repeated, and CI (re-dispatched
   after this fix) remains the actual authority on whether it's fixed.
+- **Same CI run also failed `osa / trivy-fs`** (pre-existing on the branch, unrelated to any commit
+  this session): `next@16.2.6` in `web_ui/bun.lock` carries 4 high-severity CVEs
+  (CVE-2026-64641/64642/64645/64649, `gate-check.py --control osa` blocks on `high`). Fixed with a
+  same-minor-line patch bump to `next@16.2.11` (latest stable per `npm view next dist-tags`, no
+  major/minor jump) via `bun add next@16.2.11` — `bun run typecheck` clean, `bun test lib/ hooks/`
+  still 58/58 after the bump. Committed separately from the layer-boundary fix (different root
+  cause, different file set) — `web_ui/package.json`'s `next` line only, not the user's own
+  uncommitted `"test": "bun test lib/ hooks/"` script-line edit sitting in the same file, which was
+  left as their in-progress work and not touched.
