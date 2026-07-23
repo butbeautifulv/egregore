@@ -21,6 +21,19 @@ def default_profile_pack(*, id: str, default_personas: list[str], control_plane_
         default_plan=product.manifest.default_plan,
         control_plane_mode=control_plane_mode,
         global_rules="",
+        incident_hint_template=(
+            "A known SIEM incident ID is present — prefer **staged soc then intel** "
+            "(soc SIEM triage → intel MITRE/playbook enrichment). "
+            "Use soc only if the goal explicitly requests no CTI/threat-intel enrichment. "
+            if id == DEFAULT_PROFILE_ID
+            else ""
+        ),
+        advisory_hint_template=(
+            "Use consultant alone for general IB advisory or consultation. "
+            "Use network (+ optional compliance) for LAN hardening and segmentation. "
+            if id == DEFAULT_PROFILE_ID
+            else ""
+        ),
         policy=default_profile_policy(),
         planner=PlannerPack(
             post_processors=[

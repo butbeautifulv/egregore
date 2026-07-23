@@ -210,6 +210,8 @@ class ProfilePack(BaseModel):
     control_plane_mode: str = "gate_only"
     global_rules: str = ""
     hints_template: str = ""
+    incident_hint_template: str = ""
+    advisory_hint_template: str = ""
     policy: ProfilePolicyPayload = Field(default_factory=ProfilePolicyPayload)
     planner: PlannerPack | None = None
     intake_schema: dict[str, Any] = Field(default_factory=dict)
