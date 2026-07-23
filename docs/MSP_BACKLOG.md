@@ -7161,3 +7161,68 @@ was a CI-greenness fix, not a rollout decision). The rest of the uncommitted pil
 `tool_call_id_from_mapping` refactor, `web_ui` SSE work, `model_gateway_url`/`model_provider`
 settings, `planner_default_post_processors` default change) is still exactly where the user left
 it — none of it was touched across any of these three commits.
+
+## 78. Continued §48.4's ~30-site sweep: 2 more candidates traced, 1 confirmed safe, 1 real latent risk found not currently reachable (2026-07-23)
+
+§50.1 checked one candidate (`mem-`) from §48.4's list and explicitly left ~15 more untraced,
+warning that shape alone ("a `{prefix}-{12-hex-chars}` id") doesn't mean a site is actually exposed
+— only individually tracing whether the value reaches `redact_pii()` (via
+`MemoryEntryValidator.validate()`, the only call path that matters — confirmed by grepping
+`redact_pii`/`MemoryEntryValidator` across `cys_core`, there is exactly one) tells you that. Picked
+up two more candidates this round, worker package (byte-identical logic in dispatcher/agent-runtime,
+not re-checked line-by-line but the call graph is the same duplicated tree):
+
+- **`job.job_id` via `append_engagement_finding`'s `finding_entry` dict**
+  (`workers/finding_publisher.py:176-181`, `{"persona": ..., "job_id": job.job_id, "finding": result,
+  ...}`) — **not at risk**. This dict goes to `self._engagement_store.append_finding(...)`, the
+  `EngagementStateStore` port (Postgres-backed, `infrastructure/engagement/postgres_store.py`), a
+  completely separate storage path from `MemoryWriteService`. It never touches
+  `MemoryEntryValidator`/`redact_pii()` at all — same conclusion as §50.1's `mem-` finding, different
+  mechanism (there, the id was generated after redaction; here, the value never enters the
+  redaction pipeline in the first place).
+- **`job.job_id` via `append_conversation_turn`'s payload** (`domain/memory/services.py`:
+  `payload["job_id"] = job_id` when `job_id` is truthy, then `content = json.dumps(payload)` →
+  `self.append(...)` → `validate(content)` → `redact_pii`) — **the code path is real and would
+  reproduce §48's exact bug class if a 12-hex-char job_id ever flowed through it**, but traced the
+  only caller (`FollowUpAnswerPublisher.publish_success`/`publish_failure`,
+  `workers/follow_up_publisher.py`, both worker/dispatcher/agent-runtime): it's gated on
+  `job.payload.get("follow_up_id")` being truthy, i.e. only ever fires for follow-up jobs, and
+  follow-up job ids are minted as `f"{persona}-fu-{uuid.uuid4().hex[:8]}"`
+  (`use_cases/enqueue_follow_up.py`) — **8 hex characters**, one short of even qualifying for the
+  RU-INN pattern's `\d{10}` alternative (`\d{10}|\d{12}`, no way to match with only 8 available
+  characters regardless of digit luck). **Not exposed today.** This is a real latent landmine
+  though, not a closed case like the engagement-finding one above: if any future caller passes this
+  same `job_id=` parameter with a 12-hex-char id — e.g. `spawn_broker.py`'s child-job ids
+  (`f"job-{uuid.uuid4().hex[:12]}"`, the exact vulnerable shape) — it reproduces §48's bug
+  immediately with zero warning, because the payload-embedding code itself doesn't distinguish id
+  shapes. Deliberately **not hardening this preemptively** — doing so before any confirmed live
+  exposure would be the "harden id generation globally" systemic option §48.4 explicitly declined to
+  pick unilaterally, not the narrow "fix a confirmed bug" shape §48.3's actual fix had.
+- `ephemeral_trajectory_id()` (`traj-`, `runs/kernel_mappers.py`) — grepped for it near
+  `finding_publisher.py`/`follow_up_publisher.py`'s content construction, found no reference; the
+  "ephemeral" naming and its one known caller (`new_trajectory` in `agent_run_kernel.py`) suggest a
+  transient tracing id, not memory-persisted content. **Not fully verified** (didn't trace
+  `new_trajectory`'s own downstream use) — leaving as untraced rather than guessing.
+- **`create_approval_id()`'s `appr-` id** (`domain/workers/hitl.py`) — **not at risk**. Its two
+  known call sites both bypass the redaction pipeline the same way `hitl_pending`/`hitl_resolved`
+  events do: `run_worker_job.py:405` only puts it in an in-memory `resume_payload` dict fed straight
+  to `_agent_executor.resume(...)` (execution input, never persisted as memory content), and
+  `infrastructure/engagement/hitl_egress.py`'s `publish_hitl_pending`/`publish_hitl_resolved` push it
+  through `EngagementEgressPort.publish_event(...)` — the same live SSE/websocket event stream used
+  for `follow_up_complete`/`follow_up_plan_complete` in §78's `job_id`-via-conversation-turn finding
+  above, which is a transient operator-facing stream, not `MemoryWriteService`. Two for two on "the
+  live egress stream is a different, non-redacted path" being the actual reason a plausible-looking
+  candidate turns out safe.
+
+**Running tally against §48.4's ~30-site list**: 3 confirmed not-at-risk (`mem-`, `job_id`-via-
+engagement-finding, `appr-`), 1 confirmed not-currently-reachable-but-fragile (`job_id`-via-
+conversation-turn), ~11 still fully untraced (`mrec-`, `run-`, `session-`, `siem-`, `await-`, `esc-`,
+`eng-` ×2 call sites, `evt-`, `chunk-`, `traj-` unfinished, plus the `docker_sandbox.py`
+container-name site which is infra-level and likely never reaches redaction at all). Stopping the
+sweep here rather than shallow-checking the rest in the time remaining — same call §50.1 made, for
+the same reason: a rushed trace that says "probably fine" isn't the "narrow, proven" bar this bug
+class earned in §48. Pattern emerging after 4 traces: `MemoryEntryValidator.validate()` is the only
+path that matters, and most operator/HITL-facing surfaces go through `EngagementEgressPort` instead
+(live, transient, unredacted by design) — `eng-`/`evt-` next since those are engagement/event ids
+that could plausibly appear as *content fields* inside an actual finding dict (as opposed to being
+metadata alongside it), which is the one shape confirmed vulnerable so far.
