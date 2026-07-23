@@ -61,6 +61,19 @@ toolGateway:
   replicas: 1
   port: 8092
 
+# Optional network chokepoint for LLM provider calls. It remains disabled and
+# the runtime keeps using in-process LiteLLM until `llm.provider=model-gateway`
+# is selected deliberately.
+modelGateway:
+  enabled: false
+  image:
+    repository: cxado/egregore-model-gateway
+    tag: local
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 8093
+  defaultModel: "gpt-4o-mini"
+
 rollout:
   api:
     maxSurge: 1
@@ -72,6 +85,9 @@ rollout:
     maxSurge: 1
     maxUnavailable: 0
   toolGateway:
+    maxSurge: 1
+    maxUnavailable: 0
+  modelGateway:
     maxSurge: 1
     maxUnavailable: 0
 
@@ -157,6 +173,9 @@ langfuse:
 
 busSigningKey: ""
 openfgaApiToken: ""
+# Shared by agent-runtime's ModelGatewayProvider and the model-gateway's bearer
+# check. Required whenever modelGateway.enabled=true in a prod release.
+gatewayAccessToken: ""
 
 llm:
   provider: litellm
@@ -189,6 +208,13 @@ resources:
       cpu: 1000m
       memory: 1536Mi
   toolGateway:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  modelGateway:
     requests:
       cpu: 100m
       memory: 256Mi

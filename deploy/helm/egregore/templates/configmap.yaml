@@ -102,6 +102,11 @@ data:
   QDRANT_URL: {{ .Values.qdrant.url | quote }}
   TOOL_GATEWAY_URL: {{ printf "http://tool-gateway:%v" .Values.toolGateway.port | quote }}
   USE_TOOL_GATEWAY: {{ .Values.toolGateway.enabled | quote }}
+  {{- if .Values.modelGateway.enabled }}
+  MODEL_GATEWAY_URL: {{ printf "http://model-gateway:%v" .Values.modelGateway.port | quote }}
+  MODEL_GATEWAY_AUTH_ENABLED: "true"
+  MODEL_GATEWAY_DEFAULT_MODEL: {{ .Values.modelGateway.defaultModel | quote }}
+  {{- end }}
   VEIL_MCP_URL: {{ .Values.veil.mcpUrl | quote }}
   {{- if .Values.veil.mcpEnabled }}
   VEIL_MCP_ENABLED: {{ .Values.veil.mcpEnabled | quote }}
@@ -176,6 +181,10 @@ stringData:
   {{- end }}
   {{- if .Values.openfgaApiToken }}
   OPENFGA_API_TOKEN: {{ .Values.openfgaApiToken | quote }}
+  {{- end }}
+  {{- if .Values.gatewayAccessToken }}
+  GATEWAY_ACCESS_TOKEN: {{ .Values.gatewayAccessToken | quote }}
+  MODEL_GATEWAY_SHARED_SECRET: {{ .Values.gatewayAccessToken | quote }}
   {{- end }}
   {{- if and .Values.langfuse.enabled .Values.langfuse.secretKey }}
   LANGFUSE_SECRET_KEY: {{ .Values.langfuse.secretKey | quote }}
