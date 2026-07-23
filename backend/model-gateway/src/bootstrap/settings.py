@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     default_model: str = Field(default="gpt-4o-mini", validation_alias="MODEL_GATEWAY_DEFAULT_MODEL")
     request_timeout_s: float = Field(default=60.0, validation_alias="MODEL_GATEWAY_REQUEST_TIMEOUT_S")
     num_retries: int = Field(default=2, validation_alias="MODEL_GATEWAY_NUM_RETRIES")
+    rate_limit_mode: str = Field(default="shadow", validation_alias="MODEL_GATEWAY_RATE_LIMIT_MODE")
+    max_calls_per_window: int = Field(default=60, validation_alias="MODEL_GATEWAY_MAX_CALLS_PER_WINDOW")
+    rate_limit_window_seconds: int = Field(default=60, validation_alias="MODEL_GATEWAY_RATE_LIMIT_WINDOW_SECONDS")
+    redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
 
     def model_post_init(self, _context: object) -> None:
         if self.stage.lower() not in _ALLOWED_STAGES:
@@ -49,6 +53,10 @@ class Settings(BaseSettings):
                 "docs/MSP_BACKLOG.md §11.2) — set ALLOW_INSECURE_PROD_AUTH=1 "
                 "only for a deliberate, temporary exception"
             )
+        if self.rate_limit_mode not in {"off", "shadow", "enforce"}:
+            raise ValueError("MODEL_GATEWAY_RATE_LIMIT_MODE must be off, shadow, or enforce")
+        if self.max_calls_per_window < 1 or self.rate_limit_window_seconds < 1:
+            raise ValueError("Model Gateway rate-limit values must be positive")
 
 
 @lru_cache(maxsize=1)

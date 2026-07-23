@@ -58,6 +58,7 @@ class ModelInvokeResult:
 
 
 CompletionFn = Callable[..., Awaitable[dict[str, Any]]]
+RateLimitCheck = Callable[[ModelInvokeCommand], Awaitable[None]]
 
 
 def _to_litellm_message(message: ModelMessage) -> dict[str, Any]:
@@ -86,12 +87,14 @@ class InvokeModel:
         sanitizer: InputSanitizer | None = None,
         guardrails: OutputGuardrails | None = None,
         record_invocation: Callable[[str, bool], None] | None = None,
+        check_rate_limit: RateLimitCheck | None = None,
     ) -> None:
         self._complete = complete
         self._default_model = default_model
         self._sanitizer = sanitizer or InputSanitizer()
         self._guardrails = guardrails or OutputGuardrails()
         self._record_invocation = record_invocation or (lambda _persona, _ok: None)
+        self._check_rate_limit = check_rate_limit
 
     def _refuse(self, reason: str) -> ModelInvokeResult:
         return ModelInvokeResult(
@@ -134,6 +137,12 @@ class InvokeModel:
         return sanitized
 
     async def execute(self, command: ModelInvokeCommand) -> ModelInvokeResult:
+        if self._check_rate_limit is not None:
+            try:
+                await self._check_rate_limit(command)
+            except Exception as exc:
+                self._record_invocation(command.persona, False)
+                return ModelInvokeResult(success=False, error=str(exc))
         prompt_violation = self._validate_system_prompt(command)
         if prompt_violation is not None:
             self._record_invocation(command.persona, False)

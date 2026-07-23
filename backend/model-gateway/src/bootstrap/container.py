@@ -3,8 +3,12 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+import structlog
+
 from bootstrap.settings import get_settings
 from cys_core.application.use_cases.invoke_model import InvokeModel
+
+logger = structlog.get_logger(__name__)
 
 
 def _serialize_tool_calls(message: Any) -> list[dict[str, Any]]:
@@ -67,11 +71,36 @@ async def _litellm_complete(
 class Container:
     def __init__(self) -> None:
         self.settings = get_settings()
+        self._rate_limiter = None
+
+    def _get_rate_limiter(self):
+        if self._rate_limiter is None:
+            from bootstrap.rate_limit import RedisSlidingWindowRateLimiter
+
+            self._rate_limiter = RedisSlidingWindowRateLimiter(
+                redis_url=self.settings.redis_url,
+                max_calls=self.settings.max_calls_per_window,
+                window_seconds=self.settings.rate_limit_window_seconds,
+            )
+        return self._rate_limiter
+
+    async def _check_model_rate_limit(self, command) -> None:
+        mode = self.settings.rate_limit_mode
+        if mode == "off":
+            return
+        try:
+            await self._get_rate_limiter().check(f"{command.persona}:{command.session_id}")
+        except Exception as exc:
+            if mode == "shadow":
+                logger.warning("model_gateway_rate_limit_shadow", persona=command.persona, error=str(exc))
+                return
+            raise
 
     def get_invoke_model(self) -> InvokeModel:
         return InvokeModel(
             complete=_litellm_complete,
             default_model=self.settings.default_model,
+            check_rate_limit=self._check_model_rate_limit,
         )
 
 
