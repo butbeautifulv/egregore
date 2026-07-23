@@ -120,6 +120,7 @@ class EnqueueSynthesisJob:
             },
             correlation_id=job.correlation_id,
             tenant_id=job.tenant_id,
+            profile_id=job.profile_id,
         )
         await self._queue.aenqueue(synth_job)
         await asyncio.to_thread(

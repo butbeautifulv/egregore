@@ -99,4 +99,5 @@ class SubagentSpawnBroker:
             },
             correlation_id=payload.parent_context.context_id,
             tenant_id=payload.parent_context.tenant_id,
+            profile_id=payload.parent_context.profile_id,
         )

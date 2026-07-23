@@ -59,6 +59,7 @@ class EnqueueNextPlannedPersona:
             payload=job.payload,
             correlation_id=job.correlation_id,
             tenant_id=job.tenant_id,
+            profile_id=job.profile_id,
         )
         await self._queue.aenqueue(next_job)
         if self._engagement_egress is not None:
