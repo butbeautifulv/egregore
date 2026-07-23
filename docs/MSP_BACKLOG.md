@@ -6925,3 +6925,87 @@ real gating gap in §63 found and fixed along the way
   completeness gap blocking `cybersec-soc` itself from using the pack-filtered catalog path,
   `§64.1`/`§64.4`) — these are known, scoped, separate follow-ups, not silently swept under "6 of
   6 done."
+
+## 73. Session handoff summary (2026-07-23) — for a fresh agent picking this up
+
+Everything below happened in one continuous session on `feature/microservice-refactoring`, commits
+`f2c0b5f` through `1aad864` (13 commits, all pushed). Read `§69`–`§72` for full detail on each —
+this section is the fast-orientation index.
+
+**Starting point**: user had a large pile of uncommitted local changes (SSE/streaming tweaks, a
+`consultant_graph`/`react_agent`/`planner_strategy` two-phase-graph feature in progress, a
+`tool_call_id_from_mapping` refactor across agent-runtime's middleware, k3s/kaniko infra changes in
+the outer `cys_framework` repo) plus 3 already-committed-but-never-CI'd commits (`fee72cf`,
+`13a2fb4`, `1ca917c`). Asked to review/fix the new changes, then continue the §8.4 domain-agnostic
+core refactor per `MICROSERVICES_SPLIT_PLAN.md`, then run `/graphify`.
+
+**What got done, in order**:
+1. **`f2c0b5f`** — real bug: per-engagement SSE (`GET /v1/engagements/{id}/stream`, `backend/api`)
+   died after the first 15s of silence. `asyncio.wait_for(iterator.__anext__(), timeout=15)`
+   cancels-and-closes the async generator on timeout; fixed by holding one `anext()` task alive
+   across keepalive ticks instead. `§69`.
+2. **`ca6dfc9`** — dispatching CI for the SSE fix surfaced a *pre-existing* bug from the earlier
+   uncommitted-then-committed `fee72cf`: `hitl_resume.py` imported infrastructure directly,
+   violating api's layer-boundary contract. Fixed via a `Container.publish_hitl_resolved()`
+   wrapper. `§69`.
+3. **`de9b1ce`** — same CI run also failed `osa/trivy-fs` on 4 pre-existing high-severity CVEs in
+   `next@16.2.6`. Patch-bumped to `16.2.11` (same minor line, no breaking change). `§69`.
+4. **`55e20c6`** — §8.4 point 2: extracted the 11 SOC `Finding` subclasses + `KillChainFields` out
+   of `cys_core/domain/findings/models.py` into a new `cys_core/domain/findings/packs/
+   cybersec_soc.py`, made `cys_core/registry/schemas.py`'s schema resolution `PROFILE_PACK_ID`-gated
+   (same pattern `§63` used for tools). CI green. `§70`.
+5. **`08ca5de`** — §8.4 point 1: `EventType`/`WorkerAgentName` closed `Literal`s → plain `str`.
+   Turned out much lower-risk than the backlog assumed (zero exhaustiveness matching anywhere,
+   `WorkerAgentName`'s one real field, `FindingEnvelope.agent`, is dead code with no caller). `§71`.
+6. **`3a7c5d7`/`7f1a1b1`** — fixing CI fallout from point 1 (a `redundant-cast` on the now-`str`
+   `EventType` in two `api` files, real and correctly fixed in `3a7c5d7`) led to a **process
+   mistake**: `git add`-ing two agent-runtime middleware files staged the user's own uncommitted,
+   unrelated WIP (a `tool_call_id_from_mapping()` refactor) along with my intended fix, committing
+   half of an incomplete feature and breaking CI worse. Caught by reading the actual CI log
+   character-for-character, diagnosed by fetching the exact committed blob from GitHub, fixed by
+   reverting those two files' *committed* content in `7f1a1b1` and restoring the user's WIP back
+   onto disk as uncommitted changes (untouched, exactly where they left it). Documented honestly,
+   corrected in `§71`, saved as a standing memory (`feedback_git_add_wip_contamination`) so it
+   isn't repeated. **If you see agent-runtime's `one_tool_middleware.py`/
+   `sgr_reasoning_middleware.py` showing as modified in `git status` — that's the user's own WIP,
+   not a regression, leave it alone.**
+7. **`1aad864`** — §8.4 point 6 (the last point): built a standalone script proving `gaia-benchmark`
+   (`gaia_solver` persona) is a genuinely clean non-SOC pack — zero SOC tools/schemas leak in.
+   Doing so found one more real gap in `§63`: 13 SOC-specific tools were defined inline in
+   `cys_core/registry/tools.py`'s unconditional `_ALL_TOOLS`, never gated by the `tool_domains`
+   mechanism at all. Fixed with a new `"cybersec-core"` domain, same gating pattern. **§8.4 is now
+   fully closed, all 6 points done** (residuals intentionally deferred, listed in `§72`'s last
+   bullet and in `MICROSERVICES_SPLIT_PLAN.md`).
+8. **`/graphify --update` on the egregore repo** — ran to completion (12 parallel semantic-extraction
+   subagents + AST, ~41k nodes merged into `graphify-out/graph.json`), then the user said it was
+   costing too many tokens and to stop using it going forward — noted as a standing preference
+   (`feedback_graphify_token_cost` memory). **`graphify-out/GRAPH_REPORT.md` is now stale** (still
+   describes the pre-merge graph) — nobody has regenerated it; low priority, `graph.json` itself is
+   current and queryable via `graphify query`.
+
+**CI discipline used throughout**: every commit was followed by `gh workflow run "Release Gate"` +
+a backgrounded `gh run watch`, and the *actual per-job result* (`gh run view --json jobs`) was read
+before calling anything fixed — this caught real regressions twice (§8.4 point 1's redundant-cast,
+and the point-6 tool-gating propagation almost dropping a `# ty: ignore` comment in dispatcher).
+
+**State as of this handoff**: branch `feature/microservice-refactoring`, HEAD `1aad864`, pushed. CI
+run for `1aad864` was **still in progress** when this section was written — check
+`gh run list --branch feature/microservice-refactoring --limit 1` and `gh run view <id> --json
+jobs` before trusting §8.4 point 6 is fully clean; if it's red, the failure is almost certainly in
+the newly-touched `cys_core/registry/tools.py`/`bootstrap/product_packs.py` files across
+worker/dispatcher/agent-runtime/api/tool-gateway.
+
+**Untouched, still there**: the user's original uncommitted pile (SSE-adjacent `web_ui` changes
+including some newer files not present at session start — `execution-timeline.tsx`, `sse.ts` —
+meaning they kept editing `web_ui` during this session too; the `consultant_graph`/`react_agent`/
+`planner_strategy` two-phase-graph feature across worker/dispatcher/agent-runtime; the
+`tool_call_id_from_mapping` middleware refactor in agent-runtime, `.env.example`/`settings.py`
+diffs, k3s/kaniko infra changes in the outer `cys_framework` repo). None of it was committed, none
+of it was reviewed in depth beyond the specific bugs described above — it's the user's own
+in-progress work, theirs to finish and commit.
+
+**Suggested next steps** (not started): the `§1`/`§2` items in `MICROSERVICES_SPLIT_PLAN.md` that
+were untouched this session — deploy bootstrap for `docker`/`k8s` `ExecutionBackend` modes, the
+HITL redesign's remaining gaps (reject path live, `TOOL_HITL_MODE` default flip), async Postgres
+driver migration, or reviewing/finishing the user's own in-progress `consultant_graph`/
+`tool_call_id_from_mapping` work if asked to.
