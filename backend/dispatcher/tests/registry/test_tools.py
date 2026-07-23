@@ -52,7 +52,7 @@ def test_active_tool_domains_defaults_to_soc_pack_domains(monkeypatch):
     from cys_core.registry import tools
 
     monkeypatch.delenv("PROFILE_PACK_ID", raising=False)
-    assert tools._active_tool_domains() == frozenset({"veil", "siem", "nessus"})
+    assert tools._active_tool_domains() == frozenset({"veil", "siem", "nessus", "cybersec-core"})
 
 
 @pytest.mark.unit
@@ -80,6 +80,10 @@ def test_tool_registry_omits_domain_tools_for_non_soc_pack(monkeypatch):
     domain_tool_names = {t.name for t in tools._domain_tools()}
     assert domain_tool_names == set()
     assert "web_search" in registry.names()
+    # cybersec-core tools (§8.4 point 6 acceptance gap) must not leak either —
+    # these were inline in _ALL_TOOLS unconditionally before this fix.
+    assert "query_siem_readonly" not in registry.names()
+    assert "parse_sast_report" not in registry.names()
 
 
 @pytest.mark.unit
@@ -91,3 +95,5 @@ def test_tool_registry_includes_domain_tools_for_default_soc_pack(monkeypatch):
     soc_domain_tools = {t.name for t in tools._domain_tools()}
     assert soc_domain_tools
     assert soc_domain_tools <= set(registry.names())
+    assert "query_siem_readonly" in registry.names()
+    assert "parse_sast_report" in registry.names()

@@ -61,35 +61,29 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
 ## §2 — Everything else, by theme (independent of §1)
 
 ### Core architecture / domain
-- **Core still hardcodes SOC domain, 1 of 6 points remaining**: point 6, the toy non-SOC-pack
-  acceptance test proving `cys_core/domain` needs zero changes for a *new* pack. Unblocked on the
-  type-system side now (points 1/2 done) but still needs an actual toy persona carrying no
-  cybersec-soc tools/skills to be a meaningful proof — `general-assistant`'s `consultant` and
-  `gaia-benchmark`'s `gaia_solver` both still carry real SOC-flavored tool lists, so neither is a
-  clean acceptance case yet (`§71.5`). Five points done: (`§62`)
-  `ESCALATION_ONLY_PATHS`/`READ_ONLY_TOOLS`/`PLAN_BLOCKED_TOOLS`/`MUTATING_TOOLS` no longer leak
-  from `cybersec-soc` into every other profile pack unconditionally; (`§63`) `ToolRegistry`'s
-  SIEM/Veil/Nessus tool construction/registration is now conditional on the active profile pack
-  (`PROFILE_PACK_ID` env var → `ProductProfilePack.tool_domains`) instead of an unconditional
-  module-import side effect; (`§64`) the real catalog seed path (`/catalog/seed`, dev auto-seed)
-  now resolves through `product_packs.py` via the same `PROFILE_PACK_ID` var —
-  `general-assistant`/`gaia-benchmark` are for-real seedable for the first time, though
-  `cybersec-soc` itself still can't switch to the pack-filtered path yet because
-  `CYBERSEC_SOC_PRODUCT.personas` is a stub 2-persona list against a real 17-persona catalog
-  (data-completeness gap, not wiring — see `§64.1`/`§64.4`); (`§70`) the 11 concrete SOC `Finding`
-  subclasses + `KillChainFields` moved out of `cys_core/domain/findings/models.py` into
-  `cys_core/domain/findings/packs/cybersec_soc.py`, and `cys_core/registry/schemas.py`'s schema
-  resolution is now `PROFILE_PACK_ID`-gated the same way `§63`'s tool registration is — core keeps
-  only `WorkerAgentName`, `ConductorStepResult`/`CriticResult`, `FindingEnvelope`; (`§71`)
-  `EventType`/`WorkerAgentName` closed `Literal`s replaced with plain `str` — both turned out much
-  lower-risk than assumed (zero exhaustiveness matching anywhere, `WorkerAgentName`'s one real
-  field is dead code). No catalog-driven validation wired for either (none existed to piggyback
-  on — honest residual, `§71`).
-  `result_validator.py`'s `"ConsultantFinding"`-literal special-casing is a separate, deferred
-  residual coupling (`§70.4`). `tool_risk` (`ACTION_RISK_MAPPING`) has a similar "leaks into every
-  profile" shape but gating it alone would be cosmetic without also changing
-  `classify_tool_risk_pure`'s own fallback — a separate, riskier pass, not picked up here (see
-  `§62.5`). `MSP_BACKLOG.md` §8, §24.1, §62, §63, §64, §70, §71.
+- **§8.4's "core hardcodes SOC domain" cross-cutting refactor is DONE, all 6 points closed**
+  (`§62` point 3, `§63` point 4, `§64` point 5, `§70` point 2, `§71` point 1, `§72` point 6 —
+  full history in `MSP_BACKLOG.md` §8/§24.1/§62/§63/§64/§70/§71/§72). Point 6's acceptance test
+  (a toy non-SOC pack proving `cys_core/domain` needs zero changes) is genuinely met:
+  `gaia-benchmark`'s `gaia_solver` persona turned out to already be domain-clean (zero
+  SIEM/Veil/Nessus/compliance tools, generic `output_schema`) — verified end to end with a
+  standalone script: `load_profile_pack_for("gaia-benchmark")` + a fresh `ToolRegistry` under
+  `PROFILE_PACK_ID=gaia-benchmark` carry zero SOC tools, `schema_registry.get("SocFinding")`
+  correctly raises `KeyError`. Finding this exposed one more real gap in `§63`'s own scope: 13
+  SOC-specific tools (`query_siem_readonly`, `parse_sast_report`, compliance/timeline tools, etc.)
+  were defined inline in `cys_core/registry/tools.py` and baked unconditionally into every pack's
+  `ToolRegistry` — `§63` only gated the three *external* builder calls
+  (`build_veil_tools`/`build_siem_tools`/`build_nessus_tools`), never these. Fixed in `§72`: a new
+  `"cybersec-core"` tool domain, gated the same `PROFILE_PACK_ID` way, added to
+  `CYBERSEC_SOC_PRODUCT.tool_domains` so the real pack's behavior is unchanged.
+  **Known, explicitly-deferred residuals** (not silently swept under "done"):
+  `result_validator.py`'s `"ConsultantFinding"`-literal special-casing (`§70.4`); `tool_risk`
+  (`ACTION_RISK_MAPPING`) has a similar "leaks into every profile" shape but gating it alone would
+  be cosmetic without also changing `classify_tool_risk_pure`'s own fallback (`§62.5`);
+  `CYBERSEC_SOC_PRODUCT.personas`' 2-vs-17-persona data-completeness gap still blocks
+  `cybersec-soc` itself from using the pack-filtered catalog path (`§64.1`/`§64.4`); no
+  catalog-driven validation wired for `EventType`/`WorkerAgentName` beyond `str` (none existed to
+  piggyback on, `§71`).
 - **Semantic/long-term agent memory tier doesn't exist** — `memory_type` schema has `lesson`/
   `preference` slots, nothing ever writes them. `MSP_BACKLOG.md` §9.
 

@@ -17,6 +17,6 @@ def test_product_packs_registry() -> None:
     assert GENERAL_ASSISTANT_PRODUCT.personas[0].catalog_agent == "consultant"
     assert GAIA_BENCHMARK_PRODUCT.eval_pack is not None
     assert GAIA_BENCHMARK_PRODUCT.eval_pack.suite == "gaia"
-    assert set(CYBERSEC_SOC_PRODUCT.tool_domains) == {"veil", "siem", "nessus"}
+    assert set(CYBERSEC_SOC_PRODUCT.tool_domains) == {"veil", "siem", "nessus", "cybersec-core"}
     assert GENERAL_ASSISTANT_PRODUCT.tool_domains == []
     assert GAIA_BENCHMARK_PRODUCT.tool_domains == []

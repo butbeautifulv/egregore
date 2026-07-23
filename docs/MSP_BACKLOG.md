@@ -6856,3 +6856,72 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
   whatever is currently on disk for that path, not "my intended diff" — when a file is already
   known to carry someone else's uncommitted WIP (as these were, from the session-start `git
   status`), check `git diff <path>` before staging, not just after.
+
+## 72. §8.4 point 6 CLOSED: `gaia-benchmark` is a real, verified non-SOC acceptance pack — and a
+real gating gap in §63 found and fixed along the way
+
+- **`gaia_solver` was already a clean toy persona**, just never noticed: `backend/agents/
+  personas/gaia_solver/agent.yaml` has `tools: [web_search, read_document, vision_analyze,
+  search_archived_webpage, python_sandbox, reasoning_check, extract_structured_output,
+  delegate_research]` (zero SIEM/Veil/Nessus/compliance vocabulary), `skills: []`, `output_schema:
+  ConductorStepResult` (a generic control-plane schema, not one of the 11 SOC `Finding`
+  subclasses). The earlier `§71`/plan-doc claim that "`gaia-benchmark`'s `gaia_solver` ... still
+  carries real SOC-flavored tool lists" was wrong — written without actually reading the
+  persona's `agent.yaml`, corrected here.
+- **But a real gap was found while trying to prove it**: `cys_core/registry/tools.py`'s
+  `_ALL_TOOLS` — the *unconditional* base tool list `ToolRegistry` always includes regardless of
+  active pack — had 13 SOC-specific tools **defined inline in this module** (`parse_sast_report`,
+  `analyze_workflow`, `run_active_scan`, `parse_netflow`, `enrich_ioc`, `correlate_dns`,
+  `query_siem_readonly`, `dedup_alerts`, `build_timeline`, `correlate_findings`, `check_control`,
+  `map_framework`, `audit_evidence`) mixed in among genuinely generic tools. `§63` only gated the
+  three *external* builders (`build_veil_tools`/`build_siem_tools`/`build_nessus_tools`) — it
+  never touched these, so they leaked into every pack's `ToolRegistry` unconditionally, `gaia-
+  benchmark` included. A real functional gap, not just an architecture-purity one: a
+  `gaia-benchmark` deployment today would hand its agent SIEM-query/SAST-parsing/compliance
+  tools it should never have access to.
+- **Fix**: split `_ALL_TOOLS` into the genuine generic set (~22 tools) and a new `_CORE_SOC_TOOLS`
+  list (the 13 above), added a `"cybersec-core"` domain key to `_DOMAIN_TOOL_BUILDERS` (same
+  `PROFILE_PACK_ID`-gated mechanism `§63` built), and added `"cybersec-core"` to
+  `CYBERSEC_SOC_PRODUCT.tool_domains` (now `["veil", "siem", "nessus", "cybersec-core"]`) so the
+  real, default pack's behavior is 100% unchanged — verified: default pack still registers all 70
+  tools (22 generic + 13 cybersec-core + 35 from the veil/siem/nessus builders). Applied
+  identically to worker/dispatcher/agent-runtime (the 3 packages with `ToolRegistry`) and
+  `bootstrap/product_packs.py` across all 5 packages that have it — byte-identical, `md5sum`
+  verified.
+- **Acceptance proven with a standalone script** (not pytest): building `gaia-benchmark` via
+  `load_profile_pack_for("gaia-benchmark")` gives a catalog entry with zero SOC tool-name
+  prefixes, `_active_tool_domains()` is `frozenset()`, a fresh `ToolRegistry()` under
+  `PROFILE_PACK_ID=gaia-benchmark` has zero SIEM/Veil/Nessus/cybersec-core tools, and
+  `schema_registry.get("SocFinding")` raises `KeyError` while `get("ConductorStepResult")`
+  resolves fine — **this is §8.4 point 6's acceptance criterion, genuinely met**: a non-SOC
+  pack works end to end with zero `cys_core/domain` changes.
+- **Tests updated**: `tests/registry/test_tools.py`'s `test_active_tool_domains_defaults_to_soc_
+  pack_domains` (expected set now includes `"cybersec-core"`), `test_tool_registry_omits_domain_
+  tools_for_non_soc_pack`/`test_tool_registry_includes_domain_tools_for_default_soc_pack`
+  (strengthened with explicit `query_siem_readonly`/`parse_sast_report` in/out-of-registry
+  assertions — these would NOT have caught the original leak, since those two tools were never
+  part of `_domain_tools()` before this fix). `tests/bootstrap/test_bootstrap_product_packs.py`'s
+  `tool_domains` set assertion updated. Propagated identically across all packages that have each
+  test file (worker/api/dispatcher/agent-runtime — `tool-gateway` has neither test file, confirmed
+  pre-existing and out of scope).
+- **A propagation near-miss caught by verification, not luck**: blindly `cp`-propagating
+  worker's `tools.py` to dispatcher would have deleted a load-bearing `# ty: ignore
+  [unresolved-import]` comment on `from cys_core.runtime.agent import get_runtime` —
+  dispatcher is the one package of the three with `ToolRegistry` that has **no**
+  `cys_core/runtime/` tree at all (dispatcher doesn't execute agents directly), so that specific
+  line is genuinely non-identical to worker/agent-runtime's copy and always was. A shallow
+  `grep -c` pre-check (matching line *counts*) missed this since the line exists in all three
+  files — only a full `ty check src` re-run after propagating caught the reintroduced diagnostic.
+  Restored the ignore comment for dispatcher only; confirmed back to dispatcher's own
+  pre-existing 1-diagnostic baseline (`PlannerRouter.route`). **Lesson**: "duplicate everything"
+  files are not always *fully* identical — verify with the actual tool (`ty check`), not just a
+  targeted grep, after every propagation, not only before.
+- **§8.4 is now 6 of 6 points done.** Point 1 (`§71`), point 2 (`§70`), point 3 (`§62`), point 4
+  (`§63`), point 5 (`§64`), point 6 (this entry, `§72`) — the "core still hardcodes SOC domain"
+  cross-cutting refactor described at length in `§8`/`§24.1` is complete to the scope those
+  entries define. Residual, explicitly-deferred, honestly-documented couplings remain
+  (`result_validator.py`'s `"ConsultantFinding"` string special-casing, `§70.4`; `tool_risk`/
+  `ACTION_RISK_MAPPING`, `§62.5`; `CYBERSEC_SOC_PRODUCT.personas`' 2-vs-17-persona data-
+  completeness gap blocking `cybersec-soc` itself from using the pack-filtered catalog path,
+  `§64.1`/`§64.4`) — these are known, scoped, separate follow-ups, not silently swept under "6 of
+  6 done."

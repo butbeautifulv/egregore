@@ -332,13 +332,7 @@ def search_archived_webpage(url: str, timestamp: str = "") -> str:
 
 @tool
 def delegate_research(subtask: str, *, context_id: str = "", tenant_id: str = "default") -> str:
-    """Delegate a read-only research subtask to the research persona in-process.
-
-    Not functional in backend/dispatcher — this tool only ever actually runs inside
-    backend/agent-runtime's process (that's where the agent's own tool-calling loop
-    executes, see docs/MICROSERVICES_SPLIT_PLAN.md §1); dispatcher's copy of the tool
-    registry carries this definition for parity but never invokes it.
-    """
+    """Delegate a read-only research subtask to the research persona in-process."""
     from cys_core.application.use_cases.delegate_research import DelegateResearch
     from cys_core.infrastructure.catalog.catalog_registry import get_agent_catalog
     from cys_core.runtime.agent import get_runtime  # ty: ignore[unresolved-import]
@@ -555,20 +549,7 @@ def update_todos(todos_json: str, *, context_id: str = "", tenant_id: str = "def
 
 _ALL_TOOLS: list[BaseTool] = [
     read_repo_metadata,
-    parse_sast_report,
-    analyze_workflow,
-    run_active_scan,
-    parse_netflow,
-    enrich_ioc,
-    correlate_dns,
-    query_siem_readonly,
     rag_query,
-    dedup_alerts,
-    build_timeline,
-    correlate_findings,
-    check_control,
-    map_framework,
-    audit_evidence,
     execute_command,
     search_personas,
     search_skills,
@@ -591,12 +572,43 @@ _ALL_TOOLS: list[BaseTool] = [
     transcribe_audio,
 ]
 
-_BUILTIN_TOOL_NAMES: list[str] = [tool.name for tool in _ALL_TOOLS]
+# SOC-specific tools, previously part of the unconditional _ALL_TOOLS list above —
+# extracted so they gate the same way build_veil_tools()/build_siem_tools()/
+# build_nessus_tools() already do (MSP_BACKLOG.md §63/§71.x point 6 acceptance
+# gap: these were defined inline in this module rather than via an external
+# build_*_tools() builder, so §63's gating missed them entirely). Unlike the
+# veil/siem/nessus builders these aren't real integrations — they're simple
+# @tool-decorated stubs — but they're still cybersec-soc-domain-specific
+# (SAST/vuln-scan/SIEM/threat-intel/compliance vocabulary) and must not leak
+# into a non-SOC pack's ToolRegistry.
+_CORE_SOC_TOOLS: list[BaseTool] = [
+    parse_sast_report,
+    analyze_workflow,
+    run_active_scan,
+    parse_netflow,
+    enrich_ioc,
+    correlate_dns,
+    query_siem_readonly,
+    dedup_alerts,
+    build_timeline,
+    correlate_findings,
+    check_control,
+    map_framework,
+    audit_evidence,
+]
+
+
+def _build_core_soc_tools() -> list[BaseTool]:
+    return list(_CORE_SOC_TOOLS)
+
+
+_BUILTIN_TOOL_NAMES: list[str] = [tool.name for tool in _ALL_TOOLS + _CORE_SOC_TOOLS]
 
 _DOMAIN_TOOL_BUILDERS: dict[str, Any] = {
     "veil": build_veil_tools,
     "siem": build_siem_tools,
     "nessus": build_nessus_tools,
+    "cybersec-core": _build_core_soc_tools,
 }
 
 
