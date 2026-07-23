@@ -384,6 +384,29 @@ class Settings(BaseSettings):
         validation_alias="TRIAGE_RECURSION_LIMIT",
         description="Lower LangGraph recursion cap for soc/intel triage personas.",
     )
+    consultant_two_phase_graph: bool = Field(
+        default=False,
+        validation_alias="CONSULTANT_TWO_PHASE_GRAPH",
+        description="Two-phase LangGraph for consultant: research (tools) then synthesize (structured JSON).",
+    )
+    consultant_research_recursion_limit: int = Field(
+        default=15,
+        validation_alias="CONSULTANT_RESEARCH_RECURSION_LIMIT",
+    )
+    consultant_synthesize_recursion_limit: int = Field(
+        default=8,
+        validation_alias="CONSULTANT_SYNTHESIZE_RECURSION_LIMIT",
+    )
+    consultant_research_max_steps: int = Field(
+        default=15,
+        validation_alias="CONSULTANT_RESEARCH_MAX_STEPS",
+        description="Outer research-node iterations before forcing synthesize.",
+    )
+    consultant_research_inner_recursion: int = Field(
+        default=3,
+        validation_alias="CONSULTANT_RESEARCH_INNER_RECURSION",
+        description="LangGraph recursion cap per research-node invocation.",
+    )
 
     sandbox_connector: str = Field(default="local", validation_alias="SANDBOX_CONNECTOR")
     k8s_namespace: str = Field(default="cys-agi", validation_alias="K8S_NAMESPACE")
