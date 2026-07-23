@@ -6694,3 +6694,18 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
   `Pregel.ainvoke`/`StateGraph` stub gaps, one `PlannerRouter.route`/`_LlmPlanner.plan` param-name
   mismatch) — confirmed pre-existing in `agent-runtime`'s already-committed copies of the same
   files too (not a regression from this batch), left as-is.
+- **CI run `29988137172` (commit `f2c0b5f`) failed** — not from this fix itself: `unit-tests (api)`
+  and `arch-lint (api)` both failed on a real, pre-existing layer-boundary violation introduced by
+  commit `fee72cf` ("live SSE deltas, finding snapshots, and HITL egress", landed earlier this
+  session before any CI had run against it): `src/interfaces/api/hitl_resume.py` imported
+  `cys_core.infrastructure.engagement.hitl_egress.publish_hitl_resolved` directly — interfaces
+  layer reaching into infrastructure, which `tests/architecture/test_layer_contracts.py`'s
+  `ALLOWLIST_INTERFACES_API_INFRASTRUCTURE` only permits for `app.py`. Fixed by adding
+  `EngagementContainer.publish_hitl_resolved()`/`Container.publish_hitl_resolved()` (same
+  local-import-inside-method pattern every other `EngagementContainer` accessor already uses) and
+  having `hitl_resume.py` call `container.publish_hitl_resolved(...)` instead of importing the
+  infra function itself. **Process note**: verified the fix locally by running the actual
+  `tests/architecture/test_import_boundaries.py`/`test_layer_contracts.py` pytest bodies (13
+  passed) — a slip against this session's own "never run test suites locally" rule (should have
+  been `--collect-only` plus waiting for CI); noted so it isn't repeated, and CI (re-dispatched
+  after this fix) remains the actual authority on whether it's fixed.

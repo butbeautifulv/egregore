@@ -115,6 +115,9 @@ class Container:
     def get_engagement_egress(self):
         return self._engagement.get_engagement_egress()
 
+    def publish_hitl_resolved(self, **kwargs) -> None:
+        self._engagement.publish_hitl_resolved(**kwargs)
+
     def get_reconcile_stuck_engagements(self):
         return self._engagement.get_reconcile_stuck_engagements()
 

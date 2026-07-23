@@ -33,10 +33,7 @@ async def resume_worker_job(job_id: str, request: JobResumeRequest) -> dict[str,
     )
     result = await use_case.execute(job_id, request)
 
-    from cys_core.infrastructure.engagement.hitl_egress import publish_hitl_resolved
-
-    publish_hitl_resolved(
-        container.get_engagement_egress(),
+    container.publish_hitl_resolved(
         correlation_id=correlation_id,
         job_id=job_id,
         approval_id=request.approval_id or pending_approval_id,
