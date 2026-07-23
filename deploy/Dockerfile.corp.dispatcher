@@ -1,11 +1,13 @@
 # Corp / offline build — Nexus base + PyPI, no BuildKit cache mounts (Kaniko-compatible).
 # egregore-dispatcher image. Build from egregore repo root: docker build -f deploy/Dockerfile.corp.dispatcher .
 ARG NEXUS_REGISTRY=nexus.svo.aero:8345
+ARG NEXUS_DOCKER_GROUP_REGISTRY=nexus.svo.aero:8374
 ARG NEXUS_PYPI_HOST=nexus.svo.aero:8443
 ARG NEXUS_PYPI_REPO=srsips-pypi
 ARG NEXUS_USER
 ARG NEXUS_PASSWORD
 
+FROM ${NEXUS_DOCKER_GROUP_REGISTRY}/library/docker:29.3.1-cli@sha256:b5fd064ef9d1ecb6980bebaf40d58cffca1a189e72805faca59af065bd7f7cf5 AS docker-cli
 FROM ${NEXUS_REGISTRY}/library/python:3.13-slim
 WORKDIR /app
 RUN pip install --no-cache-dir uv
@@ -14,6 +16,7 @@ ENV UV_INDEX_URL=https://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_PYPI_HOST}/repo
 
 COPY backend/dispatcher/pyproject.toml backend/dispatcher/uv.lock backend/dispatcher/README.md ./dispatcher/
 WORKDIR /app/dispatcher
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY backend/dispatcher/src ./src

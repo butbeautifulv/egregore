@@ -48,6 +48,64 @@ services:
     profiles:
       - app
 
+  # Opt-in Docker ExecutionBackend topology. The Docker socket grants the
+  # Dispatcher effective host-root access, so this is deliberately isolated
+  # from the regular `app` profile and must be enabled explicitly.
+  dispatcher:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dispatcher
+    image: cxado/egregore-dispatcher:docker-execution
+    entrypoint: ["/app/dispatcher/.venv/bin/egregore-dispatcher"]
+    command: ["worker", "--daemon", "--idle-timeout", "0"]
+    env_file:
+      - ../backend/dispatcher/.env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      EXECUTION_BACKEND: docker
+      DOCKER_WORKER_IMAGE: cxado/egregore-agent-runtime:docker-execution
+      DOCKER_NETWORK: deploy_default
+      DOCKER_ENV_FILE: /run/egregore/agent-runtime.env
+      USE_TOOL_GATEWAY: "true"
+      TOOL_GATEWAY_URL: http://tool-gateway:8092
+    group_add:
+      # Set DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) before `up` on Linux.
+      - "${DOCKER_GID:-0}"
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../backend/agent-runtime/.env
+        target: /run/egregore/agent-runtime.env
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tool-gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - docker-execution
+
+  # This service exists to build/tag the exact image that Dispatcher launches
+  # with `docker run`; it is not started by the docker-execution profile.
+  agent-runtime-image:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.agent-runtime
+    image: cxado/egregore-agent-runtime:docker-execution
+    profiles:
+      - image-build
+
   # The PEP for sandboxed agent tool calls — see docs/MSP_BACKLOG.md
   # §21.6. Previously only reachable via `make dev-tool-gateway` run manually
   # alongside `docker compose up` — now a real service in the same stack, same
@@ -79,6 +137,7 @@ services:
     restart: unless-stopped
     profiles:
       - app
+      - docker-execution
 
   ui:
     build:

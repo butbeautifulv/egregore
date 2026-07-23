@@ -228,6 +228,14 @@ docker compose -f deploy/docker-compose.yml up -d postgres redis
 cd backend/api && uv run egregore serve --port 8080
 ./scripts/dev-dispatcher-split.sh
 
+# Docker execution (explicitly opt-in: Dispatcher receives the Docker socket)
+# Build the agent-runtime image that Dispatcher launches, then start the profile.
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml \
+  --profile image-build build agent-runtime-image dispatcher
+DOCKER_GID="$(stat -c '%g' /var/run/docker.sock)" \
+  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml \
+  --profile docker-execution up -d dispatcher
+
 # UI (webpack — Turbopack has module issues in this repo)
 cd web_ui && bun x next dev --webpack
 ```
