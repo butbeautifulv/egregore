@@ -61,12 +61,14 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
 ## §2 — Everything else, by theme (independent of §1)
 
 ### Core architecture / domain
-- **Core still hardcodes SOC domain, 2 of 6 points remaining** (`EventType`/`WorkerAgentName`
-  closed `Literal`s; no toy non-SOC-pack acceptance test proving `cys_core/domain` needs zero
-  changes for a *new* pack — closer to meaningful now but still blocked on point 1, since
-  `FindingEnvelope.agent`/schema names still flow through `WorkerAgentName`). Four points done:
-  (`§62`) `ESCALATION_ONLY_PATHS`/`READ_ONLY_TOOLS`/`PLAN_BLOCKED_TOOLS`/`MUTATING_TOOLS` no longer
-  leak from `cybersec-soc` into every other profile pack unconditionally; (`§63`) `ToolRegistry`'s
+- **Core still hardcodes SOC domain, 1 of 6 points remaining**: point 6, the toy non-SOC-pack
+  acceptance test proving `cys_core/domain` needs zero changes for a *new* pack. Unblocked on the
+  type-system side now (points 1/2 done) but still needs an actual toy persona carrying no
+  cybersec-soc tools/skills to be a meaningful proof — `general-assistant`'s `consultant` and
+  `gaia-benchmark`'s `gaia_solver` both still carry real SOC-flavored tool lists, so neither is a
+  clean acceptance case yet (`§71.5`). Five points done: (`§62`)
+  `ESCALATION_ONLY_PATHS`/`READ_ONLY_TOOLS`/`PLAN_BLOCKED_TOOLS`/`MUTATING_TOOLS` no longer leak
+  from `cybersec-soc` into every other profile pack unconditionally; (`§63`) `ToolRegistry`'s
   SIEM/Veil/Nessus tool construction/registration is now conditional on the active profile pack
   (`PROFILE_PACK_ID` env var → `ProductProfilePack.tool_domains`) instead of an unconditional
   module-import side effect; (`§64`) the real catalog seed path (`/catalog/seed`, dev auto-seed)
@@ -78,12 +80,16 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   subclasses + `KillChainFields` moved out of `cys_core/domain/findings/models.py` into
   `cys_core/domain/findings/packs/cybersec_soc.py`, and `cys_core/registry/schemas.py`'s schema
   resolution is now `PROFILE_PACK_ID`-gated the same way `§63`'s tool registration is — core keeps
-  only `WorkerAgentName`, `ConductorStepResult`/`CriticResult`, `FindingEnvelope`.
+  only `WorkerAgentName`, `ConductorStepResult`/`CriticResult`, `FindingEnvelope`; (`§71`)
+  `EventType`/`WorkerAgentName` closed `Literal`s replaced with plain `str` — both turned out much
+  lower-risk than assumed (zero exhaustiveness matching anywhere, `WorkerAgentName`'s one real
+  field is dead code). No catalog-driven validation wired for either (none existed to piggyback
+  on — honest residual, `§71`).
   `result_validator.py`'s `"ConsultantFinding"`-literal special-casing is a separate, deferred
   residual coupling (`§70.4`). `tool_risk` (`ACTION_RISK_MAPPING`) has a similar "leaks into every
   profile" shape but gating it alone would be cosmetic without also changing
   `classify_tool_risk_pure`'s own fallback — a separate, riskier pass, not picked up here (see
-  `§62.5`). `MSP_BACKLOG.md` §8, §24.1, §62, §63, §64, §70.
+  `§62.5`). `MSP_BACKLOG.md` §8, §24.1, §62, §63, §64, §70, §71.
 - **Semantic/long-term agent memory tier doesn't exist** — `memory_type` schema has `lesson`/
   `preference` slots, nothing ever writes them. `MSP_BACKLOG.md` §9.
 
