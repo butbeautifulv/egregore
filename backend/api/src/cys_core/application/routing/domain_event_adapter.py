@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import cast
-
 from cys_core.application.adapters.security_event_adapter import security_event_to_domain
 from cys_core.application.ports.product_pack import ProductPackPort
 from cys_core.application.routing.event_router import EventRouter
 from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.events.domain_events import DomainEvent
-from cys_core.domain.events.models import EventType, RoutingDecision, SecurityEvent
+from cys_core.domain.events.models import RoutingDecision, SecurityEvent
 
 
 def resolve_domain_for_profile(profile_id: str, *, packs: ProductPackPort) -> str:
@@ -32,7 +30,7 @@ def _domain_to_security(event: DomainEvent) -> SecurityEvent:
 
     return Sec(
         id=event.id,
-        type=cast(EventType, event.event_type),
+        type=event.event_type,
         source=event.source,
         severity=event.severity,
         payload={**event.payload, "profile_id": event.profile_id, "domain": event.domain},

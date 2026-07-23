@@ -12,6 +12,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
 from cys_core.application.workers.tool_execution_tracker import siem_investigate_done
+from cys_core.llm.tool_call_parsing import tool_call_id_from_mapping
 from cys_core.middleware._framework_casts import cast_model_response, cast_tool_result
 
 
@@ -62,7 +63,7 @@ class OneToolPerTurnMiddleware(AgentMiddleware):
             if self._tool_calls_this_turn > self._max_tools_per_turn():
                 return ToolMessage(
                     content="Only one tool call per turn is allowed. Complete this step before invoking another tool.",
-                    tool_call_id=request.tool_call.get("id", ""),
+                    tool_call_id=tool_call_id_from_mapping(request.tool_call),
                     status="error",
                 )
         return None

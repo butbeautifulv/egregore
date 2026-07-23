@@ -6815,3 +6815,23 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
   pack with a persona that carries no cybersec-soc-specific tools/skills to be a meaningful
   proof — `general-assistant`'s `consultant` persona and `gaia-benchmark`'s `gaia_solver` persona
   both still carry real SOC-flavored tool lists, so neither is a clean acceptance case yet.
+- **CI run `30006875174` (commit `08ca5de`) failed on `lint (api)`** — `ty check src` flagged 2
+  `redundant-cast` errors: `cast(EventType, ...)` in `domain_event_adapter.py` and
+  `route_and_enqueue.py` became a no-op cast on an already-`str` value once `EventType = str`.
+  Fixed by removing both casts (and the now-unused `EventType`/`cast` imports where nothing else
+  used them) — `api`-only, `EventType` isn't cast anywhere in worker/dispatcher/agent-runtime/
+  tool-gateway.
+- **Unrelated pre-existing bug found while re-running the full `ty check src` per package**:
+  agent-runtime's `middleware/one_tool_middleware.py` and `middleware/sgr_reasoning_middleware.py`
+  call `tool_call_id_from_mapping(...)` without importing it — `ty` flagged `unresolved-reference`
+  (would be a real `NameError` the first time either middleware executes). Not from this session's
+  changes: worker's copies of the same two files use inline `request.tool_call.get("id", "")`
+  instead (never call the shared helper), and dispatcher/tool-gateway/api don't have these files at
+  all — agent-runtime-only, introduced whenever these two files were refactored to use the shared
+  `tool_call_id_from_mapping()` helper (matching `security_middleware.py`/`scope_middleware.py`/
+  `tool_ladder_middleware.py`/`follow_up_tool_middleware.py`/`tool_dedup_middleware.py`'s existing
+  pattern in the same package) but the import was missed in these two. Fixed by adding the missing
+  `from cys_core.llm.tool_call_parsing import tool_call_id_from_mapping` import to both files.
+  `ty check src` for agent-runtime is back to the same 7 pre-existing baseline diagnostics
+  documented in `§64.3`/`§70` (langgraph `Pregel.ainvoke`/`StateGraph` stub gaps, the
+  `PlannerRouter.route`/`_LlmPlanner.plan` param-name mismatch) — no new issues.

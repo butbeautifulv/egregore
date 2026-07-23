@@ -11,6 +11,7 @@ from langgraph.types import Command
 
 from cys_core.application.reasoning.sgr_policy import ResolvedSgrPolicy
 from cys_core.domain.reasoning.sgr_models import REASONING_STEP_TOOL, SchemaGuidedReasoningStep
+from cys_core.llm.tool_call_parsing import tool_call_id_from_mapping
 from cys_core.middleware._framework_casts import cast_model_response, cast_tool_result
 from cys_core.middleware.sgr_session import SgrSessionState
 
@@ -82,7 +83,7 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
         if self._policy.require_before_action and not self._session.reasoning_done:
             return ToolMessage(
                 content=f"Call {REASONING_STEP_TOOL} before using {tool_name}.",
-                tool_call_id=request.tool_call.get("id", ""),
+                tool_call_id=tool_call_id_from_mapping(request.tool_call),
                 status="error",
             )
         return handler(request)
@@ -107,7 +108,7 @@ class SchemaGuidedReasoningMiddleware(AgentMiddleware):
         if self._policy.require_before_action and not self._session.reasoning_done:
             return ToolMessage(
                 content=f"Call {REASONING_STEP_TOOL} before using {tool_name}.",
-                tool_call_id=request.tool_call.get("id", ""),
+                tool_call_id=tool_call_id_from_mapping(request.tool_call),
                 status="error",
             )
         result = handler(request)

@@ -8,7 +8,7 @@ from cys_core.application.ports.tracing_ports import NOOP_APPLICATION_TRACING, A
 from cys_core.application.routing.event_router import EventRouter
 from cys_core.application.use_cases.dispatch_event import DispatchEvent
 from cys_core.application.use_cases.route_event import RouteEvent
-from cys_core.domain.events.models import EventType, RoutingDecision, SecurityEvent, Severity
+from cys_core.domain.events.models import RoutingDecision, SecurityEvent, Severity
 
 
 class RouteAndEnqueueEvent:
@@ -62,7 +62,7 @@ class RouteAndEnqueueEvent:
     ) -> SecurityEvent:
         return SecurityEvent(
             id=event_id or f"evt-{uuid.uuid4().hex[:12]}",
-            type=cast(EventType, event_type),
+            type=event_type,
             source=source,
             severity=cast(Severity, severity),
             payload=payload,
