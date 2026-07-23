@@ -27,6 +27,7 @@ pythonpath = ["src", "../..", "."]
 markers = [
     "unit: fast isolated tests",
     "integration: multi-module wiring",
+    "adversarial: abuse-case security regression tests",
 ]
 addopts = "--strict-markers"
 

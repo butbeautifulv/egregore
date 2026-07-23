@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api, tool-gateway, agent-runtime, dispatcher]
+        service: [worker, api, tool-gateway, model-gateway, agent-runtime, dispatcher]
     defaults:
       run:
         working-directory: backend/${{ matrix.service }}
@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [worker, api, tool-gateway, agent-runtime, dispatcher]
+        service: [worker, api, tool-gateway, model-gateway, agent-runtime, dispatcher]
     defaults:
       run:
         # cys_core/domain is physically duplicated into worker/, api/, and
