@@ -50,6 +50,11 @@ _use_memory_fallback: bool = False
 _postgres_url: str = ""
 _default_job_recursion_limit: int = 25
 _triage_recursion_limit: int = 22
+_consultant_two_phase_graph: bool = False
+_consultant_research_recursion_limit: int = 15
+_consultant_synthesize_recursion_limit: int = 8
+_consultant_research_max_steps: int = 15
+_consultant_research_inner_recursion: int = 3
 _llm_model: str = "anthropic/claude-sonnet-4"
 _llm_api_key: str = ""
 _llm_base_url: str | None = None
@@ -141,6 +146,9 @@ def configure_from_settings(settings: Any) -> None:
     global _stage, _engagement_async_planning, _use_conductor_for_events
     global _max_spawn_depth, _use_dynamic_catalog, _use_memory_fallback
     global _postgres_url, _default_job_recursion_limit, _triage_recursion_limit
+    global _consultant_two_phase_graph, _consultant_research_recursion_limit
+    global _consultant_synthesize_recursion_limit, _consultant_research_max_steps
+    global _consultant_research_inner_recursion
     global _llm_model, _llm_api_key, _llm_base_url, _llm_temperature, _llm_request_timeout
     global _llm_thinking_token_budget, _llm_num_retries
     global _veil_mcp_url, _veil_mcp_enabled, _veil_mcp_timeout
@@ -179,6 +187,11 @@ def configure_from_settings(settings: Any) -> None:
     _postgres_url = settings.postgres_url
     _default_job_recursion_limit = settings.default_job_recursion_limit
     _triage_recursion_limit = settings.triage_recursion_limit
+    _consultant_two_phase_graph = settings.consultant_two_phase_graph
+    _consultant_research_recursion_limit = settings.consultant_research_recursion_limit
+    _consultant_synthesize_recursion_limit = settings.consultant_synthesize_recursion_limit
+    _consultant_research_max_steps = settings.consultant_research_max_steps
+    _consultant_research_inner_recursion = settings.consultant_research_inner_recursion
     _llm_model = settings.llm_model
     _llm_api_key = settings.llm_api_key
     _llm_base_url = settings.llm_base_url
@@ -321,6 +334,31 @@ def get_recursion_limit_for_persona(persona: str) -> int:
     if persona in _TRIAGE_PERSONAS:
         return _triage_recursion_limit
     return _default_job_recursion_limit
+
+
+def get_consultant_two_phase_graph() -> bool:
+    return _consultant_two_phase_graph
+
+
+def get_consultant_research_recursion_limit() -> int:
+    return _consultant_research_recursion_limit
+
+
+def get_consultant_synthesize_recursion_limit() -> int:
+    return _consultant_synthesize_recursion_limit
+
+
+def get_consultant_research_max_steps() -> int:
+    return _consultant_research_max_steps
+
+
+def get_consultant_research_inner_recursion() -> int:
+    return _consultant_research_inner_recursion
+
+
+def get_consultant_graph_recursion_limit() -> int:
+    """Outer LangGraph cap for the consultant two-phase graph."""
+    return _consultant_research_max_steps + _consultant_synthesize_recursion_limit + 2
 
 
 def get_llm_settings() -> LlmSettings:

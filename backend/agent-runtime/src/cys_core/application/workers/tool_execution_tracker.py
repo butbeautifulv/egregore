@@ -364,6 +364,27 @@ def get_veil_tool_count(job_id: str) -> int:
         return _veil_counts.get(job_id, 0)
 
 
+_CONSULTANT_PLAYBOOK_SEARCH_COMPLETE = 2
+_CONSULTANT_TOOL_BUDGET = 5
+
+
+def consultant_ladder_complete(job_id: str) -> bool:
+    """True when consultant research has enough tool evidence to synthesize.
+
+    Mirrors ToolLadderMiddleware stop conditions: successful load_skill, playbook_search
+    budget exhausted, or total tool-call budget exhausted.
+    """
+    if not job_id:
+        return False
+    if tool_succeeded(job_id, "load_skill"):
+        return True
+    if get_tool_call_count(job_id, "playbook_search") >= _CONSULTANT_PLAYBOOK_SEARCH_COMPLETE:
+        return True
+    if get_tool_execution_count(job_id) >= _CONSULTANT_TOOL_BUDGET:
+        return True
+    return False
+
+
 # Backward-compatible alias used by older middleware.
 def record_siem_telemetry_sparse(job_id: str, sparse: bool) -> None:
     if not sparse or not job_id:

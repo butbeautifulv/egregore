@@ -5,7 +5,7 @@ import json
 from typing import Any
 from uuid import UUID
 
-from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.callbacks import AsyncCallbackHandler, BaseCallbackHandler
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult, LLMResult
 
@@ -306,7 +306,7 @@ class EgressStreamingCallback(AsyncCallbackHandler):
         )
 
 
-def build_egress_streaming_callbacks(context: StreamContext) -> list[EgressStreamingCallback]:
+def build_egress_streaming_callbacks(context: StreamContext) -> list[BaseCallbackHandler]:
     if not get_stream_agent_output():
         return []
     return [EgressStreamingCallback(context)]

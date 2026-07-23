@@ -56,6 +56,7 @@ class _FakeConnection:
                         row["pending_hitl_json"],
                         row.get("last_error", ""),
                         row.get("failure_reason", ""),
+                        row.get("profile_id", ""),
                     )
                 ]
         return cursor
@@ -72,6 +73,7 @@ class _FakeConnection:
                 correlation_id,
                 tenant_id,
                 event_id,
+                profile_id,
                 preview,
                 pending,
                 last_error,
@@ -86,6 +88,7 @@ class _FakeConnection:
                 "correlation_id": correlation_id,
                 "tenant_id": tenant_id,
                 "event_id": event_id,
+                "profile_id": profile_id,
                 "hitl_preview_json": json.loads(preview),
                 "pending_hitl_json": pending_data,
                 "last_error": last_error,
