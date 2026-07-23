@@ -73,6 +73,19 @@ modelGateway:
   replicas: 1
   port: 8093
   defaultModel: "gpt-4o-mini"
+  # Fail-closed egress policy. Enable only after resolving every configured
+  # provider endpoint to stable CIDRs; a NetworkPolicy cannot safely allow a
+  # hostname. Leaving this disabled preserves the current deployment behavior.
+  networkPolicy:
+    enabled: false
+    providerCidrs: []
+    dns:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
 
 rollout:
   api:

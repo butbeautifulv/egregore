@@ -1,0 +1,53 @@
+{{- if and .Values.modelGateway.enabled .Values.modelGateway.networkPolicy.enabled }}
+{{- if not .Values.modelGateway.networkPolicy.providerCidrs }}
+{{- fail "modelGateway.networkPolicy.providerCidrs is required when the Model Gateway NetworkPolicy is enabled" }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: model-gateway
+  labels:
+    app: model-gateway
+    {{- include "egregore.labels" . | nindent 4 }}
+  annotations:
+    egregore.cxado.io/egress-policy: "DNS plus explicitly allowlisted provider CIDRs only"
+spec:
+  podSelector:
+    matchLabels:
+      app: model-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # The split runtime executes in Kubernetes Jobs; worker remains allowed for
+    # rollback while it is still shipped in the chart.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: egregore-agent-runtime
+        - podSelector:
+            matchLabels:
+              app: egregore-worker
+      ports:
+        - protocol: TCP
+          port: {{ .Values.modelGateway.port }}
+  egress:
+    - to:
+        - namespaceSelector:
+            {{- toYaml .Values.modelGateway.networkPolicy.dns.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml .Values.modelGateway.networkPolicy.dns.podSelector | nindent 12 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        {{- range .Values.modelGateway.networkPolicy.providerCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+{{- end }}
