@@ -136,7 +136,8 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   `ModelGatewayChatModel._astream` works around this with a single-chunk fallback, not a fix.
   Emitting tokens before complete-output guardrail inspection would bypass leakage protection, so a
   real implementation needs a safe streaming protocol rather than a direct proxy.
-- No per-call rate limiting or budget tracking, unlike `tool-gateway`.
+- Per-call Redis sliding-window limiting is implemented with `off|shadow|enforce` modes
+  (`08a1920`; default `shadow`; Release Gate pending). Budget tracking remains absent.
 - `domain-coverage` (`--cov-fail-under=100` on `tests/domain/`) and `adversarial` jobs are now in
   Release Gate (`fe870ec`/`999d2bd`); their first green verification run (`30014193942`) is pending.
 - `MSP_BACKLOG.md` §29.4, §49, §54, §74.

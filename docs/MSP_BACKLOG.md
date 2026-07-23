@@ -7050,3 +7050,14 @@ operator enables the policy without at least one provider CIDR. This is delibera
 default: provider hostnames may resolve to changing addresses, and an unbounded TCP/443 rule would
 not be a meaningful egress control. Release Gate was dispatched and is pending; no cluster was
 changed.
+
+## 76. Model Gateway per-call distributed rate limiter (2026-07-23)
+
+`08a1920` adds a Redis ZSET sliding-window limiter scoped to `persona:session_id`, with unique
+members per call so calls in the same timestamp cannot overwrite one another. Settings expose
+`MODEL_GATEWAY_RATE_LIMIT_MODE=off|shadow|enforce`, call/window limits, and `REDIS_URL`.
+`shadow` is the default and records would-be denials or Redis failures without interrupting model
+calls; `enforce` returns a failed gateway response and fails closed if Redis cannot be reached. The
+limiter stays in bootstrap and is injected as an async application callback, preserving the
+model-gateway domain/application boundaries. `uv lock`, Ruff, and ty passed locally; Release Gate
+was dispatched and is pending. Job-level budget accounting remains a separate open item.
