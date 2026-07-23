@@ -6835,3 +6835,24 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
   `ty check src` for agent-runtime is back to the same 7 pre-existing baseline diagnostics
   documented in `§64.3`/`§70` (langgraph `Pregel.ainvoke`/`StateGraph` stub gaps, the
   `PlannerRouter.route`/`_LlmPlanner.plan` param-name mismatch) — no new issues.
+- **Correction to the bullet above — that "pre-existing bug" framing was wrong, and the fix made
+  things worse, not better.** `git add`ing `one_tool_middleware.py`/`sgr_reasoning_middleware.py`
+  by path staged the *full current working-tree diff* for those files — which included the user's
+  own **uncommitted, unrelated, in-progress** rework of these two files (switching to a
+  `tool_call_id_from_mapping()` helper; these files were already in the giant uncommitted-changes
+  pile present at the start of this session), not just the import line I added on top of it. The
+  commit (`3a7c5d7`) landed that WIP's calling side without its `cys_core/llm/
+  tool_call_parsing.py` counterpart (never staged), so the *committed* tree had calls to a
+  function `ty` correctly reported as `unresolved-import` — confirmed by fetching
+  `tool_call_parsing.py` at that commit from GitHub: it only defines `parse_tool_call_args`, none
+  of the other 8 functions (including `tool_call_id_from_mapping`) visible in the local working
+  tree. Before `3a7c5d7`, both files' *committed* content used the safe
+  `request.tool_call.get("id", "")` pattern (matching worker's committed copy) — there was no bug
+  to fix in the first place. **Fixed via commit `7f1a1b1`**: reverted both files' *committed*
+  content back to the pre-`3a7c5d7` `.get("id", "")` pattern (verified byte-identical to the
+  parent commit), then restored the user's WIP content back onto disk as **uncommitted** local
+  changes afterward — their in-progress work is untouched and exactly where they left it, just no
+  longer accidentally split across git history. Process takeaway: `git add <path>` stages
+  whatever is currently on disk for that path, not "my intended diff" — when a file is already
+  known to carry someone else's uncommitted WIP (as these were, from the session-start `git
+  status`), check `git diff <path>` before staging, not just after.
