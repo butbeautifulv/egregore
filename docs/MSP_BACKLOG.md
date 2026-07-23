@@ -7120,3 +7120,44 @@ run. This feature's files are **only part of** the large uncommitted pile in the
 pile also contains a separate, unrelated `tool_call_id_from_mapping` middleware refactor (`§73`) and
 a large batch of pre-existing `web_ui` SSE work — neither is touched or described by this entry, and
 neither should be swept into a commit of this feature.
+
+**Update: landed and Release Gate green (2026-07-23, same day).** The initial narrow commit
+(`a733954`, new files only) broke CI three times in sequence, each time because a committed file's
+own imports/tests reached into a symbol that only existed in the still-uncommitted WIP pile. Each
+was fixed by extracting *only* the minimal additive piece the committed code actually needed —
+verified locally (often via `git stash push --keep-index` to test against the staged-only tree, not
+the full working copy) before every commit — never by pulling in the surrounding unrelated WIP:
+1. `27a053e` — `consultant_graph.py`/`react_agent.py` needed getters that only existed in
+   uncommitted `runtime_config.py`/`tool_execution_tracker.py` (worker + agent-runtime),
+   `tool_call_id_from_mapping` from `tool_call_parsing.py` (worker only — its consumers elsewhere
+   stayed uncommitted), and a real `ty` type error in `egress_streaming_callback.py`
+   (`build_egress_streaming_callbacks`'s return type was narrower than what it's assigned to).
+   Same commit fixed an unrelated pre-existing regression found via CI: `e00f0e2` added a
+   `profile_id` column to the `worker_jobs` INSERT but never updated
+   `test_postgres_job_store.py`'s fake cursor in api/dispatcher/worker/agent-runtime (tool-gateway's
+   copy has no `profile_id` column yet and was already correct).
+2. `efd3306` — `configure_from_settings()` (just committed) read
+   `settings.consultant_two_phase_graph` and 4 sibling fields, but the `Settings` model itself
+   didn't have them yet. Staged only those 5 `Field()` declarations out of each package's much
+   larger `settings.py` diff via `git apply --cached` against a hand-built patch — left out worker's
+   unrelated `model_gateway_url`/`model_provider` fields and both packages'
+   `planner_default_post_processors` default change.
+3. `cbc2de4` — the committed `test_agent_streaming.py` called
+   `AgentRuntime._values_from_astream_chunk`, but `AgentRuntime` itself was never wired to use the
+   consultant graph at all — that class-level integration (`_build_synthesize_middleware`,
+   `_build_agent`'s branch to `build_consultant_graph`, `job_id` threading, dual-mode
+   `stream_mode=["messages", "values"]`) was still uncommitted. Committed the whole self-contained
+   `agent.py` diff (confirmed it doesn't touch the separate middleware refactor).
+
+Final Release Gate (`30036730848`) on `feature/microservice-refactoring`: `release-gate` gate job
+**succeeded**. Every job this feature touches is green (`lint`/`arch-lint`/`unit-tests`/
+`adversarial`/`domain-coverage`/`build`/`container-scan` for worker and agent-runtime; `unit-tests
+(api)` green after the `profile_id` fix). The one red leg, `container-scan (dispatcher) /
+trivy-image`, is the pre-existing, already-tracked blocker from `§74`/plan `§1` item 1 — unrelated
+to this feature, not touched.
+
+**Still open**: `CONSULTANT_TWO_PHASE_GRAPH` remains `false` by default everywhere (correct — this
+was a CI-greenness fix, not a rollout decision). The rest of the uncommitted pile (middleware
+`tool_call_id_from_mapping` refactor, `web_ui` SSE work, `model_gateway_url`/`model_provider`
+settings, `planner_default_post_processors` default change) is still exactly where the user left
+it — none of it was touched across any of these three commits.
