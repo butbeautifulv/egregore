@@ -21,6 +21,8 @@ from cys_core.application.reasoning.sgr_tooling import (
 )
 from cys_core.application.runtime_config import (
     get_budget_use_api_usage,
+    get_consultant_graph_recursion_limit,
+    get_consultant_two_phase_graph,
     get_context_summary_enabled,
     get_egregore_json_tool_call_fallback,
     get_egregore_one_tool_per_turn,
@@ -59,6 +61,7 @@ from cys_core.observability.trace_attributes import build_sgr_trace_metadata, me
 from cys_core.registry.agents import AgentDefinition, AgentRegistry, get_agent_registry
 from cys_core.registry.schemas import schema_registry
 from cys_core.registry.tools import tool_registry
+from cys_core.runtime.consultant_graph import build_consultant_graph
 from cys_core.runtime.react_agent import MinimalReactAgentRunner
 
 T = TypeVar("T", bound=BaseModel)
@@ -201,6 +204,38 @@ class AgentRuntime:
             middleware.append(JsonToolCallMiddleware())
         return middleware
 
+    def _build_synthesize_middleware(
+        self,
+        defn: AgentDefinition,
+        session_id: str,
+        *,
+        tenant_id: str = "default",
+        investigation_id: str = "",
+        profile_id: str = DEFAULT_PROFILE_ID,
+    ) -> list[Any]:
+        """Middleware for consultant synthesize phase: no tools, no SGR, no ladder."""
+        middleware: list[Any] = [
+            PromptContextMiddleware(
+                agent_id=defn.name,
+                system_prompt_digest=defn.system_prompt_digest,
+                session_id=session_id,
+                sanitizer=self.sanitizer,
+                guardrails=self.guardrails,
+            ),
+        ]
+        if self._memory_reader is not None and investigation_id:
+            middleware.append(
+                MemoryContextMiddleware(
+                    self._memory_reader,
+                    tenant_id=tenant_id,
+                    investigation_id=investigation_id,
+                )
+            )
+        middleware.append(
+            SecurityMiddleware(agent_id=defn.name, session_id=session_id, profile_id=profile_id)
+        )
+        return middleware
+
     def _resolve_tools(
         self,
         defn: AgentDefinition,
@@ -232,7 +267,23 @@ class AgentRuntime:
         investigation_id: str,
         profile_id: str,
         goal: str,
+        job_id: str = "",
     ):
+        if defn.name == "consultant" and get_consultant_two_phase_graph():
+            return build_consultant_graph(
+                self,
+                defn,
+                model=model,
+                tools=tools,
+                checkpointer=checkpointer,
+                store=store,
+                session_id=session_id,
+                tenant_id=tenant_id,
+                investigation_id=investigation_id,
+                profile_id=profile_id,
+                goal=goal,
+                job_id=job_id or session_id,
+            )
         schema = schema_registry.get(defn.schema_name)
         return create_agent(
             model=model or self.model_connector.create_model(),
@@ -264,6 +315,7 @@ class AgentRuntime:
         investigation_id: str = "",
         profile_id: str = DEFAULT_PROFILE_ID,
         goal: str = "",
+        job_id: str = "",
     ):
         tools = self._resolve_tools(defn, session_id=session_id, profile_id=profile_id, extra_tools=extra_tools)
         persistence = self._sync_persistence()
@@ -280,6 +332,7 @@ class AgentRuntime:
             investigation_id=investigation_id,
             profile_id=profile_id,
             goal=goal,
+            job_id=job_id,
         )
 
     async def acreate(
@@ -295,6 +348,7 @@ class AgentRuntime:
         investigation_id: str = "",
         profile_id: str = DEFAULT_PROFILE_ID,
         goal: str = "",
+        job_id: str = "",
     ):
         if sandbox_tools is not None:
             tools = sandbox_tools
@@ -315,6 +369,7 @@ class AgentRuntime:
             investigation_id=investigation_id,
             profile_id=profile_id,
             goal=goal,
+            job_id=job_id,
         )
 
     def run(
@@ -384,6 +439,7 @@ class AgentRuntime:
             investigation_id=inv_id,
             profile_id=profile_id,
             goal=user_input,
+            job_id=job_id,
         )
         schema = schema_registry.get(defn.schema_name)
         sgr_metadata = self._run_sgr_preflight(
@@ -391,12 +447,15 @@ class AgentRuntime:
             user_input,
             profile_id=profile_id,
         )
+        effective_recursion = recursion_limit
+        if effective_recursion is None and defn.name == "consultant" and get_consultant_two_phase_graph():
+            effective_recursion = get_consultant_graph_recursion_limit()
         result = await self._ainvoke(
             agent,
             user_input,
             session_id=sid,
             schema=schema,
-            recursion_limit=recursion_limit,
+            recursion_limit=effective_recursion,
             agent_id=defn.name,
             job_id=job_id,
             event_id=event_id,
@@ -466,7 +525,7 @@ class AgentRuntime:
             {
                 "configurable": {"thread_id": session_id},
                 "callbacks": self.model_connector.callbacks(),
-                "recursion_limit": 25,
+                "recursion_limit": get_persona_recursion_limit(name),
             },
             persona=name,
             session_id=session_id,
@@ -496,7 +555,7 @@ class AgentRuntime:
             {
                 "configurable": {"thread_id": session_id},
                 "callbacks": self.model_connector.callbacks(),
-                "recursion_limit": 25,
+                "recursion_limit": get_persona_recursion_limit(agent_id or "agent"),
             },
             persona=agent_id or "agent",
             session_id=session_id,
@@ -550,13 +609,31 @@ class AgentRuntime:
         )
 
     @staticmethod
+    def _values_from_astream_chunk(chunk: Any) -> Any | None:
+        """Extract the state snapshot from a LangGraph astream item."""
+        if isinstance(chunk, tuple) and len(chunk) == 2:
+            mode, data = chunk
+            if mode == "values":
+                return data
+            return None
+        return chunk
+
+    @staticmethod
     async def _call_agent(
         agent, input_payload: dict[str, Any], config: dict[str, Any], *, stream_context: StreamContext | None
     ) -> Any:
         if stream_context is not None and get_stream_agent_token_streaming():
             result = None
-            async for chunk in agent.astream(input_payload, config=config, stream_mode="values"):
-                result = chunk
+            # "messages" drives per-token LLM streaming (egress assistant_delta callbacks);
+            # "values" preserves the final graph state for _coerce_result.
+            async for chunk in agent.astream(
+                input_payload,
+                config=config,
+                stream_mode=["messages", "values"],
+            ):
+                values = AgentRuntime._values_from_astream_chunk(chunk)
+                if values is not None:
+                    result = values
             if result is None:
                 result = await agent.ainvoke(input_payload, config=config)
             return result
