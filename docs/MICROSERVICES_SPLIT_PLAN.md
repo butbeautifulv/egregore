@@ -16,7 +16,7 @@ Six independent backend packages, no shared package between any of them (deliber
 | `backend/api/` | Deployed (k3s + local), CI-complete |
 | `backend/worker/` | **Retired on k3s** (`replicas: 0`); kept for rollback |
 | `backend/tool-gateway/` | Deployed, CI-complete |
-| `backend/model-gateway/` | Image + opt-in Helm workload, wired into `agent-runtime` (selectable, not default; Release Gate pending) |
+| `backend/model-gateway/` | Image + opt-in Helm workload, wired into `agent-runtime` (selectable, not default; Model Gateway CI green) |
 | `backend/agent-runtime/` | Deployed as k3s Batch Job executor (`MSP_BACKLOG.md` §68) |
 | `backend/dispatcher/` | Deployed on k3s (`EXECUTION_BACKEND=k8s`, `MSP_BACKLOG.md` §68) |
 
@@ -37,7 +37,8 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
    bootstrap is now implemented as an explicit Compose profile (`docker-execution`) in `ecdb964`:
    dispatcher gets a pinned Docker CLI, a read-only socket bind, and a separate image-builder profile.
    It remains opt-in because Docker socket access is host-root-equivalent; it has not been live-run
-   locally and its Release Gate (`30014310150`) is pending. `MSP_BACKLOG.md` §52.4, §52.5, §74.
+   locally. Validation is presently blocked by Trivy's dispatcher image scan, not Compose config
+   (`30014310150`). `MSP_BACKLOG.md` §52.4, §52.5, §74.
 2. **HITL pause/resume redesign for the cross-process case.** Design (`§35`, refuse-then-retry
    with an approval token) is built both sides for the LangGraph path and **proven live end to end**
    (`§61`): `tool-gateway` classifies risk and mints/verifies approval tokens (`§58`);
@@ -128,16 +129,15 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   `MSP_BACKLOG.md` §48.4, §50.1.
 
 ### model-gateway
-- An opt-in, fail-closed Helm NetworkPolicy now restricts ingress to agent-runtime/rollback-worker
-  and egress to cluster DNS plus configured provider CIDRs on 443 (`48b04b8`; Release Gate pending).
-  Operators must supply stable CIDRs for every provider endpoint before enabling it — NetworkPolicy
-  cannot safely allow a hostname.
+- The implemented Helm workload, NetworkPolicy, and rate limiter await their own queued Release Gates.
+  Operators must supply stable provider CIDRs before enabling NetworkPolicy; it cannot safely allow
+  a hostname.
 - No streaming support (`POST /v1/model/invoke` is request/response only) — `agent-runtime`'s
   `ModelGatewayChatModel._astream` works around this with a single-chunk fallback, not a fix.
   Emitting tokens before complete-output guardrail inspection would bypass leakage protection, so a
   real implementation needs a safe streaming protocol rather than a direct proxy.
 - Per-call Redis sliding-window limiting is implemented with `off|shadow|enforce` modes
-  (`08a1920`; default `shadow`; Release Gate pending). Budget tracking remains absent.
+  (`08a1920`; default `shadow`; queued Release Gate). Budget tracking remains absent.
 - `domain-coverage` (`--cov-fail-under=100` on `tests/domain/`) and `adversarial` jobs are now in
   Release Gate (`fe870ec`/`999d2bd`); their first green verification run (`30014193942`) is pending.
 - `MSP_BACKLOG.md` §29.4, §49, §54, §74.
