@@ -124,11 +124,11 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   `COSIGN_PRIVATE_KEY` decision. `MSP_BACKLOG.md` §41.4.
 - **`main` has no `required_status_checks` naming `release-gate`** — a PR can merge with every CI
   job red today. Needs explicit owner sign-off. `MSP_BACKLOG.md` §20.3.
-- **`.hex[:12]`/`.hex[:10]` id-generation sweep is DONE** — every site from §48.4's ~30-site list
-  traced; only `follow_up_id` (§48) was ever actually reachable, everything else is safe by
-  construction. One latent-but-not-currently-exposed landmine remains (`job_id` via
-  `append_conversation_turn`) — deliberately not hardened preemptively, that's a systemic-fix
-  decision for the user, not a bug fix. `MSP_BACKLOG.md` §79.
+- **`.hex[:12]`/`.hex[:10]` id-generation sweep is DONE, no sites left open** — every site from
+  §48.4's ~30-site list traced; only `follow_up_id` (§48) was ever actually reachable, everything
+  else is safe by construction or dead code. One latent-but-not-currently-exposed landmine remains
+  (`job_id` via `append_conversation_turn`) — deliberately not hardened preemptively, that's a
+  systemic-fix decision for the user, not a bug fix. `MSP_BACKLOG.md` §79.
 
 ### model-gateway
 - The implemented Helm workload, NetworkPolicy, and rate limiter await their own queued Release Gates.
@@ -139,9 +139,12 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   Emitting tokens before complete-output guardrail inspection would bypass leakage protection, so a
   real implementation needs a safe streaming protocol rather than a direct proxy.
 - Per-call Redis sliding-window limiting is implemented with `off|shadow|enforce` modes
-  (`08a1920`; default `shadow`; queued Release Gate). Budget tracking remains absent.
+  (`08a1920`; default `shadow`). Budget tracking remains absent.
 - `domain-coverage` (`--cov-fail-under=100` on `tests/domain/`) and `adversarial` jobs are now in
-  Release Gate (`fe870ec`/`999d2bd`); their first green verification run (`30014193942`) is pending.
+  Release Gate (`fe870ec`/`999d2bd`) — verified green (`30014193942`, `{"conclusion":"success"}`).
+  The NetworkPolicy (`48b04b8`) and Docker execution bootstrap (`ecdb964`) Release Gate runs
+  (`30014533490`, `30014310150`) both completed with only the pre-existing dispatcher Trivy scan
+  red (§74) — not a regression in either feature.
 - `MSP_BACKLOG.md` §29.4, §49, §54, §74.
 
 ### Product ideas (recorded, not scoped)
