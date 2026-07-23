@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS worker_jobs (
     event_id TEXT NOT NULL DEFAULT '',
     correlation_id TEXT NOT NULL DEFAULT '',
     tenant_id TEXT NOT NULL DEFAULT 'default',
+    profile_id TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL,
     session_id TEXT NOT NULL DEFAULT '',
     payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -44,6 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_worker_jobs_status ON worker_jobs (status);
 CREATE INDEX IF NOT EXISTS idx_worker_jobs_correlation ON worker_jobs (tenant_id, correlation_id);
 ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT '';
 ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS failure_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE worker_jobs ADD COLUMN IF NOT EXISTS profile_id TEXT NOT NULL DEFAULT '';
 """
 
 
@@ -71,6 +73,7 @@ class PostgresJobStore:
             correlation_id=row[4] or "",
             tenant_id=row[5] or "default",
             event_id=row[6] or "",
+            profile_id=row[11] or "",
             hitl_preview=preview,
             pending_hitl=pending,
             last_error=str(row[9] or ""),
@@ -89,6 +92,7 @@ class PostgresJobStore:
         correlation_id: str = "",
         tenant_id: str = "default",
         event_id: str = "",
+        profile_id: str = "",
         last_error: str | None = None,
         failure_reason: str | None = None,
     ) -> JobRecord:
@@ -99,6 +103,7 @@ class PostgresJobStore:
         resolved_correlation = normalize_correlation_id(resolved_correlation)
         resolved_tenant = tenant_id or (existing.tenant_id if existing else "default")
         resolved_event = event_id or (existing.event_id if existing else "")
+        resolved_profile = profile_id or (existing.profile_id if existing else "")
         resolved_error = last_error if last_error is not None else (existing.last_error if existing else "")
         resolved_reason = (
             failure_reason if failure_reason is not None else (existing.failure_reason if existing else "")
@@ -107,9 +112,9 @@ class PostgresJobStore:
             conn.execute(
                 """
                 INSERT INTO worker_jobs (
-                    job_id, persona, status, session_id, correlation_id, tenant_id, event_id,
+                    job_id, persona, status, session_id, correlation_id, tenant_id, event_id, profile_id,
                     hitl_preview_json, pending_hitl_json, last_error, failure_reason, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW())
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW())
                 ON CONFLICT (job_id) DO UPDATE SET
                     persona = EXCLUDED.persona,
                     status = EXCLUDED.status,
@@ -117,6 +122,7 @@ class PostgresJobStore:
                     correlation_id = EXCLUDED.correlation_id,
                     tenant_id = EXCLUDED.tenant_id,
                     event_id = EXCLUDED.event_id,
+                    profile_id = EXCLUDED.profile_id,
                     hitl_preview_json = EXCLUDED.hitl_preview_json,
                     pending_hitl_json = EXCLUDED.pending_hitl_json,
                     last_error = EXCLUDED.last_error,
@@ -131,6 +137,7 @@ class PostgresJobStore:
                     resolved_correlation,
                     resolved_tenant,
                     resolved_event,
+                    resolved_profile,
                     json.dumps(preview),
                     json.dumps(pending_json),
                     (resolved_error or "")[:500],
@@ -148,6 +155,7 @@ class PostgresJobStore:
             correlation_id=resolved_correlation,
             tenant_id=resolved_tenant,
             event_id=resolved_event,
+            profile_id=resolved_profile,
             last_error=(resolved_error or "")[:500],
             failure_reason=(resolved_reason or "")[:120],
         )
@@ -160,6 +168,7 @@ class PostgresJobStore:
         correlation_id: str = "",
         tenant_id: str = "default",
         event_id: str = "",
+        profile_id: str = "",
     ) -> JobRecord:
         return self._upsert(
             job_id=job_id,
@@ -168,7 +177,8 @@ class PostgresJobStore:
             status=WorkerJobStatus.PENDING,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
-            event_id=event_id,
+           event_id=event_id,
+            profile_id=profile_id,
         )
 
     def upsert_running(
@@ -180,6 +190,7 @@ class PostgresJobStore:
         correlation_id: str = "",
         tenant_id: str = "default",
         event_id: str = "",
+        profile_id: str = "",
     ) -> JobRecord:
         return self._upsert(
             job_id=job_id,
@@ -189,6 +200,7 @@ class PostgresJobStore:
             correlation_id=correlation_id,
             tenant_id=tenant_id,
             event_id=event_id,
+            profile_id=profile_id,
         )
 
     def pause_for_hitl(self, pending: PendingHitlAction, preview: dict[str, Any]) -> JobRecord:
@@ -203,6 +215,7 @@ class PostgresJobStore:
             correlation_id=existing.correlation_id if existing else "",
             tenant_id=existing.tenant_id if existing else "default",
             event_id=existing.event_id if existing else "",
+            profile_id=existing.profile_id if existing else "",
         )
 
     def get(self, job_id: str) -> JobRecord | None:
@@ -210,7 +223,7 @@ class PostgresJobStore:
             row = conn.execute(
                 """
                 SELECT job_id, session_id, persona, status, correlation_id, tenant_id, event_id,
-                       hitl_preview_json, pending_hitl_json, last_error, failure_reason
+                       hitl_preview_json, pending_hitl_json, last_error, failure_reason, profile_id
                 FROM worker_jobs WHERE job_id = %s
                 """,
                 (job_id,),
@@ -233,6 +246,7 @@ class PostgresJobStore:
             correlation_id=record.correlation_id,
             tenant_id=record.tenant_id,
             event_id=record.event_id,
+            profile_id=record.profile_id,
         )
 
     def mark_completed(self, job_id: str) -> None:
@@ -248,6 +262,7 @@ class PostgresJobStore:
             correlation_id=record.correlation_id,
             tenant_id=record.tenant_id,
             event_id=record.event_id,
+            profile_id=record.profile_id,
         )
 
     def mark_failed(self, job_id: str, *, error: str = "", reason: str = "") -> None:
@@ -263,6 +278,7 @@ class PostgresJobStore:
             correlation_id=record.correlation_id,
             tenant_id=record.tenant_id,
             event_id=record.event_id,
+            profile_id=record.profile_id,
             last_error=(error or "")[:500],
             failure_reason=(reason or "")[:120],
         )
