@@ -167,7 +167,7 @@ class EngagementContainer:
     def publish_hitl_resolved(self, **kwargs) -> None:
         from cys_core.infrastructure.engagement.hitl_egress import publish_hitl_resolved
 
-        publish_hitl_resolved(self.get_engagement_egress(), **kwargs)
+        publish_hitl_resolved(self._container.get_engagement_egress(), **kwargs)
 
     def get_reconcile_stuck_engagements(self):
         from cys_core.application.use_cases.enqueue_synthesis_job import EnqueueSynthesisJob

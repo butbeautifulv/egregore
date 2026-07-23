@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from cys_core.application.workers.result_validator import WorkerResultValidator
-from cys_core.domain.findings.models import ConsultantFinding, SocFinding
+from cys_core.domain.findings.packs.cybersec_soc import ConsultantFinding, SocFinding
 from cys_core.domain.security.exceptions import SecurityViolation
 from cys_core.domain.security.guardrails import OutputGuardrails
 

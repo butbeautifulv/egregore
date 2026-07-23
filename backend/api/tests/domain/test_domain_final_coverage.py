@@ -345,7 +345,8 @@ def test_remaining_small_domain_branches() -> None:
     from cys_core.domain.engagement.bus_routing import off_plan_bus_enqueue_reason
     from cys_core.domain.evidence.coercion import coerce_data_gaps
     from cys_core.domain.evidence.resolver import resolve_observation
-    from cys_core.domain.findings.models import ConductorStepResult, SocFinding
+    from cys_core.domain.findings.models import ConductorStepResult
+    from cys_core.domain.findings.packs.cybersec_soc import SocFinding
     from cys_core.domain.policy.defaults import get_persona_budgets
     from cys_core.domain.policy.pure import allow_tool_pure
     from cys_core.domain.runs.models import InteractionMode

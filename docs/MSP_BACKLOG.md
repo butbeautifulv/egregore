@@ -6718,3 +6718,60 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
   cause, different file set) — `web_ui/package.json`'s `next` line only, not the user's own
   uncommitted `"test": "bun test lib/ hooks/"` script-line edit sitting in the same file, which was
   left as their in-progress work and not touched.
+
+## 70. §8.4 point 2: 11 SOC `Finding` subclasses + `KillChainFields` extracted out of core
+
+- **Recount**: the concrete `Finding` subclasses are **11**, not the "9" the earliest §8.4 draft
+  said (`docs/MSP_BACKLOG.md` already self-corrected this at §24.1/re-verification time) —
+  `RedTeamFinding`, `NetworkFinding`, `SocFinding`, `ComplianceFinding`, `ConsultantFinding`,
+  `IntelFinding`, `HunterFinding`, `IdentityFinding`, `DfirFinding`, `CloudFinding`,
+  `PurpleFinding`, all subclassing `KillChainFields` (ATT&CK overlay: `attack_phase`,
+  `mitre_tactics`, `mitre_techniques`).
+- **Moved** `KillChainFields` + `AttackPhase` + the 11 subclasses from
+  `cys_core/domain/findings/models.py` into a new `cys_core/domain/findings/packs/cybersec_soc.py`
+  module (byte-identical new file across all 5 packages that have `cys_core/domain/findings/` —
+  worker/api/dispatcher/agent-runtime/tool-gateway; `model-gateway` doesn't have this tree at all,
+  confirmed out of scope). Core's `models.py` now holds only `WorkerAgentName` (still a closed
+  `Literal` — point 1, untouched here), `ConductorStepResult`/`CriticResult` (generic
+  control-plane schemas, not SOC-specific — stay in core), and `FindingEnvelope`.
+- **Schema resolution made pack-driven**, same `PROFILE_PACK_ID`-gated pattern §63 built for
+  `ToolRegistry`'s `_active_tool_domains()`: `cys_core/registry/schemas.py`'s old flat `_SCHEMAS`
+  dict split into `_GENERIC_SCHEMAS` (always resolvable — `ConductorStepResult`, `CriticResult`,
+  `SchemaGuidedReasoningStep`, the plan-payload schemas) and `_PACK_SCHEMAS` (keyed by profile-pack
+  id; only `cybersec-soc` has an entry today, the 11 classes above). `_active_pack_schemas()`
+  reads `PROFILE_PACK_ID` fresh on every `.get()`/`.names()` call, same as `_active_tool_domains()`
+  — unset or `cybersec-soc` behaves byte-for-byte identical to the old flat dict (all 18 names
+  resolve); any other pack id gets only the generic 7, proving isolation. Verified with a
+  standalone script (not pytest): default pack resolves all 18; `PROFILE_PACK_ID=general-assistant`
+  resolves the 7 generic names and raises `KeyError` on all 11 SOC names.
+- **Not addressed this pass**: `cys_core/application/workers/result_validator.py` hardcodes the
+  literal string `"ConsultantFinding"` for answer-text extraction/list-normalization — this is
+  real SOC-specific *behavior*, not just a class import, and moving it is a separate, riskier
+  change (same category of deferral as §62.5's `tool_risk`/`classify_tool_risk_pure` decision).
+  Left as-is, noted as a known residual core-coupling.
+- **Test fallout**: 4 test files across the 5 packages imported the moved classes directly from
+  `cys_core.domain.findings.models` instead of going through `schema_registry`/`cys_core.domain.
+  findings`'s `__init__.py` re-exports — `tests/domain/test_domain_final_coverage.py`,
+  `tests/domain/findings/test_finding_models.py`, `tests/domain/findings/
+  test_finding_model_coercion.py` (worker/api/dispatcher/agent-runtime/tool-gateway), plus
+  `tests/application/workers/test_result_validator.py` (dispatcher/agent-runtime/worker only —
+  api/tool-gateway don't have this file). Updated each to import the moved names from
+  `cys_core.domain.findings.packs.cybersec_soc` instead — same line numbers, byte-identical diffs
+  confirmed via `md5sum` across all affected packages.
+- **Verified per package** (worker/api/dispatcher/agent-runtime/tool-gateway, all 5): `ruff check`,
+  `ty check`, `lint-imports` (3 contracts kept), `scripts/verify_import_boundaries.py` (all OK,
+  same deferred-file counts as before — no new violations), `pytest --collect-only` (same
+  pre-existing 1-2 duplicate-basename collection errors as baseline in each package, no new
+  errors; worker 1431/dispatcher 1360/agent-runtime 1458/api 969/tool-gateway 924 tests collected,
+  matching pre-change counts).
+- **Self-caught bug in the same batch**: while fixing §69's `hitl_resume.py` layer-boundary
+  violation, the new `EngagementContainer.publish_hitl_resolved()` called `self.
+  get_engagement_egress()` (its own method) instead of `self._container.get_engagement_egress()`
+  (the outer `Container`'s method) — CI run `29989530294` caught it:
+  `tests/api/test_engagement_stream_hitl.py::test_resume_publishes_hitl_resolved` failed because
+  the test's `monkeypatch.setattr("bootstrap.container.Container.get_engagement_egress", ...)`
+  patches the *outer* class method, which `self.get_engagement_egress()` never routes through.
+  Fixed by calling `self._container.get_engagement_egress()` instead — matches how every other
+  `EngagementContainer` method that needs the outer, DI-overridable accessor already does it.
+  Real production behavior is unchanged (the outer method just delegates back to the same
+  instance when not monkeypatched); only test-time DI override now works correctly.

@@ -3,7 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from cys_core.domain.findings.models import ConductorStepResult, SocFinding
+from cys_core.domain.findings.models import ConductorStepResult
+from cys_core.domain.findings.packs.cybersec_soc import SocFinding
 
 
 @pytest.mark.unit
