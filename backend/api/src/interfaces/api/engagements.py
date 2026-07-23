@@ -32,7 +32,13 @@ from interfaces.api.engagement_schemas import (
 )
 from interfaces.api.tenant_deps import require_tenant_match_http
 
-router = APIRouter(prefix="/v1", tags=["engagements"])  # legacy alias — delegates to StartWorkOrder
+router = APIRouter(prefix="/v1", tags=["engagements"])
+
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+}  # legacy alias — delegates to StartWorkOrder
 
 
 def _latest_egress_phase(snapshot: list) -> str | None:
@@ -373,10 +379,29 @@ async def stream_engagement(
     async def _gen():
         import json
 
-        async for event in egress.subscribe(engagement_id, tenant_id=tenant_id):
-            yield f"data: {json.dumps(event, default=str)}\n\n"
+        iterator = egress.subscribe(engagement_id, tenant_id=tenant_id).__aiter__()
+        # wait_for(iterator.__anext__(), ...) cancels the anext() coroutine on
+        # timeout — cancellation propagates into the async generator's suspended
+        # frame and closes it for good, so the *next* loop iteration raises
+        # StopAsyncIteration immediately and the stream dies after the first idle
+        # period. Keep one anext() task alive across keepalive ticks instead.
+        pending = asyncio.ensure_future(iterator.__anext__())
+        try:
+            while True:
+                done, _ = await asyncio.wait({pending}, timeout=15.0)
+                if not done:
+                    yield ": keepalive\n\n"
+                    continue
+                try:
+                    event = pending.result()
+                except StopAsyncIteration:
+                    break
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+                pending = asyncio.ensure_future(iterator.__anext__())
+        finally:
+            pending.cancel()
 
-    return StreamingResponse(_gen(), media_type="text/event-stream")
+    return StreamingResponse(_gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 def _stream_engagement_precheck(engagement_id: str, tenant_id: str, _auth: AuthClaims | None) -> str:

@@ -6665,3 +6665,32 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
 - **Obs:** Prometheus job `egregore-dispatcher`; verify/e2e/smoke scripts dispatcher-aware.
 - **SSOT:** `docs/deploy/K3S.md`, meta `docs/deploy/nexus-egregore-loop.md`.
 - Cross-refs: §65 HITL enforce on cluster; §67 streaming via agent-runtime job env.
+
+## 69. Per-engagement SSE stream died after first 15s idle — `wait_for` on `anext()` closes the generator
+
+- **Symptom:** `GET /v1/engagements/{id}/stream` (`backend/api/src/interfaces/api/engagements.py`)
+  worked, then went dead on the first quiet period — exactly the frontend's `streamAlive` watchdog
+  (`use-engagement-stream.ts`, `STREAM_STALE_MS=15_000`) tripping, since bytes stopped arriving.
+- **Root cause:** the idle-keepalive rewrite wrapped `iterator.__anext__()` in
+  `asyncio.wait_for(..., timeout=15.0)` and caught `TimeoutError` to yield `": keepalive\n\n"`.
+  `wait_for` cancels its inner coroutine on timeout; cancellation propagates into the async
+  generator's suspended frame (`redis_egress.py`'s `subscribe()`, mid-`await asyncio.to_thread(...)`)
+  and closes it for good. The *next* loop iteration calls `__anext__()` on an already-closed
+  generator, gets `StopAsyncIteration` immediately, hits `break`, and the response ends — one
+  keepalive tick after connect, permanently.
+- **Fix:** keep a single `anext()` task alive across keepalive ticks instead of re-cancelling one
+  every 15s — `asyncio.ensure_future(iterator.__anext__())` once, `asyncio.wait({pending},
+  timeout=15.0)` to peek without cancelling, only replace `pending` after it actually resolves.
+  `finally: pending.cancel()` on client disconnect/generator close.
+- **Scope:** `backend/api` only — this endpoint isn't duplicated elsewhere (§18 check: no other
+  package has `interfaces/api/engagements.py`). The general `/events` heartbeat endpoint in
+  `app.py` uses a plain `sleep`-based generator, not `wait_for`-over-`anext()` — unaffected, left
+  untouched. Frontend proxy/hook changes in the same uncommitted batch (`egregore-proxy.ts`
+  SSE passthrough headers/streaming body, `use-engagement-stream.ts` staleness tracking) checked
+  clean — `bun test lib/ hooks/` 58/58 pass, no change needed.
+- **Also fixed while reviewing the batch:** `ruff` import-order nit in worker's new
+  `runtime/react_agent.py` (auto-fixed, `--fix`). `ty check` surfaced 6-7 `invalid-argument-type`
+  diagnostics across the new `react_agent.py`/`consultant_graph.py`/`planner_strategy.py` (langgraph
+  `Pregel.ainvoke`/`StateGraph` stub gaps, one `PlannerRouter.route`/`_LlmPlanner.plan` param-name
+  mismatch) — confirmed pre-existing in `agent-runtime`'s already-committed copies of the same
+  files too (not a regression from this batch), left as-is.
