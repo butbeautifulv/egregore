@@ -124,9 +124,11 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   `COSIGN_PRIVATE_KEY` decision. `MSP_BACKLOG.md` §41.4.
 - **`main` has no `required_status_checks` naming `release-gate`** — a PR can merge with every CI
   job red today. Needs explicit owner sign-off. `MSP_BACKLOG.md` §20.3.
-- **~15 more `.hex[:12]`/`.hex[:10]` id-generation sites** carry the same PII-redaction-collision
-  risk `follow_up_id` had — each needs individual tracing before a fix is meaningful.
-  `MSP_BACKLOG.md` §48.4, §50.1.
+- **`.hex[:12]`/`.hex[:10]` id-generation sweep is DONE** — every site from §48.4's ~30-site list
+  traced; only `follow_up_id` (§48) was ever actually reachable, everything else is safe by
+  construction. One latent-but-not-currently-exposed landmine remains (`job_id` via
+  `append_conversation_turn`) — deliberately not hardened preemptively, that's a systemic-fix
+  decision for the user, not a bug fix. `MSP_BACKLOG.md` §79.
 
 ### model-gateway
 - The implemented Helm workload, NetworkPolicy, and rate limiter await their own queued Release Gates.

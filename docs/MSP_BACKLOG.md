@@ -7214,15 +7214,56 @@ not re-checked line-by-line but the call graph is the same duplicated tree):
   live egress stream is a different, non-redacted path" being the actual reason a plausible-looking
   candidate turns out safe.
 
-**Running tally against §48.4's ~30-site list**: 3 confirmed not-at-risk (`mem-`, `job_id`-via-
-engagement-finding, `appr-`), 1 confirmed not-currently-reachable-but-fragile (`job_id`-via-
-conversation-turn), ~11 still fully untraced (`mrec-`, `run-`, `session-`, `siem-`, `await-`, `esc-`,
-`eng-` ×2 call sites, `evt-`, `chunk-`, `traj-` unfinished, plus the `docker_sandbox.py`
-container-name site which is infra-level and likely never reaches redaction at all). Stopping the
-sweep here rather than shallow-checking the rest in the time remaining — same call §50.1 made, for
-the same reason: a rushed trace that says "probably fine" isn't the "narrow, proven" bar this bug
-class earned in §48. Pattern emerging after 4 traces: `MemoryEntryValidator.validate()` is the only
-path that matters, and most operator/HITL-facing surfaces go through `EngagementEgressPort` instead
-(live, transient, unredacted by design) — `eng-`/`evt-` next since those are engagement/event ids
-that could plausibly appear as *content fields* inside an actual finding dict (as opposed to being
-metadata alongside it), which is the one shape confirmed vulnerable so far.
+## 79. §48.4's ~30-site PII-redaction-collision sweep is now COMPLETE — one bug (already fixed in §48), everything else safe by construction (2026-07-23)
+
+Finished tracing every remaining candidate from §78's list. Same rigor throughout: a site is only
+"at risk" if a concrete, currently-reachable code path assigns the raw id as a *content field* inside
+a dict that reaches `MemoryEntryValidator.validate()` (confirmed by grep to be the only
+`redact_pii()` call site in `cys_core`, across every package) — not merely "has the vulnerable
+12-hex shape."
+
+- **`eng-` (`start_engagement.py`/`start_work_order.py`)** and **`evt-`
+  (`route_and_enqueue.py`'s `SecurityEvent.id`)** — **not at risk**. Traced their actual downstream
+  use: `dispatch_event.py`'s `engagement_id=event.correlation_id or event.id` and
+  `plan_investigation.py`'s `return event.correlation_id or event.id` both feed these values into
+  `investigation_id`/`correlation_id` — the **scope key** used to build `MemoryScope`/the redaction
+  namespace itself, not a field placed inside `content`. `append_finding`/`append_pending_finding`/
+  `append_conversation_turn`'s payload construction (already read in full for §78) confirms
+  none of them add `investigation_id`/`engagement_id` as a payload key.
+- **`mrec-` (`MemoryRecord.id`, `domain/memory/records.py`)** — **not at risk, more strongly than
+  any other site**: `MemoryRecord(` has zero constructors anywhere in `src/` across all five
+  packages (api/worker/dispatcher/agent-runtime/tool-gateway) — it's dead code, not merely
+  unreachable through this one pipeline.
+- **`run-`/`session-` (`interfaces/api/run_schemas.py`)** — **not at risk**, same "becomes the
+  `RunContext`/state-store scope key, never a payload field" shape as `eng-`/`evt-`.
+- **`siem-` (`SiemRawAlert.id`, `connectors/siem_poll/models.py`)** — **not at risk**.
+  `normalize_siem_alert()` maps it to `SecurityEvent(id=alert.id, correlation_id=alert.id, ...)`,
+  landing in the same scope-key role as `evt-`; the `payload` dict it builds alongside
+  (`rule_name`/`message`/`host`/`source_type`/`siem_raw`) does not include `alert.id`.
+- **`await-`/`esc-` (`kafka_control_events.py`)** — **not at risk**. Both publish straight to Kafka
+  topics (`AWAITING_APPROVAL_TOPIC`/`ESCALATION_EVENTS_TOPIC`) via `_publish_json(...)` — a
+  transport that never touches `MemoryWriteService`.
+- **`chunk-` (`RagChunk.chunk_id`, `interfaces/rag/ingest/chunker.py`)** — **not at risk**. Lives
+  entirely in the RAG ingestion subsystem (`interfaces/rag/`, consumed by
+  `interfaces/rag/ingest/consumer.py`), a different storage path with no connection to
+  `MemoryEntryValidator`.
+- **`egregore-pysandbox-{hex12}` (`docker_sandbox.py` container name)** — **not at risk**: passed to
+  the Docker CLI/API as a container name, never persisted as investigation content.
+- **`ephemeral_trajectory_id()` (`traj-`)** — left as genuinely unresolved in §78 (no confirmed
+  caller found near memory-write content construction, but `new_trajectory`'s own downstream use
+  wasn't fully traced). Still the one honestly-open item, and it's the lowest-priority of the
+  original list (the name itself signals "not meant to persist").
+
+**Final tally**: of §48.4's ~30 sites, one was a real bug reachable today (`follow_up_id`, fixed in
+§48) and every other site checked is safe — either by a different transport entirely (Kafka bus,
+`EngagementEgressPort` SSE, RAG vector store, Docker container naming), by being used as a scope/
+namespace key rather than a content field, or (for `mrec-`) by being dead code. One site
+(`job_id`-via-`append_conversation_turn`, §78) is a confirmed latent landmine — safe today only
+because its one caller happens to always supply an 8-char id, with no code-level guarantee that
+stays true. §48.4's original framing — "any of them could hit the same class of bug" — turns out to
+have been the right caution to hold before tracing, but the actual answer is reassuring: this
+codebase's actual data flow keeps generated ids out of redacted content almost everywhere, not by
+policy but by how `MemoryWriteService`'s payload-building functions happen to be written. **Closing
+this sweep**: no more sites to check from the original list, and the one remaining decision (whether
+to preemptively harden the `job_id` landmine, i.e. pick between §48.4's two systemic options) is
+still deliberately left to the user, not decided here.
