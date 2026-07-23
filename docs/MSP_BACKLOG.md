@@ -7009,3 +7009,33 @@ were untouched this session — deploy bootstrap for `docker`/`k8s` `ExecutionBa
 HITL redesign's remaining gaps (reject path live, `TOOL_HITL_MODE` default flip), async Postgres
 driver migration, or reviewing/finishing the user's own in-progress `consultant_graph`/
 `tool_call_id_from_mapping` work if asked to.
+
+## 74. Continued plan execution: Model Gateway CI/deployment and Docker execution bootstrap (2026-07-23)
+
+This follow-up deliberately stayed isolated from the user's large uncommitted two-phase consultant
+graph and Web UI work.
+
+1. **Model Gateway is now covered by the Release Gate security suites.** `fe870ec` adds the
+   `adversarial` marker and both `adversarial`/`domain-coverage` matrix legs; the first run found
+   a real shortfall in the new domain suite (99%, missing sanitizer/normalizer branches), then
+   `999d2bd` added targeted guard-path cases. Release Gate `30014193942` is still running when
+   this entry was written, so this is implemented but not yet called verified.
+2. **Docker `ExecutionBackend` bootstrap is now explicit and opt-in.** `ecdb964` adds the pinned
+   Docker CLI to both dispatcher Dockerfiles and a `docker-execution` Compose profile. That profile
+   mounts `/var/run/docker.sock` read-only, requires `DOCKER_GID`, and keeps agent-runtime image
+   construction in its separate `image-build` profile. No backend image was built or container run
+   locally. The socket is host-root-equivalent despite its read-only mount, so it is intentionally
+   not part of the default development stack. Compose configuration for both profiles passed;
+   Release Gate `30014310150` is pending.
+3. **Model Gateway now has an opt-in Helm workload.** `56a88b6` adds its ClusterIP Service and
+   Deployment, image/resource/rollout values, and wires `MODEL_GATEWAY_URL` only when enabled.
+   Enabling it requires `gatewayAccessToken`; the chart emits the same secret as
+   `GATEWAY_ACCESS_TOKEN` for agent-runtime and `MODEL_GATEWAY_SHARED_SECRET` for the gateway, and
+   fails rendering when the token is absent. It remains disabled by default and direct LiteLLM stays
+   the default provider. Local Helm was unavailable, so render validation is delegated to pending
+   Release Gate `30014533490`; no cluster was changed.
+4. **Streaming remains deliberately deferred for safety, not forgotten.** LiteLLM supports an async
+   iterator from `await litellm.acompletion(..., stream=True)`, but proxying it directly would emit
+   data before `OutputGuardrails.detect_prompt_leakage()` can inspect the full response. The existing
+   one-chunk client fallback therefore remains correct until a protocol can preserve the output
+   guardrail boundary while providing streaming.

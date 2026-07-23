@@ -6,7 +6,7 @@
 > no narrative. When an item below is done, move its summary to `MSP_BACKLOG.md` and delete it from
 > here.
 
-## Current state (as of 2026-07-22)
+## Current state (as of 2026-07-23)
 
 Six independent backend packages, no shared package between any of them (deliberate duplication,
 `MSP_BACKLOG.md` §18):
@@ -16,7 +16,7 @@ Six independent backend packages, no shared package between any of them (deliber
 | `backend/api/` | Deployed (k3s + local), CI-complete |
 | `backend/worker/` | **Retired on k3s** (`replicas: 0`); kept for rollback |
 | `backend/tool-gateway/` | Deployed, CI-complete |
-| `backend/model-gateway/` | Deployed image, wired into `agent-runtime` (selectable, not default) |
+| `backend/model-gateway/` | Image + opt-in Helm workload, wired into `agent-runtime` (selectable, not default; Release Gate pending) |
 | `backend/agent-runtime/` | Deployed as k3s Batch Job executor (`MSP_BACKLOG.md` §68) |
 | `backend/dispatcher/` | Deployed on k3s (`EXECUTION_BACKEND=k8s`, `MSP_BACKLOG.md` §68) |
 
@@ -32,10 +32,12 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
 `dispatcher` — "switch core to any agent on the market, inside a safe system."
 
 1. **Deploy bootstrap for `docker`/`k8s` `ExecutionBackend` modes.** `subprocess`/same-host mode is
-   proven (`MSP_BACKLOG.md` §56). **`k8s` mode deployed on offline P30** (`MSP_BACKLOG.md` §68):
-   dispatcher Deployment + agent-runtime Batch Jobs + Helm/RBAC/Kaniko split images. `docker` backend
-   still needs dispatcher container `docker` CLI + `/var/run/docker.sock` — deliberately deferred.
-   `MSP_BACKLOG.md` §52.4, §52.5.
+   proven (`MSP_BACKLOG.md` §56). **`k8s` mode is deployed on offline P30** (`MSP_BACKLOG.md` §68):
+   dispatcher Deployment + agent-runtime Batch Jobs + Helm/RBAC/Kaniko split images. The Docker
+   bootstrap is now implemented as an explicit Compose profile (`docker-execution`) in `ecdb964`:
+   dispatcher gets a pinned Docker CLI, a read-only socket bind, and a separate image-builder profile.
+   It remains opt-in because Docker socket access is host-root-equivalent; it has not been live-run
+   locally and its Release Gate (`30014310150`) is pending. `MSP_BACKLOG.md` §52.4, §52.5, §74.
 2. **HITL pause/resume redesign for the cross-process case.** Design (`§35`, refuse-then-retry
    with an approval token) is built both sides for the LangGraph path and **proven live end to end**
    (`§61`): `tool-gateway` classifies risk and mints/verifies approval tokens (`§58`);
@@ -126,15 +128,15 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   `MSP_BACKLOG.md` §48.4, §50.1.
 
 ### model-gateway
-- No deploy manifest (compose/Helm) — same gap as agent-runtime/dispatcher (§1 item 1).
 - No NetworkPolicy egress restriction.
 - No streaming support (`POST /v1/model/invoke` is request/response only) — `agent-runtime`'s
   `ModelGatewayChatModel._astream` works around this with a single-chunk fallback, not a fix.
+  Emitting tokens before complete-output guardrail inspection would bypass leakage protection, so a
+  real implementation needs a safe streaming protocol rather than a direct proxy.
 - No per-call rate limiting or budget tracking, unlike `tool-gateway`.
-- `domain-coverage` (`--cov-fail-under=100` on `tests/domain/`) and `adversarial` CI jobs still
-  missing — `domain-coverage` needs a `tests/domain/` suite written from scratch first (none
-  exists; `arch-lint` coverage already landed, §57). `MSP_BACKLOG.md` §57.
-- `MSP_BACKLOG.md` §29.4, §49, §54.
+- `domain-coverage` (`--cov-fail-under=100` on `tests/domain/`) and `adversarial` jobs are now in
+  Release Gate (`fe870ec`/`999d2bd`); their first green verification run (`30014193942`) is pending.
+- `MSP_BACKLOG.md` §29.4, §49, §54, §74.
 
 ### Product ideas (recorded, not scoped)
 - **Agent-session self-looping** — event-gated self-continuation for egregore's own SOC personas,
