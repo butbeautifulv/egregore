@@ -28,9 +28,12 @@ class WorkerResultValidator:
     def validate(self, *, result: dict[str, Any], schema_name: str | None) -> dict[str, Any]:
         if not isinstance(result, dict) or "error" in result:
             return result
-        answer_text = _extract_answer_text(result) if schema_name == "ConsultantFinding" else ""
+        schema = self._schema_registry.get(schema_name or "")
+        fields = set(getattr(schema, "model_fields", {})) if schema is not None else set()
+        is_advisory_schema = {"topic", "summary", "recommendations", "references", "confidence"} <= fields
+        answer_text = _extract_answer_text(result) if is_advisory_schema else ""
         result = normalize_finding_payload(result)
-        if schema_name == "ConsultantFinding" and not answer_text:
+        if is_advisory_schema and not answer_text:
             answer_text = _extract_answer_text(result)
         if isinstance(result.get("reasoning_steps"), list):
             result["sgr_metadata"] = {
@@ -38,9 +41,8 @@ class WorkerResultValidator:
                 "plan_status": result.get("plan_status", ""),
                 "enough_data": result.get("enough_data", False),
             }
-        if schema_name == "ConsultantFinding":
+        if is_advisory_schema:
             normalize_consultant_lists(result)
-        schema = self._schema_registry.get(schema_name or "")
         if schema is None:
             return result
         try:
@@ -48,7 +50,7 @@ class WorkerResultValidator:
             out = validated.model_dump()
             if "sgr_metadata" in result:
                 out["sgr_metadata"] = result["sgr_metadata"]
-            if schema_name == "ConsultantFinding" and answer_text and not _extract_answer_text(out):
+            if is_advisory_schema and answer_text and not _extract_answer_text(out):
                 out["raw_response"] = answer_text
             return preserve_planned_tool_calls(result, out)
         except SecurityViolation:
