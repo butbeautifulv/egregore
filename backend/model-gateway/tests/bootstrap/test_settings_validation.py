@@ -46,3 +46,13 @@ def test_settings_prod_allows_auth_enabled_with_secret() -> None:
         STAGE="prod", MODEL_GATEWAY_AUTH_ENABLED=True, MODEL_GATEWAY_SHARED_SECRET="secret"
     )
     assert settings.auth_enabled is True
+
+
+@pytest.mark.unit
+def test_settings_validate_model_gateway_rate_limit_mode_and_bounds() -> None:
+    settings = Settings(STAGE="dev", MODEL_GATEWAY_RATE_LIMIT_MODE="enforce", MODEL_GATEWAY_MAX_CALLS_PER_WINDOW=2)
+    assert settings.rate_limit_mode == "enforce"
+    with pytest.raises(ValidationError, match="RATE_LIMIT_MODE"):
+        Settings(STAGE="dev", MODEL_GATEWAY_RATE_LIMIT_MODE="invalid")
+    with pytest.raises(ValidationError, match="rate-limit values"):
+        Settings(STAGE="dev", MODEL_GATEWAY_MAX_CALLS_PER_WINDOW=0)
