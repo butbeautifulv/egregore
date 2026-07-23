@@ -4,28 +4,17 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-EventType = Literal[
-    "siem.alert",
-    "edr.alert",
-    "iam.event",
-    "ad.alert",
-    "netflow.beacon",
-    "dns.anomaly",
-    "cloud.audit",
-    "cloud.alert",
-    "hunt.hypothesis",
-    "incident.forensics",
-    "purple.validation",
-    "assessment.complete",
-    "ti.feed",
-    "osint.report",
-    "doc.upload",
-    "compliance.schedule",
-    "finding.reference",
-    "escalation",
-    "engagement.start",
-    "manual.consultation",
-]
+# Plain str, not a closed Literal (MSP_BACKLOG.md §8.4 point 1) — the set of valid
+# event types is profile-pack-specific (cybersec-soc's "siem.alert"/"edr.alert"/...
+# vs. a hypothetical other pack's own vocabulary), not something cys_core/domain
+# should hardcode. No exhaustiveness/match code in this codebase branches on these
+# specific string values (verified by repo-wide grep) — an unrecognized event_type
+# simply matches no RoutingRule, which is the correct fail-open behavior for a
+# pack introducing event types core has never heard of. No catalog-driven
+# validation is wired in yet (none previously existed to piggyback on — see
+# MSP_BACKLOG.md §70's residual-coupling entries for the same honest-deferral
+# pattern); this pass only removes the hardcoded closed set from core.
+EventType = str
 
 Severity = Literal["info", "low", "medium", "high", "critical"]
 

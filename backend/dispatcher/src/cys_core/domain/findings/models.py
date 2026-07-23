@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-WorkerAgentName = Literal[
-    "redteam",
-    "network",
-    "soc",
-    "compliance",
-    "consultant",
-    "intel",
-    "hunter",
-    "identity",
-    "dfir",
-    "cloud",
-    "purple",
-    "conductor",
-    "critic",
-]
+# Plain str, not a closed Literal (MSP_BACKLOG.md §8.4 point 1) — persona names are
+# profile-pack/catalog data, not something cys_core/domain should hardcode. Every
+# real routing/lookup path already treats persona names as plain str validated (or
+# not) against the live agent catalog (WorkerJob.persona, RoutingRule.personas,
+# AgentCatalogEntry.name, persona_budget(), persona_clearance_for() are all str) —
+# FindingEnvelope.agent was the one holdout, and FindingEnvelope itself has no
+# real caller anywhere in src/ today.
+WorkerAgentName = str
 
 
 class ConductorStepResult(BaseModel):

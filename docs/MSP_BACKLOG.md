@@ -6775,3 +6775,43 @@ Out of scope (still MSP tracks): full §8 core domain extraction; cross-process 
   `EngagementContainer` method that needs the outer, DI-overridable accessor already does it.
   Real production behavior is unchanged (the outer method just delegates back to the same
   instance when not monkeypatched); only test-time DI override now works correctly.
+
+## 71. §8.4 point 1: `EventType`/`WorkerAgentName` closed `Literal`s → plain `str`
+
+- **Scoping found this much lower-risk than assumed**: repo-wide grep across worker's `src/`
+  found zero `Literal`-exhaustiveness matching, zero `match` statements, zero `dict[EventType,
+  ...]`/`dict[WorkerAgentName, ...]` keying, zero `typing.get_args()` introspection on either
+  alias. `WorkerAgentName` has exactly one real consumer — `FindingEnvelope.agent` — and
+  `FindingEnvelope` itself has **no caller anywhere in `src/`** (dead code, only re-exported).
+  Every real persona-routing path (`WorkerJob.persona`, `RoutingRule.personas`,
+  `AgentCatalogEntry.name`, `persona_budget()`, `persona_clearance_for()`) was already plain
+  `str` before this change. `EventType` has exactly two real Pydantic-field consumers
+  (`SecurityEvent.type`, `RoutingRule.event_types`) plus one type-hint-only reference
+  (`plans.py::rule_matches`) — no enforcement beyond Pydantic's own Literal check exists or
+  existed anywhere else.
+- **Change**: both aliases become `EventType = str` / `WorkerAgentName = str` in
+  `cys_core/domain/events/models.py` / `cys_core/domain/findings/models.py`. Since `str` is a
+  strict superset of the removed closed `Literal`, every value that validated before still
+  validates — zero behavior change for any existing caller, by construction.
+- **No catalog-driven validation wired in this pass** — none existed to piggyback on for event
+  types (`DomainPack.routing_event_types` looks like it should be that catalog but is never read
+  anywhere outside its own seed data — confirmed by grep) and `WorkerAgentName`'s one real field
+  is dead code. Building a real validating catalog is separate, larger scope than "stop
+  hardcoding the closed set" — same honest-deferral pattern as `result_validator.py`'s
+  `"ConsultantFinding"` coupling in `§70.4` and `tool_risk` in `§62.5`.
+- **Test fallout**: one test per package,
+  `tests/domain/findings/test_finding_models.py::test_finding_envelope_agent_literal`, asserted
+  `pytest.raises(ValidationError)` for an unrecognized persona name — renamed to
+  `test_finding_envelope_agent_is_plain_str` and now asserts arbitrary persona-name strings
+  (including a toy-pack-style name) are accepted, matching the new, honest contract.
+- **Verified per package** (worker/api/dispatcher/agent-runtime/tool-gateway — `model-gateway`
+  doesn't have either file, confirmed out of scope): byte-identical propagation via `md5sum`,
+  `ruff check` + `ty check` clean, `pytest --collect-only` same pre-existing 1-2
+  duplicate-basename collection errors as baseline in each package (no new errors), same
+  1431/969/1360/1458/924 test counts as before this change.
+- **Remaining §8.4 work**: point 2 (extract `Finding` schema resolution's residual coupling —
+  `result_validator.py`'s literal string check, `§70.4`) already deferred; point 6 (toy non-SOC
+  acceptance pack/test) is now unblocked on the type-system side but still needs an actual toy
+  pack with a persona that carries no cybersec-soc-specific tools/skills to be a meaningful
+  proof — `general-assistant`'s `consultant` persona and `gaia-benchmark`'s `gaia_solver` persona
+  both still carry real SOC-flavored tool lists, so neither is a clean acceptance case yet.
