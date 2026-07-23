@@ -17,6 +17,7 @@ class JobRecord:
     correlation_id: str = ""
     tenant_id: str = "default"
     event_id: str = ""
+    profile_id: str = ""
     last_error: str = ""
     failure_reason: str = ""
 
@@ -30,6 +31,7 @@ class JobRecordSummary:
     correlation_id: str = ""
     tenant_id: str = "default"
     event_id: str = ""
+    profile_id: str = ""
     created_at: str = ""
     updated_at: str = ""
     follow_up_id: str | None = None
@@ -46,6 +48,7 @@ class JobStorePort(Protocol):
         correlation_id: str = "",
         tenant_id: str = "default",
         event_id: str = "",
+        profile_id: str = "",
     ) -> JobRecord: ...
 
     def upsert_running(
@@ -57,6 +60,7 @@ class JobStorePort(Protocol):
         correlation_id: str = "",
         tenant_id: str = "default",
         event_id: str = "",
+        profile_id: str = "",
     ) -> JobRecord: ...
 
     def pause_for_hitl(self, pending: PendingHitlAction, preview: dict[str, Any]) -> JobRecord: ...

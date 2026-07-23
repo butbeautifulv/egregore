@@ -178,6 +178,7 @@ class ReconcileStuckEngagements:
             payload=payload,
             correlation_id=engagement.id,
             tenant_id=tenant_id,
+            profile_id=engagement.profile_id,
             pipeline_staged=True,
         )
         engagement.mark_enqueued(job_ids)

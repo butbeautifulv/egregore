@@ -149,6 +149,7 @@ class StartEngagement:
                 payload={**payload, "work_kind": ENGAGEMENT_PLAN_WORK_KIND},
                 correlation_id=engagement.correlation_id,
                 tenant_id=request.tenant_id,
+                profile_id=engagement.profile_id,
                 sequential=False,
             )
             engagement = self.engagement_store.get(request.tenant_id, engagement_id) or engagement

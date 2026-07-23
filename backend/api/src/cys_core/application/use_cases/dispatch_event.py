@@ -79,6 +79,7 @@ class DispatchEvent:
                     payload=enriched_payload,
                     correlation_id=event.correlation_id or event.id,
                     tenant_id=event.tenant_id,
+                    profile_id=profile_id,
                     sequential=False,
                 )
             return decision, job_ids
@@ -102,6 +103,7 @@ class DispatchEvent:
                     payload=enriched_payload,
                     correlation_id=event.correlation_id or event.id,
                     tenant_id=event.tenant_id,
+                    profile_id=profile_id,
                     sequential=False,
                 )
             return decision, job_ids

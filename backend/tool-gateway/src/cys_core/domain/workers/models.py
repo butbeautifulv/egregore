@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from cys_core.domain.catalog.profile_id import DEFAULT_PROFILE_ID
+
 
 class WorkerJobStatus(str, Enum):
     PENDING = "pending"
@@ -48,6 +50,7 @@ class WorkerJob(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     correlation_id: str = ""
     tenant_id: str = "default"
+    profile_id: str = DEFAULT_PROFILE_ID
     status: WorkerJobStatus = WorkerJobStatus.PENDING
     sandbox_id: str = ""
     feedback: str = ""

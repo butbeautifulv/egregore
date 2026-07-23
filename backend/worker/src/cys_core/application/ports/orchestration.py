@@ -17,6 +17,7 @@ class OrchestrationPort(Protocol):
         payload: dict[str, Any] | None = None,
         correlation_id: str = "",
         tenant_id: str = "default",
+        profile_id: str | None = None,
         sequential: bool = False,
         pipeline_staged: bool = False,
     ) -> list[str]: ...
@@ -30,6 +31,7 @@ class OrchestrationPort(Protocol):
         payload: dict[str, Any] | None = None,
         correlation_id: str = "",
         tenant_id: str = "default",
+        profile_id: str | None = None,
         sequential: bool = False,
         pipeline_staged: bool = False,
     ) -> list[str]: ...

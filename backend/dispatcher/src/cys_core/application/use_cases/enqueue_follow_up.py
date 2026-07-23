@@ -192,6 +192,7 @@ class EnqueueFollowUp:
             persona=persona,
             correlation_id=engagement_id,
             tenant_id=tenant_id,
+            profile_id=engagement.profile_id,
             payload={
                 "phase": FOLLOW_UP_PHASE,
                 "work_kind": work_kind,
@@ -294,6 +295,7 @@ class EnqueueFollowUp:
             persona=persona,
             correlation_id=engagement_id,
             tenant_id=tenant_id,
+            profile_id=engagement.profile_id,
             payload={
                 "phase": FOLLOW_UP_PHASE,
                 "work_kind": work_kind,

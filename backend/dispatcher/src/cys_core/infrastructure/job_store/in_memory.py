@@ -30,6 +30,7 @@ class InMemoryJobStore:
         correlation_id: str = "",
         tenant_id: str = "default",
         event_id: str = "",
+        profile_id: str = "",
     ) -> JobRecord:
         record = JobRecord(
             job_id=job_id,
@@ -39,6 +40,7 @@ class InMemoryJobStore:
             correlation_id=self._normalized_correlation(correlation_id),
             tenant_id=tenant_id,
             event_id=event_id,
+            profile_id=profile_id,
         )
         self._jobs[job_id] = record
         self._touch(job_id)
@@ -53,6 +55,7 @@ class InMemoryJobStore:
         correlation_id: str = "",
         tenant_id: str = "default",
         event_id: str = "",
+        profile_id: str = "",
     ) -> JobRecord:
         existing = self._jobs.get(job_id)
         record = JobRecord(
@@ -65,6 +68,7 @@ class InMemoryJobStore:
             ),
             tenant_id=tenant_id or (existing.tenant_id if existing else "default"),
             event_id=event_id or (existing.event_id if existing else ""),
+            profile_id=profile_id or (existing.profile_id if existing else ""),
         )
         self._jobs[job_id] = record
         self._touch(job_id)
@@ -82,6 +86,7 @@ class InMemoryJobStore:
             correlation_id=existing.correlation_id if existing else "",
             tenant_id=existing.tenant_id if existing else "default",
             event_id=existing.event_id if existing else "",
+            profile_id=existing.profile_id if existing else "",
         )
         self._jobs[pending.job_id] = record
         self._touch(pending.job_id)
@@ -130,6 +135,7 @@ class InMemoryJobStore:
             correlation_id=record.correlation_id,
             tenant_id=record.tenant_id,
             event_id=record.event_id,
+            profile_id=record.profile_id,
             updated_at=updated.isoformat() if updated is not None else "",
             last_error=record.last_error,
             failure_reason=record.failure_reason,

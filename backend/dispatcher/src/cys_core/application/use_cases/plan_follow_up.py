@@ -11,9 +11,7 @@ from cys_core.domain.workers.models import WorkerJob
 
 def _follow_up_plan_event(job: WorkerJob, investigation_id: str, engagement) -> SecurityEvent:
     operator_message = str(job.payload.get("operator_message", "")).strip()
-    profile_id = ""
-    if engagement.intake:
-        profile_id = str(engagement.intake.get("profile_id", "") or "")
+    profile_id = job.profile_id
     goal = operator_message or engagement.follow_up_goal or engagement.goal
     payload: dict[str, Any] = {
         "goal": goal,
@@ -89,6 +87,7 @@ class PlanFollowUpRunner:
             payload=enriched,
             correlation_id=investigation_id,
             tenant_id=job.tenant_id,
+            profile_id=job.profile_id,
             sequential=False,
             pipeline_staged=plan.is_pipeline_staged(),
         )

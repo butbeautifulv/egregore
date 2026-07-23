@@ -15,6 +15,7 @@ from cys_core.application.ports.job_queue import JobQueueConnector
 from cys_core.application.ports.job_store import JobStorePort
 from cys_core.application.ports.metrics import MetricsPort
 from cys_core.application.use_cases.fail_engagement_guardrail import maybe_trip_engagement
+from cys_core.domain.catalog.profile_id import resolve_profile_id
 from cys_core.domain.engagement.models import EngagementStatus
 from cys_core.domain.findings.noop import is_noop_finding
 from cys_core.domain.workers.job_factory import jobs_for_routing
@@ -90,6 +91,7 @@ class EnqueueWorkerJobs:
                 correlation_id=job.correlation_id,
                 tenant_id=job.tenant_id,
                 event_id=job.event_id,
+                profile_id=job.profile_id,
             )
             if not pipeline_staged or index == 0:
                 self._enqueue_to_queue(job, pipeline_staged=pipeline_staged, index=index)
@@ -146,6 +148,7 @@ class EnqueueWorkerJobs:
         payload: dict[str, Any] | None = None,
         correlation_id: str = "",
         tenant_id: str = "default",
+        profile_id: str | None = None,
         sequential: bool = False,
         pipeline_staged: bool = False,
     ) -> list[str]:
@@ -156,6 +159,7 @@ class EnqueueWorkerJobs:
             payload=payload,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
+            profile_id=profile_id,
             sequential=sequential,
         )
         return self._persist_and_enqueue_jobs(jobs, pipeline_staged=pipeline_staged)
@@ -169,6 +173,7 @@ class EnqueueWorkerJobs:
         payload: dict[str, Any] | None = None,
         correlation_id: str = "",
         tenant_id: str = "default",
+        profile_id: str | None = None,
         sequential: bool = False,
         pipeline_staged: bool = False,
     ) -> list[str]:
@@ -179,6 +184,7 @@ class EnqueueWorkerJobs:
             payload=payload,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
+            profile_id=profile_id,
             sequential=sequential,
         )
         return await self._apersist_and_enqueue_jobs(jobs, pipeline_staged=pipeline_staged)
@@ -303,6 +309,7 @@ class EnqueueWorkerJobs:
             payload,
         )
         tenant_id = str(payload.get("tenant_id", "default"))
+        profile_id = resolve_profile_id(payload=payload)
         msg_type = str(envelope.get("type", "delegate"))
         if await asyncio.to_thread(
             self._should_reject_bus_enqueue,
@@ -345,6 +352,7 @@ class EnqueueWorkerJobs:
             persona=persona,
             correlation_id=correlation_id,
             tenant_id=tenant_id,
+            profile_id=profile_id,
             payload=payload,
             feedback=str(payload.get("feedback", "")),
         )
@@ -355,6 +363,7 @@ class EnqueueWorkerJobs:
             correlation_id=job.correlation_id,
             tenant_id=job.tenant_id,
             event_id=job.event_id,
+            profile_id=job.profile_id,
         )
         await self._queue.aenqueue(job)
         engagement_id = extract_engagement_id(correlation_id=correlation_id, payload=payload)

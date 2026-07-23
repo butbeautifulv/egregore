@@ -69,6 +69,7 @@ class EngagementPlannerRunner:
                 payload=enriched,
                 correlation_id=investigation_id,
                 tenant_id=job.tenant_id,
+                profile_id=job.profile_id,
                 sequential=False,
                 pipeline_staged=plan.is_pipeline_staged(),
             )
