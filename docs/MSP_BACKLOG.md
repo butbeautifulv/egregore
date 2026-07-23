@@ -7039,3 +7039,14 @@ graph and Web UI work.
    data before `OutputGuardrails.detect_prompt_leakage()` can inspect the full response. The existing
    one-chunk client fallback therefore remains correct until a protocol can preserve the output
    guardrail boundary while providing streaming.
+
+## 75. Model Gateway NetworkPolicy is now available as a fail-closed Helm opt-in (2026-07-23)
+
+`48b04b8` adds `templates/model-gateway-networkpolicy.yaml`. When both
+`modelGateway.enabled` and `modelGateway.networkPolicy.enabled` are true, the policy admits ingress
+only from `egregore-agent-runtime` Jobs and the rollback `egregore-worker` Deployment. Egress admits
+only DNS (configurable CoreDNS selectors) and TCP/443 to `providerCidrs`. Helm fails rendering if an
+operator enables the policy without at least one provider CIDR. This is deliberately disabled by
+default: provider hostnames may resolve to changing addresses, and an unbounded TCP/443 rule would
+not be a meaningful egress control. Release Gate was dispatched and is pending; no cluster was
+changed.

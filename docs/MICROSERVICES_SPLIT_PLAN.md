@@ -128,7 +128,10 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   `MSP_BACKLOG.md` §48.4, §50.1.
 
 ### model-gateway
-- No NetworkPolicy egress restriction.
+- An opt-in, fail-closed Helm NetworkPolicy now restricts ingress to agent-runtime/rollback-worker
+  and egress to cluster DNS plus configured provider CIDRs on 443 (`48b04b8`; Release Gate pending).
+  Operators must supply stable CIDRs for every provider endpoint before enabling it — NetworkPolicy
+  cannot safely allow a hostname.
 - No streaming support (`POST /v1/model/invoke` is request/response only) — `agent-runtime`'s
   `ModelGatewayChatModel._astream` works around this with a single-chunk fallback, not a fix.
   Emitting tokens before complete-output guardrail inspection would bypass leakage protection, so a
