@@ -7270,3 +7270,31 @@ policy but by how `MemoryWriteService`'s payload-building functions happen to be
 this sweep**: no more sites to check from the original list, and the one remaining decision (whether
 to preemptively harden the `job_id` landmine, i.e. pick between §48.4's two systemic options) is
 still deliberately left to the user, not decided here.
+
+## 80. Branch protection added to `main` — the §20.3/§45.4 gap flagged repeatedly across sessions, finally closed with explicit sign-off (2026-07-24)
+
+Confirmed via `gh api /repos/.../branches/main/protection` that `main` had **zero** protection
+rules — not just missing the `release-gate` check specifically, the branch had no ruleset at all
+(the endpoint 404'd with `"Branch not protected"`). This gap was flagged as needing "explicit owner
+sign-off" or "explicit user decision" in at least three earlier sessions (§20.3, §45.4, and the
+`MICROSERVICES_SPLIT_PLAN.md` §2 Security/hardening list) without ever being acted on — correctly,
+since a live GitHub branch-protection change affects every collaborator immediately and isn't a
+same-session judgment call. Asked this session; user said yes.
+
+Applied via `PUT /repos/.../branches/main/protection`:
+```json
+{
+  "required_status_checks": {"strict": true, "checks": [{"context": "release-gate"}]},
+  "enforce_admins": false,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+```
+`release-gate` (the actual gating job every Release Gate workflow run produces — confirmed by name
+against real runs this session, e.g. `30036730848`) must now pass and the branch must be up to date
+before a PR can merge into `main`. `enforce_admins: false` — repo admins/owners can still override
+in an emergency, since that wasn't part of what was asked. Verified after applying:
+`required_status_checks.contexts == ["release-gate"]`, `strict == true`, `enforce_admins.enabled ==
+false`, and (GitHub defaults that came along with creating the ruleset) `allow_force_pushes`/
+`allow_deletions` both `false`. No PR review requirement added — not requested, would have been
+scope creep beyond the specific gap that was flagged.

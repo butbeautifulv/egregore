@@ -122,8 +122,6 @@ agent core behind `agent-runtime` can be swapped for a different implementation 
   needs product authority over the catalog. `MSP_BACKLOG.md` §23.5, §31.
 - **`cosign` signing (`job-sign.yml`) is a non-functional stub** — needs a keyless-OIDC vs.
   `COSIGN_PRIVATE_KEY` decision. `MSP_BACKLOG.md` §41.4.
-- **`main` has no `required_status_checks` naming `release-gate`** — a PR can merge with every CI
-  job red today. Needs explicit owner sign-off. `MSP_BACKLOG.md` §20.3.
 - **`.hex[:12]`/`.hex[:10]` id-generation sweep is DONE, no sites left open** — every site from
   §48.4's ~30-site list traced; only `follow_up_id` (§48) was ever actually reachable, everything
   else is safe by construction or dead code. One latent-but-not-currently-exposed landmine remains
